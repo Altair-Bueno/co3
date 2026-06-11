@@ -3,13 +3,7 @@
 use alloc_crate::{boxed::Box, string::String, vec::Vec};
 use core::ffi::c_void;
 
-use disjoint_impls::disjoint_impls;
-
-use crate::{
-    Encode,
-    borrow::NonExternTypeLike,
-    size::{ExternTypeLike, SizeFamily},
-};
+use crate::{Encode, size::SizeFamily};
 
 pub trait HandleFamily {
     // TODO: Should Copy be required?
@@ -138,35 +132,23 @@ macro_rules! handles {
     };
 }
 
-disjoint_impls! {
-    // FIXME: Make both Self and Self::Erased `Sized`
-    // It makes little sense to allow ?Sized to erase but it's too bothersome change for me atm
-    pub unsafe trait Erase {
-        type Erased: ?Sized;
-    }
+// FIXME: Make both Self and Self::Erased `Sized`
+// It makes little sense to allow ?Sized to erase but it's too bothersome change for me atm
+pub unsafe trait Erase {
+    type Erased: ?Sized;
+}
 
-    unsafe impl<'a, T: SizeFamily<Kind = ExternTypeLike> + ?Sized> Erase for &'a T {
-        type Erased = &'a c_void;
-    }
-    unsafe impl<'a, T: SizeFamily<Kind: NonExternTypeLike> + Erase + ?Sized> Erase for &'a T {
-        type Erased = &'a T::Erased;
-    }
+unsafe impl<'a, T: Erase + ?Sized> Erase for &'a T {
+    type Erased = &'a T::Erased;
+}
 
-    unsafe impl<'a, T: SizeFamily<Kind = ExternTypeLike> + ?Sized> Erase for &'a mut T {
-        type Erased = &'a mut c_void;
-    }
-    unsafe impl<'a, T: SizeFamily<Kind: NonExternTypeLike> + Erase + ?Sized> Erase for &'a mut T {
-        type Erased = &'a mut T::Erased;
-    }
+unsafe impl<'a, T: Erase + ?Sized> Erase for &'a mut T {
+    type Erased = &'a mut T::Erased;
+}
 
-    #[cfg(feature = "alloc")]
-    unsafe impl<T: SizeFamily<Kind = ExternTypeLike> + ?Sized> Erase for Box<T> {
-        type Erased = Box<c_void>;
-    }
-    #[cfg(feature = "alloc")]
-    unsafe impl<T: SizeFamily<Kind: NonExternTypeLike> + Erase + ?Sized> Erase for Box<T> {
-        type Erased = Box<T::Erased>;
-    }
+#[cfg(feature = "alloc")]
+unsafe impl<T: Erase + ?Sized> Erase for Box<T> {
+    type Erased = Box<T::Erased>;
 }
 
 unsafe impl Erase for c_void {
@@ -199,7 +181,7 @@ unsafe impl<T: Erase<Erased: Sized>, E: Erase<Erased: Sized>> Erase for Result<T
 }
 
 #[cfg(feature = "alloc")]
-unsafe impl<T: SizeFamily<Kind: NonExternTypeLike> + Erase<Erased: Sized>> Erase for Vec<T> {
+unsafe impl<T: Erase<Erased: Sized>> Erase for Vec<T> {
     type Erased = Vec<T::Erased>;
 }
 #[cfg(feature = "alloc")]

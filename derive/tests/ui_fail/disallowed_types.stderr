@@ -211,30 +211,6 @@ note: required by a bound in `provider::_::disallowed_types_by_val`
    | |_____^ required by this bound in `disallowed_types_by_val`
    = note: this error originates in the macro `export_C` (in Nightly builds, run with -Z macro-backtrace for more info)
 
-error[E0277]: the trait bound `ExternTypeLike: co3::borrow::NonExternTypeLike` is not satisfied
-  --> tests/ui_fail/disallowed_types.rs:31:5
-   |
-31 | /     export_C! {
-32 | |         type MyType;
-33 | |
-34 | |         impl ToOwned for Box<MyType> {
-...  |
-41 | |         pub extern "C" fn disallowed_opaque_types(move arg1: Box<MyType>, arg2: Box<MyType>);
-42 | |     }
-   | |_____^ the trait `co3::borrow::NonExternTypeLike` is not implemented for `ExternTypeLike`
-   |
-help: the following other types implement trait `co3::borrow::NonExternTypeLike`
-  --> $WORKSPACE/src/borrow.rs
-   |
-   | impl NonExternTypeLike for MetaSized<SliceLike> {}
-   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `co3::size::MetaSized<SliceLike>`
-   | impl NonExternTypeLike for MetaSized<DynTraitLike> {}
-   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `co3::size::MetaSized<DynTraitLike>`
-   | impl<S> NonExternTypeLike for crate::size::Sized<S> {}
-   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `co3::size::Sized<S>`
-   = note: required for `Box<provider::MyType>` to implement `co3::borrow::Borrow`
-   = note: this error originates in the macro `export_C` (in Nightly builds, run with -Z macro-backtrace for more info)
-
 error[E0277]: the trait bound `(): CFnArg` is not satisfied
   --> tests/ui_fail/disallowed_types.rs:57:47
    |

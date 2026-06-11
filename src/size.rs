@@ -2,22 +2,11 @@
 use alloc_crate::{boxed::Box, vec::Vec};
 use core::{convert::Infallible, ptr::NonNull};
 
-use disjoint_impls::disjoint_impls;
-
-/// Type whose layout is known without pointer metadata.
-pub struct Sized<K>(core::marker::PhantomData<K>, Infallible);
-
 /// Types that are always behind a pointer
 pub struct MetaSized<K>(core::marker::PhantomData<K>, Infallible);
 
-/// [`Zst`] type that has no valid values.
-pub enum Uninhabited {}
-
-/// [`Sized`] type whose size is 0.
-pub enum Zst {}
-
-/// Types with a constant non-zero size known at compile time. Check [`core::marker::Sized`].
-pub enum SizedType {}
+/// Types with a constant size known at compile time. Check [`core::marker::Sized`].
+pub enum Sized {}
 
 /// Slices and DSTs whose last field is a slice.
 pub enum SliceLike {}
@@ -28,35 +17,27 @@ pub enum DynTraitLike {}
 /// Extern types and DSTs whose last field is an extern type.
 pub enum ExternTypeLike {}
 
-pub(crate) trait PointeeSized {}
+pub(crate) trait Dst {}
 
 /// Pointers to types implementing this trait alias are “thin”.
 /// [Related](https://doc.rust-lang.org/core/ptr/traitalias.Thin.html)
 pub(crate) trait Thin {}
 
-impl PointeeSized for ExternTypeLike {}
-impl<K> PointeeSized for MetaSized<K> {}
+impl Dst for ExternTypeLike {}
+impl<K> Dst for MetaSized<K> {}
 
+impl Thin for Sized {}
 impl Thin for ExternTypeLike {}
-impl<S> Thin for crate::size::Sized<S> {}
 
-disjoint_impls! {
-    pub trait SizeFamily {
-        type Kind;
-    }
-
-    impl<T: SizeFamily<Kind = Sized<Uninhabited>>> SizeFamily for Option<T> {
-        type Kind = Sized<Zst>;
-    }
-    impl<T: SizeFamily<Kind = Sized<Zst>>> SizeFamily for Option<T> {
-        type Kind = Sized<SizedType>;
-    }
-    impl<T: SizeFamily<Kind = Sized<SizedType>>> SizeFamily for Option<T> {
-        type Kind = Sized<SizedType>;
-    }
-
-    // TODO: Implement for Result
+pub trait SizeFamily {
+    type Kind;
 }
+
+impl<T> SizeFamily for Option<T> {
+    type Kind = Sized;
+}
+
+// TODO: Implement for Result
 
 pub trait Wide {
     type Data;
@@ -84,25 +65,25 @@ impl<R> SizeFamily for [R] {
 }
 
 impl<T: ?core::marker::Sized> SizeFamily for &T {
-    type Kind = Sized<SizedType>;
+    type Kind = Sized;
 }
 
 impl<T: ?core::marker::Sized> SizeFamily for &mut T {
-    type Kind = Sized<SizedType>;
+    type Kind = Sized;
 }
 
 #[cfg(feature = "alloc")]
 impl<T: ?core::marker::Sized> SizeFamily for Box<T> {
-    type Kind = Sized<SizedType>;
+    type Kind = Sized;
 }
 
 #[cfg(feature = "alloc")]
 impl<T> SizeFamily for Vec<T> {
-    type Kind = Sized<SizedType>;
+    type Kind = Sized;
 }
 
-impl<T: SizeFamily<Kind = Sized<K>>, K, const N: usize> SizeFamily for [T; N] {
-    type Kind = Sized<K>;
+impl<T, const N: usize> SizeFamily for [T; N] {
+    type Kind = Sized;
 }
 
 impl<R> Wide for [R] {

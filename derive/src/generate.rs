@@ -64,6 +64,10 @@ pub(crate) fn emit_decl_exports(abi: syn::Abi, decls: Vec<ForeignItem>) -> Token
                 #drop
                 #drop_check
 
+                impl #impl_generics co3::size::SizeFamily for #ident #ty_generics #where_clause {
+                    type Kind = co3::size::Sized;
+                }
+
                 unsafe impl #impl_generics co3::borrow::BorrowCast for #ident #ty_generics #where_clause {
                     type AsConst = #ident #ty_generics;
                     type AsMut = #ident #ty_generics;
@@ -574,7 +578,7 @@ fn wrap_extern_type_decl(
         }
 
         impl #impl_generics co3::size::SizeFamily for #boxed_ident #ty_generics #where_clause {
-            type Kind = co3::size::SizedType;
+            type Kind = co3::size::Sized;
         }
 
         impl #impl_generics co3::ir::ReprFamily for #boxed_ident #ty_generics #where_clause {
@@ -652,6 +656,9 @@ fn wrap_extern_type_decl(
         }
 
         #opaque_impls
+        impl #impl_generics co3::size::SizeFamily for #ident #ty_generics #where_clause {
+            type Kind = co3::size::ExternTypeLike;
+        }
         unsafe impl #impl_generics co3::handle::Erase for #boxed_ident #ty_generics #where_clause {
             type Erased = *mut core::ffi::c_void;
         }
@@ -678,8 +685,8 @@ fn derive_opaque_item(
             type Kind = co3::ir::Robust;
         }
 
-        impl #impl_generics co3::size::SizeFamily for #ident #ty_generics #where_clause {
-            type Kind = co3::size::ExternTypeLike;
+        unsafe impl #impl_generics co3::handle::Erase for #ident #ty_generics #where_clause {
+            type Erased = core::ffi::c_void;
         }
     }
 }

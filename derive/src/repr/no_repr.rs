@@ -28,8 +28,7 @@ pub(super) fn derive_no_repr_struct<const IS_VIEW: bool>(
     fields: &Fields<FfiTypeField>,
 ) -> TokenStream {
     let repr_c_struct_name = gen_repr_c_item_name(name);
-    let repr_c_struct =
-        gen_repr_c_struct::<IS_VIEW>(name, vis, generics, fields, ReprFamily::NoRepr);
+    let repr_c_struct = gen_repr_c_struct(name, vis, generics, fields, ReprFamily::NoRepr);
     let field_types = fields.iter().map(|f| &f.ty).collect::<Vec<_>>();
     let self_bounds = gen_extern_c_bounds::<false>(&field_types, generics);
     let size_family_impl = gen_struct_size_family(name, generics, &field_types, self_bounds);
@@ -156,7 +155,7 @@ pub(super) fn derive_no_repr_data_enum<const IS_VIEW: bool>(
     );
 
     let repr_c_enum_name = gen_repr_c_item_name(enum_name);
-    let repr_c_enum = gen_data_enum::<IS_VIEW>(
+    let repr_c_enum = gen_data_enum(
         enum_name,
         vis,
         generics,

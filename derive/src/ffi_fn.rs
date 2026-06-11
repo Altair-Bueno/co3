@@ -540,6 +540,10 @@ fn synthesize_lifetime_bounds(sig: &mut syn::Signature) {
         .collect::<Vec<_>>();
 
     for (lhs, rhs) in bounds {
+        if rhs.is_empty() {
+            continue;
+        }
+
         sig.generics
             .make_where_clause()
             .predicates

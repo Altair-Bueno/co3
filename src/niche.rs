@@ -122,7 +122,7 @@ disjoint_impls! {
         ///   `Option<T>` will be serialized as [`crate::option::COption`]
         ///
         /// - If `Self` has a compiler guaranteed niche value, set [`NicheFamily::Kind`] to [`WithStableNiche`].
-        ///   `Option<T>` will be blindly transmuted into underlying [`crate::ReprC`] type
+        ///   `Option<T>` will be blindly transmuted into the underlying [`crate::ReprC`] type
         ///
         /// - Otherwise, if `Self` has at least one trap, set [`NicheFamily::Kind`] to [`WithCustomNiche`].
         ///   `Option<T>` will be serialized into a [`T::CType`] with a manually set niche value
@@ -158,7 +158,7 @@ disjoint_impls! {
         type Kind = WithCustomNiche;
     }
     #[cfg(feature = "alloc")]
-    impl<R: SizeFamily<Kind: Thin>> NicheFamily for Box<R> {
+    impl<R: SizeFamily<Kind = crate::size::Sized>> NicheFamily for Box<R> {
         type Kind = WithStableNiche;
     }
 

@@ -75,16 +75,22 @@ pub enum FfiReturn {
 ///
 /// # Safety
 ///
-/// Type implementing the trait must be a robust type with a guaranteed C ABI. Care must be taken
-/// not to dereference pointers whose referents don't implement `ReprC`; they are considered opaque
+/// Type implementing the trait must have a guaranteed C ABI.
 pub unsafe trait ReprC {}
+
+/// `ReprC` type that is safe to store in statics.
+///
+/// # Safety
+///
+/// Type must be allowed as a static value.
+pub unsafe trait CStatic: ReprC + Copy {}
 
 /// `ReprC` type that is allowed as a C function argument.
 ///
 /// # Safety
 ///
 /// Type must be allowed as a C function argument type.
-pub unsafe trait CFnArg: CFnReturn {}
+pub unsafe trait CFnArg: ReprC + Copy {}
 
 /// `ReprC` type that is allowed as a C function return value.
 ///
@@ -92,6 +98,9 @@ pub unsafe trait CFnArg: CFnReturn {}
 ///
 /// Type must be allowed as a C function return type.
 pub unsafe trait CFnReturn: ReprC + Copy {}
+
+unsafe impl<T: CFnArg> CStatic for T {}
+unsafe impl<T: CFnArg, const N: usize> CStatic for [T; N] {}
 
 unsafe impl<T: CFnArg> CFnReturn for T {}
 unsafe impl CFnReturn for () {}
@@ -215,7 +224,7 @@ disjoint_impls! {
         type CType = <Box<R::Target> as ExternC>::CType;
     }
     #[cfg(feature = "alloc")]
-    impl<R: ReprFamily<Kind = R> + SizeFamily<Kind: Thin> + ExternC> ExternC for Box<R>
+    impl<R: ReprFamily<Kind = R> + SizeFamily<Kind = crate::size::Sized> + ExternC> ExternC for Box<R>
     where
         Self: ReprFamily<Kind = Self>,
         <R as ExternC>::CType: Copy,
@@ -469,7 +478,7 @@ where
 /// ```
 /// use co3::{
 ///     borrow::{EncodeAsRef, SoftDecodeView},
-///     ir::{SizeFamily, SizedType},
+///     ir::{SizeFamily, Sized},
 ///     reprC
 /// };
 ///
@@ -526,7 +535,7 @@ where
 /// }
 ///
 /// impl SizeFamily for RobustStruct {
-///     type Kind = SizedType;
+///     type Kind = Sized;
 /// }
 /// impl<T: ?Sized + SizeFamily> SizeFamily for NoRepr<T> {
 ///     type Kind = T::Kind;
@@ -1015,7 +1024,7 @@ macro_rules! reprC {
 
     (@sized_size_family [$($impl_generics:tt)*] $self_ty:ty $([$($preds:tt)*])?) => {
         impl<$($impl_generics)*> $crate::size::SizeFamily for $self_ty $(where $($preds)*)? {
-            type Kind = $crate::size::Sized<$crate::size::SizedType>;
+            type Kind = $crate::size::Sized;
         }
     };
 }

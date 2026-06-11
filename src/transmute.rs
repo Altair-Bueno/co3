@@ -142,10 +142,10 @@ disjoint_impls! {
         }
     }
 
-    unsafe impl<R: CheckedTransmute, K> FlatTransmute for R
+    unsafe impl<R: CheckedTransmute> FlatTransmute for R
     where
-        Self: ReprFamily<Kind = Transmuted> + SizeFamily<Kind = crate::size::Sized<K>>,
-        // TODO: ReprC bound shouldn't be required
+        Self: ReprFamily<Kind = Transmuted> + SizeFamily<Kind = crate::size::Sized>,
+        // TODO: ReprC bound shouldn't be required. disjoint_impls is buggy
         <R as CheckedTransmute>::Target: FlatTransmute<Target: ReprFamily<Kind = Robust> + ReprC> + Sized,
     {
         type Target = <R::Target as FlatTransmute>::Target;

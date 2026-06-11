@@ -160,6 +160,14 @@ macro_rules! impl_tuple {
             type Erased = ($($ty::Erased,)*);
         }
 
+        impl<$($ty: ReprC + Copy),*> From<($( $ty, )*)> for $ffi_ty<$($ty),*> {
+            #[expect(non_snake_case)]
+            fn from(source: ($( $ty, )*)) -> Self {
+                let ($($ty,)*) = source;
+                Self($( $ty ),*)
+            }
+        }
+
         impl_tuple!(@split [] $($ty),+ -> $ffi_ty);
     };
 
@@ -185,14 +193,6 @@ macro_rules! impl_tuple {
         > BorrowCast for $ffi_ty<$($head,)* $last> {
             type AsConst = $ffi_ty<$($head::AsConst,)* $last::AsConst>;
             type AsMut = $ffi_ty<$($head::AsMut,)* $last::AsMut>;
-        }
-
-        impl<$($head: ReprC + Copy,)* $last: ReprC + Copy> From<($( $head, )* $last,)> for $ffi_ty<$($head,)* $last> {
-            #[expect(non_snake_case)]
-            fn from(source: ($( $head, )* $last,)) -> Self {
-                let ($($head,)* $last,) = source;
-                Self($( $head, )* $last)
-            }
         }
 
         impl<$($head: ExternC<CType: Copy>,)* $last: ExternC + ?Sized> ExternC for ($($head,)* $last,) {

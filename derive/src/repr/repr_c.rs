@@ -10,8 +10,8 @@ use crate::{
         gen_struct_size_family, is_type_parameterized,
         niche::{gen_enum_niche_ir_with_mode, gen_struct_niche_ir},
         no_repr::{
-            gen_borrow_bounds, gen_borrow_cast_eq_bounds, gen_data_enum_borrow_ir,
-            gen_struct_borrow_ir, gen_view_bounds, variant_mapper,
+            gen_borrow_cast_eq_bounds, gen_data_enum_borrow_ir, gen_struct_borrow_ir,
+            gen_view_bounds, variant_mapper,
         },
     },
 };
@@ -78,7 +78,7 @@ fn gen_transparent_view_impl<const ADD_COPY: bool>(
 
     quote! {
         impl #impl_generics co3::ir::ReprFamily for #name #ty_generics #where_clause {
-            type Kind = #(<#field_types as co3::ir::ReprFamily>::Kind)+*;
+            type Kind = co3::ir::Transmuted;
         }
 
         // FIXME:
@@ -126,8 +126,8 @@ pub(super) fn derive_repr_c_struct<const IS_VIEW: bool>(
     ffi_type_kind: Option<&FfiTypeKindAttribute>,
 ) -> TokenStream {
     let repr_c_struct_name = gen_repr_c_item_name(struct_name);
-    let repr_c_struct =
-        gen_repr_c_struct::<IS_VIEW>(struct_name, vis, generics, fields, ReprFamily::ReprC);
+    let repr_c_struct = (!IS_VIEW)
+        .then(|| gen_repr_c_struct(struct_name, vis, generics, fields, ReprFamily::ReprC));
     let field_types = fields.iter().map(|field| &field.ty).collect::<Vec<_>>();
     let size_family_impl = gen_struct_size_family(struct_name, generics, &field_types, quote! {});
 
@@ -172,7 +172,8 @@ pub(super) fn derive_repr_c_struct<const IS_VIEW: bool>(
         )
     };
 
-    let niche_ir = gen_struct_niche_ir(struct_name, generics, fields, ffi_type_kind);
+    let niche_ir =
+        (!IS_VIEW).then(|| gen_struct_niche_ir(struct_name, generics, fields, ffi_type_kind));
     let borrow_ir = if IS_VIEW {
         gen_identity_borrow_ir(struct_name, generics)
     } else {
@@ -203,8 +204,11 @@ pub(super) fn derive_repr_c_data_enum<const IS_VIEW: bool>(
     ffi_type_kind: Option<&FfiTypeKindAttribute>,
 ) -> TokenStream {
     let size_family_impl = gen_sized_family(enum_name, generics, quote! {});
-    let (repr_c_enum_name, repr_c_enum) =
-        gen_repr_c_data_enum(enum_name, vis, generics, repr, variants);
+    let (repr_c_enum_name, repr_c_enum) = if IS_VIEW {
+        (gen_repr_c_item_name(enum_name), quote! {})
+    } else {
+        gen_repr_c_data_enum(enum_name, vis, generics, repr, variants)
+    };
 
     let fields = variants
         .iter()
@@ -298,8 +302,8 @@ pub(super) fn derive_data_enum<const IS_VIEW: bool>(
 ) -> TokenStream {
     let union_name = gen_repr_c_item_name(enum_name);
     let size_family_impl = gen_sized_family(enum_name, generics, quote! {});
-    let union_and_helpers =
-        gen_data_enum::<IS_VIEW>(enum_name, vis, generics, repr, variants, ReprFamily::ReprC);
+    let union_and_helpers = (!IS_VIEW)
+        .then(|| gen_data_enum(enum_name, vis, generics, repr, variants, ReprFamily::ReprC));
 
     let fields = variants
         .iter()
@@ -495,7 +499,7 @@ pub(super) fn assert_no_drop(generics: &syn::Generics, ident: &syn::Ident) -> To
     }
 }
 
-pub(super) fn gen_repr_c_struct<const IS_VIEW: bool>(
+pub(super) fn gen_repr_c_struct(
     struct_name: &syn::Ident,
     vis: &syn::Visibility,
     generics: &syn::Generics,
@@ -574,7 +578,7 @@ pub(super) fn gen_repr_c_struct<const IS_VIEW: bool>(
     }
 }
 
-pub(super) fn gen_data_enum<const IS_VIEW: bool>(
+pub(super) fn gen_data_enum(
     enum_name: &syn::Ident,
     vis: &syn::Visibility,
     generics: &syn::Generics,
@@ -1151,7 +1155,7 @@ fn gen_transparent_impl<'a, const ADD_COPY: bool>(
 
     quote! {
         impl #impl_generics co3::ir::ReprFamily for #item_name #ty_generics #where_clause {
-            // FIXME:
+            // FIXME: This should also be applied when generating transparent view
             //type Kind = #(<#fields as co3::ir::ReprFamily>::Kind)+*;
             type Kind = co3::ir::Transmuted;
         }

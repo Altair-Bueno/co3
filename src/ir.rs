@@ -5,7 +5,7 @@
 //! automatic, correct, and zero-cost conversions from IR to the equivalent C type.
 #[cfg(feature = "alloc")]
 use alloc_crate::{boxed::Box, vec::Vec};
-use core::{cell::UnsafeCell, ops::Add};
+use core::ops::Add;
 
 use disjoint_impls::disjoint_impls;
 
@@ -89,7 +89,7 @@ disjoint_impls! {
     }
 
     #[cfg(feature = "alloc")]
-    impl<R: ReprFamily<Kind = Robust> + SizeFamily<Kind: Thin>> ReprFamily for Box<R> {
+    impl<R: ReprFamily<Kind = Robust> + SizeFamily<Kind = crate::size::Sized>> ReprFamily for Box<R> {
         type Kind = Transmuted;
     }
     #[cfg(feature = "alloc")]
@@ -97,7 +97,7 @@ disjoint_impls! {
         type Kind = Self;
     }
     #[cfg(feature = "alloc")]
-    impl<R: ReprFamily<Kind = Transmuted> + SizeFamily<Kind: Thin>> ReprFamily for Box<R> {
+    impl<R: ReprFamily<Kind = Transmuted> + SizeFamily<Kind = crate::size::Sized>> ReprFamily for Box<R> {
         type Kind = Transmuted;
     }
     #[cfg(feature = "alloc")]
@@ -129,6 +129,8 @@ disjoint_impls! {
         type Kind = Self;
     }
     impl<R: ReprFamily<Kind = Transmuted> + NicheFamily<Kind = WithStableNiche>> ReprFamily for Option<R> {
+        // TODO: Sometimes it should be mapped to Robust when R has 1 niche
+        // https://github.com/mversic/co3/issues/33
         type Kind = Transmuted;
     }
     impl<R: ReprFamily<Kind = R>> ReprFamily for Option<R> {
@@ -147,16 +149,16 @@ disjoint_impls! {
 }
 
 disjoint_impls! {
-    pub trait EncodeReprFamily: ReprFamily {
+    pub trait EncodeReprFamily: ReprFamily<Kind = Transmuted> {
         type Kind: ?Sized;
     }
 
-    impl<R: ReprFamily<Kind = Robust> + ?Sized> EncodeReprFamily for R {
-        type Kind = Robust;
-    }
-    impl<R: ReprFamily<Kind = Self> + ?Sized> EncodeReprFamily for R {
-        type Kind = Self;
-    }
+    //impl<R: ReprFamily<Kind = Robust> + ?Sized> EncodeReprFamily for R {
+    //    type Kind = Robust;
+    //}
+    //impl<R: ReprFamily<Kind = Self> + ?Sized> EncodeReprFamily for R {
+    //    type Kind = Self;
+    //}
 
     impl<R: EncodeReprFamily> EncodeReprFamily for [R]
     where

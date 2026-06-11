@@ -556,6 +556,7 @@ pub fn is_type_parameterized(ty: &syn::Type, generics: &syn::Generics) -> bool {
         type_params: &type_param_idents,
         is_generic: false,
     };
+
     visitor.visit_type(ty);
     visitor.is_generic
 }
@@ -603,7 +604,7 @@ pub(super) fn gen_sized_family(
             #extra_bounds
             #predicates
         {
-            type Kind = co3::size::SizedType;
+            type Kind = co3::size::Sized;
         }
     }
 }

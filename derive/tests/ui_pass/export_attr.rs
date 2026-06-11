@@ -66,6 +66,7 @@ mod provider {
 
     #[export("C", crate = "kita")]
     impl Default for Box<Opaque> {
+        #[unsafe(export_name = "kita__Default__OwnedOpaque__default")]
         fn default() -> Self {
             Box::new(Opaque(3))
         }

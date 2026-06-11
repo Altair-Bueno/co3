@@ -4,14 +4,13 @@ use core::{cell::UnsafeCell, ptr::NonNull};
 
 use crate::{
     ReprC,
-    size::{DynTraitLike, MetaSized, SizeFamily, SliceLike},
+    size::{MetaSized, SizeFamily},
     stored::ArrayStore,
 };
 
-pub(crate) trait NonExternTypeLike {}
-impl NonExternTypeLike for MetaSized<SliceLike> {}
-impl NonExternTypeLike for MetaSized<DynTraitLike> {}
-impl<S> NonExternTypeLike for crate::size::Sized<S> {}
+trait NonExternTypeLike {}
+impl<K> NonExternTypeLike for MetaSized<K> {}
+impl NonExternTypeLike for crate::size::Sized {}
 
 /// A layout-compatible borrowed view of a robust C representation.
 ///
@@ -158,7 +157,6 @@ impl<'itm, 'a: 'itm, R: ?Sized> ToOwned<'itm> for &'a mut R {
 
 #[cfg(feature = "alloc")]
 // NOTE: extern types cannot be borrowed, only moved
-// TODO: But maybe the bound of NonExternTypeLike is not required
 impl<R: SizeFamily<Kind: NonExternTypeLike> + ?Sized> Borrow for Box<R> {
     type Borrowed<'itm>
         = &'itm R

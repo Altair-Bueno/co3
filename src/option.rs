@@ -2,7 +2,7 @@
 
 use crate::{ExternC, FfiReturn, ReprC, borrow::BorrowCast, niche::Niche, reprC};
 
-/// FFI-safe equivalent of [`core::option::Option`] for [`crate::ir::Robust`] types
+/// FFI-safe equivalent of [`core::option::Option`] for [`crate::ReprC`] types
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
 #[repr(C)]
 pub struct COption<T: Copy> {
@@ -16,7 +16,7 @@ impl<T: Copy> COption<T> {
     pub const fn None() -> Self {
         Self {
             tag: 0,
-            // SAFETY: `ReprC` type is robust and can't have any trap representations
+            // SAFETY: `ReprC` types can't have any trap representations here
             payload: unsafe { core::mem::zeroed() },
         }
     }

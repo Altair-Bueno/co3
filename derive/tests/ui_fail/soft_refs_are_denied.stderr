@@ -1,12 +1,12 @@
-error[E0277]: the trait bound `RefSizedDecodeStore<(u8,), ((),)>: co3::out_ptr::Zst` is not satisfied
+error[E0277]: the trait bound `RefSizedDecodeStore<(u8,), ((),)>: Zst` is not satisfied
   --> tests/ui_fail/soft_refs_are_denied.rs:16:5
    |
 16 | /     export_C! {
 17 | |         pub extern "C" fn by_val_is_denied(arg1: &(u8,), #[soft] move arg2: Vec<(u8,)>) -> u8;
 18 | |     }
-   | |_____^ the trait `co3::out_ptr::Zst` is not implemented for `RefSizedDecodeStore<(u8,), ((),)>`
+   | |_____^ the trait `Zst` is not implemented for `RefSizedDecodeStore<(u8,), ((),)>`
    |
-   = help: the following other types implement trait `co3::out_ptr::Zst`:
+   = help: the following other types implement trait `Zst`:
              ()
              (A, B)
              (A, B, C)
@@ -38,7 +38,7 @@ help: the trait `SoftDecode<'_>` is implemented for `Vec<R>`
    | |_____________________________^
    = note: this error originates in the macro `export_C` (in Nightly builds, run with -Z macro-backtrace for more info)
 
-error[E0277]: the trait bound `RefSizedEncodeStore<(u8,)>: co3::out_ptr::Zst` is not satisfied
+error[E0277]: the trait bound `RefSizedEncodeStore<(u8,)>: Zst` is not satisfied
   --> tests/ui_fail/soft_refs_are_denied.rs:34:40
    |
 28 | / extern_C! {
@@ -47,7 +47,7 @@ error[E0277]: the trait bound `RefSizedEncodeStore<(u8,)>: co3::out_ptr::Zst` is
 31 | |         #[soft] arg2: Vec<(u8,)>,
 ...  |
 34 | |     pub extern "C" fn by_val_is_denied(arg1: &(u8,), #[soft] move arg2: Vec<(u8,)>) -> u8;
-   | |                                        ^^^^ the trait `co3::out_ptr::Zst` is not implemented for `RefSizedEncodeStore<(u8,)>`
+   | |                                        ^^^^ the trait `Zst` is not implemented for `RefSizedEncodeStore<(u8,)>`
 35 | | }
    | |_- required by a bound introduced by this call
    |

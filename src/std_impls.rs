@@ -16,7 +16,7 @@ use crate::{
     ir::{ReprFamily, Robust, Transmuted},
     niche::{Niche, NicheFamily, StableNiche, WithCustomNiche, WithStableNiche, WithoutNiche},
     reprC,
-    size::{ExternTypeLike, MetaSized, SizeFamily, SizedType, SliceLike, Zst},
+    size::{ExternTypeLike, MetaSized, SizeFamily, SliceLike},
     transmute::CheckedTransmute,
 };
 
@@ -77,7 +77,7 @@ non_zero_derive! {
 
 unsafe impl ReprC for () {}
 impl SizeFamily for () {
-    type Kind = crate::size::Sized<Zst>;
+    type Kind = crate::size::Sized;
 }
 impl NicheFamily for () {
     type Kind = WithoutNiche;
@@ -153,9 +153,7 @@ impl<'itm, T: ToOwned<'itm>> ToOwned<'itm> for Cell<T> {
 
 unsafe impl ReprC for c_void {}
 impl SizeFamily for c_void {
-    // NOTE: Although c_void is a ZST
-    // it must appear behind a pointer
-    type Kind = ExternTypeLike;
+    type Kind = crate::size::Sized;
 }
 impl NicheFamily for c_void {
     type Kind = WithoutNiche;
@@ -188,11 +186,11 @@ impl<T: SizeFamily + ?Sized> SizeFamily for UnsafeCell<T> {
     type Kind = T::Kind;
 }
 impl<T> SizeFamily for NonNull<T> {
-    type Kind = crate::size::Sized<SizedType>;
+    type Kind = crate::size::Sized;
 }
 #[cfg(feature = "alloc")]
 impl SizeFamily for String {
-    type Kind = crate::size::Sized<SizedType>;
+    type Kind = crate::size::Sized;
 }
 
 impl<T: ?Sized> ReprFamily for UnsafeCell<T> {

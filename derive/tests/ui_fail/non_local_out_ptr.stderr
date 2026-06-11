@@ -26,16 +26,16 @@ note: required by a bound in `co3::Decode::decode`
    |               ------ required by a bound in this associated function
    = note: this error originates in the macro `extern_C` (in Nightly builds, run with -Z macro-backtrace for more info)
 
-error[E0277]: the trait bound `Box<[NoReprStructStore<()>]>: co3::out_ptr::Zst` is not satisfied
+error[E0277]: the trait bound `Box<[NoReprStructStore<()>]>: Zst` is not satisfied
   --> tests/ui_fail/non_local_out_ptr.rs:11:1
    |
 11 | / extern_C! {
 12 | |     pub fn return_no_repr_struct() -> Vec<NoReprStruct>;
 13 | |     pub extern "C" fn return_no_repr_enum() -> Vec<NoReprEnum>;
 14 | | }
-   | |_^ the trait `co3::out_ptr::Zst` is not implemented for `Box<[NoReprStructStore<()>]>`
+   | |_^ the trait `Zst` is not implemented for `Box<[NoReprStructStore<()>]>`
    |
-   = help: the following other types implement trait `co3::out_ptr::Zst`:
+   = help: the following other types implement trait `Zst`:
              ()
              (A, B)
              (A, B, C)
@@ -76,16 +76,16 @@ note: required by a bound in `co3::Decode::decode`
    |               ------ required by a bound in this associated function
    = note: this error originates in the macro `extern_C` (in Nightly builds, run with -Z macro-backtrace for more info)
 
-error[E0277]: the trait bound `Box<[NoReprEnumStore<()>]>: co3::out_ptr::Zst` is not satisfied
+error[E0277]: the trait bound `Box<[NoReprEnumStore<()>]>: Zst` is not satisfied
   --> tests/ui_fail/non_local_out_ptr.rs:11:1
    |
 11 | / extern_C! {
 12 | |     pub fn return_no_repr_struct() -> Vec<NoReprStruct>;
 13 | |     pub extern "C" fn return_no_repr_enum() -> Vec<NoReprEnum>;
 14 | | }
-   | |_^ the trait `co3::out_ptr::Zst` is not implemented for `Box<[NoReprEnumStore<()>]>`
+   | |_^ the trait `Zst` is not implemented for `Box<[NoReprEnumStore<()>]>`
    |
-   = help: the following other types implement trait `co3::out_ptr::Zst`:
+   = help: the following other types implement trait `Zst`:
              ()
              (A, B)
              (A, B, C)
