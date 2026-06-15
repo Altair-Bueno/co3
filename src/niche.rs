@@ -41,7 +41,7 @@ disjoint_impls! {
     ///
     /// [`Option<bool>`]     - will be serilized into one byte
     /// [`Option<*const T>`] - will take the size of the pointer
-    pub trait Niche: ExternC<CType: Copy> {
+    pub trait Niche: ExternC<CType: Copy> + Sized {
         const NICHE_VALUE: Self::CType;
     }
 
@@ -112,10 +112,7 @@ pub unsafe trait StableNiche: Niche {}
 
 disjoint_impls! {
     /// Niche kind of the type in the internal representation [IR](`crate::ir::Repr`)
-    ///
-    // FIXME: Should we make this trait unsafe? Because if bool is marked as WithoutNiche, `&mut bool` will be transmuted and may produce UB
-    // - if the type has [`crate::ir::ReprFamily<Kind = crate::ir::Robust>`] it must not be incorrectly marked as `WithoutNiche`
-    pub trait NicheFamily {
+    pub trait NicheFamily: Sized {
         /// The internal representation (i.e. type family) of the type
         ///
         /// - If `Self` doesn't have any niche value, set [`NicheFamily::Kind`] to [`WithoutNiche`].
@@ -135,7 +132,7 @@ disjoint_impls! {
     impl<R: SizeFamily<Kind = MetaSized<DynTraitLike>> + ?Sized> NicheFamily for &R {
         type Kind = WithCustomNiche;
     }
-    impl<R: SizeFamily<Kind: Thin>> NicheFamily for &R {
+    impl<R: SizeFamily<Kind: Thin> + ?Sized> NicheFamily for &R {
         type Kind = WithStableNiche;
     }
 
@@ -145,7 +142,7 @@ disjoint_impls! {
     impl<R: SizeFamily<Kind = MetaSized<DynTraitLike>> + ?Sized> NicheFamily for &mut R {
         type Kind = WithCustomNiche;
     }
-    impl<R: SizeFamily<Kind: Thin>> NicheFamily for &mut R {
+    impl<R: SizeFamily<Kind: Thin> + ?Sized> NicheFamily for &mut R {
         type Kind = WithStableNiche;
     }
 
@@ -238,7 +235,7 @@ unsafe impl<R: ?Sized> StableNiche for &R where Self: Niche {}
 unsafe impl<R: ?Sized> StableNiche for &mut R where Self: Niche {}
 #[cfg(feature = "alloc")]
 unsafe impl<R: ?Sized> StableNiche for Box<R> where Self: Niche {}
-unsafe impl<R> StableNiche for core::ptr::NonNull<R> where Self: Niche {}
+unsafe impl<R: ?Sized> StableNiche for core::ptr::NonNull<R> where Self: Niche {}
 
 impl WithNiche for WithStableNiche {}
 impl WithNiche for WithCustomNiche {}
@@ -310,35 +307,33 @@ mod tests {
 
     use super::*;
     use crate::{
-        ReprC, SoftDecode, SoftEncode,
-        ir::{NoRepr, ReprFamily},
+        Decode, Encode, ReprC,
+        ir::{ReprFamily, ReprRust},
         slice::CSlice,
     };
 
     #[test]
     fn nested_option_niche_family() {
         assert_impl_all!(Option<bool>:
-            ReprFamily<Kind = NoRepr>,
+            ReprFamily<Kind = ReprRust>,
             NicheFamily<Kind = WithCustomNiche>,
             Niche<CType = u8>,
-            SoftDecode<'static>,
-
-            SoftEncode,
+            Decode<'static>,
+            Encode,
 
         );
         assert_impl_all!(Option<Option<bool>>:
             NicheFamily<Kind = WithCustomNiche>,
-            ReprFamily<Kind = NoRepr>,
+            ReprFamily<Kind = ReprRust>,
             Niche<CType = u8>,
-            SoftDecode<'static>,
-
-            SoftEncode,
+            Decode<'static>,
+            Encode,
 
         );
         // TODO: Depends on: https://github.com/mversic/co3/issues/33
         //assert_impl_all!(Option<(u8, NonZeroU8)>:
         //    NicheFamily<Kind = WithoutNiche>,
-        //    ReprFamily<Kind = NoRepr>,
+        //    ReprFamily<Kind = ReprRust>,
         //    ExternC<CType = CTuple2<u8, u8>>
         //);
 
@@ -348,39 +343,30 @@ mod tests {
 
     #[test]
     fn niche_values() {
-        assert_eq!(core::ptr::null::<u8>(), None::<&bool>.encode(&mut ()));
-        assert_eq!(core::ptr::null::<u8>(), None::<&mut bool>.encode(&mut ()));
+        assert_eq!(core::ptr::null::<u8>(), None::<&bool>.encode());
+        assert_eq!(core::ptr::null::<u8>(), None::<&mut bool>.encode());
 
         #[cfg(feature = "alloc")]
-        assert_eq!(
-            CBoxedSlice::<u8>::none(),
-            None::<String>.encode(&mut Default::default())
-        );
+        assert_eq!(CBoxedSlice::<u8>::none(), None::<String>.encode());
         #[cfg(feature = "alloc")]
-        assert_eq!(
-            CBoxedSlice::<u8>::none(),
-            None::<Box<str>>.encode(&mut Default::default())
-        );
+        assert_eq!(CBoxedSlice::<u8>::none(), None::<Box<str>>.encode());
 
-        assert_eq!(CSlice::<u8>::none(), None::<&str>.encode(&mut ()));
+        assert_eq!(CSlice::<u8>::none(), None::<&str>.encode());
 
         assert_eq!(
             co3::slice::CSliceMut::<u8>::none(),
-            None::<&mut str>.encode(&mut ())
+            None::<&mut str>.encode()
         );
 
         #[cfg(feature = "alloc")]
-        assert_eq!(
-            core::ptr::null_mut(),
-            None::<NonNull<String>>.encode(&mut ())
-        );
+        assert_eq!(core::ptr::null_mut(), None::<NonNull<String>>.encode());
 
         #[cfg(feature = "alloc")]
         assert_eq!(
             CBoxedSlice::<u8>::none(),
-            None::<ManuallyDrop<String>>.encode(&mut Default::default())
+            None::<ManuallyDrop<String>>.encode()
         );
 
-        assert_eq!(2_u8, None::<ManuallyDrop<bool>>.encode(&mut ()));
+        assert_eq!(2_u8, None::<ManuallyDrop<bool>>.encode());
     }
 }

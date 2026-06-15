@@ -2,66 +2,108 @@
 use alloc_crate::{boxed::Box, vec::Vec};
 use core::{convert::Infallible, ptr::NonNull};
 
-/// Types that are always behind a pointer
+/// Marker for types with a size that can be determined from pointer metadata.
+///
+/// Type parameter can be set to either [`SliceLike`] or [`DynTraitLike`] only.
+///
+/// See [`core::marker::MetaSized`]
 pub struct MetaSized<K>(core::marker::PhantomData<K>, Infallible);
 
-/// Types with a constant size known at compile time. Check [`core::marker::Sized`].
+/// Marker for types with a constant size known at compile time.
+///
+/// See [`core::marker::Sized`].
 pub enum Sized {}
 
-/// Slices and DSTs whose last field is a slice.
+/// Marker for [Slices](https://doc.rust-lang.org/core/primitive.slice.html) or DSTs whose last field is a slice.
+///
+/// See [`core::slice`].
 pub enum SliceLike {}
 
-/// Trait objects and DSTs whose last field is a trait object.
+/// Marker for [Trait objects](https://doc.rust-lang.org/reference/types/trait-object.html) or DSTs whose last field is a trait object.
 pub enum DynTraitLike {}
 
-/// Extern types and DSTs whose last field is an extern type.
+/// Marker for [Extern types](https://rust-lang.github.io/rfcs/1861-extern-types.html) and DSTs whose last field is an extern type.
+///
+/// Pointers to extern types are thin.
 pub enum ExternTypeLike {}
 
-pub(crate) trait Dst {}
-
 /// Pointers to types implementing this trait alias are “thin”.
-/// [Related](https://doc.rust-lang.org/core/ptr/traitalias.Thin.html)
+///
+/// See [`core::ptr::Thin`]
 pub(crate) trait Thin {}
-
-impl Dst for ExternTypeLike {}
-impl<K> Dst for MetaSized<K> {}
-
 impl Thin for Sized {}
 impl Thin for ExternTypeLike {}
 
+pub(crate) trait Dst {}
+impl Dst for ExternTypeLike {}
+impl<K> Dst for MetaSized<K> {}
+
+/// Classifies whether a type has statically known or metadata-dependent layout.
 pub trait SizeFamily {
+    /// Size classification marker for this type.
+    ///
+    /// - Set to [`Sized`] when values of the type have a known layout.
+    /// - For DSTs whose last field is an extern type set to [`ExternTypeLike`].
+    /// - For DSTs with metadata, set to [`MetaSized<SliceLike>`] / [`MetaSized<DynTraitLike>`].
     type Kind;
 }
 
+// TODO: Option<Uninhabited> is ZST
 impl<T> SizeFamily for Option<T> {
     type Kind = Sized;
 }
 
 // TODO: Implement for Result
 
+/// Pointer that consists of data and metadata (also called a `fat` pointer).
+///
+/// This includes slices, trait objects, and DSTs whose last field is one of aformentioned.
 pub trait Wide {
+    /// Data component of a pointer.
     type Data;
+
+    /// Metadata component of a pointer.
     type Metadata;
 
+    /// Extracts the metadata component of a pointer.
     fn metadata(&self) -> Self::Metadata;
 
+    /// Returns a raw pointer to the underlying data.
     fn as_ptr(&self) -> *const Self::Data;
+
+    /// Returns an unsafe mutable pointer to the underlying data.
     fn as_mut_ptr(&mut self) -> *mut Self::Data;
+
+    /// Consumes the `Box`, returning a wrapped `NonNull` pointer.
+    ///
+    /// See [`Box::into_non_null`]
     #[cfg(feature = "alloc")]
     fn into_non_null(self: Box<Self>) -> NonNull<Self::Data>;
 
-    unsafe fn from_raw_parts<'a>(data: *const Self::Data, metadate: Self::Metadata) -> &'a Self;
+    /// Forms a wide reference from a data pointer and metadata.
+    ///
+    /// # Safety
+    ///
+    /// See [`core::ptr::from_raw_parts`]
+    unsafe fn from_raw_parts<'a>(data: *const Self::Data, metadata: Self::Metadata) -> &'a Self;
+
+    /// Performs the same functionality as [`Self::from_raw_parts`], except that a mutable reference is returned.
+    ///
+    /// # Safety
+    ///
+    /// See [`core::ptr::from_raw_parts_mut`]
     unsafe fn from_raw_parts_mut<'a>(
         data: *mut Self::Data,
-        metadate: Self::Metadata,
+        metadata: Self::Metadata,
     ) -> &'a mut Self;
 
+    /// Constructs a box from a `NonNull` pointer.
+    ///
+    /// # Safety
+    ///
+    /// See [`Box::from_non_null`]
     #[cfg(feature = "alloc")]
-    unsafe fn from_non_null(data: NonNull<Self::Data>, metadate: Self::Metadata) -> Box<Self>;
-}
-
-impl<R> SizeFamily for [R] {
-    type Kind = MetaSized<SliceLike>;
+    unsafe fn from_non_null(data: NonNull<Self::Data>, metadata: Self::Metadata) -> Box<Self>;
 }
 
 impl<T: ?core::marker::Sized> SizeFamily for &T {
@@ -79,10 +121,6 @@ impl<T: ?core::marker::Sized> SizeFamily for Box<T> {
 
 #[cfg(feature = "alloc")]
 impl<T> SizeFamily for Vec<T> {
-    type Kind = Sized;
-}
-
-impl<T, const N: usize> SizeFamily for [T; N] {
     type Kind = Sized;
 }
 
@@ -131,16 +169,16 @@ impl Wide for str {
     }
 
     fn as_ptr(&self) -> *const Self::Data {
-        self.as_bytes().as_ptr()
+        self.as_ptr()
     }
 
     fn as_mut_ptr(&mut self) -> *mut Self::Data {
-        unimplemented!("DANGER ZONE")
-        //self.as_bytes_mut().as_mut_ptr()
+        self.as_mut_ptr()
     }
 
     #[cfg(feature = "alloc")]
     fn into_non_null(self: Box<Self>) -> NonNull<Self::Data> {
+        // TODO: Use Box::into_non_null when available in stable
         self.into_boxed_bytes().into_non_null()
     }
 
@@ -156,6 +194,7 @@ impl Wide for str {
 
     #[cfg(feature = "alloc")]
     unsafe fn from_non_null(data: NonNull<Self::Data>, len: Self::Metadata) -> Box<Self> {
+        // TODO: Use Box::from_non_null once available on stable
         let slice = unsafe { <[u8]>::from_non_null(data, len) };
         let slice = Box::into_raw(slice);
         let str = unsafe { core::str::from_utf8_unchecked_mut(&mut *slice) };

@@ -61,7 +61,7 @@ pub(super) fn derive_no_repr_struct<const IS_VIEW: bool>(
                 let Self { #(#field_names),* } = self;
 
                 #repr_c_struct_name {
-                    #(#field_names: co3::stored::SoftEncodeOwned::encode(#field_names, &mut store.#field_indices)),*
+                    #(#field_names: co3::stored::SoftEncodeOwned::soft_encode(#field_names, &mut store.#field_indices)),*
                 }
             }
         }
@@ -75,7 +75,7 @@ pub(super) fn derive_no_repr_struct<const IS_VIEW: bool>(
                 let Self(#(#field_vars),*) = self;
 
                 #repr_c_struct_name(
-                    #(co3::stored::SoftEncodeOwned::encode(#field_vars, &mut store.#field_indices)),*
+                    #(co3::stored::SoftEncodeOwned::soft_encode(#field_vars, &mut store.#field_indices)),*
                 )
             }
         }
@@ -99,7 +99,7 @@ pub(super) fn derive_no_repr_struct<const IS_VIEW: bool>(
 
             quote! { #(
                 let #field_names = unsafe {
-                    co3::stored::SoftDecodeOwned::decode(source.#field_names, &mut store.#field_indices)?
+                    co3::stored::SoftDecodeOwned::soft_decode(source.#field_names, &mut store.#field_indices)?
                 }; )*
 
                 #(#field_validations)*
@@ -127,7 +127,7 @@ pub(super) fn derive_no_repr_struct<const IS_VIEW: bool>(
 
             quote! { #(
                 let #field_vars = unsafe {
-                    co3::stored::SoftDecodeOwned::decode(source.#field_indices, &mut store.#field_indices)?
+                    co3::stored::SoftDecodeOwned::soft_decode(source.#field_indices, &mut store.#field_indices)?
                 }; )*
 
                 #(#field_validations)*
@@ -234,7 +234,7 @@ pub(super) fn derive_no_repr_data_enum<const IS_VIEW: bool>(
                         #repr_c_enum_name {
                             #variant_name: #variant_struct_name {
                                 tag: #idx,
-                                value: co3::stored::SoftEncodeOwned::encode(payload, &mut store.#idx)
+                                value: co3::stored::SoftEncodeOwned::soft_encode(payload, &mut store.#idx)
                             }
                         }
                     }
@@ -268,7 +268,7 @@ pub(super) fn derive_no_repr_data_enum<const IS_VIEW: bool>(
                         let source = unsafe { source.#variant_name };
 
                         let payload = unsafe {
-                            co3::stored::SoftDecodeOwned::decode(source.value, &mut store.#idx)?
+                            co3::stored::SoftDecodeOwned::soft_decode(source.value, &mut store.#idx)?
                         };
 
                         #field_validation
@@ -379,14 +379,9 @@ fn gen_no_repr_conversion_impls<const IS_VIEW: bool, const ADD_COPY: bool>(
     } else {
         decode_impl
     };
-    let is_parametrized = field_types
-        .iter()
-        .any(|ty| is_type_parameterized(ty, generics));
-    let for_dummy = (!is_parametrized).then_some(quote! { for<'_dummy> });
 
     quote! {
         impl #impl_generics co3::SoftEncode for #item_name #ty_generics where
-            #for_dummy Self: co3::stored::SoftEncodeOwned,
             #encode_bounds
             #predicates
         {}
@@ -399,13 +394,12 @@ fn gen_no_repr_conversion_impls<const IS_VIEW: bool, const ADD_COPY: bool>(
         {
             type Store = #rust_store;
 
-            fn encode<'_išč>(self, store: &'_išč mut Self::Store) -> Self::CType where Self: '_išč {
+            fn soft_encode<'_išč>(self, store: &'_išč mut Self::Store) -> Self::CType where Self: '_išč {
                 #encode_impl
             }
         }
 
         impl<#lifetime #params> co3::SoftDecode<'_dšč> for #item_name #ty_generics where
-            Self: co3::stored::SoftDecodeOwned<'_dšč>,
             #decode_bounds
             #predicates
         {}
@@ -418,7 +412,7 @@ fn gen_no_repr_conversion_impls<const IS_VIEW: bool, const ADD_COPY: bool>(
         {
             type Store = #ffi_store;
 
-            unsafe fn decode<'_išč: '_dšč>(source: Self::CType, store: &'_išč mut Self::Store) -> Option<Self> {
+            unsafe fn soft_decode<'_išč: '_dšč>(source: Self::CType, store: &'_išč mut Self::Store) -> Option<Self> {
                 #decode_impl
             }
         }
@@ -454,7 +448,7 @@ pub(super) fn derive_no_repr_fieldless_enum(
         impl co3::stored::SoftEncodeOwned for #enum_name {
             type Store = ();
 
-            fn encode<'_išč>(self, (): &mut ()) -> Self::CType {
+            fn soft_encode<'_išč>(self, (): &mut ()) -> Self::CType {
                 self as #inferred_repr
             }
         }
@@ -463,7 +457,7 @@ pub(super) fn derive_no_repr_fieldless_enum(
         impl<'_dšč> co3::stored::SoftDecodeOwned<'_dšč> for #enum_name {
             type Store = ();
 
-            unsafe fn decode<'_išč: '_dšč>(source: Self::CType, (): &mut ()) -> Option<Self> {
+            unsafe fn soft_decode<'_išč: '_dšč>(source: Self::CType, (): &mut ()) -> Option<Self> {
                 match source {
                     #(#variants_decode,)*
                     _ => None
@@ -904,7 +898,7 @@ fn gen_ir_impl<const ADD_COPY: bool>(
 
     quote! {
         co3::reprC! {
-            impl(#params) NoRepr for #type_name #ty_generics where (#predicates) {}
+            impl(#params) ReprRust for #type_name #ty_generics where (#predicates) {}
         }
 
         impl #impl_generics co3::ExternC for #type_name #ty_generics
@@ -1011,7 +1005,7 @@ fn gen_view_ir_impl<const ADD_COPY: bool>(
 
     quote! {
         co3::reprC! {
-            impl(#params) NoRepr for #view_name #ty_generics where (#predicates) {}
+            impl(#params) ReprRust for #view_name #ty_generics where (#predicates) {}
         }
 
         impl #impl_generics co3::ExternC for #view_name #ty_generics where
@@ -1102,11 +1096,8 @@ fn gen_to_owned_bounds(fields: &[&syn::Type], generics: &syn::Generics) -> Token
 
 fn gen_encode_bounds(fields: &[&syn::Type], generics: &syn::Generics) -> TokenStream {
     let bounds = fields.iter().map(|ty| {
-        if is_type_parameterized(ty, generics) {
-            quote! { #ty: co3::SoftEncode, }
-        } else {
-            quote! { for<'_dummy> #ty: co3::SoftEncode, }
-        }
+        let for_dummy = (!is_type_parameterized(ty, generics)).then_some(quote! { for<'_dummy> });
+        quote! { #for_dummy #ty: co3::SoftEncode, }
     });
 
     quote! { #(#bounds)* }

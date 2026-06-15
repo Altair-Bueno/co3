@@ -1,6 +1,5 @@
 #[cfg(feature = "alloc")]
 use alloc_crate::{borrow::ToOwned as StdToOwned, boxed::Box, string::String, vec::Vec};
-use core::{cell::UnsafeCell, ptr::NonNull};
 
 use crate::{
     ReprC,
@@ -235,52 +234,6 @@ impl<'itm> ToOwned<'itm> for String {
     #[inline(always)]
     fn to_owned(source: Self::Borrowed<'itm>) -> Self {
         source.into()
-    }
-}
-
-impl<T> Borrow for NonNull<T> {
-    type Borrowed<'itm>
-        = Self
-    where
-        Self: 'itm;
-
-    type Owner = ();
-
-    #[inline(always)]
-    fn borrow<'itm>(self, (): &mut ()) -> Self::Borrowed<'itm>
-    where
-        Self: 'itm,
-    {
-        self
-    }
-}
-impl<'itm, T: 'itm> ToOwned<'itm> for NonNull<T> {
-    #[inline(always)]
-    fn to_owned(source: Self::Borrowed<'itm>) -> Self {
-        source
-    }
-}
-
-impl<T: Borrow> Borrow for UnsafeCell<T> {
-    type Borrowed<'itm>
-        = T::Borrowed<'itm>
-    where
-        Self: 'itm;
-
-    type Owner = T::Owner;
-
-    #[inline(always)]
-    fn borrow<'itm>(self, store: &'itm mut Self::Owner) -> Self::Borrowed<'itm>
-    where
-        Self: 'itm,
-    {
-        self.into_inner().borrow(store)
-    }
-}
-impl<'itm, T: ToOwned<'itm>> ToOwned<'itm> for UnsafeCell<T> {
-    #[inline(always)]
-    fn to_owned(source: Self::Borrowed<'itm>) -> Self {
-        UnsafeCell::new(T::to_owned(source))
     }
 }
 

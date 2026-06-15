@@ -5,7 +5,7 @@ use quote::quote;
 use crate::{
     attr::repr::ReprPrimitive,
     repr::{
-        FfiTypeField, FfiTypeKindAttribute, FfiTypeVariant, is_type_parameterized,
+        FfiTypeField, FfiTypeKindAttribute, FfiTypeVariant,
         repr_c::{gen_extern_c_bounds, gen_repr_c_item_name, is_exhaustive_enum},
     },
     utils::build_extern_c_type_tuple,
@@ -74,12 +74,15 @@ pub fn gen_struct_niche_ir_with_mode(
         };
     }
 
-    let is_parametrized = types.iter().any(|ty| is_type_parameterized(ty, generics));
-    let niche_ir_bound = is_parametrized.then_some(quote! {
+    let for_dummy = generics
+        .params
+        .is_empty()
+        .then_some(quote! { for<'_dummy> });
+
+    let niche_ir_bound = (!generics.params.is_empty()).then_some(quote! {
         #fields_tuple: co3::niche::NicheFamily,
     });
 
-    let for_dummy = (!is_parametrized).then_some(quote! { for<'_dummy> });
     let niche_field_values = accessors.iter().map(|accessor| {
         quote! { <#fields_tuple as co3::niche::Niche>::NICHE_VALUE.#accessor }
     });

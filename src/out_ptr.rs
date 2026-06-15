@@ -1,8 +1,8 @@
 #[cfg(feature = "alloc")]
-use alloc_crate::{boxed::Box, vec::Vec};
+use alloc_crate::boxed::Box;
+use alloc_crate::vec::Vec;
 
-use super::*;
-use crate::{ir::Transmuted, option::COption, size::SliceLike};
+use crate::{CFnReturn, ExternC};
 
 /// Marker for a ZST(zero-sized type)
 ///
@@ -12,7 +12,10 @@ use crate::{ir::Transmuted, option::COption, size::SliceLike};
 pub unsafe trait Zst {}
 
 unsafe impl Zst for () {}
+unsafe impl<T: Zst> Zst for [T] {}
+unsafe impl<T: Zst> Zst for Vec<T> {}
 unsafe impl<T: Zst> Zst for Option<T> {}
+unsafe impl<T: Zst + ?Sized> Zst for Box<T> {}
 unsafe impl<T: Zst, E: Zst> Zst for Result<T, E> {}
 unsafe impl<T: Zst, const N: usize> Zst for [T; N] {}
 // TODO: It's not possbile to implement for specific len yet: https://github.com/mversic/co3/issues/13
@@ -46,7 +49,7 @@ where
 {
     unsafe fn write_out(self, out_ptr: *mut Self::OutPtr) {
         let mut store = Default::default();
-        let encoded = crate::stored::SoftEncodeOwned::encode(self, &mut store);
+        let encoded = crate::stored::SoftEncodeOwned::soft_encode(self, &mut store);
 
         unsafe { out_ptr.write(encoded) };
     }
@@ -97,7 +100,7 @@ where
 //    }
 //    impl<'a, R: ExternC + Stored<Kita = *const R::CType>> OutPtr for &'a R
 //    where
-//        Self: ReprFamily<Kind = NoRepr>,
+//        Self: ReprFamily<Kind = ReprRust>,
 //        R: SizeFamily<Kind: Sized_>,
 //    {
 //        type OutPtr = R::CType;
@@ -107,7 +110,7 @@ where
 //        R: SliceDst<Elem: OutPtr> + Stored<Kita = CSlice<<R::Elem as ExternC>::CType>> + ?Sized,
 //    > OutPtr for &'a R
 //    where
-//        Self: ReprFamily<Kind = NoRepr>,
+//        Self: ReprFamily<Kind = ReprRust>,
 //        R: SizeFamily<Kind = SliceLike>,
 //    {
 //        type OutPtr = CSlice<<R::Elem as OutPtr>::OutPtr>;
@@ -131,7 +134,7 @@ where
 //    #[cfg(feature = "alloc")]
 //    impl<R: SizeFamily<Kind = SliceLike> + SliceDst<Elem: ReprC> + ?Sized> OutPtr for Box<R>
 //    where
-//        Self: ReprFamily<Kind = NoRepr>,
+//        Self: ReprFamily<Kind = ReprRust>,
 //    {
 //        type OutPtr = Self::CType;
 //    }
@@ -139,7 +142,7 @@ where
 //    impl<R: CheckedTransmute + ?Sized> OutPtr for Box<R>
 //    where
 //        Box<<R as CheckedTransmute>::Target>: OutPtr,
-//        Self: ReprFamily<Kind = NoRepr>,
+//        Self: ReprFamily<Kind = ReprRust>,
 //        R: SizeFamily<Kind = SliceLike>,
 //    {
 //        type OutPtr = <Box<R::Target> as OutPtr>::OutPtr;
@@ -147,14 +150,14 @@ where
 //    //#[cfg(feature = "alloc")]
 //    //impl<R: Dst + ?Sized> OutPtr for Box<R>
 //    //where
-//    //    Self: ReprFamily<Kind = NoRepr>,
+//    //    Self: ReprFamily<Kind = ReprRust>,
 //    //{
 //    //    type OutPtr = CBoxedSlice<CBox<R>>;
 //    //}
 //    #[cfg(feature = "alloc")]
 //    impl<R: ExternC + Stored<Kita = CBox<R::CType>>> OutPtr for Box<R>
 //    where
-//        Self: ReprFamily<Kind = NoRepr>,
+//        Self: ReprFamily<Kind = ReprRust>,
 //        R: SizeFamily<Kind: Sized_>,
 //    {
 //        type OutPtr = R::CType;
@@ -165,7 +168,7 @@ where
 //            + Stored<Kita = CBoxedSlice<<R::Elem as ExternC>::CType>> + ?Sized,
 //    > OutPtr for Box<R>
 //    where
-//        Self: ReprFamily<Kind = NoRepr>,
+//        Self: ReprFamily<Kind = ReprRust>,
 //        R: SizeFamily<Kind = SliceLike>,
 //    {
 //        type OutPtr = CBoxedSlice<<R::Elem as OutPtr>::OutPtr>;
@@ -174,7 +177,7 @@ where
 //    #[cfg(feature = "alloc")]
 //    impl<R, S> OutPtr for Vec<R>
 //    where
-//        Self: ReprFamily<Kind = NoRepr>,
+//        Self: ReprFamily<Kind = ReprRust>,
 //        Box<[R]>: OutPtr,
 //    {
 //        type OutPtr = <Box<[R]> as OutPtr>::OutPtr;
@@ -182,20 +185,20 @@ where
 //
 //    impl<R: ExternC + Stored<Kita = [R::CType; N]>, const N: usize> OutPtr for [R; N]
 //    where
-//        Self: ReprFamily<Kind = NoRepr>,
+//        Self: ReprFamily<Kind = ReprRust>,
 //    {
 //        type OutPtr = Self::CType;
 //    }
 //
 //    impl<R: OutPtr> OutPtr for Option<R>
 //    where
-//        Self: ReprFamily<Kind = NoRepr> + NicheFamily<Kind = WithoutNiche>,
+//        Self: ReprFamily<Kind = ReprRust> + NicheFamily<Kind = WithoutNiche>,
 //    {
 //        type OutPtr = COption<R::OutPtr>;
 //    }
 //    impl<R: Niche + OutPtr> OutPtr for Option<R>
 //    where
-//        Self: ReprFamily<Kind = NoRepr> + NicheFamily<Kind = WithCustomNiche>,
+//        Self: ReprFamily<Kind = ReprRust> + NicheFamily<Kind = WithCustomNiche>,
 //    {
 //        type OutPtr = R::OutPtr;
 //    }
@@ -253,7 +256,7 @@ where
 //    //#[cfg(feature = "alloc")]
 //    //impl<R: Encode, S: Stored> OutPtrWrite for Box<R>
 //    //where
-//    //    Self: ReprFamily<Kind = NoRepr>,
+//    //    Self: ReprFamily<Kind = ReprRust>,
 //    //{
 //    //    unsafe fn write_out(self, _out_ptr: *mut Self::OutPtr) {
 //    //        unimplemented!()
@@ -341,7 +344,7 @@ where
 //    //#[cfg(feature = "alloc")]
 //    //impl<R: Dst<Data: ReprC> + ?Sized> OutPtrWrite for Box<R>
 //    //where
-//    //    Self: ReprFamily<Kind = NoRepr>,
+//    //    Self: ReprFamily<Kind = ReprRust>,
 //    //{
 //    //    unsafe fn write_out(self, out_ptr: *mut Self::OutPtr) {
 //    //        let output = self.encode(&mut ());
@@ -367,7 +370,7 @@ where
 //    //#[cfg(feature = "alloc")]
 //    //impl<R: CheckedTransmute<Target: Sized>> OutPtrWrite for Box<R>
 //    //where
-//    //    Self: ReprFamily<Kind = NoRepr>,
+//    //    Self: ReprFamily<Kind = ReprRust>,
 //    //    Box<<R as CheckedTransmute>::Target>: OutPtrWrite,
 //    //{
 //    //    unsafe fn write_out(self, out_ptr: *mut Self::OutPtr) {
@@ -399,7 +402,7 @@ where
 //    //#[cfg(feature = "alloc")]
 //    //impl<R, S> OutPtrWrite for Vec<R>
 //    //where
-//    //    Self: ReprFamily<Kind = NoRepr>,
+//    //    Self: ReprFamily<Kind = ReprRust>,
 //    //    Box<[R]>: OutPtrWrite,
 //    //{
 //    //    unsafe fn write_out(self, _out_ptr: *mut Self::OutPtr) {
@@ -425,7 +428,7 @@ where
 //
 //    //impl<R: OutPtrWrite> OutPtrWrite for Option<R>
 //    //where
-//    //    Self: ReprFamily<Kind = NoRepr>,
+//    //    Self: ReprFamily<Kind = ReprRust>,
 //    //{
 //    //    unsafe fn write_out(self, out_ptr: *mut Self::OutPtr) {
 //    //        match self {
@@ -442,7 +445,7 @@ where
 //    //}
 //    //impl<R: Niche + OutPtrWrite<OutPtr = <R as ExternC>::CType>> OutPtrWrite for Option<R>
 //    //where
-//    //    Self: ReprFamily<Kind = NoRepr>,
+//    //    Self: ReprFamily<Kind = ReprRust>,
 //    //{
 //    //    unsafe fn write_out(self, out_ptr: *mut Self::OutPtr) {
 //    //        self.map_or_else(

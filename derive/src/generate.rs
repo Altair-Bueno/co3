@@ -99,6 +99,29 @@ pub(crate) fn emit_decl_exports(abi: syn::Abi, decls: Vec<ForeignItem>) -> Token
                     }
                 }
 
+                impl #impl_generics co3::stored::SoftEncodeOwned for #ident #ty_generics #where_clause {
+                    type Store = ();
+
+                    #[inline(always)]
+                    fn soft_encode<'itm>(self, (): &mut ()) -> Self::CType
+                    where
+                        Self: 'itm
+                    {
+                        self
+                    }
+                }
+                impl<'_dšč, #params> co3::stored::SoftDecodeOwned<'_dšč> for #ident #ty_generics where
+                    Self: '_dšč,
+                    #predicates
+                {
+                    type Store = ();
+
+                    #[inline(always)]
+                    unsafe fn soft_decode<'_išč: '_dšč>(source: Self::CType, (): &mut ()) -> Option<Self> {
+                        Some(source)
+                    }
+                }
+
                 #(#dispatch)*
             }
         }
@@ -582,11 +605,7 @@ fn wrap_extern_type_decl(
         }
 
         impl #impl_generics co3::ir::ReprFamily for #boxed_ident #ty_generics #where_clause {
-            type Kind = co3::ir::Transmuted;
-        }
-
-        impl #impl_generics co3::ir::EncodeReprFamily for #boxed_ident #ty_generics #where_clause {
-            type Kind = co3::ir::Transmuted;
+            type Kind = co3::ir::Transmuted<co3::ir::NonRobust>;
         }
 
         impl #impl_generics co3::niche::NicheFamily for #boxed_ident #ty_generics #where_clause {
@@ -594,10 +613,8 @@ fn wrap_extern_type_decl(
         }
 
         unsafe impl #impl_generics co3::transmute::CheckedTransmute for #boxed_ident #ty_generics #where_clause {
-            type Target = #owned_repr_c_name #ty_generics;
-
             #[inline(always)]
-            fn is_valid(target: &Self::Target) -> bool {
+            unsafe fn is_valid(target: &Self::CType) -> bool {
                 // NOTE: Null pointer is validated although it's not strictly required
                 // Opaque pointers should never be dereferenced, this catches mistakes
                 // TODO: Just return true?
@@ -659,6 +676,14 @@ fn wrap_extern_type_decl(
         impl #impl_generics co3::size::SizeFamily for #ident #ty_generics #where_clause {
             type Kind = co3::size::ExternTypeLike;
         }
+
+        unsafe impl #impl_generics co3::transmute::CheckedTransmute for #ident #ty_generics #where_clause {
+            #[inline(always)]
+            unsafe fn is_valid(target: &Self::CType) -> bool {
+                true
+            }
+        }
+
         unsafe impl #impl_generics co3::handle::Erase for #boxed_ident #ty_generics #where_clause {
             type Erased = *mut core::ffi::c_void;
         }
@@ -680,9 +705,14 @@ fn derive_opaque_item(
     quote! {
         #handle_family_impl
 
-        unsafe impl #impl_generics co3::ReprC for #ident #ty_generics #where_clause {}
         impl #impl_generics co3::ir::ReprFamily for #ident #ty_generics #where_clause {
-            type Kind = co3::ir::Robust;
+            type Kind = co3::ir::Transmuted<co3::ir::Robust>;
+        }
+
+        unsafe impl #impl_generics co3::ReprC for #ident #ty_generics #where_clause {}
+
+        impl #impl_generics co3::ExternC for #ident #ty_generics #where_clause {
+            type CType = Self;
         }
 
         unsafe impl #impl_generics co3::handle::Erase for #ident #ty_generics #where_clause {

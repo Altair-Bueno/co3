@@ -1,31 +1,69 @@
 //! Logic related to the conversion of primitives to and from FFI-compatible representation
 
 use crate::{
-    CFnArg, CFnReturn, ReprC,
+    CFnArg, CFnReturn, Decode, ExternC, ReprC,
     borrow::{Borrow, BorrowCast, ToOwned},
-    ir::{NoRepr, ReprFamily},
+    handle::Erase,
+    ir::{NonRobust, ReprFamily, ReprRust, Transmuted},
+    niche::{Niche, NicheFamily, WithCustomNiche, WithoutNiche},
     reprC,
-    stored::SoftEncodeOwned,
+    size::{MetaSized, SizeFamily, SliceLike},
+    stored::{SoftDecodeOwned, SoftEncodeOwned},
+    transmute::CheckedTransmute,
 };
 
-/// # Safety
-///
-/// * the type must be transmutable into an integer
-/// * validity function must not return false positives
-macro_rules! fieldless_enum_derive {
-    ( $src:ty => $dst:ty: {$niche_val:expr}: $validity_fn:expr ) => {
-        reprC! {
-            unsafe impl NoDropSizedTransmuted for $src {
-                type Target = $dst;
+macro_rules! primitive_derive {
+    ( $($primitive:ty),* $(,)? ) => { $(
+        reprC! { unsafe impl SizedRobust for $primitive {} } )*
+    };
+}
 
-                const NICHE_VALUE: Self::CType = $niche_val;
-                fn is_valid(target: &Self::Target) -> bool {
-                    $validity_fn(target)
-                }
+macro_rules! raw_pointer_derive {
+    ( $mutability:tt ) => {
+        impl<R: ReprFamily + ?Sized> ReprFamily for *$mutability R {
+            type Kind = R::Kind;
+        }
+        impl<R: ?Sized> SizeFamily for *$mutability R {
+            type Kind = crate::size::Sized;
+        }
+        impl<R: ?Sized> NicheFamily for *$mutability R {
+            type Kind = WithoutNiche;
+        }
+
+        unsafe impl<R: ReprC + ?Sized> CheckedTransmute for *$mutability R {
+            #[inline(always)]
+            unsafe fn is_valid(_: &Self::CType) -> bool {
+                true
             }
         }
 
-        impl Borrow for $src {
+        unsafe impl<R: ReprC + ?Sized> ReprC for *$mutability R {}
+        unsafe impl<R: ReprC + ?Sized> CFnArg for *$mutability R {}
+
+        impl<R: ReprC + ?Sized> ExternC for *$mutability R {
+            type CType = Self;
+        }
+        impl<R: ReprC + ?Sized> SoftEncodeOwned for *$mutability R {
+            type Store = ();
+
+            #[inline(always)]
+            fn soft_encode<'itm>(self, (): &mut ()) -> Self::CType
+            where
+                Self: 'itm,
+            {
+                self
+            }
+        }
+        impl<'d, R: ReprC + ?Sized> SoftDecodeOwned<'d> for *$mutability R {
+            type Store = ();
+
+            #[inline(always)]
+            unsafe fn soft_decode<'itm: 'd>(source: Self::CType, (): &mut ()) -> Option<Self> {
+                Some(source)
+            }
+        }
+
+        impl<R: ?Sized> Borrow for *$mutability R {
             type Borrowed<'itm>
                 = Self
             where
@@ -41,86 +79,145 @@ macro_rules! fieldless_enum_derive {
                 self
             }
         }
+        impl<'itm, R: ?Sized> ToOwned<'itm> for *$mutability R {
+            #[inline(always)]
+            fn to_owned(source: Self) -> Self {
+                source
+            }
+        }
 
+        unsafe impl<R: Erase + ?Sized> Erase for *$mutability R {
+            type Erased = *$mutability R::Erased;
+        }
+        unsafe impl<R: ReprC + ?Sized> BorrowCast for *$mutability R {
+            type AsConst = Self;
+            type AsMut = Self;
+        }
+    };
+}
+
+// FIXME:
+macro_rules! impl_fn_types {
+    ( $( ( $( $arg:ident ),* ) ),* $(,)? ) => {$(
+        impl<$($arg: ReprFamily + CFnArg,)* R: CFnReturn> ReprFamily for extern "C" fn($($arg),*) -> R {
+            type Kind = ();
+        }
+        //impl<$($arg,)* R> SizeFamily for extern "C" fn($($arg),*) -> R {
+        //    type Kind = crate::size::Sized;
+        //}
+        //impl<$($arg,)* R> NicheFamily for extern "C" fn($($arg),*) -> R {
+        //    type Kind = WithStableNiche;
+        //}
+
+        )*
+    }
+}
+
+macro_rules! fieldless_enum_derive {
+    ( $src:ty => $dst:ty: {$niche_val:expr}: $validity_fn:expr ) => {
+        impl ReprFamily for $src {
+            type Kind = Transmuted<NonRobust>;
+        }
+        impl SizeFamily for $src {
+            type Kind = crate::size::Sized;
+        }
+        impl NicheFamily for $src {
+            type Kind = WithCustomNiche;
+        }
+
+        unsafe impl CheckedTransmute for $src {
+            #[inline(always)]
+            unsafe fn is_valid(target: &Self::CType) -> bool {
+                $validity_fn(target)
+            }
+        }
+
+        impl ExternC for $src {
+            type CType = $dst;
+        }
+        impl Niche for $src {
+            const NICHE_VALUE: Self::CType = $niche_val;
+        }
+
+        impl SoftEncodeOwned for $src {
+            type Store = ();
+
+            #[inline(always)]
+            fn soft_encode<'itm>(self, (): &mut ()) -> Self::CType
+            where
+                Self: 'itm,
+            {
+                self as $dst
+            }
+        }
+        impl<'d> SoftDecodeOwned<'d> for $src {
+            type Store = ();
+
+            #[inline(always)]
+            unsafe fn soft_decode<'itm: 'd>(source: Self::CType, (): &mut ()) -> Option<Self> {
+                unsafe { <$dst>::decode(source)? }.try_into().ok()
+            }
+        }
+
+        impl Borrow for $src {
+            type Borrowed<'itm> = Self;
+
+            type Owner = ();
+
+            #[inline(always)]
+            fn borrow<'itm>(self, (): &mut ()) -> Self::Borrowed<'itm> {
+                self
+            }
+        }
         impl<'itm> ToOwned<'itm> for $src {
             #[inline(always)]
             fn to_owned(source: Self::Borrowed<'itm>) -> Self {
                 source
             }
         }
+
+        unsafe impl Erase for $src {
+            type Erased = $src;
+        }
     };
-}
-
-/// # Safety
-///
-/// Type must be a robust #[repr(C)]
-macro_rules! primitive_derive {
-    ( $($primitive:ty),* $(,)? ) => { $(
-        reprC! { unsafe impl SizedRobust for $primitive {} }
-
-        unsafe impl BorrowCast for $primitive {
-            type AsConst = Self;
-            type AsMut = Self;
-        })*
-    };
-}
-
-fieldless_enum_derive! {
-    char => u32: {0x110000}:
-    |i: &Self::Target| char::from_u32(*i).is_some()
-}
-fieldless_enum_derive! {
-    bool => u8: {2}:
-    |i: &Self::Target| *i == 0 || *i == 1
-}
-fieldless_enum_derive! {
-    core::cmp::Ordering => i8: {2}:
-    |i: &Self::Target| *i == -1 || *i == 0 || *i == 1
 }
 
 primitive_derive! { usize, isize, u8, i8, u16, i16, u32, i32, u64, i64, u128, i128, f32, f64 }
 
-macro_rules! impl_fn_types {
-    ( $( ( $( $arg:ident ),* ) ),* $(,)? ) => {$(
-        // FIXME: I'm not sure if arguments are required to be ReprC, what if fn pointer is opaque?
-        // or should we create new function with argument conversion?
-        unsafe impl<$($arg: CFnArg,)* R: CFnReturn> ReprC for unsafe extern "C" fn($($arg),*) -> R {}
+raw_pointer_derive! { const }
+raw_pointer_derive! { mut }
 
-        impl<$($arg,)* R> ReprFamily for unsafe extern "C" fn($($arg),*) -> R {
-            type Kind = NoRepr;
-        }
-        //impl<$($arg),*> ReprFamily for unsafe extern "C" fn($($arg),*) {
-        //    type Kind = NoRepr;
-        //}
+impl<R: ReprFamily> ReprFamily for [R] {
+    type Kind = R::Kind;
+}
+impl<R> SizeFamily for [R] {
+    type Kind = MetaSized<SliceLike>;
+}
 
-        impl<$($arg: CFnArg,)* R: CFnReturn> crate::ExternC for unsafe extern "C" fn($($arg),*) -> R {
-            type CType = Self;
-        }
+unsafe impl<R: ReprC> ReprC for [R] {}
 
-        unsafe impl<$($arg: CFnArg,)* R: CFnReturn> crate::handle::Erase for unsafe extern "C" fn($($arg),*) -> R {
-            type Erased = Self;
-        }
-        //impl<const AS_REF: bool, $($arg: CFnArg,)* R: CFnReturn> crate::Encode<false> for unsafe extern "C" fn($($arg),*) -> R {
-        //    type Store = ();
+impl<R: ReprC> ExternC for [R] {
+    type CType = Self;
+}
 
-        //    fn encode<'itm>(self, (): &mut ()) -> Self::CType where Self: 'itm {
-        //        self
-        //    }
-        //}
-        impl<$($arg: CFnArg,)* R: CFnReturn> SoftEncodeOwned for unsafe extern "C" fn($($arg),*) -> R {
-            type Store = ();
+impl<R: ReprFamily, const N: usize> ReprFamily for [R; N] {
+    type Kind = R::Kind;
+}
+impl<T, const N: usize> SizeFamily for [T; N] {
+    type Kind = crate::size::Sized;
+}
 
-            #[inline(always)]
-            fn encode<'itm>(self, (): &mut ()) -> Self::CType where Self: 'itm {
-                self
-            }
-        }
-        impl<$($arg: CFnArg,)* R: CFnReturn> crate::SoftEncode for unsafe extern "C" fn($($arg),*) -> R {}
+unsafe impl<R: ReprC, const N: usize> ReprC for [R; N] {}
+impl<R: ExternC<CType: Copy>, const N: usize> ExternC for [R; N] {
+    type CType = [R::CType; N];
+}
 
-        unsafe impl<$($arg: CFnArg,)* R: CFnReturn> ReprC for Option<unsafe extern "C" fn($($arg),*) -> R> {}
-        //crate::reprC! { impl<$($arg: CFnArg,)* R: CFnReturn> SizedRobust for Option<unsafe extern "C" fn($($arg),*) -> R> {} }
-        )*
-    }
+unsafe impl<T: Erase<Erased: Sized>, const N: usize> Erase for [T; N] {
+    type Erased = [T::Erased; N];
+}
+unsafe impl<R: BorrowCast, const N: usize> BorrowCast for [R; N] {
+    type AsConst = [R::AsConst; N];
+    type AsMut = [R::AsMut; N];
 }
 
 impl_fn_types! {
@@ -137,4 +234,13 @@ impl_fn_types! {
     (A, B, C, D, E, F, G, H, I, J),
     (A, B, C, D, E, F, G, H, I, J, K),
     (A, B, C, D, E, F, G, H, I, J, K, L),
+}
+
+fieldless_enum_derive! {
+    char => u32: {0x110000}:
+    |i: &u32| char::from_u32(*i).is_some()
+}
+fieldless_enum_derive! {
+    bool => u8: {2}:
+    |i: &u8| *i == 0 || *i == 1
 }

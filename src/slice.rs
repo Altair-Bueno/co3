@@ -1,6 +1,15 @@
 //! Logic related to the conversion of slices to and from FFI-compatible representation
 
-use crate::{ReprC, borrow::BorrowCast, reprC};
+use crate::{
+    CFnArg, ExternC, ReprC,
+    borrow::{Borrow, BorrowCast, ToOwned},
+    handle::Erase,
+    ir::{ReprFamily, Robust, Transmuted},
+    niche::{NicheFamily, WithoutNiche},
+    size::SizeFamily,
+    stored::{SoftDecodeOwned, SoftEncodeOwned},
+    transmute::CheckedTransmute,
+};
 
 /// Immutable slice `&[C]` with a defined C ABI layout. Consists of a data pointer and a length.
 /// If the data pointer is set to `null`, the struct represents `Option<&[C]>`.
@@ -156,7 +165,7 @@ impl<C> CSliceMut<C> {
     }
 }
 
-impl<C: ReprC> CSlice<C> {
+impl<C> CSlice<C> {
     /// Convert [`Self`] into a shared slice. Return `None` if data pointer is null.
     /// Unlike [`core::slice::from_raw_parts`], data pointer is allowed to be null.
     ///
@@ -172,7 +181,7 @@ impl<C: ReprC> CSlice<C> {
     }
 }
 
-impl<C: ReprC> CSliceMut<C> {
+impl<C> CSliceMut<C> {
     /// Convert [`Self`] into a mutable slice. Return `None` if data pointer is null.
     /// Unlike [`core::slice::from_raw_parts_mut`], data pointer is allowed to be null.
     ///
@@ -188,18 +197,83 @@ impl<C: ReprC> CSliceMut<C> {
     }
 }
 
-reprC! {
-    unsafe impl(C: ReprC) SizedRobust for CSlice<C> {}
-}
-unsafe impl<C: ReprC> BorrowCast for CSlice<C> {
-    type AsConst = Self;
-    type AsMut = Self;
+macro_rules! impl_slice_carrier {
+    ($ty:ident) => {
+        impl<C: ReprFamily> ReprFamily for $ty<C> {
+            type Kind = C::Kind;
+        }
+        impl<C: ReprC> SizeFamily for $ty<C> {
+            type Kind = crate::size::Sized;
+        }
+        impl<C: ReprC> NicheFamily for $ty<C> {
+            type Kind = WithoutNiche;
+        }
+
+        unsafe impl<C: ReprC> CheckedTransmute for $ty<C> {
+            #[inline(always)]
+            unsafe fn is_valid(_: &Self::CType) -> bool {
+                true
+            }
+        }
+
+        unsafe impl<C: ReprC> ReprC for $ty<C> {}
+        unsafe impl<C: ReprC> CFnArg for $ty<C> {}
+
+        impl<C: ReprC> ExternC for $ty<C> {
+            type CType = Self;
+        }
+        impl<C: ReprC> SoftEncodeOwned for $ty<C> {
+            type Store = ();
+
+            #[inline(always)]
+            fn soft_encode<'itm>(self, (): &mut ()) -> Self::CType
+            where
+                Self: 'itm,
+            {
+                self
+            }
+        }
+        impl<'d, C: ReprC> SoftDecodeOwned<'d> for $ty<C> {
+            type Store = ();
+
+            #[inline(always)]
+            unsafe fn soft_decode<'itm: 'd>(source: Self::CType, (): &mut ()) -> Option<Self> {
+                Some(source)
+            }
+        }
+        impl<C> Borrow for $ty<C> {
+            type Borrowed<'itm>
+                = Self
+            where
+                Self: 'itm;
+
+            type Owner = ();
+
+            #[inline(always)]
+            fn borrow<'itm>(self, (): &mut ()) -> Self::Borrowed<'itm>
+            where
+                Self: 'itm,
+            {
+                self
+            }
+        }
+
+        impl<'itm, C> ToOwned<'itm> for $ty<C> {
+            #[inline(always)]
+            fn to_owned(source: Self) -> Self {
+                source
+            }
+        }
+
+        unsafe impl<C: Erase<Erased: Copy>> Erase for $ty<C> {
+            type Erased = $ty<C::Erased>;
+        }
+        unsafe impl<C: ReprC> BorrowCast for $ty<C> {
+            type AsConst = Self;
+            type AsMut = Self;
+        }
+    };
 }
 
-reprC! {
-    unsafe impl(C: ReprC) SizedRobust for CSliceMut<C> {}
-}
-unsafe impl<C: ReprC> BorrowCast for CSliceMut<C> {
-    type AsConst = Self;
-    type AsMut = Self;
-}
+impl_slice_carrier! { CSlice }
+impl_slice_carrier! { CSliceMut }

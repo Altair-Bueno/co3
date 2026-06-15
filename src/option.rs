@@ -1,16 +1,25 @@
 //! FFI-safe equivalent of [`core::option`] related functionality
 
-use crate::{ExternC, FfiReturn, ReprC, borrow::BorrowCast, niche::Niche, reprC};
+use crate::{
+    CFnArg, ExternC, FfiReturn, ReprC,
+    borrow::{Borrow, BorrowCast, ToOwned},
+    handle::Erase,
+    ir::ReprFamily,
+    niche::{Niche, NicheFamily, WithoutNiche},
+    size::SizeFamily,
+    stored::{SoftDecodeOwned, SoftEncodeOwned},
+    transmute::CheckedTransmute,
+};
 
 /// FFI-safe equivalent of [`core::option::Option`] for [`crate::ReprC`] types
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
 #[repr(C)]
-pub struct COption<T: Copy> {
+pub struct COption<T> {
     tag: u8,
     payload: T,
 }
 
-impl<T: Copy> COption<T> {
+impl<T> COption<T> {
     /// Construct no value
     #[expect(non_snake_case)]
     pub const fn None() -> Self {
@@ -38,7 +47,7 @@ impl<T: Copy> COption<T> {
     }
 }
 
-impl<T: Copy> From<Option<T>> for COption<T> {
+impl<T> From<Option<T>> for COption<T> {
     fn from(value: Option<T>) -> Self {
         match value {
             Some(value) => Self::Some(value),
@@ -47,7 +56,7 @@ impl<T: Copy> From<Option<T>> for COption<T> {
     }
 }
 
-impl<T: Copy> TryFrom<COption<T>> for Option<T> {
+impl<T> TryFrom<COption<T>> for Option<T> {
     type Error = FfiReturn;
 
     fn try_from(value: COption<T>) -> Result<Self, Self::Error> {
@@ -66,18 +75,83 @@ impl<T: Copy> Clone for COption<T> {
     }
 }
 
-reprC! {
-    unsafe impl(T: ReprC + Copy) SizedRobust for COption<T> {}
+impl<T: ReprFamily> ReprFamily for COption<T> {
+    type Kind = T::Kind;
+}
+impl<T> SizeFamily for COption<T> {
+    type Kind = crate::size::Sized;
+}
+impl<T> NicheFamily for COption<T> {
+    type Kind = WithoutNiche;
 }
 
-unsafe impl<T: BorrowCast<AsConst: Copy, AsMut: Copy> + Copy> BorrowCast for COption<T> {
-    type AsConst = COption<T::AsConst>;
-    type AsMut = COption<T::AsMut>;
+unsafe impl<T: ReprC + CheckedTransmute> CheckedTransmute for COption<T> {
+    #[inline(always)]
+    unsafe fn is_valid(_: &Self::CType) -> bool {
+        true
+    }
 }
 
-impl<R, C: Copy> Niche for Option<R>
+unsafe impl<T: ReprC> ReprC for COption<T> {}
+unsafe impl<T: ReprC + Copy> CFnArg for COption<T> {}
+
+impl<T: ReprC> ExternC for COption<T> {
+    type CType = COption<T>;
+}
+impl<R: ReprC + Copy> Niche for Option<R>
 where
-    Self: ExternC<CType = COption<C>>,
+    Self: ExternC<CType = COption<R>>,
 {
     const NICHE_VALUE: Self::CType = COption::none();
+}
+impl<T: ReprC + Copy> SoftEncodeOwned for COption<T> {
+    type Store = ();
+
+    #[inline(always)]
+    fn soft_encode<'itm>(self, (): &mut ()) -> Self::CType
+    where
+        Self: 'itm,
+    {
+        self
+    }
+}
+impl<'d, T: ReprC + Copy> SoftDecodeOwned<'d> for COption<T> {
+    type Store = ();
+
+    #[inline(always)]
+    unsafe fn soft_decode<'itm: 'd>(source: Self::CType, (): &mut ()) -> Option<Self> {
+        Some(source)
+    }
+}
+impl<T> Borrow for COption<T> {
+    type Borrowed<'itm>
+        = Self
+    where
+        Self: 'itm;
+
+    type Owner = ();
+
+    #[inline(always)]
+    fn borrow<'itm>(self, (): &mut ()) -> Self::Borrowed<'itm>
+    where
+        Self: 'itm,
+    {
+        self
+    }
+}
+
+impl<'itm, T> ToOwned<'itm> for COption<T> {
+    #[inline(always)]
+    fn to_owned(source: Self) -> Self {
+        source
+    }
+}
+
+unsafe impl<T: Erase<Erased: Sized>> Erase for COption<T> {
+    type Erased = COption<T::Erased>;
+}
+
+unsafe impl<T: BorrowCast> BorrowCast for COption<T> {
+    type AsConst = COption<T::AsConst>;
+    type AsMut = COption<T::AsMut>;
 }

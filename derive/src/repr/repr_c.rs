@@ -65,7 +65,7 @@ fn gen_transparent_view_impl<const ADD_COPY: bool>(
 
     quote! {
         impl #impl_generics co3::ir::ReprFamily for #name #ty_generics #where_clause {
-            type Kind = co3::ir::Transmuted;
+            type Kind = <#owner_ty as co3::ir::ReprFamily>::Kind;
         }
 
         // FIXME:
@@ -83,15 +83,14 @@ fn gen_transparent_view_impl<const ADD_COPY: bool>(
             #view_bounds
             #predicates
         {
-            type Target = #owner_const_view<#(#owner_ty_generics),*>;
-
             #[inline(always)]
-            fn is_valid(target: &Self::Target) -> bool {
-                let target = <*const _>::cast::<#owner_target<#(#owner_ty_generics),*>>(
-                    core::ptr::from_ref(target)
-                );
+            unsafe fn is_valid(target: &Self::CType) -> bool {
+                unimplemented!()
+                //let target = <*const _>::cast::<#owner_target<#(#owner_ty_generics),*>>(
+                //    core::ptr::from_ref(target)
+                //);
 
-                <#owner_ty as co3::transmute::CheckedTransmute>::is_valid(unsafe {&*target })
+                //<#owner_ty as co3::transmute::CheckedTransmute>::is_valid(unsafe {&*target })
             }
         }
     }
@@ -103,7 +102,8 @@ fn field_is_valid(
     default: TokenStream,
 ) -> TokenStream {
     match &field.is_valid {
-        Some(is_valid) => quote! { #default && (#is_valid)(#target_ref) },
+        // FIXME: derive of CheckedTransmute body is completely broken atm
+        Some(is_valid) => quote! { unsafe {#default} && (#is_valid)(#target_ref) },
         None => default,
     }
 }
@@ -131,7 +131,7 @@ pub(super) fn derive_repr_c_struct<const IS_VIEW: bool>(
                     let target_ref = quote! { &target.#field_index };
 
                     let default = quote! {
-                        <#field_ty as co3::transmute::FlatTransmute>::is_valid(&target.#field_index)
+                        <#field_ty as co3::transmute::CheckedTransmute>::is_valid(&target.#field_index)
                     };
 
                     field_is_valid(field, target_ref, default)
@@ -146,7 +146,7 @@ pub(super) fn derive_repr_c_struct<const IS_VIEW: bool>(
                     let target_ref = quote! { &target.#field_name };
 
                     let default = quote! {
-                        <#field_ty as co3::transmute::FlatTransmute>::is_valid(&target.#field_name)
+                        <#field_ty as co3::transmute::CheckedTransmute>::is_valid(&target.#field_name)
                     };
 
                     field_is_valid(field, target_ref, default)
@@ -230,8 +230,8 @@ pub(super) fn derive_repr_c_data_enum<const IS_VIEW: bool>(
                         let field_ty = &field.ty;
                         let target_ref = quote! { unsafe { &target.payload.#variant_name } };
                         let default = quote! {
-                            <#field_ty as co3::transmute::FlatTransmute>::is_valid(
-                                unsafe { &target.payload.#variant_name }
+                            <#field_ty as co3::transmute::CheckedTransmute>::is_valid(
+                                unsafe { target.payload.#variant_name }
                             )
                         };
 
@@ -318,8 +318,8 @@ pub(super) fn derive_data_enum<const IS_VIEW: bool>(
                         let field_ty = &field.ty;
                         let target_ref = quote! { unsafe { &target.#variant_name.value } };
                         let default = quote! {
-                            <#field_ty as co3::transmute::FlatTransmute>::is_valid(
-                                unsafe { &target.#variant_name.value}
+                            <#field_ty as co3::transmute::CheckedTransmute>::is_valid(
+                                unsafe { target.#variant_name.value}
                             )
                         };
 
@@ -375,6 +375,7 @@ pub(crate) fn derive_fieldless_enum(
     variants: &[SpannedValue<FfiTypeVariant>],
 ) -> TokenStream {
     let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
+    let params = &generics.params;
     let size_family_impl = gen_sized_family(enum_name, generics, quote! {});
     let niche_ir = gen_enum_niche_ir_with_mode(repr, enum_name, generics, variants, None);
 
@@ -400,24 +401,52 @@ pub(crate) fn derive_fieldless_enum(
         #borrow_ir
         #niche_ir
 
+        impl #impl_generics co3::ExternC for #enum_name #ty_generics #where_clause {
+            type CType = #repr;
+        }
+
         impl #impl_generics co3::ir::ReprFamily for #enum_name #ty_generics #where_clause {
-            type Kind = co3::ir::Transmuted;
+            type Kind = co3::ir::Transmuted<co3::ir::NonRobust>;
         }
 
         impl #impl_generics co3::ir::EncodeReprFamily for #enum_name #ty_generics #where_clause {
-            type Kind = co3::ir::Transmuted;
+            type Kind = co3::ir::Transmuted<co3::ir::NonRobust>;
         }
 
         unsafe #impl_generics impl co3::transmute::CheckedTransmute for #enum_name #ty_generics #where_clause {
-            type Target = #repr;
-
             #[inline(always)]
-            fn is_valid(#target_arg: &Self::Target) -> bool {
+            unsafe fn is_valid(#target_arg: &Self::CType) -> bool {
                 #is_valid
             }
         }
 
+        impl #impl_generics co3::stored::SoftEncodeOwned for #enum_name #ty_generics #where_clause {
+            type Store = ();
+
+            #[inline(always)]
+            fn soft_encode<'itm>(self, (): &mut ()) -> Self::CType
+            where
+                Self: 'itm,
+            {
+                self as #repr
+            }
+        }
+
+        impl<'d, #params> co3::stored::SoftDecodeOwned<'d> for #enum_name #ty_generics #where_clause {
+            type Store = ();
+
+            #[inline(always)]
+            unsafe fn soft_decode<'itm: 'd>(source: Self::CType, (): &mut ()) -> Option<Self> {
+                if !unsafe { <Self as co3::transmute::CheckedTransmute>::is_valid(&source) } {
+                    return None;
+                }
+
+                Some(unsafe { core::mem::transmute::<#repr, Self>(source) })
+            }
+        }
+
         unsafe impl #impl_generics co3::handle::Erase for #enum_name #ty_generics #where_clause {
+            // TODO: I think we can do better here?
             type Erased = Self;
         }
     }
@@ -1113,36 +1142,36 @@ fn gen_transparent_impl<'a, const ADD_COPY: bool>(
     fields: impl IntoIterator<Item = &'a FfiTypeField>,
 ) -> TokenStream {
     let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
-
-    let predicates = where_clause
-        .as_ref()
-        .map(|where_clause| &where_clause.predicates);
+    let predicates = where_clause.as_ref().map(|w| &w.predicates);
 
     let fields = fields.into_iter().map(|f| &f.ty).collect::<Vec<_>>();
     let flat_transmute_bounds = gen_flat_transmute_extern_c_bounds(&fields, generics);
     let extern_c_bounds = gen_extern_c_bounds::<ADD_COPY>(&fields, generics);
 
+    let repr_family_kind = fields
+        .iter()
+        .map(|field| quote! { <#field as co3::ir::ReprFamily>::Kind })
+        .reduce(|acc, kind| quote! { <#acc as core::ops::Add<#kind>>::Output })
+        .unwrap_or_else(|| quote! { co3::ir::Transmuted<co3::ir::Robust> });
+
     quote! {
         impl #impl_generics co3::ir::ReprFamily for #item_name #ty_generics #where_clause {
-            // FIXME: This should also be applied when generating transparent view
-            //type Kind = #(<#fields as co3::ir::ReprFamily>::Kind)+*;
-            type Kind = co3::ir::Transmuted;
+            type Kind = #repr_family_kind;
         }
 
-        impl #impl_generics co3::ir::EncodeReprFamily for #item_name #ty_generics #where_clause {
-            type Kind = #(<#fields as co3::ir::EncodeReprFamily>::Kind)+*;
-        }
+        //impl #impl_generics co3::ir::EncodeReprFamily for #item_name #ty_generics #where_clause {
+        //    type Kind = #(<#fields as co3::ir::EncodeReprFamily>::Kind)+*;
+        //}
 
         unsafe impl #impl_generics co3::transmute::CheckedTransmute for #item_name #ty_generics
         where
+            // Self: co3::ir::ReprFamily<Kind = co3::ir::Transmuted<K>>,
             #flat_transmute_bounds
             #extern_c_bounds
             #predicates
         {
-            type Target = #target #ty_generics;
-
             #[inline(always)]
-            fn is_valid(target: &Self::Target) -> bool {
+            unsafe fn is_valid(target: &Self::CType) -> bool {
                 #is_valid_body
             }
         }
@@ -1195,10 +1224,7 @@ fn gen_flat_transmute_extern_c_bounds(
         .iter()
         .filter(|&ty| is_type_parameterized(ty, generics));
 
-    quote! { #(
-        // TODO: This should trivially hold and can be removed in the future after FlatTransmute::Target is updated
-        #parameterized_field_types: co3::transmute::FlatTransmute<Target = <#parameterized_field_types as co3::ExternC>::CType>, )*
-    }
+    quote! { #( #parameterized_field_types: co3::transmute::CheckedTransmute, )* }
 }
 
 pub(super) fn gen_extern_c_bounds<const ADD_COPY: bool>(

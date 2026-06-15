@@ -1,25 +1,150 @@
 use proc_macro2::TokenStream;
 use quote::quote;
-
-use crate::repr::repr_c::assert_no_drop;
+use syn::Index;
 
 use super::{FfiTypeInput, FfiTypeKindAttribute};
+use crate::repr::repr_c::assert_no_drop;
+
+fn target_idx(fields: &darling::ast::Fields<super::FfiTypeField>) -> Option<usize> {
+    fields.fields.first()?;
+    Some(0)
+}
+
+fn gen_struct_target_access(
+    fields: &darling::ast::Fields<super::FfiTypeField>,
+    base: TokenStream,
+) -> Option<TokenStream> {
+    let target_idx = target_idx(fields)?;
+
+    match fields.style {
+        darling::ast::Style::Unit => None,
+        darling::ast::Style::Tuple => {
+            let idx = Index::from(target_idx);
+            Some(quote! { #base.#idx })
+        }
+        darling::ast::Style::Struct => {
+            let ident = fields.fields[target_idx].ident.as_ref()?;
+            Some(quote! { #base.#ident })
+        }
+    }
+}
+
+fn gen_struct_constructor(
+    fields: &darling::ast::Fields<super::FfiTypeField>,
+    construct_path: TokenStream,
+) -> Option<TokenStream> {
+    let target_idx = target_idx(fields)?;
+
+    match fields.style {
+        darling::ast::Style::Unit => None,
+        darling::ast::Style::Tuple => {
+            let field_values = fields.fields.iter().enumerate().map(|(idx, _)| {
+                if idx != target_idx {
+                    quote! { Default::default() }
+                } else {
+                    quote! { target }
+                }
+            });
+
+            Some(quote! { #construct_path(#(#field_values),*) })
+        }
+        darling::ast::Style::Struct => {
+            let field_values = fields.fields.iter().enumerate().map(|(idx, field)| {
+                let ident = field.ident.as_ref().unwrap();
+
+                let target = if idx != target_idx {
+                    quote! { Default::default() }
+                } else {
+                    quote! { target }
+                };
+
+                quote! { #ident: #target }
+            });
+
+            Some(quote! { #construct_path { #(#field_values),* } })
+        }
+    }
+}
+
+fn gen_target_pattern(fields: &darling::ast::Fields<super::FfiTypeField>) -> Option<TokenStream> {
+    let target_idx = target_idx(fields)?;
+
+    match fields.style {
+        darling::ast::Style::Unit => None,
+        darling::ast::Style::Tuple => {
+            let field_patterns = fields.fields.iter().enumerate().map(|(idx, _)| {
+                if idx == target_idx {
+                    quote! { target }
+                } else {
+                    quote! { _ }
+                }
+            });
+
+            Some(quote! { (#(#field_patterns),*) })
+        }
+        darling::ast::Style::Struct => {
+            let ident = fields.fields[target_idx].ident.as_ref()?;
+            Some(quote! { { #ident: target, .. } })
+        }
+    }
+}
+
+fn gen_enum_target_access(
+    enum_name: &syn::Ident,
+    variant_name: &syn::Ident,
+    fields: &darling::ast::Fields<super::FfiTypeField>,
+) -> Option<TokenStream> {
+    let target_pattern = gen_target_pattern(fields)?;
+
+    Some(quote! {
+        match self {
+            #enum_name::#variant_name #target_pattern => target,
+        }
+    })
+}
+
+fn gen_accessors(input: &FfiTypeInput) -> Option<(TokenStream, TokenStream)> {
+    let name = &input.ident;
+
+    match &input.data {
+        darling::ast::Data::Struct(fields) => Some((
+            gen_struct_target_access(fields, quote! { self })?,
+            gen_struct_constructor(fields, quote! { #name })?,
+        )),
+        darling::ast::Data::Enum(variants) => {
+            let variant = variants.first()?;
+            let variant_name = &variant.ident;
+
+            match variant.fields.style {
+                darling::ast::Style::Unit => None,
+                darling::ast::Style::Tuple | darling::ast::Style::Struct => {
+                    let access_target =
+                        gen_enum_target_access(name, variant_name, &variant.fields)?;
+
+                    let construct_self = gen_struct_constructor(
+                        &variant.fields,
+                        quote! {
+                            #name::#variant_name
+                        },
+                    )?;
+
+                    Some((access_target, construct_self))
+                }
+            }
+        }
+    }
+}
 
 /// Derives FFI type for transparent items.
-///
-/// Possible transparent items:
-///
-/// * fieldless structs
-/// * one-variant fieldless enums
 pub(crate) fn derive_transparent_item(input: &FfiTypeInput) -> TokenStream {
     debug_assert_eq!(
         input.repr_attr.kind.as_deref().copied(),
         Some(crate::attr::repr::ReprKind::Transparent)
     );
 
-    let params = &input.generics.params;
-    let (_, ty_generics, where_clause) = input.generics.split_for_impl();
+    let (impl_generics, ty_generics, where_clause) = input.generics.split_for_impl();
     let predicates = where_clause.map(|w| &w.predicates);
+    let params = &input.generics.params;
 
     let name = &input.ident;
     let target_field = match &input.data {
@@ -34,18 +159,17 @@ pub(crate) fn derive_transparent_item(input: &FfiTypeInput) -> TokenStream {
     let Some(target_field) = target_field else {
         return quote! {};
     };
-
-    let target = &target_field.ty;
-    let default_is_valid = quote! {
-        <#target as co3::transmute::FlatTransmute>::is_valid(target)
+    let Some((access_target, construct_self)) = gen_accessors(input) else {
+        return quote! {};
     };
 
+    let target = &target_field.ty;
     let is_valid = target_field.is_valid.as_ref().map(|is_valid| {
-        quote! { #default_is_valid && (#is_valid)(target) }
+        quote! { (#is_valid)(target) }
     });
     let is_valid_fn = is_valid.map(|is_valid| {
         quote! {
-            fn is_valid(target: &Self::Target) -> bool {
+            fn is_valid(target: &#target) -> bool {
                 #is_valid
             }
         }
@@ -67,21 +191,55 @@ pub(crate) fn derive_transparent_item(input: &FfiTypeInput) -> TokenStream {
 
     let impl_drop_assert = assert_no_drop(&input.generics, name);
     let (trait_, impl_drop_assert) = if input.data.is_enum() {
-        (quote!(NoDropSizedTransmuted), quote! {})
+        (quote!(NoDropSizedTransparent), quote! {})
     } else {
-        (quote!(Transmuted), impl_drop_assert)
+        (quote!(Transparent), impl_drop_assert)
     };
+
+    let for_dummy = input
+        .generics
+        .params
+        .is_empty()
+        .then_some(quote! { for<'_dummy> });
 
     quote! {
         #impl_drop_assert
 
         co3::reprC! {
-            // SAFETY: `Self` and `Self::Target` are guaranteed to be transmutable, but the user
-            // must make sure the provided validation function does not return false positives
+            // SAFETY: `Self` and `Self::Target` are guaranteed to be transmutable
             unsafe impl(#params) #trait_ for #name #ty_generics where (#predicates) {
                 type Target = #target;
 
                 #custom_validation
+            }
+        }
+
+        impl #impl_generics co3::SoftEncodeOwned for #name #ty_generics
+        where
+            #for_dummy #target: co3::SoftEncodeOwned,
+            #predicates
+        {
+            type Store = <#target as co3::SoftEncodeOwned>::Store;
+
+            #[inline(always)]
+            fn soft_encode<'itm>(self, store: &'itm mut Self::Store) -> Self::CType
+            where
+                Self: 'itm,
+            {
+                co3::SoftEncodeOwned::soft_encode(#access_target, store)
+            }
+        }
+
+        impl<'d, #params> co3::SoftDecodeOwned<'d> for #name #ty_generics
+        where
+            #target: co3::SoftDecodeOwned<'d>,
+            #predicates
+        {
+            type Store = <#target as co3::SoftDecodeOwned<'d>>::Store;
+
+            #[inline(always)]
+            unsafe fn soft_decode<'itm: 'd>(source: Self::CType, store: &'itm mut Self::Store) -> Option<Self> {
+                co3::SoftDecodeOwned::soft_decode(source, store).map(|target| #construct_self)
             }
         }
 

@@ -258,6 +258,7 @@ pub(crate) fn derive_extern_c_internal<const IS_VIEW: bool>(
     let mut errors = None::<syn::Error>;
     let mut input = FfiTypeInput::from_derive_input(input)
         .map_err(|err| syn::Error::new_spanned(input, err.to_string()))?;
+    let is_transparent = matches!(input.repr_attr.kind.as_deref(), Some(ReprKind::Transparent));
 
     match &input.data {
         // FIXME: allow ZST fields as long as there is at least one non-ZST
@@ -306,19 +307,21 @@ pub(crate) fn derive_extern_c_internal<const IS_VIEW: bool>(
                     );
                 }
 
-                match &variant.fields.style {
-                    Style::Tuple if variant.fields.fields.len() > 1 => push_error(
-                        &mut errors,
-                        syn::Error::new(
-                            variant.span(),
-                            "Tuple variants with arity > 1 are not supported",
+                if !is_transparent {
+                    match &variant.fields.style {
+                        Style::Tuple if variant.fields.fields.len() > 1 => push_error(
+                            &mut errors,
+                            syn::Error::new(
+                                variant.span(),
+                                "Tuple variants with arity > 1 are not supported",
+                            ),
                         ),
-                    ),
-                    Style::Struct => push_error(
-                        &mut errors,
-                        syn::Error::new(variant.span(), "Structure variants are not supported"),
-                    ),
-                    _ => {}
+                        Style::Struct => push_error(
+                            &mut errors,
+                            syn::Error::new(variant.span(), "Structure variants are not supported"),
+                        ),
+                        _ => {}
+                    }
                 }
             }
         }

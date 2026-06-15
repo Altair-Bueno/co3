@@ -5,23 +5,27 @@
 //! automatic, correct, and zero-cost conversions from IR to the equivalent C type.
 #[cfg(feature = "alloc")]
 use alloc_crate::{boxed::Box, vec::Vec};
-use core::{cell::UnsafeCell, ops::Add};
+use core::{convert::Infallible, ops::Add};
 
 use disjoint_impls::disjoint_impls;
 
 use crate::{
-    niche::{NicheFamily, WithCustomNiche, WithNiche, WithStableNiche, WithoutNiche},
+    ReprC,
+    niche::{NicheFamily, WithCustomNiche, WithStableNiche, WithoutNiche},
     size::{MetaSized, SizeFamily, Thin},
 };
+
+/// Marker for a type that don't have a guaranteed representation and requires explicit conversion.
+pub enum ReprRust {}
+
+/// Marker for a type that is transmuted to another type and thus delegates its conversion.
+pub struct Transmuted<K>(core::marker::PhantomData<K>, Infallible);
 
 /// Marker for a robust [`ReprC`] type that does not require conversion
 pub enum Robust {}
 
-/// Marker for a type that can is transmuted to another type and thus delegates it's conversion
-pub enum Transmuted {}
-
-/// Marker for a type that don't have a guaranteed representation and require explicit conversion
-pub enum NoRepr {}
+/// Marker for a non-robust type that is still transmuted by the ABI layer.
+pub enum NonRobust {}
 
 disjoint_impls! {
     /// Type that can be converted to and from an internal representation (IR).
@@ -30,169 +34,151 @@ disjoint_impls! {
     pub trait ReprFamily {
         /// The internal representation (i.e. type family) of the type
         ///
-        /// - If `Self` is [`ReprC`], set [`ReprFamily::Kind`] to [`Robust`].
+        /// - If `Self` is [`ReprC`], set [`ReprFamily::Kind`] to [`Transmuted<Robust>`].
         ///   The type is passed to FFI functions as-is, without conversion.
         ///
-        /// - If [`ReprFamily::Kind`] is [`Transmuted`], `Self` automatically implements [`crate::ExternC`]
-        ///   by delegating to its inner type via [`core::mem::transmute`].
-        ///   If the inner type supports zero-copy conversion, then [`Transmuted`] is also zero-copy.
-        ///   See [`crate::transmute::CheckedTransmute`] for more details.
+        /// - If [`ReprFamily::Kind`] is [`Transmuted<NonRobust>`] the type has the same
+        ///   representation as the target type but may still require validation.
         ///
-        /// - If [`ReprFamily::Kind`] is [`Option<T>`], `Option<T>` is transmuted into the inner type,
-        ///   using its *niche value* to represent [`None`].
-        ///
-        /// - If [`ReprFamily::Kind`] is [`Option<WithoutNiche>`], serialization is delegated to the
-        ///   inner type, but represented explicitly as a `(discriminant, value)` tuple.
-        ///
-        /// - If [`ReprFamily::Kind`] is [`NoRepr`], `Self` must provide hand-written impl of [`crate::ExternC`]
-        ///   This provides a default [`crate::ExternC`] implementation, but note that it will store the type.
-        type Kind: ?Sized;
+        /// - If [`ReprFamily::Kind`] is [`ReprRust`], `Self` must provide hand-written impl of [`crate::ExternC`].
+        ///   References to [`ReprRust`] types are `soft` and conversion of the value will make use of the store.
+        type Kind;
     }
 
-    impl<R: ReprFamily<Kind = Robust>> ReprFamily for [R] {
-        type Kind = Robust;
+    // FIXME: The following 2 impls should be compressible into 1, but disjoint_impls can't do it?
+    // and then further compressed so only 3 impls remain in total
+    impl<R: ReprFamily<Kind = Transmuted<Robust>> + SizeFamily<Kind: Thin> + ?Sized> ReprFamily for &R {
+        type Kind = Transmuted<NonRobust>;
     }
-    impl<R: ReprFamily<Kind = Transmuted>> ReprFamily for [R] {
-        type Kind = Transmuted;
+    impl<R: ReprFamily<Kind = Transmuted<NonRobust>> + SizeFamily<Kind: Thin> + ?Sized> ReprFamily for &R {
+        type Kind = Transmuted<NonRobust>;
     }
-    impl<R: ReprFamily<Kind = NoRepr>> ReprFamily for [R] {
-        type Kind = NoRepr;
+    impl<R: ReprFamily<Kind = Transmuted<Robust>> + SizeFamily<Kind = MetaSized<U>> + ?Sized, U> ReprFamily for &R {
+        type Kind = ReprRust;
     }
-
-    impl<R: ReprFamily<Kind = Robust> + SizeFamily<Kind: Thin>> ReprFamily for &R {
-        type Kind = Transmuted;
+    impl<R: ReprFamily<Kind = Transmuted<NonRobust>> + SizeFamily<Kind = MetaSized<U>> + ?Sized, U> ReprFamily for &R {
+        type Kind = ReprRust;
     }
-    impl<R: ReprFamily<Kind = Robust> + SizeFamily<Kind = MetaSized<K>> + ?Sized, K> ReprFamily for &R {
-        type Kind = NoRepr;
-    }
-    impl<R: ReprFamily<Kind = Transmuted> + SizeFamily<Kind: Thin>> ReprFamily for &R {
-        type Kind = Transmuted;
-    }
-    impl<R: ReprFamily<Kind = Transmuted> + SizeFamily<Kind = MetaSized<K>> + ?Sized, K> ReprFamily for &R {
-        type Kind = NoRepr;
-    }
-    impl<R: ReprFamily<Kind = NoRepr> + ?Sized> ReprFamily for &R {
-        type Kind = NoRepr;
+    impl<R: ReprFamily<Kind = ReprRust> + ?Sized> ReprFamily for &R {
+        type Kind = ReprRust;
     }
 
-    impl<R: ReprFamily<Kind = Robust> + SizeFamily<Kind: Thin>> ReprFamily for &mut R {
-        type Kind = Transmuted;
+    impl<R: ReprFamily<Kind = Transmuted<Robust>> + SizeFamily<Kind: Thin> + ?Sized> ReprFamily for &mut R {
+        type Kind = Transmuted<NonRobust>;
     }
-    impl<R: ReprFamily<Kind = Robust> + SizeFamily<Kind = MetaSized<K>> + ?Sized, K> ReprFamily for &mut R {
-        type Kind = NoRepr;
+    impl<R: ReprFamily<Kind = Transmuted<NonRobust>> + SizeFamily<Kind: Thin> + ?Sized> ReprFamily for &mut R {
+        type Kind = Transmuted<NonRobust>;
     }
-    impl<R: ReprFamily<Kind = Transmuted> + SizeFamily<Kind: Thin>> ReprFamily for &mut R {
-        type Kind = Transmuted;
+    impl<R: ReprFamily<Kind = Transmuted<Robust>> + SizeFamily<Kind = MetaSized<U>> + ?Sized, U> ReprFamily for &mut R {
+        type Kind = ReprRust;
     }
-    impl<R: ReprFamily<Kind = Transmuted> + SizeFamily<Kind = MetaSized<K>> + ?Sized, K> ReprFamily for &mut R {
-        type Kind = NoRepr;
+    impl<R: ReprFamily<Kind = Transmuted<NonRobust>> + SizeFamily<Kind = MetaSized<U>> + ?Sized, U> ReprFamily for &mut R {
+        type Kind = ReprRust;
     }
-    impl<R: ReprFamily<Kind = NoRepr> + ?Sized> ReprFamily for &mut R {
-        type Kind = NoRepr;
+    impl<R: ReprFamily<Kind = ReprRust> + ?Sized> ReprFamily for &mut R {
+        type Kind = ReprRust;
     }
 
     #[cfg(feature = "alloc")]
-    impl<R: ReprFamily<Kind = Robust> + SizeFamily<Kind = crate::size::Sized>> ReprFamily for Box<R> {
-        type Kind = Transmuted;
+    impl<R: ReprFamily<Kind = Transmuted<Robust>> + SizeFamily<Kind = crate::size::Sized>> ReprFamily for Box<R> {
+        type Kind = Transmuted<NonRobust>;
     }
     #[cfg(feature = "alloc")]
-    impl<R: ReprFamily<Kind = Robust> + SizeFamily<Kind = MetaSized<K>> + ?Sized, K> ReprFamily for Box<R> {
-        type Kind = NoRepr;
+    impl<R: ReprFamily<Kind = Transmuted<NonRobust>> + SizeFamily<Kind = crate::size::Sized>> ReprFamily for Box<R> {
+        type Kind = Transmuted<NonRobust>;
     }
     #[cfg(feature = "alloc")]
-    impl<R: ReprFamily<Kind = Transmuted> + SizeFamily<Kind = crate::size::Sized>> ReprFamily for Box<R> {
-        type Kind = Transmuted;
+    impl<R: ReprFamily<Kind = Transmuted<Robust>> + SizeFamily<Kind = MetaSized<U>> + ?Sized, U> ReprFamily for Box<R> {
+        type Kind = ReprRust;
     }
     #[cfg(feature = "alloc")]
-    impl<R: ReprFamily<Kind = Transmuted> + SizeFamily<Kind = MetaSized<K>> + ?Sized, K> ReprFamily for Box<R> {
-        type Kind = NoRepr;
+    impl<R: ReprFamily<Kind = Transmuted<NonRobust>> + SizeFamily<Kind = MetaSized<U>> + ?Sized, U> ReprFamily for Box<R> {
+        type Kind = ReprRust;
     }
     #[cfg(feature = "alloc")]
-    impl<R: ReprFamily<Kind = NoRepr> + ?Sized> ReprFamily for Box<R> {
-        type Kind = NoRepr;
+    impl<R: ReprFamily<Kind = ReprRust> + ?Sized> ReprFamily for Box<R> {
+        type Kind = ReprRust;
     }
 
-    impl<R: ReprFamily<Kind = Robust>, const N: usize> ReprFamily for [R; N] {
-        type Kind = Robust;
+    // TODO: impls here can also be compressed
+    impl<R: ReprFamily<Kind = Transmuted<Robust>>> ReprFamily for Option<R> {
+        type Kind = ReprRust;
     }
-    impl<R: ReprFamily<Kind = Transmuted>, const N: usize> ReprFamily for [R; N] {
-        type Kind = Transmuted;
+    impl<R: ReprFamily<Kind = Transmuted<NonRobust>> + NicheFamily<Kind = WithoutNiche>> ReprFamily for Option<R> {
+        type Kind = ReprRust;
     }
-    impl<R: ReprFamily<Kind = NoRepr>, const N: usize> ReprFamily for [R; N] {
-        type Kind = NoRepr;
+    impl<R: ReprFamily<Kind = Transmuted<NonRobust>> + NicheFamily<Kind = WithCustomNiche>> ReprFamily for Option<R> {
+        type Kind = ReprRust;
     }
-
-    impl<R: ReprFamily<Kind = Robust>> ReprFamily for Option<R> {
-        type Kind = NoRepr;
-    }
-    impl<R: ReprFamily<Kind = Transmuted> + NicheFamily<Kind = WithoutNiche>> ReprFamily for Option<R> {
-        type Kind = NoRepr;
-    }
-    impl<R: ReprFamily<Kind = Transmuted> + NicheFamily<Kind = WithCustomNiche>> ReprFamily for Option<R> {
-        type Kind = NoRepr;
-    }
-    impl<R: ReprFamily<Kind = Transmuted> + NicheFamily<Kind = WithStableNiche>> ReprFamily for Option<R> {
+    impl<R: ReprFamily<Kind = Transmuted<NonRobust>> + NicheFamily<Kind = WithStableNiche>> ReprFamily for Option<R> {
         // TODO: Sometimes it should be mapped to Robust when R has 1 niche
         // https://github.com/mversic/co3/issues/33
-        type Kind = Transmuted;
+        type Kind = Transmuted<NonRobust>;
     }
-    impl<R: ReprFamily<Kind = NoRepr>> ReprFamily for Option<R> {
-        type Kind = NoRepr;
+    impl<R: ReprFamily<Kind = ReprRust>> ReprFamily for Option<R> {
+        type Kind = ReprRust;
     }
     // TODO: Make a test. I think the example type is &Box<u8>
     // Should it become Stored in this case? Likewise for Result
-    //impl<R: ReprFamily<Kind = NoRepr> + NicheFamily<Kind = WithStableNiche>> ReprFamily for Option<R> {
-    //    type Kind = NoRepr;
+    //impl<R: ReprFamily<Kind = ReprRust> + NicheFamily<Kind = WithStableNiche>> ReprFamily for Option<R> {
+    //    type Kind = ReprRust;
     //}
 
     impl<R: NicheFamily<Kind = WithoutNiche>, E: NicheFamily<Kind = WithoutNiche>> ReprFamily for Result<R, E> {
-        type Kind = NoRepr;
+        type Kind = ReprRust;
     }
     // TODO: Implement for niche optimized Results
 }
 
+// FIXME: This bound may be useless by now
 disjoint_impls! {
-    pub trait EncodeReprFamily: ReprFamily<Kind = Transmuted> {
-        type Kind: ?Sized;
+    // TODO: IMO this bound should be ReprFamily<Kind = Transmuted<K>>
+    // This can be a case in point to split Robustness out of ReprFamily
+    pub trait EncodeReprFamily: ReprFamily {
+        type Kind;
     }
 
     //impl<R: ReprFamily<Kind = Robust> + ?Sized> EncodeReprFamily for R {
     //    type Kind = Robust;
     //}
-    //impl<R: ReprFamily<Kind = NoRepr> + ?Sized> EncodeReprFamily for R {
-    //    type Kind = NoRepr;
+    //impl<R: ReprFamily<Kind = ReprRust> + ?Sized> EncodeReprFamily for R {
+    //    type Kind = ReprRust;
     //}
 
-    impl<R: EncodeReprFamily> EncodeReprFamily for [R]
+    impl<R: EncodeReprFamily, K> EncodeReprFamily for [R]
     where
-        Self: ReprFamily<Kind = Transmuted>,
+        Self: ReprFamily<Kind = Transmuted<K>>,
     {
         type Kind = <R as EncodeReprFamily>::Kind;
     }
 
-    impl<R: EncodeReprFamily + ?Sized> EncodeReprFamily for &R
+    impl<R: EncodeReprFamily + ?Sized, K> EncodeReprFamily for &R
     where
-        Self: ReprFamily<Kind = Transmuted>,
+        Self: ReprFamily<Kind = Transmuted<K>>,
     {
         type Kind = <R as EncodeReprFamily>::Kind;
     }
 
-    impl<R: ReprFamily<Kind = Robust> + ?Sized> EncodeReprFamily for &mut R
+    // NOTE: `ReprC` is doing real work here because it is an `unsafe` trait and guarantees
+    // soundness of every mutation of the pointee from the other side of the `FFI` boundary
+    impl<R: ReprFamily<Kind = Transmuted<Robust>> + ReprC + ?Sized> EncodeReprFamily for &mut R
     where
-        Self: ReprFamily<Kind = Transmuted>,
+        Self: ReprFamily<Kind = Transmuted<Robust>>,
     {
-        type Kind = Transmuted;
+        type Kind = Transmuted<Robust>;
     }
-    impl<R: ReprFamily<Kind = Transmuted> + ?Sized> EncodeReprFamily for &mut R
+    impl<R: ReprFamily<Kind = Transmuted<NonRobust>> + ?Sized> EncodeReprFamily for &mut R
     where
-        Self: ReprFamily<Kind = Transmuted>,
+        Self: ReprFamily<Kind = Transmuted<NonRobust>>,
     {
         // TODO: With a `Unchecked<T>` wrapper we can transmute this
-        type Kind = NoRepr;
+        type Kind = ReprRust;
     }
 
     // FIXME: &UnsafeCell should be distinguished as a mutable reference type
-    //impl<R: ReprFamily<Kind = Robust> + ?Sized> EncodeReprFamily for &UnsafeCell<R>
+    // NOTE: `ReprC` is doing real work here because it is an `unsafe` trait and guarantees
+    // soundness of every mutation of the pointee from the other side of the `FFI` boundary
+    //impl<R: ReprFamily<Kind = Robust> + ReprC + ?Sized> EncodeReprFamily for &UnsafeCell<R>
     //where
     //    Self: ReprFamily<Kind = Transmuted>,
     //{
@@ -203,27 +189,27 @@ disjoint_impls! {
     //    Self: ReprFamily<Kind = Transmuted>,
     //{
     //    // TODO: With a `Unchecked<T>` wrapper we can transmute this
-    //    type Kind = NoRepr;
+    //    type Kind = ReprRust;
     //}
 
     #[cfg(feature = "alloc")]
-    impl<R: EncodeReprFamily + ?Sized> EncodeReprFamily for Box<R>
+    impl<R: EncodeReprFamily + ?Sized, K> EncodeReprFamily for Box<R>
     where
-        Self: ReprFamily<Kind = Transmuted>,
+        Self: ReprFamily<Kind = Transmuted<K>>,
     {
         type Kind = <R as EncodeReprFamily>::Kind;
     }
 
-    impl<R: EncodeReprFamily, const N: usize> EncodeReprFamily for [R; N]
+    impl<R: EncodeReprFamily, const N: usize, K> EncodeReprFamily for [R; N]
     where
-        Self: ReprFamily<Kind = Transmuted>,
+        Self: ReprFamily<Kind = Transmuted<K>>,
     {
         type Kind = <R as EncodeReprFamily>::Kind;
     }
 
-    impl<R: EncodeReprFamily> EncodeReprFamily for Option<R>
+    impl<R: EncodeReprFamily, K> EncodeReprFamily for Option<R>
     where
-        Self: ReprFamily<Kind = Transmuted>,
+        Self: ReprFamily<Kind = Transmuted<K>>,
     {
         type Kind = <R as EncodeReprFamily>::Kind;
     }
@@ -231,10 +217,26 @@ disjoint_impls! {
 
 #[cfg(feature = "alloc")]
 impl<R> ReprFamily for Vec<R> {
-    type Kind = NoRepr;
+    type Kind = ReprRust;
 }
 
-impl Add for Robust {
+impl<K> Add<ReprRust> for Transmuted<K> {
+    type Output = ReprRust;
+
+    fn add(self, _: ReprRust) -> Self::Output {
+        unreachable!()
+    }
+}
+
+impl<K> Add<Transmuted<K>> for ReprRust {
+    type Output = ReprRust;
+
+    fn add(self, _: Transmuted<K>) -> Self::Output {
+        unreachable!()
+    }
+}
+
+impl Add for ReprRust {
     type Output = Self;
 
     fn add(self, _: Self) -> Self::Output {
@@ -242,31 +244,7 @@ impl Add for Robust {
     }
 }
 
-impl Add<Transmuted> for Robust {
-    type Output = Transmuted;
-
-    fn add(self, _: Transmuted) -> Self::Output {
-        unreachable!()
-    }
-}
-
-impl Add<NoRepr> for Robust {
-    type Output = NoRepr;
-
-    fn add(self, _: NoRepr) -> Self::Output {
-        unreachable!()
-    }
-}
-
-impl Add<Robust> for Transmuted {
-    type Output = Self;
-
-    fn add(self, _: Robust) -> Self::Output {
-        unreachable!()
-    }
-}
-
-impl Add for Transmuted {
+impl Add for Transmuted<NonRobust> {
     type Output = Self;
 
     fn add(self, _: Self) -> Self::Output {
@@ -274,34 +252,26 @@ impl Add for Transmuted {
     }
 }
 
-impl Add<NoRepr> for Transmuted {
-    type Output = NoRepr;
-
-    fn add(self, _: NoRepr) -> Self::Output {
-        unreachable!()
-    }
-}
-
-impl Add<Robust> for NoRepr {
-    type Output = Self;
-
-    fn add(self, _: Robust) -> Self::Output {
-        unreachable!()
-    }
-}
-
-impl Add<Transmuted> for NoRepr {
-    type Output = Self;
-
-    fn add(self, _: Transmuted) -> Self::Output {
-        unreachable!()
-    }
-}
-
-impl Add for NoRepr {
+impl Add for Transmuted<Robust> {
     type Output = Self;
 
     fn add(self, _: Self) -> Self::Output {
+        unreachable!()
+    }
+}
+
+impl Add<Transmuted<NonRobust>> for Transmuted<Robust> {
+    type Output = Transmuted<NonRobust>;
+
+    fn add(self, _: Transmuted<NonRobust>) -> Self::Output {
+        unreachable!()
+    }
+}
+
+impl Add<Transmuted<Robust>> for Transmuted<NonRobust> {
+    type Output = Self;
+
+    fn add(self, _: Transmuted<Robust>) -> Self::Output {
         unreachable!()
     }
 }

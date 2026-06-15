@@ -3,9 +3,18 @@
 use alloc_crate::boxed::Box;
 use core::ptr::NonNull;
 
-use crate::alloc::Global;
-use crate::slice::{CSlice, CSliceMut};
-use crate::{ReprC, alloc::Allocator, borrow::BorrowCast, reprC};
+use crate::{
+    CFnArg, ExternC, ReprC,
+    alloc::{Allocator, Global},
+    borrow::{Borrow, BorrowCast, ToOwned},
+    handle::Erase,
+    ir::ReprFamily,
+    niche::{NicheFamily, WithoutNiche},
+    size::SizeFamily,
+    slice::{CSlice, CSliceMut},
+    stored::{SoftDecodeOwned, SoftEncodeOwned},
+    transmute::CheckedTransmute,
+};
 
 /// Owned pointer `Box<C>` with a deallocate function.
 ///
@@ -21,7 +30,7 @@ pub struct CBox<C, A: Allocator = Global> {
 /// If the data pointer is set to `null`, the struct represents `Option<Box<[C]>>`.
 #[repr(C)]
 pub struct CBoxedSlice<C, A: Allocator = Global> {
-    data: *mut C,
+    pub(crate) data: *mut C,
     len: usize,
     allocator: A,
 }
@@ -141,6 +150,14 @@ impl<C> CBox<C> {
     pub fn into_raw(boxed: Self) -> *mut C {
         boxed.data
     }
+
+    /// Create [`Self`] from a raw data pointer
+    pub(crate) const fn from_raw_parts(data: NonNull<C>) -> Self {
+        Self {
+            data: data.as_ptr(),
+            allocator: Global,
+        }
+    }
 }
 
 impl<C, A: Allocator> CBox<C, A> {
@@ -178,7 +195,7 @@ impl<C, A: Allocator> CBox<C, A> {
     }
 }
 
-impl<C: ReprC> CBox<C> {
+impl<C> CBox<C> {
     /// Convert [`Self`] into [`Box<C>`]. Returns `None` if pointer is null.
     ///
     /// # Safety
@@ -256,7 +273,7 @@ impl<C, A: Allocator> CBoxedSlice<C, A> {
     }
 }
 
-impl<C: ReprC> CBoxedSlice<C> {
+impl<C> CBoxedSlice<C> {
     /// Convert [`Self`] into a boxed slice. Return `None` if data pointer is null.
     /// Unlike [`Box::from_raw`], data pointer is allowed to be null.
     ///
@@ -272,13 +289,82 @@ impl<C: ReprC> CBoxedSlice<C> {
     }
 }
 
-reprC! {
-    unsafe impl(C: ReprC, A: Allocator) SizedRobust for CBox<C, A> {}
+macro_rules! impl_boxed_carrier {
+    ($ty:ident) => {
+        impl<C: ReprFamily, A: Allocator> ReprFamily for $ty<C, A> {
+            type Kind = C::Kind;
+        }
+        impl<C, A: Allocator> SizeFamily for $ty<C, A> {
+            type Kind = crate::size::Sized;
+        }
+        impl<C, A: Allocator> NicheFamily for $ty<C, A> {
+            type Kind = WithoutNiche;
+        }
+
+        unsafe impl<C: ReprC, A: Allocator> CheckedTransmute for $ty<C, A> {
+            #[inline(always)]
+            unsafe fn is_valid(_: &Self::CType) -> bool {
+                true
+            }
+        }
+
+        unsafe impl<C: ReprC, A: Allocator> ReprC for $ty<C, A> {}
+        unsafe impl<C: ReprC, A: Allocator> CFnArg for $ty<C, A> {}
+
+        impl<C: ReprC, A: Allocator> ExternC for $ty<C, A> {
+            type CType = Self;
+        }
+        impl<C: ReprC, A: Allocator> SoftEncodeOwned for $ty<C, A> {
+            type Store = ();
+
+            #[inline(always)]
+            fn soft_encode<'itm>(self, (): &mut ()) -> Self::CType
+            where
+                Self: 'itm,
+            {
+                self
+            }
+        }
+        impl<'d, C: ReprC, A: Allocator> SoftDecodeOwned<'d> for $ty<C, A> {
+            type Store = ();
+
+            #[inline(always)]
+            unsafe fn soft_decode<'itm: 'd>(source: Self::CType, (): &mut ()) -> Option<Self> {
+                Some(source)
+            }
+        }
+
+        impl<C, A: Allocator> Borrow for $ty<C, A> {
+            type Borrowed<'itm>
+                = Self
+            where
+                Self: 'itm;
+
+            type Owner = ();
+
+            #[inline(always)]
+            fn borrow<'itm>(self, (): &mut ()) -> Self::Borrowed<'itm>
+            where
+                Self: 'itm,
+            {
+                self
+            }
+        }
+        impl<'itm, C, A: Allocator> ToOwned<'itm> for $ty<C, A> {
+            #[inline(always)]
+            fn to_owned(source: Self) -> Self {
+                source
+            }
+        }
+
+        unsafe impl<C: Erase<Erased: Copy>, A: Allocator> Erase for $ty<C, A> {
+            type Erased = $ty<C::Erased>;
+        }
+    };
 }
 
-reprC! {
-    unsafe impl(C: ReprC, A: Allocator) SizedRobust for CBoxedSlice<C, A> {}
-}
+impl_boxed_carrier! { CBox }
+impl_boxed_carrier! { CBoxedSlice }
 
 unsafe impl<C: ReprC, A: Allocator> BorrowCast for CBox<C, A> {
     type AsConst = *const C;
