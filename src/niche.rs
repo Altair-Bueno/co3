@@ -309,12 +309,16 @@ mod tests {
     use static_assertions::{assert_impl_all, assert_not_impl_any};
 
     use super::*;
-    use crate::{ReprC, SoftDecode, SoftEncode, ir::ReprFamily, slice::CSlice};
+    use crate::{
+        ReprC, SoftDecode, SoftEncode,
+        ir::{NoRepr, ReprFamily},
+        slice::CSlice,
+    };
 
     #[test]
     fn nested_option_niche_family() {
         assert_impl_all!(Option<bool>:
-            ReprFamily<Kind = Option<bool>>,
+            ReprFamily<Kind = NoRepr>,
             NicheFamily<Kind = WithCustomNiche>,
             Niche<CType = u8>,
             SoftDecode<'static>,
@@ -324,7 +328,7 @@ mod tests {
         );
         assert_impl_all!(Option<Option<bool>>:
             NicheFamily<Kind = WithCustomNiche>,
-            ReprFamily<Kind = Option<Option<bool>>>,
+            ReprFamily<Kind = NoRepr>,
             Niche<CType = u8>,
             SoftDecode<'static>,
 
@@ -334,7 +338,7 @@ mod tests {
         // TODO: Depends on: https://github.com/mversic/co3/issues/33
         //assert_impl_all!(Option<(u8, NonZeroU8)>:
         //    NicheFamily<Kind = WithoutNiche>,
-        //    ReprFamily<Kind = Option<WithoutNiche>>,
+        //    ReprFamily<Kind = NoRepr>,
         //    ExternC<CType = CTuple2<u8, u8>>
         //);
 

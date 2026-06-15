@@ -904,7 +904,7 @@ fn gen_ir_impl<const ADD_COPY: bool>(
 
     quote! {
         co3::reprC! {
-            impl(#params) Stored for #type_name #ty_generics where (#predicates) {}
+            impl(#params) NoRepr for #type_name #ty_generics where (#predicates) {}
         }
 
         impl #impl_generics co3::ExternC for #type_name #ty_generics
@@ -1011,7 +1011,7 @@ fn gen_view_ir_impl<const ADD_COPY: bool>(
 
     quote! {
         co3::reprC! {
-            impl(#params) Stored for #view_name #ty_generics where (#predicates) {}
+            impl(#params) NoRepr for #view_name #ty_generics where (#predicates) {}
         }
 
         impl #impl_generics co3::ExternC for #view_name #ty_generics where

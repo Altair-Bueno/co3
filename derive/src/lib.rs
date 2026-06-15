@@ -99,9 +99,10 @@ enum DropImpl {
 ///
 /// # Attributes
 ///
-/// * `#[reprC(NICHE_VALUE = <expr>, unsafe(is_valid = |target| ...))]`
-/// customize [`co3::niche::Niche`] value and validation function for `#[repr(transparent)]` types.
-/// `NICHE_VALUE` can be ommitted in which case the implementation delegates to the wrapped type.
+/// * `#[reprC(NICHE_VALUE = <expr>)]`
+/// customizes [`co3::niche::Niche`] value.
+/// * `#[reprC(is_valid = |field| ...)]`
+/// on a field customizes validation for the decoded field.
 ///
 /// # Safety
 ///

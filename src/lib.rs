@@ -22,7 +22,7 @@ pub use impls::impls;
 use crate::boxed::{CBox, CBoxedSlice};
 use crate::{
     borrow::BorrowCast,
-    ir::{ReprFamily, Robust, Transmuted},
+    ir::{NoRepr, ReprFamily, Robust, Transmuted},
     niche::{Niche, NicheFamily, WithCustomNiche, WithoutNiche},
     option::COption,
     out_ptr::Zst,
@@ -146,7 +146,7 @@ disjoint_impls! {
 
     impl<R: ReprFamily<Kind = Robust> + SizeFamily<Kind = MetaSized<SliceLike>> + ?Sized> ExternC for &R
     where
-        Self: ReprFamily<Kind = Self>,
+        Self: ReprFamily<Kind = NoRepr>,
         R: Wide<Metadata = usize>,
         <R as Wide>::Data: ReprC,
     {
@@ -154,22 +154,22 @@ disjoint_impls! {
     }
     impl<'a, R: ReprFamily<Kind = Transmuted> + CheckedTransmute + ?Sized> ExternC for &'a R
     where
+        Self: ReprFamily<Kind = NoRepr>,
         &'a <R as CheckedTransmute>::Target: ExternC,
-        Self: ReprFamily<Kind = Self>,
     {
         type CType = <&'a R::Target as ExternC>::CType;
     }
-    impl<R: ReprFamily<Kind = R> + SizeFamily<Kind: Thin> + ExternC + ?Sized> ExternC for &R
+    impl<R: ReprFamily<Kind = NoRepr> + SizeFamily<Kind: Thin> + ExternC + ?Sized> ExternC for &R
     where
-        Self: ReprFamily<Kind = Self>,
+        Self: ReprFamily<Kind = NoRepr>,
     {
         type CType = *const R::CType;
     }
     #[cfg(feature = "alloc")]
-    impl<R: ReprFamily<Kind = R> + SizeFamily<Kind = MetaSized<K>> + ?Sized, K> ExternC for &R
+    impl<R: ReprFamily<Kind = NoRepr> + SizeFamily<Kind = MetaSized<K>> + ?Sized, K> ExternC for &R
     where
+        Self: ReprFamily<Kind = NoRepr>,
         R: ToOwned<Owned: ExternC<CType: BorrowCast>>,
-        Self: ReprFamily<Kind = Self>,
     {
         type CType = <<R::Owned as ExternC>::CType as BorrowCast>::AsConst;
     }
@@ -177,7 +177,7 @@ disjoint_impls! {
     impl<R: ReprFamily<Kind = Robust> + SizeFamily<Kind = MetaSized<SliceLike>> + ?Sized> ExternC
         for &mut R
     where
-        Self: ReprFamily<Kind = Self>,
+        Self: ReprFamily<Kind = NoRepr>,
         R: Wide<Metadata = usize>,
         <R as Wide>::Data: ReprC,
     {
@@ -185,22 +185,22 @@ disjoint_impls! {
     }
     impl<'a, R: ReprFamily<Kind = Transmuted> + CheckedTransmute + ?Sized> ExternC for &'a mut R
     where
+        Self: ReprFamily<Kind = NoRepr>,
         &'a mut <R as CheckedTransmute>::Target: ExternC,
-        Self: ReprFamily<Kind = Self>,
     {
         type CType = <&'a mut R::Target as ExternC>::CType;
     }
-    impl<R: ReprFamily<Kind = R> + SizeFamily<Kind: Thin> + ExternC + ?Sized> ExternC for &mut R
+    impl<R: ReprFamily<Kind = NoRepr> + SizeFamily<Kind: Thin> + ExternC + ?Sized> ExternC for &mut R
     where
-        Self: ReprFamily<Kind = Self>,
+        Self: ReprFamily<Kind = NoRepr>,
     {
         type CType = *mut R::CType;
     }
     #[cfg(feature = "alloc")]
-    impl<R: ReprFamily<Kind = R> + SizeFamily<Kind = MetaSized<K>> + ?Sized, K> ExternC for &mut R
+    impl<R: ReprFamily<Kind = NoRepr> + SizeFamily<Kind = MetaSized<K>> + ?Sized, K> ExternC for &mut R
     where
+        Self: ReprFamily<Kind = NoRepr>,
         R: ToOwned<Owned: ExternC<CType: BorrowCast>>,
-        Self: ReprFamily<Kind = Self>,
     {
         type CType = <<R::Owned as ExternC>::CType as BorrowCast>::AsMut;
     }
@@ -209,7 +209,7 @@ disjoint_impls! {
     impl<R: ReprFamily<Kind = Robust> + SizeFamily<Kind = MetaSized<SliceLike>> + ?Sized> ExternC
         for Box<R>
     where
-        Self: ReprFamily<Kind = Self>,
+        Self: ReprFamily<Kind = NoRepr>,
         R: Wide<Metadata = usize>,
         <R as Wide>::Data: ReprC,
     {
@@ -218,24 +218,24 @@ disjoint_impls! {
     #[cfg(feature = "alloc")]
     impl<R: ReprFamily<Kind = Transmuted> + CheckedTransmute + ?Sized> ExternC for Box<R>
     where
+        Self: ReprFamily<Kind = NoRepr>,
         Box<<R as CheckedTransmute>::Target>: ExternC,
-        Self: ReprFamily<Kind = Self>,
     {
         type CType = <Box<R::Target> as ExternC>::CType;
     }
     #[cfg(feature = "alloc")]
-    impl<R: ReprFamily<Kind = R> + SizeFamily<Kind = crate::size::Sized> + ExternC> ExternC for Box<R>
+    impl<R: ReprFamily<Kind = NoRepr> + SizeFamily<Kind = crate::size::Sized> + ExternC> ExternC for Box<R>
     where
-        Self: ReprFamily<Kind = Self>,
+        Self: ReprFamily<Kind = NoRepr>,
         <R as ExternC>::CType: Copy,
     {
         type CType = CBox<R::CType>;
     }
     #[cfg(feature = "alloc")]
-    impl<R: ReprFamily<Kind = R> + SizeFamily<Kind = MetaSized<K>> + ?Sized, K> ExternC for Box<R>
+    impl<R: ReprFamily<Kind = NoRepr> + SizeFamily<Kind = MetaSized<K>> + ?Sized, K> ExternC for Box<R>
     where
+        Self: ReprFamily<Kind = NoRepr>,
         R: ToOwned<Owned: ExternC>,
-        Self: ReprFamily<Kind = Self>,
     {
         type CType = <R::Owned as ExternC>::CType;
     }
@@ -243,23 +243,23 @@ disjoint_impls! {
     #[cfg(feature = "alloc")]
     impl<R: ReprFamily<Kind = Robust> + ReprC> ExternC for Vec<R>
     where
-        Self: ReprFamily<Kind = Self>,
+        Self: ReprFamily<Kind = NoRepr>,
     {
         type CType = <Box<[R]> as ExternC>::CType;
     }
     #[cfg(feature = "alloc")]
     impl<R: ReprFamily<Kind = Transmuted>> ExternC for Vec<R>
     where
-        Self: ReprFamily<Kind = Self>,
+        Self: ReprFamily<Kind = NoRepr>,
         // TODO: rewrite bound like for ReprC
         Box<[R]>: ExternC,
     {
         type CType = <Box<[R]> as ExternC>::CType;
     }
     #[cfg(feature = "alloc")]
-    impl<R: ReprFamily<Kind = R> + ExternC> ExternC for Vec<R>
+    impl<R: ReprFamily<Kind = NoRepr> + ExternC> ExternC for Vec<R>
     where
-        Self: ReprFamily<Kind = Self>,
+        Self: ReprFamily<Kind = NoRepr>,
         <R as ExternC>::CType: Copy,
     {
         type CType = CBoxedSlice<R::CType>;
@@ -267,7 +267,7 @@ disjoint_impls! {
 
     impl<R: ExternC, const N: usize> ExternC for [R; N]
     where
-        Self: ReprFamily<Kind = Self>,
+        Self: ReprFamily<Kind = NoRepr>,
         <R as ExternC>::CType: Copy,
     {
         type CType = [R::CType; N];
@@ -275,14 +275,14 @@ disjoint_impls! {
 
     impl<R: NicheFamily<Kind = WithoutNiche> + ExternC> ExternC for Option<R>
     where
-        Self: ReprFamily<Kind = Self>,
+        Self: ReprFamily<Kind = NoRepr>,
         <R as ExternC>::CType: Copy,
     {
         type CType = COption<R::CType>;
     }
     impl<R: NicheFamily<Kind = WithCustomNiche> + Niche> ExternC for Option<R>
     where
-        Self: ReprFamily<Kind = Self>,
+        Self: ReprFamily<Kind = NoRepr>,
     {
         type CType = R::CType;
     }
@@ -293,7 +293,7 @@ disjoint_impls! {
     >
         ExternC for Result<R, E>
     where
-        Self: ReprFamily<Kind = Self>,
+        Self: ReprFamily<Kind = NoRepr>,
         <R as ExternC>::CType: Copy,
         <E as ExternC>::CType: Copy,
     {
@@ -325,33 +325,33 @@ disjoint_impls! {
 
     impl<'a, R: ?Sized> SoftEncode for &'a R
     where
-        Self: ReprFamily<Kind = Self> + SoftEncodeOwned,
+        Self: ReprFamily<Kind = NoRepr> + SoftEncodeOwned,
     {}
 
     impl<'a, R: ?Sized> SoftEncode for &'a mut R
     where
-        Self: ReprFamily<Kind = Self> + SoftEncodeOwned,
+        Self: ReprFamily<Kind = NoRepr> + SoftEncodeOwned,
     {}
 
     #[cfg(feature = "alloc")]
     impl<R: ReprFamily<Kind: RobustOrTransmuted> + ?Sized> SoftEncode for Box<R>
     where
-        Self: ReprFamily<Kind = Self> + SoftEncodeOwned,
+        Self: ReprFamily<Kind = NoRepr> + SoftEncodeOwned,
     {}
 
     impl<R, const N: usize> SoftEncode for [R; N]
     where
-        Self: ReprFamily<Kind = Self> + SoftEncodeOwned,
+        Self: ReprFamily<Kind = NoRepr> + SoftEncodeOwned,
     {}
 
     impl<R> SoftEncode for Option<R>
     where
-        Self: ReprFamily<Kind = Self> + SoftEncodeOwned,
+        Self: ReprFamily<Kind = NoRepr> + SoftEncodeOwned,
     {}
 
     impl<R, E> SoftEncode for Result<R, E>
     where
-        Self: ReprFamily<Kind = Self> + SoftEncodeOwned,
+        Self: ReprFamily<Kind = NoRepr> + SoftEncodeOwned,
     {}
     // TODO: Implement for niche optimized Results
 }
@@ -382,33 +382,33 @@ disjoint_impls! {
 
     impl<'d, R: ?Sized> SoftDecode<'d> for &'d R
     where
-        Self: ReprFamily<Kind = Self> + SoftDecodeOwned<'d>,
+        Self: ReprFamily<Kind = NoRepr> + SoftDecodeOwned<'d>,
     {}
 
     impl<'d, R: ?Sized> SoftDecode<'d> for &'d mut R
     where
-        Self: ReprFamily<Kind = Self> + SoftDecodeOwned<'d>,
+        Self: ReprFamily<Kind = NoRepr> + SoftDecodeOwned<'d>,
     {}
 
     #[cfg(feature = "alloc")]
     impl<'d, R: ReprFamily<Kind: RobustOrTransmuted> + ?Sized> SoftDecode<'d> for Box<R>
     where
-        Self: ReprFamily<Kind = Self> + SoftDecodeOwned<'d>,
+        Self: ReprFamily<Kind = NoRepr> + SoftDecodeOwned<'d>,
     {}
 
     impl<'d, R, const N: usize> SoftDecode<'d> for [R; N]
     where
-        Self: ReprFamily<Kind = Self> + SoftDecodeOwned<'d>,
+        Self: ReprFamily<Kind = NoRepr> + SoftDecodeOwned<'d>,
     {}
 
     impl<'d, R> SoftDecode<'d> for Option<R>
     where
-        Self: ReprFamily<Kind = Self> + SoftDecodeOwned<'d>,
+        Self: ReprFamily<Kind = NoRepr> + SoftDecodeOwned<'d>,
     {}
 
     impl<'d, R, E> SoftDecode<'d> for Result<R, E>
     where
-        Self: ReprFamily<Kind = Self> + SoftDecodeOwned<'d>,
+        Self: ReprFamily<Kind = NoRepr> + SoftDecodeOwned<'d>,
     {}
     // TODO: Implement for niche optimized Results
 }
@@ -463,7 +463,7 @@ where
     }
 }
 
-/// Macro for defining FFI types of a known category ([`Robust`], [`Transmuted`] or [`Stored`]).
+/// Macro for defining FFI types of a known category ([`Robust`], [`Transmuted`] or [`NoRepr`]).
 ///
 /// The implementation for an FFI type of one of the categories incurs a lot of bloat that
 /// is reduced by the use of this macro
@@ -522,7 +522,7 @@ where
 /// co3::reprC! {
 ///     // To use this type one still has to implement
 ///     // a suite of additional conversion traits
-///     impl(T: ?Sized) Stored for NoRepr<T> {}
+///     impl(T: ?Sized) NoRepr for NoRepr<T> {}
 /// }
 ///
 ///
@@ -634,13 +634,13 @@ macro_rules! reprC {
         }
     };
 
-    (impl $(( $($params:tt)* ))? Stored for $self_ty:ty $(where ($($preds:tt)*))? {}) => {
+    (impl $(( $($params:tt)* ))? NoRepr for $self_ty:ty $(where ($($preds:tt)*))? {}) => {
         $crate::reprC! { @stored_common [$($($params)*)?] $self_ty $([$($preds)*])? {} }
     };
 
     (@stored_common [$($params:tt)*] $self_ty:ty $([$($preds:tt)*])? {}) => {
         impl<$($params)*> $crate::ir::ReprFamily for $self_ty $(where $($preds)*)? {
-            type Kind = Self;
+            type Kind = $crate::ir::NoRepr;
         }
     };
 
@@ -1031,16 +1031,16 @@ reprC! {
     // a custom wrapper type for extern pointers which would also prevent users to access
     // the pointer or we can disptch here on the ReprFamily
     // FIXME: ReprC should be the bound on other CBox/CBoxedSlice/CSlice/etc
-    unsafe impl(R: ReprC + ?Sized) SizedRobust for *const R {}
+    unsafe impl(R: ?Sized) SizedRobust for *const R {}
 }
-unsafe impl<R: ReprC + ?Sized> BorrowCast for *const R {
+unsafe impl<R: ?Sized> BorrowCast for *const R {
     type AsConst = Self;
     type AsMut = Self;
 }
 reprC! {
-    unsafe impl(R: ReprC + ?Sized) SizedRobust for *mut R {}
+    unsafe impl(R: ?Sized) SizedRobust for *mut R {}
 }
-unsafe impl<R: ReprC + ?Sized> BorrowCast for *mut R {
+unsafe impl<R: ?Sized> BorrowCast for *mut R {
     type AsConst = Self;
     type AsMut = Self;
 }
@@ -1098,14 +1098,14 @@ mod tests {
         //    SoftEncode,
         //);
         assert_impl_all!(&[u8]:
-            ReprFamily<Kind = &'static [u8]>,
+            ReprFamily<Kind = NoRepr>,
             NicheFamily<Kind = WithCustomNiche>,
             Niche<CType = CSlice<u8>>,
             SoftDecode<'static>,
             SoftEncode,
         );
         assert_impl_all!(&mut [u8]:
-            ReprFamily<Kind = &'static mut [u8]>,
+            ReprFamily<Kind = NoRepr>,
             NicheFamily<Kind = WithCustomNiche>,
             Niche<CType = CSliceMut<u8>>,
             SoftDecode<'static>,
@@ -1113,7 +1113,7 @@ mod tests {
         );
         #[cfg(feature = "alloc")]
         assert_impl_all!(Box<[u8]>:
-            ReprFamily<Kind = Box<[u8]>>,
+            ReprFamily<Kind = NoRepr>,
             NicheFamily<Kind = WithCustomNiche>,
             Niche<CType = CBoxedSlice<u8>>,
             // FIXME:
@@ -1122,7 +1122,7 @@ mod tests {
         );
         #[cfg(feature = "alloc")]
         assert_impl_all!(Vec<u8>:
-            ReprFamily<Kind = Vec<u8>>,
+            ReprFamily<Kind = NoRepr>,
             NicheFamily<Kind = WithCustomNiche>,
             Niche<CType = CBoxedSlice<u8>>,
             // FIXME:
@@ -1137,7 +1137,7 @@ mod tests {
             ReprC,
         );
         assert_impl_all!(Option<u8>:
-            ReprFamily<Kind = Option<u8>>,
+            ReprFamily<Kind = NoRepr>,
             NicheFamily<Kind = WithCustomNiche>,
             Niche<CType = COption<u8>>,
             SoftDecode<'static>,

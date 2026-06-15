@@ -1,8 +1,9 @@
 //! Logic related to the conversion of primitives to and from FFI-compatible representation
 
 use crate::{
-    CFnArg, CFnReturn, ReprC, ReprFamily,
+    CFnArg, CFnReturn, ReprC,
     borrow::{Borrow, BorrowCast, ToOwned},
+    ir::{NoRepr, ReprFamily},
     reprC,
     stored::SoftEncodeOwned,
 };
@@ -86,10 +87,10 @@ macro_rules! impl_fn_types {
         unsafe impl<$($arg: CFnArg,)* R: CFnReturn> ReprC for unsafe extern "C" fn($($arg),*) -> R {}
 
         impl<$($arg,)* R> ReprFamily for unsafe extern "C" fn($($arg),*) -> R {
-            type Kind = Self;
+            type Kind = NoRepr;
         }
         //impl<$($arg),*> ReprFamily for unsafe extern "C" fn($($arg),*) {
-        //    type Kind = Self;
+        //    type Kind = NoRepr;
         //}
 
         impl<$($arg: CFnArg,)* R: CFnReturn> crate::ExternC for unsafe extern "C" fn($($arg),*) -> R {

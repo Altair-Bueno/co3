@@ -10,13 +10,12 @@ use core::{
 #[cfg(feature = "alloc")]
 use crate::boxed::CBoxedSlice;
 use crate::{
-    ReprC,
+    ExternC, ReprC,
     borrow::{Borrow, BorrowCast, ToOwned},
-    ir::EncodeReprFamily,
-    ir::{ReprFamily, Robust, Transmuted},
+    ir::{EncodeReprFamily, NoRepr, ReprFamily, Robust, Transmuted},
     niche::{Niche, NicheFamily, StableNiche, WithCustomNiche, WithStableNiche, WithoutNiche},
     reprC,
-    size::{ExternTypeLike, MetaSized, SizeFamily, SliceLike},
+    size::{MetaSized, SizeFamily, SliceLike},
     transmute::CheckedTransmute,
 };
 
@@ -193,8 +192,8 @@ impl SizeFamily for String {
     type Kind = crate::size::Sized;
 }
 
-impl<T: ?Sized> ReprFamily for UnsafeCell<T> {
-    type Kind = Transmuted;
+impl<T: ReprFamily + ?Sized> ReprFamily for UnsafeCell<T> {
+    type Kind = T::Kind;
 }
 impl<T: EncodeReprFamily + ?Sized> EncodeReprFamily for UnsafeCell<T> {
     type Kind = <T as EncodeReprFamily>::Kind;
@@ -225,7 +224,16 @@ impl NicheFamily for String {
     type Kind = WithCustomNiche;
 }
 
-unsafe impl<T: ?Sized> CheckedTransmute for UnsafeCell<T> {
+//impl<T: ReprFamily<Kind = NoRepr> + ExternC + ?Sized> ExternC for UnsafeCell<T>
+//where
+//    Self: ReprFamily<Kind = NoRepr>,
+//{
+//    type CType = T::CType;
+//}
+unsafe impl<T: ?Sized> CheckedTransmute for UnsafeCell<T>
+where
+    Self: ReprFamily<Kind = Transmuted>,
+{
     type Target = T;
 
     #[inline(always)]
@@ -272,6 +280,7 @@ mod tests {
 
     #[cfg(feature = "alloc")]
     use crate::boxed::CBoxedSlice;
+    use crate::ir::NoRepr;
     use crate::{
         ExternC, SoftDecode, SoftEncode,
         option::COption,
@@ -286,7 +295,7 @@ mod tests {
         );
 
         assert_impl_all!(&str:
-            ReprFamily<Kind = &'static str>,
+            ReprFamily<Kind = NoRepr>,
             NicheFamily<Kind = WithCustomNiche>,
             //Niche<CType = CSlice<u8>>,
             //SoftDecode<'static>,
@@ -330,21 +339,21 @@ mod tests {
         //    SoftEncode,
         //);
         assert_impl_all!(&[UnsafeCell<NonZeroU8>]:
-            ReprFamily<Kind = &'static [UnsafeCell<NonZeroU8>]>,
+            ReprFamily<Kind = NoRepr>,
             NicheFamily<Kind = WithCustomNiche>,
             Niche<CType = CSlice<u8>>,
             SoftDecode<'static>,
             SoftEncode,
         );
         assert_impl_all!(&mut [UnsafeCell<NonZeroU8>]:
-            ReprFamily<Kind = &'static mut [UnsafeCell<NonZeroU8>]>,
+            ReprFamily<Kind = NoRepr>,
             NicheFamily<Kind = WithCustomNiche>,
             Niche<CType = CSliceMut<u8>>,
             SoftDecode<'static>,
         );
         #[cfg(feature = "alloc")]
         assert_impl_all!(Box<[UnsafeCell<NonZeroU8>]>:
-            ReprFamily<Kind = Box<[UnsafeCell<NonZeroU8>]>>,
+            ReprFamily<Kind = NoRepr>,
             NicheFamily<Kind = WithCustomNiche>,
             Niche<CType = CBoxedSlice<u8>>,
             // FIXME:
@@ -353,7 +362,7 @@ mod tests {
         );
         #[cfg(feature = "alloc")]
         assert_impl_all!(Vec<UnsafeCell<NonZeroU8>>:
-            ReprFamily<Kind = Vec<UnsafeCell<NonZeroU8>>>,
+            ReprFamily<Kind = NoRepr>,
             NicheFamily<Kind = WithCustomNiche>,
             Niche<CType = CBoxedSlice<u8>>,
             // FIXME:
@@ -368,7 +377,7 @@ mod tests {
             SoftEncode,
         );
         assert_impl_all!(Option<UnsafeCell<NonZeroU8>>:
-            ReprFamily<Kind = Option<UnsafeCell<NonZeroU8>>>,
+            ReprFamily<Kind = NoRepr>,
             NicheFamily<Kind = WithCustomNiche>,
             Niche<CType = COption<u8>>,
             SoftDecode<'static>,

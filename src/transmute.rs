@@ -330,7 +330,7 @@ mod tests {
     use crate::boxed::CBoxedSlice;
     use crate::{
         Decode, Encode, ExternC,
-        ir::{ReprFamily, Transmuted},
+        ir::{NoRepr, ReprFamily, Transmuted},
         niche::{Niche, NicheFamily, StableNiche, WithCustomNiche, WithStableNiche, WithoutNiche},
         slice::{CSlice, CSliceMut},
     };
@@ -369,14 +369,14 @@ mod tests {
             Encode,
         );
         assert_impl_all!(&[bool]:
-            ReprFamily<Kind = &'static [bool]>,
+            ReprFamily<Kind = NoRepr>,
             NicheFamily<Kind = WithCustomNiche>,
             Niche<CType = CSlice<u8>>,
             Decode<'static>,
             Encode,
         );
         assert_impl_all!(&mut [bool]:
-            ReprFamily<Kind = &'static mut [bool]>,
+            ReprFamily<Kind = NoRepr>,
             NicheFamily<Kind = WithCustomNiche>,
             Niche<CType = CSliceMut<u8>>,
             Decode<'static>,
@@ -384,7 +384,7 @@ mod tests {
         );
         #[cfg(feature = "alloc")]
         assert_impl_all!(Box<[bool]>:
-            ReprFamily<Kind = Box<[bool]>>,
+            ReprFamily<Kind = NoRepr>,
             NicheFamily<Kind = WithCustomNiche>,
             Niche<CType = CBoxedSlice<u8>>,
             Decode<'static>,
@@ -392,7 +392,7 @@ mod tests {
         );
         #[cfg(feature = "alloc")]
         assert_impl_all!(Vec<bool>:
-            ReprFamily<Kind = Vec<bool>>,
+            ReprFamily<Kind = NoRepr>,
             NicheFamily<Kind = WithCustomNiche>,
             Niche<CType = CBoxedSlice<u8>>,
             Decode<'static>,
@@ -406,7 +406,7 @@ mod tests {
             Encode,
         );
         assert_impl_all!(Option<bool>:
-            ReprFamily<Kind = Option<bool>>,
+            ReprFamily<Kind = NoRepr>,
             NicheFamily<Kind = WithCustomNiche>,
             Niche<CType = u8>,
             Decode<'static>,
@@ -447,21 +447,21 @@ mod tests {
             Encode,
         );
         assert_impl_all!(&[&u8]:
-            ReprFamily<Kind = &'static [&'static u8]>,
+            ReprFamily<Kind = NoRepr>,
             NicheFamily<Kind = WithCustomNiche>,
             Niche<CType = CSlice<*const u8>>,
             Decode<'static>,
             Encode,
         );
         assert_impl_all!(&mut [&u8]:
-            ReprFamily<Kind = &'static mut [&'static u8]>,
+            ReprFamily<Kind = NoRepr>,
             NicheFamily<Kind = WithCustomNiche>,
             Niche<CType = CSliceMut<*const u8>>,
             Decode<'static>,
         );
         #[cfg(feature = "alloc")]
         assert_impl_all!(Box<[&u8]>:
-            ReprFamily<Kind = Box<[&'static u8]>>,
+            ReprFamily<Kind = NoRepr>,
             NicheFamily<Kind = WithCustomNiche>,
             Niche<CType = CBoxedSlice<*const u8>>,
             // FIXME:
@@ -471,7 +471,7 @@ mod tests {
         );
         #[cfg(feature = "alloc")]
         assert_impl_all!(Vec<&u8>:
-            ReprFamily<Kind = Vec<&'static u8>>,
+            ReprFamily<Kind = NoRepr>,
             NicheFamily<Kind = WithCustomNiche>,
             Niche<CType = CBoxedSlice<*const u8>>,
             Decode<'static>,
@@ -526,14 +526,14 @@ mod tests {
             Encode,
         );
         assert_impl_all!(&[&bool]:
-            ReprFamily<Kind = &'static [&'static bool]>,
+            ReprFamily<Kind = NoRepr>,
             NicheFamily<Kind = WithCustomNiche>,
             Niche<CType = CSlice<*const u8>>,
             Decode<'static>,
             Encode,
         );
         assert_impl_all!(&mut [&bool]:
-            ReprFamily<Kind = &'static mut [&'static bool]>,
+            ReprFamily<Kind = NoRepr>,
             NicheFamily<Kind = WithCustomNiche>,
             Niche<CType = CSliceMut<*const u8>>,
             Decode<'static>,
@@ -541,7 +541,7 @@ mod tests {
         );
         #[cfg(feature = "alloc")]
         assert_impl_all!(Box<[&bool]>:
-            ReprFamily<Kind = Box<[&'static bool]>>,
+            ReprFamily<Kind = NoRepr>,
             NicheFamily<Kind = WithCustomNiche>,
             Niche<CType = CBoxedSlice<*const u8>>,
             // FIXME:
@@ -551,7 +551,7 @@ mod tests {
         );
         #[cfg(feature = "alloc")]
         assert_impl_all!(Vec<&bool>:
-            ReprFamily<Kind = Vec<&'static bool>>,
+            ReprFamily<Kind = NoRepr>,
             NicheFamily<Kind = WithCustomNiche>,
             Niche<CType = CBoxedSlice<*const u8>>,
             Decode<'static>,
@@ -605,14 +605,14 @@ mod tests {
             Encode,
         );
         assert_impl_all!(&[&mut u8]:
-            ReprFamily<Kind = &'static [&'static mut u8]>,
+            ReprFamily<Kind = NoRepr>,
             NicheFamily<Kind = WithCustomNiche>,
             Niche<CType = CSlice<*mut u8>>,
             Decode<'static>,
             Encode,
         );
         assert_impl_all!(&mut [&mut u8]:
-            ReprFamily<Kind = &'static mut [&'static mut u8]>,
+            ReprFamily<Kind = NoRepr>,
             NicheFamily<Kind = WithCustomNiche>,
             Niche<CType = CSliceMut<*mut u8>>,
             Decode<'static>,
@@ -620,7 +620,7 @@ mod tests {
         );
         #[cfg(feature = "alloc")]
         assert_impl_all!(Box<[&mut u8]>:
-            ReprFamily<Kind = Box<[&'static mut u8]>>,
+            ReprFamily<Kind = NoRepr>,
             NicheFamily<Kind = WithCustomNiche>,
             Niche<CType = CBoxedSlice<*mut u8>>,
             // FIXME:
@@ -630,7 +630,7 @@ mod tests {
         );
         #[cfg(feature = "alloc")]
         assert_impl_all!(Vec<&mut u8>:
-            ReprFamily<Kind = Vec<&'static mut u8>>,
+            ReprFamily<Kind = NoRepr>,
             NicheFamily<Kind = WithCustomNiche>,
             Niche<CType = CBoxedSlice<*mut u8>>,
             Decode<'static>,
@@ -685,14 +685,14 @@ mod tests {
             Encode,
         );
         assert_impl_all!(&[&mut bool]:
-            ReprFamily<Kind = &'static [&'static mut bool]>,
+            ReprFamily<Kind = NoRepr>,
             NicheFamily<Kind = WithCustomNiche>,
             Niche<CType = CSlice<*mut u8>>,
             Decode<'static>,
             Encode,
         );
         assert_impl_all!(&mut [&mut bool]:
-            ReprFamily<Kind = &'static mut [&'static mut bool]>,
+            ReprFamily<Kind = NoRepr>,
             NicheFamily<Kind = WithCustomNiche>,
             Niche<CType = CSliceMut<*mut u8>>,
             Decode<'static>,
@@ -700,7 +700,7 @@ mod tests {
         );
         #[cfg(feature = "alloc")]
         assert_impl_all!(Box<[&mut bool]>:
-            ReprFamily<Kind = Box<[&'static mut bool]>>,
+            ReprFamily<Kind = NoRepr>,
             NicheFamily<Kind = WithCustomNiche>,
             Niche<CType = CBoxedSlice<*mut u8>>,
             // FIXME:
@@ -710,7 +710,7 @@ mod tests {
         );
         #[cfg(feature = "alloc")]
         assert_impl_all!(Vec<&mut bool>:
-            ReprFamily<Kind = Vec<&'static mut bool>>,
+            ReprFamily<Kind = NoRepr>,
             NicheFamily<Kind = WithCustomNiche>,
             Niche<CType = CBoxedSlice<*mut u8>>,
             Decode<'static>,

@@ -5,7 +5,7 @@
 //! automatic, correct, and zero-cost conversions from IR to the equivalent C type.
 #[cfg(feature = "alloc")]
 use alloc_crate::{boxed::Box, vec::Vec};
-use core::ops::Add;
+use core::{cell::UnsafeCell, ops::Add};
 
 use disjoint_impls::disjoint_impls;
 
@@ -19,6 +19,9 @@ pub enum Robust {}
 
 /// Marker for a type that can is transmuted to another type and thus delegates it's conversion
 pub enum Transmuted {}
+
+/// Marker for a type that don't have a guaranteed representation and require explicit conversion
+pub enum NoRepr {}
 
 disjoint_impls! {
     /// Type that can be converted to and from an internal representation (IR).
@@ -41,7 +44,7 @@ disjoint_impls! {
         /// - If [`ReprFamily::Kind`] is [`Option<WithoutNiche>`], serialization is delegated to the
         ///   inner type, but represented explicitly as a `(discriminant, value)` tuple.
         ///
-        /// - In the common case, set [`ReprFamily::Kind`] to `Self`
+        /// - If [`ReprFamily::Kind`] is [`NoRepr`], `Self` must provide hand-written impl of [`crate::ExternC`]
         ///   This provides a default [`crate::ExternC`] implementation, but note that it will store the type.
         type Kind: ?Sized;
     }
@@ -52,40 +55,40 @@ disjoint_impls! {
     impl<R: ReprFamily<Kind = Transmuted>> ReprFamily for [R] {
         type Kind = Transmuted;
     }
-    impl<R: ReprFamily<Kind = R>> ReprFamily for [R] {
-        type Kind = Self;
+    impl<R: ReprFamily<Kind = NoRepr>> ReprFamily for [R] {
+        type Kind = NoRepr;
     }
 
     impl<R: ReprFamily<Kind = Robust> + SizeFamily<Kind: Thin>> ReprFamily for &R {
         type Kind = Transmuted;
     }
     impl<R: ReprFamily<Kind = Robust> + SizeFamily<Kind = MetaSized<K>> + ?Sized, K> ReprFamily for &R {
-        type Kind = Self;
+        type Kind = NoRepr;
     }
     impl<R: ReprFamily<Kind = Transmuted> + SizeFamily<Kind: Thin>> ReprFamily for &R {
         type Kind = Transmuted;
     }
     impl<R: ReprFamily<Kind = Transmuted> + SizeFamily<Kind = MetaSized<K>> + ?Sized, K> ReprFamily for &R {
-        type Kind = Self;
+        type Kind = NoRepr;
     }
-    impl<R: ReprFamily<Kind = R> + ?Sized> ReprFamily for &R {
-        type Kind = Self;
+    impl<R: ReprFamily<Kind = NoRepr> + ?Sized> ReprFamily for &R {
+        type Kind = NoRepr;
     }
 
     impl<R: ReprFamily<Kind = Robust> + SizeFamily<Kind: Thin>> ReprFamily for &mut R {
         type Kind = Transmuted;
     }
     impl<R: ReprFamily<Kind = Robust> + SizeFamily<Kind = MetaSized<K>> + ?Sized, K> ReprFamily for &mut R {
-        type Kind = Self;
+        type Kind = NoRepr;
     }
     impl<R: ReprFamily<Kind = Transmuted> + SizeFamily<Kind: Thin>> ReprFamily for &mut R {
         type Kind = Transmuted;
     }
     impl<R: ReprFamily<Kind = Transmuted> + SizeFamily<Kind = MetaSized<K>> + ?Sized, K> ReprFamily for &mut R {
-        type Kind = Self;
+        type Kind = NoRepr;
     }
-    impl<R: ReprFamily<Kind = R> + ?Sized> ReprFamily for &mut R {
-        type Kind = Self;
+    impl<R: ReprFamily<Kind = NoRepr> + ?Sized> ReprFamily for &mut R {
+        type Kind = NoRepr;
     }
 
     #[cfg(feature = "alloc")]
@@ -94,7 +97,7 @@ disjoint_impls! {
     }
     #[cfg(feature = "alloc")]
     impl<R: ReprFamily<Kind = Robust> + SizeFamily<Kind = MetaSized<K>> + ?Sized, K> ReprFamily for Box<R> {
-        type Kind = Self;
+        type Kind = NoRepr;
     }
     #[cfg(feature = "alloc")]
     impl<R: ReprFamily<Kind = Transmuted> + SizeFamily<Kind = crate::size::Sized>> ReprFamily for Box<R> {
@@ -102,11 +105,11 @@ disjoint_impls! {
     }
     #[cfg(feature = "alloc")]
     impl<R: ReprFamily<Kind = Transmuted> + SizeFamily<Kind = MetaSized<K>> + ?Sized, K> ReprFamily for Box<R> {
-        type Kind = Self;
+        type Kind = NoRepr;
     }
     #[cfg(feature = "alloc")]
-    impl<R: ReprFamily<Kind = R> + ?Sized> ReprFamily for Box<R> {
-        type Kind = Self;
+    impl<R: ReprFamily<Kind = NoRepr> + ?Sized> ReprFamily for Box<R> {
+        type Kind = NoRepr;
     }
 
     impl<R: ReprFamily<Kind = Robust>, const N: usize> ReprFamily for [R; N] {
@@ -115,35 +118,35 @@ disjoint_impls! {
     impl<R: ReprFamily<Kind = Transmuted>, const N: usize> ReprFamily for [R; N] {
         type Kind = Transmuted;
     }
-    impl<R: ReprFamily<Kind = R>, const N: usize> ReprFamily for [R; N] {
-        type Kind = Self;
+    impl<R: ReprFamily<Kind = NoRepr>, const N: usize> ReprFamily for [R; N] {
+        type Kind = NoRepr;
     }
 
     impl<R: ReprFamily<Kind = Robust>> ReprFamily for Option<R> {
-        type Kind = Self;
+        type Kind = NoRepr;
     }
     impl<R: ReprFamily<Kind = Transmuted> + NicheFamily<Kind = WithoutNiche>> ReprFamily for Option<R> {
-        type Kind = Self;
+        type Kind = NoRepr;
     }
     impl<R: ReprFamily<Kind = Transmuted> + NicheFamily<Kind = WithCustomNiche>> ReprFamily for Option<R> {
-        type Kind = Self;
+        type Kind = NoRepr;
     }
     impl<R: ReprFamily<Kind = Transmuted> + NicheFamily<Kind = WithStableNiche>> ReprFamily for Option<R> {
         // TODO: Sometimes it should be mapped to Robust when R has 1 niche
         // https://github.com/mversic/co3/issues/33
         type Kind = Transmuted;
     }
-    impl<R: ReprFamily<Kind = R>> ReprFamily for Option<R> {
-        type Kind = Self;
+    impl<R: ReprFamily<Kind = NoRepr>> ReprFamily for Option<R> {
+        type Kind = NoRepr;
     }
     // TODO: Make a test. I think the example type is &Box<u8>
     // Should it become Stored in this case? Likewise for Result
-    //impl<R: ReprFamily<Kind = R> + NicheFamily<Kind = WithStableNiche>> ReprFamily for Option<R> {
-    //    type Kind = Self;
+    //impl<R: ReprFamily<Kind = NoRepr> + NicheFamily<Kind = WithStableNiche>> ReprFamily for Option<R> {
+    //    type Kind = NoRepr;
     //}
 
     impl<R: NicheFamily<Kind = WithoutNiche>, E: NicheFamily<Kind = WithoutNiche>> ReprFamily for Result<R, E> {
-        type Kind = Self;
+        type Kind = NoRepr;
     }
     // TODO: Implement for niche optimized Results
 }
@@ -156,8 +159,8 @@ disjoint_impls! {
     //impl<R: ReprFamily<Kind = Robust> + ?Sized> EncodeReprFamily for R {
     //    type Kind = Robust;
     //}
-    //impl<R: ReprFamily<Kind = Self> + ?Sized> EncodeReprFamily for R {
-    //    type Kind = Self;
+    //impl<R: ReprFamily<Kind = NoRepr> + ?Sized> EncodeReprFamily for R {
+    //    type Kind = NoRepr;
     //}
 
     impl<R: EncodeReprFamily> EncodeReprFamily for [R]
@@ -174,35 +177,33 @@ disjoint_impls! {
         type Kind = <R as EncodeReprFamily>::Kind;
     }
 
-    // FIXME: &mut UnsafeCell<R> will go through here and be wrong. This
-    // means that using niche family to disambiguate is not correct
-    impl<R: NicheFamily<Kind = WithoutNiche> + ?Sized> EncodeReprFamily for &mut R
+    impl<R: ReprFamily<Kind = Robust> + ?Sized> EncodeReprFamily for &mut R
     where
         Self: ReprFamily<Kind = Transmuted>,
     {
         type Kind = Transmuted;
     }
-    impl<R: NicheFamily<Kind: WithNiche> + ?Sized> EncodeReprFamily for &mut R
+    impl<R: ReprFamily<Kind = Transmuted> + ?Sized> EncodeReprFamily for &mut R
     where
         Self: ReprFamily<Kind = Transmuted>,
     {
         // TODO: With a `Unchecked<T>` wrapper we can transmute this
-        type Kind = Self;
+        type Kind = NoRepr;
     }
 
     // FIXME: &UnsafeCell should be distinguished as a mutable reference type
-    //impl<R: NicheFamily<Kind = WithoutNiche> + ?Sized> EncodeReprFamily for &UnsafeCell<R>
+    //impl<R: ReprFamily<Kind = Robust> + ?Sized> EncodeReprFamily for &UnsafeCell<R>
     //where
     //    Self: ReprFamily<Kind = Transmuted>,
     //{
     //    type Kind = Transmuted;
     //}
-    //impl<R: NicheFamily<Kind: WithNiche> + ?Sized> EncodeReprFamily for &UnsafeCell<R>
+    //impl<R: NicheFamily<Kind = Transmuted> + ?Sized> EncodeReprFamily for &UnsafeCell<R>
     //where
     //    Self: ReprFamily<Kind = Transmuted>,
     //{
     //    // TODO: With a `Unchecked<T>` wrapper we can transmute this
-    //    type Kind = Self;
+    //    type Kind = NoRepr;
     //}
 
     #[cfg(feature = "alloc")]
@@ -230,11 +231,11 @@ disjoint_impls! {
 
 #[cfg(feature = "alloc")]
 impl<R> ReprFamily for Vec<R> {
-    type Kind = Self;
+    type Kind = NoRepr;
 }
 
 impl Add for Robust {
-    type Output = Robust;
+    type Output = Self;
 
     fn add(self, _: Self) -> Self::Output {
         unreachable!()
@@ -249,16 +250,16 @@ impl Add<Transmuted> for Robust {
     }
 }
 
-impl<T: ReprFamily<Kind = T>> Add<T> for Robust {
-    type Output = T;
+impl Add<NoRepr> for Robust {
+    type Output = NoRepr;
 
-    fn add(self, _: T) -> Self::Output {
+    fn add(self, _: NoRepr) -> Self::Output {
         unreachable!()
     }
 }
 
 impl Add<Robust> for Transmuted {
-    type Output = Transmuted;
+    type Output = Self;
 
     fn add(self, _: Robust) -> Self::Output {
         unreachable!()
@@ -266,17 +267,41 @@ impl Add<Robust> for Transmuted {
 }
 
 impl Add for Transmuted {
-    type Output = Transmuted;
+    type Output = Self;
 
     fn add(self, _: Self) -> Self::Output {
         unreachable!()
     }
 }
 
-impl<T: ReprFamily<Kind = T>> Add<T> for Transmuted {
-    type Output = T;
+impl Add<NoRepr> for Transmuted {
+    type Output = NoRepr;
 
-    fn add(self, _: T) -> Self::Output {
+    fn add(self, _: NoRepr) -> Self::Output {
+        unreachable!()
+    }
+}
+
+impl Add<Robust> for NoRepr {
+    type Output = Self;
+
+    fn add(self, _: Robust) -> Self::Output {
+        unreachable!()
+    }
+}
+
+impl Add<Transmuted> for NoRepr {
+    type Output = Self;
+
+    fn add(self, _: Transmuted) -> Self::Output {
+        unreachable!()
+    }
+}
+
+impl Add for NoRepr {
+    type Output = Self;
+
+    fn add(self, _: Self) -> Self::Output {
         unreachable!()
     }
 }
