@@ -78,11 +78,11 @@ pub enum FfiReturn {
 /// Type implementing the trait must have a guaranteed C ABI.
 pub unsafe trait ReprC {}
 
-/// `ReprC` type that is safe to store in statics.
+/// `ReprC` type that is allowed as a C static.
 ///
 /// # Safety
 ///
-/// Type must be allowed as a static value.
+/// Type must be allowed as a C static.
 pub unsafe trait CStatic: ReprC + Copy {}
 
 /// `ReprC` type that is allowed as a C function argument.
@@ -883,10 +883,6 @@ macro_rules! reprC {
         type Target = $target:ty;
         fn is_valid($target_var:ident: $target_ty:ty) -> bool $block:block
     }) => {
-        impl<$($impl_generics)*> $crate::ir::ReprFamily for $self_ty $(where $($preds)*)? {
-            type Kind = $crate::ir::Transmuted;
-        }
-
         impl<$($impl_generics)*> $crate::ir::EncodeReprFamily for $self_ty where
             $target: $crate::ir::EncodeReprFamily,
             $($($preds)*)?
@@ -929,16 +925,12 @@ macro_rules! reprC {
         const NICHE_VALUE: $niche_ty:ty = $niche_value:expr;
         fn is_valid($target_var:ident: $target_ty:ty) -> bool $block:block
     }) => {
-        impl<$($impl_generics)*> $crate::ir::ReprFamily for $self_ty $(where $($preds)*)? {
-            type Kind = $crate::ir::Transmuted;
-        }
-
-        impl<$($impl_generics)*> $crate::ir::EncodeReprFamily for $self_ty where
-            $target: $crate::ir::EncodeReprFamily,
-            $($($preds)*)?
-        {
-            type Kind = <$target as $crate::ir::EncodeReprFamily>::Kind;
-        }
+        //impl<$($impl_generics)*> $crate::ir::EncodeReprFamily for $self_ty where
+        //    $target: $crate::ir::EncodeReprFamily,
+        //    $($($preds)*)?
+        //{
+        //    type Kind = <$target as $crate::ir::EncodeReprFamily>::Kind;
+        //}
 
         impl<$($impl_generics)*> $crate::niche::NicheFamily for $self_ty where
             $($sized_bound)*
@@ -973,6 +965,10 @@ macro_rules! reprC {
         type Target = $target:ty;
         fn is_valid($target_var:ident: $target_ty:ty) -> bool $block:block
     }) => {
+        impl<$($impl_generics)*> $crate::ir::ReprFamily for $self_ty $(where $($preds)*)? {
+            type Kind = $crate::ir::Transmuted;
+        }
+
         unsafe impl<$($impl_generics)*> $crate::transmute::CheckedTransmute for $self_ty $(where $($preds)*)? {
             type Target = $target;
 

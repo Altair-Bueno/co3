@@ -68,7 +68,7 @@ pub fn gen_struct_niche_ir_with_mode(
         ReprFamily::ReprC => build_type_tuple(&types),
     };
 
-    if let Some(FfiTypeKindAttribute::Transparent(Some(niche_value), _)) = ffi_type_kind {
+    if let Some(FfiTypeKindAttribute::Transparent(Some(niche_value))) = ffi_type_kind {
         return quote! {
             impl #impl_generics co3::niche::NicheFamily for #struct_name #ty_generics where
                 #predicates
@@ -185,7 +185,7 @@ pub fn gen_enum_niche_ir_with_mode(
     let field_lowering_bounds = gen_field_lowering_bounds::<true>(&field_types, generics, lowering);
     let field_type_bounds = gen_field_niche_type_bounds(&field_types, lowering);
 
-    if let Some(FfiTypeKindAttribute::Transparent(Some(niche_value), _)) = ffi_type_kind {
+    if let Some(FfiTypeKindAttribute::Transparent(Some(niche_value))) = ffi_type_kind {
         return quote! {
             impl #impl_generics co3::niche::Niche for #enum_name #ty_generics where
                 #field_lowering_bounds

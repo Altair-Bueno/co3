@@ -1,7 +1,7 @@
 use proc_macro2::TokenStream;
 use quote::quote;
 
-use crate::repr::repr_c::{assert_no_drop, custom_is_valid};
+use crate::repr::repr_c::assert_no_drop;
 
 use super::{FfiTypeInput, FfiTypeKindAttribute};
 
@@ -22,41 +22,48 @@ pub(crate) fn derive_transparent_item(input: &FfiTypeInput) -> TokenStream {
     let predicates = where_clause.map(|w| &w.predicates);
 
     let name = &input.ident;
-    let target = match &input.data {
+    let target_field = match &input.data {
         // TODO: We don't check to find which struct/enum field is not a ZST. It is just assumed that it is the first field.
         // I think something can be done inside `co3::reprC!` through the use of disjoint_impls! or via macro attribute
-        darling::ast::Data::Struct(item) => item.fields.first().map(|first_field| &first_field.ty),
-        darling::ast::Data::Enum(variants) => variants.first().and_then(|variant| {
-            variant
-                .fields
-                .fields
-                .first()
-                .map(|first_field| &first_field.ty)
-        }),
+        darling::ast::Data::Struct(item) => item.fields.first(),
+        darling::ast::Data::Enum(variants) => variants
+            .first()
+            .and_then(|variant| variant.fields.fields.first()),
     };
 
-    let Some(target) = target else {
+    let Some(target_field) = target_field else {
         return quote! {};
     };
 
-    let custom_validation = if let Some(FfiTypeKindAttribute::Transparent(niche_value, _)) =
-        &input.ffi_type_attr.kind
-    {
-        let niche_value = niche_value.as_ref().map(|value| {
-            quote! { const NICHE_VALUE: <Self as co3::ExternC>::CType = #value; }
-        });
-        let is_valid = custom_is_valid(input.ffi_type_attr.kind.as_ref()).unwrap();
+    let target = &target_field.ty;
+    let default_is_valid = quote! {
+        <#target as co3::transmute::FlatTransmute>::is_valid(target)
+    };
 
+    let is_valid = target_field.is_valid.as_ref().map(|is_valid| {
+        quote! { #default_is_valid && (#is_valid)(target) }
+    });
+    let is_valid_fn = is_valid.map(|is_valid| {
         quote! {
-            #niche_value
-
             fn is_valid(target: &Self::Target) -> bool {
                 #is_valid
             }
         }
-    } else {
-        quote!()
-    };
+    });
+
+    let custom_validation =
+        if let Some(FfiTypeKindAttribute::Transparent(niche_value)) = &input.ffi_type_attr.kind {
+            let niche_value = niche_value.as_ref().map(|value| {
+                quote! { const NICHE_VALUE: <Self as co3::ExternC>::CType = #value; }
+            });
+
+            quote! {
+                #niche_value
+                #is_valid_fn
+            }
+        } else {
+            quote! { #is_valid_fn }
+        };
 
     let impl_drop_assert = assert_no_drop(&input.generics, name);
     let (trait_, impl_drop_assert) = if input.data.is_enum() {

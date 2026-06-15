@@ -11,8 +11,8 @@ use syn::{Ident, parse_quote};
 use crate::{
     attr::repr::ReprPrimitive,
     repr::{
-        FfiTypeField, FfiTypeVariant, derive_extern_c_internal, gen_sized_family,
-        gen_struct_size_family, is_type_parameterized,
+        FfiTypeField, FfiTypeKindAttribute, FfiTypeVariant, derive_extern_c_internal,
+        gen_sized_family, gen_struct_size_family, is_type_parameterized,
         niche::{gen_enum_niche_ir, gen_struct_niche_ir_with_mode},
         repr_c::{
             ReprFamily, assert_no_drop, gen_data_enum, gen_data_enum_variant_name,
@@ -26,6 +26,7 @@ pub(super) fn derive_no_repr_struct<const IS_VIEW: bool>(
     vis: &syn::Visibility,
     generics: &syn::Generics,
     fields: &Fields<FfiTypeField>,
+    ffi_type_kind: Option<&FfiTypeKindAttribute>,
 ) -> TokenStream {
     let repr_c_struct_name = gen_repr_c_item_name(name);
     let repr_c_struct = gen_repr_c_struct(name, vis, generics, fields, ReprFamily::NoRepr);
@@ -85,23 +86,52 @@ pub(super) fn derive_no_repr_struct<const IS_VIEW: bool>(
             let field_names: Vec<_> = fields.iter().filter_map(|f| f.ident.as_ref()).collect();
             let field_indices: Vec<_> = (0..field_names.len()).map(syn::Index::from).collect();
 
-            quote! {
-                Some(Self {
-                    #(#field_names: unsafe {
-                        co3::stored::SoftDecodeOwned::decode(source.#field_names, &mut store.#field_indices)?
-                    }),*
+            let field_validations = fields.iter().filter_map(|field| {
+                let field_name = field.ident.as_ref()?;
+                let is_valid = field.is_valid.as_ref()?;
+
+                Some(quote! {
+                    if !(#is_valid)(&#field_name) {
+                        return None;
+                    }
                 })
+            });
+
+            quote! { #(
+                let #field_names = unsafe {
+                    co3::stored::SoftDecodeOwned::decode(source.#field_names, &mut store.#field_indices)?
+                }; )*
+
+                #(#field_validations)*
+                Some(Self { #(#field_names),* })
             }
         }
         Style::Tuple => {
             let field_indices: Vec<_> = (0..fields.len()).map(syn::Index::from).collect();
+            let field_vars: Vec<_> = (0..fields.len())
+                .map(|i| Ident::new(&format!("_{}", i), Span::call_site()))
+                .collect();
+            let field_validations =
+                fields
+                    .iter()
+                    .zip(field_vars.iter())
+                    .filter_map(|(field, field_var)| {
+                        let is_valid = field.is_valid.as_ref()?;
 
-            quote! {
-                Some(Self(
-                    #(unsafe {
-                        co3::stored::SoftDecodeOwned::decode(source.#field_indices, &mut store.#field_indices)?
-                    }),*
-                ))
+                        Some(quote! {
+                            if !(#is_valid)(&#field_var) {
+                                return None;
+                            }
+                        })
+                    });
+
+            quote! { #(
+                let #field_vars = unsafe {
+                    co3::stored::SoftDecodeOwned::decode(source.#field_indices, &mut store.#field_indices)?
+                }; )*
+
+                #(#field_validations)*
+                Some(Self(#(#field_vars),*))
             }
         }
         Style::Unit => unreachable!("ZSTs are not FFI safe"),
@@ -116,7 +146,8 @@ pub(super) fn derive_no_repr_struct<const IS_VIEW: bool>(
         encode_impl,
         decode_impl,
     );
-    let niche_ir = gen_struct_niche_ir_with_mode(name, generics, fields, ReprFamily::NoRepr, None);
+    let niche_ir =
+        gen_struct_niche_ir_with_mode(name, generics, fields, ReprFamily::NoRepr, ffi_type_kind);
     let borrow_ir = if IS_VIEW {
         gen_identity_borrow_ir(name, generics)
     } else {
@@ -231,14 +262,25 @@ pub(super) fn derive_no_repr_data_enum<const IS_VIEW: bool>(
         variant_mapper(
             variant,
             || quote! { #idx => Some(Self::#variant_name) },
-            |_| {
+            |field| {
+                let field_validation = field.is_valid.as_ref().map(|is_valid| {
+                    quote! {
+                        if !(#is_valid)(&payload) {
+                            return None;
+                        }
+                    }
+                });
+
                 quote! {
                     #idx => {
                         let source = unsafe { source.#variant_name };
 
-                        Some(Self::#variant_name(unsafe {
+                        let payload = unsafe {
                             co3::stored::SoftDecodeOwned::decode(source.value, &mut store.#idx)?
-                        }))
+                        };
+
+                        #field_validation
+                        Some(Self::#variant_name(payload))
                     }
                 }
             },

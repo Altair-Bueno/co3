@@ -122,6 +122,7 @@ disjoint_impls! {
     ///
     /// - check [`CheckedTransmute`]
     pub unsafe trait FlatTransmute {
+        // TODO: We can eliminate this type
         type Target: ReprC + ?Sized;
 
         /// Called when transmuting [`Self::Target`] back into [`Self`] to check for trap representations.

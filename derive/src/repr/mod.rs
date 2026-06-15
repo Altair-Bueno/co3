@@ -31,18 +31,18 @@ mod transparent;
 
 #[derive(Debug)]
 enum FfiTypeToken {
-    Transparent(Option<syn::Expr>, Box<syn::ExprClosure>),
+    Transparent(Option<syn::Expr>),
 }
 
 impl Display for FfiTypeToken {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
-            FfiTypeToken::Transparent(niche, is_valid) => {
+            FfiTypeToken::Transparent(niche) => {
                 write!(f, "#[reprC(")?;
                 if let Some(niche) = niche {
-                    write!(f, "NICHE_VALUE = {}, ", quote!(#niche))?;
+                    write!(f, "NICHE_VALUE = {}", quote!(#niche))?;
                 }
-                write!(f, "unsafe(is_valid = {}))]", quote!(#is_valid))
+                write!(f, ")]")
             }
         }
     }
@@ -65,53 +65,12 @@ impl syn::parse::Parse for SpannedFfiTypeToken {
 
         let mut span: Option<Span> = None;
         let mut niche_value = None;
-        let mut is_valid = None;
 
         while !input.is_empty() {
             let ident: Ident = input.call(Ident::parse_any)?;
             join_span(&mut span, ident.span());
 
             match ident.to_string().as_str() {
-                "unsafe" => {
-                    if !input.peek(syn::token::Paren) {
-                        return Err(syn::Error::new(
-                            ident.span(),
-                            "expected `(...)` after `unsafe`",
-                        ));
-                    }
-
-                    let content;
-                    syn::parenthesized!(content in input);
-                    join_span(&mut span, content.span());
-
-                    let inner_ident: Ident = content.parse().map_err(|_| {
-                        syn::Error::new(content.span(), "expected ffi type kind inside unsafe(...)")
-                    })?;
-                    let inner_str = inner_ident.to_string();
-
-                    match inner_str.as_str() {
-                        "is_valid" => {
-                            content.parse::<syn::Token![=]>()?;
-                            let closure: syn::ExprClosure = content.parse()?;
-                            join_span(&mut span, closure.span());
-
-                            if !content.is_empty() {
-                                return Err(syn::Error::new(
-                                    content.span(),
-                                    "unexpected tokens after `is_valid` closure",
-                                ));
-                            }
-
-                            is_valid = Some(closure);
-                        }
-                        other => {
-                            return Err(syn::Error::new(
-                                inner_ident.span(),
-                                format!("unknown unsafe ffi type kind: {other}"),
-                            ));
-                        }
-                    }
-                }
                 "NICHE_VALUE" => {
                     input.parse::<syn::Token![=]>()?;
                     let value: syn::Expr = input.parse()?;
@@ -143,20 +102,13 @@ impl syn::parse::Parse for SpannedFfiTypeToken {
 
         let span = span.unwrap_or_else(Span::call_site);
 
-        let Some(is_valid) = is_valid else {
-            if niche_value.is_some() {
-                return Err(syn::Error::new(
-                    span,
-                    "expected `unsafe(is_valid = ...)` when specifying `NICHE_VALUE`",
-                ));
-            }
-
+        if niche_value.is_none() {
             return Err(syn::Error::new(span, "expected ffi type kind"));
-        };
+        }
 
         Ok(Self {
             span,
-            token: FfiTypeToken::Transparent(niche_value, Box::new(is_valid)),
+            token: FfiTypeToken::Transparent(niche_value),
         })
     }
 }
@@ -164,7 +116,7 @@ impl syn::parse::Parse for SpannedFfiTypeToken {
 /// This represents an `#[reprC(...)]` attribute on a type
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub enum FfiTypeKindAttribute {
-    Transparent(Option<syn::Expr>, Box<syn::ExprClosure>),
+    Transparent(Option<syn::Expr>),
 }
 
 impl syn::parse::Parse for FfiTypeKindAttribute {
@@ -172,8 +124,8 @@ impl syn::parse::Parse for FfiTypeKindAttribute {
         input
             .call(SpannedFfiTypeToken::parse)
             .map(|token| match token.token {
-                FfiTypeToken::Transparent(niche_value, is_valid) => {
-                    FfiTypeKindAttribute::Transparent(niche_value, is_valid)
+                FfiTypeToken::Transparent(niche_value) => {
+                    FfiTypeKindAttribute::Transparent(niche_value)
                 }
             })
     }
@@ -242,20 +194,57 @@ pub struct FfiTypeVariant {
 pub struct FfiTypeField {
     pub ident: Option<syn::Ident>,
     pub ty: syn::Type,
+    pub is_valid: Option<syn::ExprClosure>,
+}
+
+struct FfiTypeFieldAttr {
+    is_valid: syn::ExprClosure,
+}
+
+impl syn::parse::Parse for FfiTypeFieldAttr {
+    fn parse(input: ParseStream) -> syn::Result<Self> {
+        let ident: Ident = input.call(Ident::parse_any)?;
+        if ident != "is_valid" {
+            return Err(syn::Error::new(
+                ident.span(),
+                format!("unknown field attribute: {ident}"),
+            ));
+        }
+
+        input.parse::<syn::Token![=]>()?;
+        let is_valid: syn::ExprClosure = input.parse()?;
+
+        if !input.is_empty() {
+            if input.peek(syn::Token![,]) {
+                input.parse::<syn::Token![,]>()?;
+            }
+
+            if !input.is_empty() {
+                return Err(input.error("unexpected tokens after `is_valid` closure"));
+            }
+        }
+
+        Ok(Self { is_valid })
+    }
 }
 
 impl FromField for FfiTypeField {
     fn from_field(field: &Field) -> darling::Result<Self> {
         let ty = field.ty.clone();
         let mut accumulator = darling::error::Accumulator::default();
-        if let Some(attr) = find_single_attr_opt(&mut accumulator, FFI_TYPE_ATTR, &field.attrs) {
-            accumulator.push(
-                darling::Error::custom("`#[reprC(...)]` is not supported on fields")
-                    .with_span(&attr.meta),
-            );
-        }
+        let is_valid = accumulator
+            .handle(parse_single_list_attr_opt::<FfiTypeFieldAttr>(
+                FFI_TYPE_ATTR,
+                &field.attrs,
+            ))
+            .flatten()
+            .map(|attr| attr.is_valid);
         let ident = field.ident.clone();
-        accumulator.finish_with(Self { ty, ident })
+        accumulator.finish_with(Self {
+            ty,
+            ident,
+            is_valid,
+        })
     }
 }
 
@@ -298,13 +287,13 @@ pub(crate) fn derive_extern_c_internal<const IS_VIEW: bool>(
         darling::ast::Data::Struct(_) => {}
         darling::ast::Data::Enum(variants) => {
             if variants.iter().all(|v| v.fields.fields.is_empty())
-                && matches!(input.ffi_type_attr.kind, Some(FfiTypeKindAttribute::Transparent(_, _)))
+                && matches!(input.ffi_type_attr.kind, Some(FfiTypeKindAttribute::Transparent(_)))
             {
                 push_error(
                     &mut errors,
                     syn::Error::new_spanned(
                         &input.ident,
-                        "`NICHE_VALUE` and custom `is_valid` are not supported on fieldless enums",
+                        "`NICHE_VALUE` is not supported on fieldless enums",
                     ),
                 );
             }
@@ -410,9 +399,13 @@ pub(crate) fn derive_extern_c_internal<const IS_VIEW: bool>(
                     )
                 }
             }
-            darling::ast::Data::Struct(fields) => {
-                derive_no_repr_struct::<IS_VIEW>(&input.ident, &input.vis, &input.generics, fields)
-            }
+            darling::ast::Data::Struct(fields) => derive_no_repr_struct::<IS_VIEW>(
+                &input.ident,
+                &input.vis,
+                &input.generics,
+                fields,
+                input.ffi_type_attr.kind.as_ref(),
+            ),
         },
     };
 

@@ -110,12 +110,15 @@ fn gen_transparent_view_impl<const ADD_COPY: bool>(
     }
 }
 
-pub(super) fn custom_is_valid(ffi_type_kind: Option<&FfiTypeKindAttribute>) -> Option<TokenStream> {
-    let Some(FfiTypeKindAttribute::Transparent(_, is_valid)) = ffi_type_kind else {
-        return None;
-    };
-
-    Some(quote! { (#is_valid)(target) })
+fn field_is_valid(
+    field: &FfiTypeField,
+    target_ref: TokenStream,
+    default: TokenStream,
+) -> TokenStream {
+    match &field.is_valid {
+        Some(is_valid) => quote! { #default && (#is_valid)(#target_ref) },
+        None => default,
+    }
 }
 
 pub(super) fn derive_repr_c_struct<const IS_VIEW: bool>(
@@ -139,10 +142,13 @@ pub(super) fn derive_repr_c_struct<const IS_VIEW: bool>(
                 let validations = fields.iter().enumerate().map(|(i, field)| {
                     let field_index = syn::Index::from(i);
                     let field_ty = &field.ty;
+                    let target_ref = quote! { &target.#field_index };
 
-                    quote! {
+                    let default = quote! {
                         <#field_ty as co3::transmute::FlatTransmute>::is_valid(&target.#field_index)
-                    }
+                    };
+
+                    field_is_valid(field, target_ref, default)
                 });
 
                 quote! { #(#validations)&&* }
@@ -151,23 +157,24 @@ pub(super) fn derive_repr_c_struct<const IS_VIEW: bool>(
                 let validations = fields.iter().map(|field| {
                     let field_name = &field.ident;
                     let field_ty = &field.ty;
+                    let target_ref = quote! { &target.#field_name };
 
-                    quote! {
+                    let default = quote! {
                         <#field_ty as co3::transmute::FlatTransmute>::is_valid(&target.#field_name)
-                    }
+                    };
+
+                    field_is_valid(field, target_ref, default)
                 });
 
                 quote! { #(#validations)&&* }
             }
             darling::ast::Style::Unit => unreachable!(),
         };
-        let is_valid = custom_is_valid(ffi_type_kind).unwrap_or(default_is_valid);
-
         gen_transparent_impl::<false>(
             struct_name,
             generics,
             &repr_c_struct_name,
-            is_valid,
+            default_is_valid,
             fields.iter(),
         )
     };
@@ -243,11 +250,14 @@ pub(super) fn derive_repr_c_data_enum<const IS_VIEW: bool>(
                     || quote! { true },
                     |field| {
                         let field_ty = &field.ty;
-                        quote! {
+                        let target_ref = quote! { unsafe { &target.payload.#variant_name } };
+                        let default = quote! {
                             <#field_ty as co3::transmute::FlatTransmute>::is_valid(
                                 unsafe { &target.payload.#variant_name }
                             )
-                        }
+                        };
+
+                        field_is_valid(field, target_ref, default)
                     },
                 );
 
@@ -263,14 +273,12 @@ pub(super) fn derive_repr_c_data_enum<const IS_VIEW: bool>(
                 }
             }
         };
-        let is_valid = custom_is_valid(ffi_type_kind).unwrap_or(default_is_valid);
-
         (
             gen_transparent_impl::<true>(
                 enum_name,
                 generics,
                 &repr_c_enum_name,
-                is_valid,
+                default_is_valid,
                 fields.iter().copied(),
             ),
             gen_data_enum_borrow_ir(
@@ -338,11 +346,14 @@ pub(super) fn derive_data_enum<const IS_VIEW: bool>(
                     || quote! { true },
                     |field| {
                         let field_ty = &field.ty;
-                        quote! {
+                        let target_ref = quote! { unsafe { &target.#variant_name.value } };
+                        let default = quote! {
                             <#field_ty as co3::transmute::FlatTransmute>::is_valid(
                                 unsafe { &target.#variant_name.value}
                             )
-                        }
+                        };
+
+                        field_is_valid(field, target_ref, default)
                     },
                 );
 
@@ -360,14 +371,12 @@ pub(super) fn derive_data_enum<const IS_VIEW: bool>(
                 }
             }
         };
-        let is_valid = custom_is_valid(ffi_type_kind).unwrap_or(default_is_valid);
-
         (
             gen_transparent_impl::<true>(
                 enum_name,
                 generics,
                 &union_name,
-                is_valid,
+                default_is_valid,
                 fields.iter().copied(),
             ),
             gen_data_enum_borrow_ir(
