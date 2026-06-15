@@ -16,28 +16,15 @@ use crate::{
     },
 };
 
-#[derive(Clone, Copy)]
-pub(super) enum ReprFamily {
-    NoRepr,
-    ReprC,
+fn lowered_field_ty(field_ty: &syn::Type) -> TokenStream {
+    quote!(<#field_ty as co3::ExternC>::CType)
 }
 
-fn lowered_field_ty(field_ty: &syn::Type, lowering: ReprFamily) -> TokenStream {
-    match lowering {
-        ReprFamily::ReprC => quote!(<#field_ty as co3::transmute::FlatTransmute>::Target),
-        ReprFamily::NoRepr => quote!(<#field_ty as co3::ExternC>::CType),
-    }
-}
-
-fn lowered_field_copy_bounds(
-    field_types: &[&syn::Type],
-    generics: &syn::Generics,
-    lowering: ReprFamily,
-) -> TokenStream {
+fn lowered_field_copy_bounds(field_types: &[&syn::Type], generics: &syn::Generics) -> TokenStream {
     let lowered_field_types = field_types
         .iter()
         .filter(|ty| is_type_parameterized(ty, generics))
-        .map(|ty| lowered_field_ty(ty, lowering));
+        .map(|ty| lowered_field_ty(ty));
 
     quote! { #(#lowered_field_types: Copy,)* }
 }
@@ -129,8 +116,7 @@ pub(super) fn derive_repr_c_struct<const IS_VIEW: bool>(
     ffi_type_kind: Option<&FfiTypeKindAttribute>,
 ) -> TokenStream {
     let repr_c_struct_name = gen_repr_c_item_name(struct_name);
-    let repr_c_struct = (!IS_VIEW)
-        .then(|| gen_repr_c_struct(struct_name, vis, generics, fields, ReprFamily::ReprC));
+    let repr_c_struct = (!IS_VIEW).then(|| gen_repr_c_struct(struct_name, vis, generics, fields));
     let field_types = fields.iter().map(|field| &field.ty).collect::<Vec<_>>();
     let size_family_impl = gen_struct_size_family(struct_name, generics, &field_types, quote! {});
 
@@ -222,16 +208,8 @@ pub(super) fn derive_repr_c_data_enum<const IS_VIEW: bool>(
         .flat_map(|variant| variant.fields.iter())
         .collect::<Vec<_>>();
     let field_types = fields.iter().map(|field| &field.ty).collect::<Vec<_>>();
-    let niche_ir = (!IS_VIEW).then(|| {
-        gen_enum_niche_ir_with_mode(
-            repr,
-            enum_name,
-            generics,
-            variants,
-            ReprFamily::ReprC,
-            ffi_type_kind,
-        )
-    });
+    let niche_ir = (!IS_VIEW)
+        .then(|| gen_enum_niche_ir_with_mode(repr, enum_name, generics, variants, ffi_type_kind));
 
     let (transparent_impl, borrow_ir) = if IS_VIEW {
         (
@@ -310,24 +288,16 @@ pub(super) fn derive_data_enum<const IS_VIEW: bool>(
 ) -> TokenStream {
     let union_name = gen_repr_c_item_name(enum_name);
     let size_family_impl = gen_sized_family(enum_name, generics, quote! {});
-    let union_and_helpers = (!IS_VIEW)
-        .then(|| gen_data_enum(enum_name, vis, generics, repr, variants, ReprFamily::ReprC));
+    let union_and_helpers =
+        (!IS_VIEW).then(|| gen_data_enum(enum_name, vis, generics, repr, variants));
 
     let fields = variants
         .iter()
         .flat_map(|variant| variant.fields.iter())
         .collect::<Vec<_>>();
     let field_types = fields.iter().map(|field| &field.ty).collect::<Vec<_>>();
-    let niche_ir = (!IS_VIEW).then(|| {
-        gen_enum_niche_ir_with_mode(
-            repr,
-            enum_name,
-            generics,
-            variants,
-            ReprFamily::ReprC,
-            ffi_type_kind,
-        )
-    });
+    let niche_ir = (!IS_VIEW)
+        .then(|| gen_enum_niche_ir_with_mode(repr, enum_name, generics, variants, ffi_type_kind));
 
     let (transparent_impl, borrow_ir) = if IS_VIEW {
         (
@@ -406,8 +376,7 @@ pub(crate) fn derive_fieldless_enum(
 ) -> TokenStream {
     let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
     let size_family_impl = gen_sized_family(enum_name, generics, quote! {});
-    let niche_ir =
-        gen_enum_niche_ir_with_mode(repr, enum_name, generics, variants, ReprFamily::ReprC, None);
+    let niche_ir = gen_enum_niche_ir_with_mode(repr, enum_name, generics, variants, None);
 
     let niche_value = proc_macro2::Literal::usize_unsuffixed(variants.len());
     let borrow_ir = gen_identity_borrow_ir(enum_name, generics);
@@ -513,14 +482,13 @@ pub(super) fn gen_repr_c_struct(
     vis: &syn::Visibility,
     generics: &syn::Generics,
     fields: &darling::ast::Fields<FfiTypeField>,
-    lowering: ReprFamily,
 ) -> TokenStream {
     let field_types: Vec<_> = fields.iter().map(|field| &field.ty).collect();
     let repr_c_struct_name = gen_repr_c_item_name(struct_name);
 
     let field_c_tys = fields
         .iter()
-        .map(|field| lowered_field_ty(&field.ty, lowering))
+        .map(|field| lowered_field_ty(&field.ty))
         .collect::<Vec<_>>();
 
     let fields_code = match fields.style {
@@ -564,7 +532,7 @@ pub(super) fn gen_repr_c_struct(
         &repr_c_struct_name,
         generics,
         &field_types,
-        gen_field_lowering_bounds::<false>(&field_types, generics, lowering),
+        gen_extern_c_bounds::<false>(&field_types, generics),
     );
 
     let repr_c_struct = gen_repr_c_type::<false>(
@@ -578,7 +546,6 @@ pub(super) fn gen_repr_c_struct(
         fields_mut_code,
         &field_c_tys,
         &field_types,
-        lowering,
     );
 
     quote! {
@@ -593,7 +560,6 @@ pub(super) fn gen_data_enum(
     generics: &syn::Generics,
     repr: ReprPrimitive,
     variants: &[SpannedValue<FfiTypeVariant>],
-    lowering: ReprFamily,
 ) -> TokenStream {
     let union_name = gen_repr_c_item_name(enum_name);
 
@@ -616,11 +582,8 @@ pub(super) fn gen_data_enum(
         let filtered_generics = filter_generics(&variant_field_types, generics);
         let (_, var_ty_generics, _) = filtered_generics.split_for_impl();
         variant_ty_generics.push(var_ty_generics.into_token_stream());
-        let variant_value_ty = variant_mapper(
-            variant,
-            || quote! {()},
-            |field| lowered_field_ty(&field.ty, lowering),
-        );
+        let variant_value_ty =
+            variant_mapper(variant, || quote! {()}, |field| lowered_field_ty(&field.ty));
         let variant_c_tys = variant_mapper(
             variant,
             || vec![quote! { #repr }],
@@ -669,7 +632,6 @@ pub(super) fn gen_data_enum(
             fields_mut,
             &variant_c_tys,
             &variant_field_types,
-            lowering,
         );
 
         variant_structs.push(quote! {
@@ -720,7 +682,6 @@ pub(super) fn gen_data_enum(
         quote! { #(#union_mut_fields),* },
         &union_field_tys,
         &all_field_types,
-        lowering,
     );
 
     quote! {
@@ -754,7 +715,7 @@ fn gen_repr_c_data_enum(
             field_types.push(&field.ty);
         }
     }
-    let extern_c_bounds = gen_flat_transmute_bounds::<true>(&field_types, generics);
+    let extern_c_bounds = gen_extern_c_bounds::<true>(&field_types, generics);
     let wrapper_field_tys = vec![quote! { #repr }, quote! { #payload_name #ty_generics }];
     let borrow_cast_impl = gen_borrow_cast_impl::<false>(
         &repr_c_enum_name,
@@ -823,11 +784,10 @@ fn gen_repr_c_type<const IS_UNION: bool>(
     fields_mut_code: TokenStream,
     borrow_cast_field_tys: &[TokenStream],
     field_types: &[&syn::Type],
-    lowering: ReprFamily,
 ) -> TokenStream {
-    let type_bounds = gen_field_lowering_bounds::<IS_UNION>(field_types, generics, lowering);
+    let type_bounds = gen_extern_c_bounds::<IS_UNION>(field_types, generics);
     let copy_bounds = (!IS_UNION)
-        .then(|| lowered_field_copy_bounds(field_types, generics, lowering))
+        .then(|| lowered_field_copy_bounds(field_types, generics))
         .unwrap_or_default();
     let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
     let params = &generics.params;
@@ -1113,7 +1073,7 @@ fn gen_data_enum_payload(
                 || quote! {()},
                 |field| {
                     let field_ty = &field.ty;
-                    quote! {<#field_ty as co3::transmute::FlatTransmute>::Target}
+                    lowered_field_ty(field_ty)
                 },
             )
         })
@@ -1140,7 +1100,6 @@ fn gen_data_enum_payload(
         quote! { #(#field_names: #field_mut_tys),* },
         &field_tys,
         &field_types,
-        ReprFamily::ReprC,
     );
 
     (payload_name, payload)
@@ -1160,7 +1119,8 @@ fn gen_transparent_impl<'a, const ADD_COPY: bool>(
         .map(|where_clause| &where_clause.predicates);
 
     let fields = fields.into_iter().map(|f| &f.ty).collect::<Vec<_>>();
-    let flat_transmute_bounds = gen_flat_transmute_bounds::<ADD_COPY>(&fields, generics);
+    let flat_transmute_bounds = gen_flat_transmute_extern_c_bounds(&fields, generics);
+    let extern_c_bounds = gen_extern_c_bounds::<ADD_COPY>(&fields, generics);
 
     quote! {
         impl #impl_generics co3::ir::ReprFamily for #item_name #ty_generics #where_clause {
@@ -1176,6 +1136,7 @@ fn gen_transparent_impl<'a, const ADD_COPY: bool>(
         unsafe impl #impl_generics co3::transmute::CheckedTransmute for #item_name #ty_generics
         where
             #flat_transmute_bounds
+            #extern_c_bounds
             #predicates
         {
             type Target = #target #ty_generics;
@@ -1186,10 +1147,7 @@ fn gen_transparent_impl<'a, const ADD_COPY: bool>(
             }
         }
 
-        unsafe impl #impl_generics co3::handle::Erase for #item_name #ty_generics where
-            #flat_transmute_bounds
-            #predicates
-        {
+        unsafe impl #impl_generics co3::handle::Erase for #item_name #ty_generics where #predicates {
             // FIXME: The type is not correct, likewise in no_repr. Also fix bounds
             type Erased = <#target #ty_generics as co3::handle::Erase>::Erased;
         }
@@ -1229,20 +1187,17 @@ pub(super) fn gen_data_enum_variant_name(
     )
 }
 
-fn gen_flat_transmute_bounds<const ADD_COPY: bool>(
+fn gen_flat_transmute_extern_c_bounds(
     fields: &[&syn::Type],
     generics: &syn::Generics,
 ) -> TokenStream {
-    let flat_transmute_bound = quote! { co3::transmute::FlatTransmute };
-
     let parameterized_field_types = fields
         .iter()
         .filter(|&ty| is_type_parameterized(ty, generics));
 
-    if ADD_COPY {
-        quote! { #( #parameterized_field_types: #flat_transmute_bound<Target: Copy>,)* }
-    } else {
-        quote! { #( #parameterized_field_types: #flat_transmute_bound,)* }
+    quote! { #(
+        // TODO: This should trivially hold and can be removed in the future after FlatTransmute::Target is updated
+        #parameterized_field_types: co3::transmute::FlatTransmute<Target = <#parameterized_field_types as co3::ExternC>::CType>, )*
     }
 }
 
@@ -1250,29 +1205,13 @@ pub(super) fn gen_extern_c_bounds<const ADD_COPY: bool>(
     fields: &[&syn::Type],
     generics: &syn::Generics,
 ) -> TokenStream {
-    let extern_c_bound = quote! { co3::ExternC };
+    let copy_bound = ADD_COPY.then_some(quote!(<CType: Copy>));
 
     let parameterized_field_types = fields
         .iter()
         .filter(|&ty| is_type_parameterized(ty, generics));
 
-    if ADD_COPY {
-        quote! { #( #parameterized_field_types: #extern_c_bound<CType: Copy>,)* }
-    } else {
-        quote! { #( #parameterized_field_types: #extern_c_bound,)* }
-    }
-}
-
-pub(super) fn gen_field_lowering_bounds<const ADD_COPY: bool>(
-    fields: &[&syn::Type],
-    generics: &syn::Generics,
-    lowering: ReprFamily,
-) -> TokenStream {
-    match lowering {
-        // FIXME: I don't think flat bounds for enums shouldn't have Copy bound
-        ReprFamily::NoRepr => gen_extern_c_bounds::<ADD_COPY>(fields, generics),
-        ReprFamily::ReprC => gen_flat_transmute_bounds::<ADD_COPY>(fields, generics),
-    }
+    quote! { #( #parameterized_field_types: co3::ExternC #copy_bound,)* }
 }
 
 struct UsedGenericsVisitor<'a> {

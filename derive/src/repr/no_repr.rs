@@ -15,8 +15,8 @@ use crate::{
         gen_sized_family, gen_struct_size_family, is_type_parameterized,
         niche::{gen_enum_niche_ir, gen_struct_niche_ir_with_mode},
         repr_c::{
-            ReprFamily, assert_no_drop, gen_data_enum, gen_data_enum_variant_name,
-            gen_extern_c_bounds, gen_identity_borrow_ir, gen_repr_c_item_name, gen_repr_c_struct,
+            assert_no_drop, gen_data_enum, gen_data_enum_variant_name, gen_extern_c_bounds,
+            gen_identity_borrow_ir, gen_repr_c_item_name, gen_repr_c_struct,
         },
     },
 };
@@ -29,7 +29,7 @@ pub(super) fn derive_no_repr_struct<const IS_VIEW: bool>(
     ffi_type_kind: Option<&FfiTypeKindAttribute>,
 ) -> TokenStream {
     let repr_c_struct_name = gen_repr_c_item_name(name);
-    let repr_c_struct = gen_repr_c_struct(name, vis, generics, fields, ReprFamily::NoRepr);
+    let repr_c_struct = gen_repr_c_struct(name, vis, generics, fields);
     let field_types = fields.iter().map(|f| &f.ty).collect::<Vec<_>>();
     let self_bounds = gen_extern_c_bounds::<false>(&field_types, generics);
     let size_family_impl = gen_struct_size_family(name, generics, &field_types, self_bounds);
@@ -146,8 +146,7 @@ pub(super) fn derive_no_repr_struct<const IS_VIEW: bool>(
         encode_impl,
         decode_impl,
     );
-    let niche_ir =
-        gen_struct_niche_ir_with_mode(name, generics, fields, ReprFamily::NoRepr, ffi_type_kind);
+    let niche_ir = gen_struct_niche_ir_with_mode(name, generics, fields, ffi_type_kind);
     let borrow_ir = if IS_VIEW {
         gen_identity_borrow_ir(name, generics)
     } else {
@@ -186,14 +185,7 @@ pub(super) fn derive_no_repr_data_enum<const IS_VIEW: bool>(
     );
 
     let repr_c_enum_name = gen_repr_c_item_name(enum_name);
-    let repr_c_enum = gen_data_enum(
-        enum_name,
-        vis,
-        generics,
-        inferred_repr,
-        variants,
-        ReprFamily::NoRepr,
-    );
+    let repr_c_enum = gen_data_enum(enum_name, vis, generics, inferred_repr, variants);
 
     let variant_rust_stores = variants.iter().map(|variant| {
         variant_mapper(
@@ -1132,30 +1124,26 @@ fn gen_encode_owned_bounds<const ADD_COPY: bool>(
     fields: &[&syn::Type],
     generics: &syn::Generics,
 ) -> TokenStream {
+    let copy_bound = ADD_COPY.then_some(quote!(<CType: Copy>));
+
     let fields = fields
         .iter()
         .copied()
         .filter(|ty| is_type_parameterized(ty, generics));
 
-    if ADD_COPY {
-        quote! { #(#fields: co3::stored::SoftEncodeOwned<CType: Copy>,)* }
-    } else {
-        quote! { #(#fields: co3::stored::SoftEncodeOwned,)* }
-    }
+    quote! { #(#fields: co3::stored::SoftEncodeOwned #copy_bound,)* }
 }
 
 fn gen_decode_owned_bounds<const ADD_COPY: bool>(
     fields: &[&syn::Type],
     generics: &syn::Generics,
 ) -> TokenStream {
+    let copy_bound = ADD_COPY.then_some(quote!(, CType: Copy));
+
     let fields = fields
         .iter()
         .copied()
         .filter(|ty| is_type_parameterized(ty, generics));
 
-    if ADD_COPY {
-        quote! { #(#fields: co3::stored::SoftDecodeOwned<'_dšč, CType: Copy>,)* }
-    } else {
-        quote! { #(#fields: co3::stored::SoftDecodeOwned<'_dšč>,)* }
-    }
+    quote! { #(#fields: co3::stored::SoftDecodeOwned<'_dšč #copy_bound>,)* }
 }

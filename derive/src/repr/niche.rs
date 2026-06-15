@@ -6,9 +6,9 @@ use crate::{
     attr::repr::ReprPrimitive,
     repr::{
         FfiTypeField, FfiTypeKindAttribute, FfiTypeVariant, is_type_parameterized,
-        repr_c::{ReprFamily, gen_field_lowering_bounds, gen_repr_c_item_name, is_exhaustive_enum},
+        repr_c::{gen_extern_c_bounds, gen_repr_c_item_name, is_exhaustive_enum},
     },
-    utils::{build_extern_c_type_tuple, build_type_tuple},
+    utils::build_extern_c_type_tuple,
 };
 
 fn gen_self_niche_bound(target: Option<TokenStream>) -> TokenStream {
@@ -18,12 +18,9 @@ fn gen_self_niche_bound(target: Option<TokenStream>) -> TokenStream {
     }
 }
 
-fn gen_field_niche_type_bounds(fields: &[&syn::Type], lowering: ReprFamily) -> TokenStream {
-    let bounds = fields.iter().map(|field| match lowering {
-        ReprFamily::NoRepr => quote! { <#field as co3::ExternC>::CType: Copy, },
-        ReprFamily::ReprC => {
-            quote! { <#field as co3::transmute::FlatTransmute>::Target: Copy, }
-        }
+fn gen_field_niche_type_bounds(fields: &[&syn::Type]) -> TokenStream {
+    let bounds = fields.iter().map(|field| {
+        quote! { <#field as co3::ExternC>::CType: Copy, }
     });
 
     quote! { #(#bounds)* }
@@ -35,20 +32,13 @@ pub fn gen_struct_niche_ir(
     fields: &darling::ast::Fields<FfiTypeField>,
     ffi_type_kind: Option<&FfiTypeKindAttribute>,
 ) -> TokenStream {
-    gen_struct_niche_ir_with_mode(
-        struct_name,
-        generics,
-        fields,
-        ReprFamily::ReprC,
-        ffi_type_kind,
-    )
+    gen_struct_niche_ir_with_mode(struct_name, generics, fields, ffi_type_kind)
 }
 
 pub fn gen_struct_niche_ir_with_mode(
     struct_name: &syn::Ident,
     generics: &syn::Generics,
     fields: &darling::ast::Fields<FfiTypeField>,
-    lowering: ReprFamily,
     ffi_type_kind: Option<&FfiTypeKindAttribute>,
 ) -> TokenStream {
     let types = fields.iter().map(|f| &f.ty).collect::<Vec<_>>();
@@ -61,12 +51,9 @@ pub fn gen_struct_niche_ir_with_mode(
 
     let repr_c_struct_name = gen_repr_c_item_name(struct_name);
     let self_bounds = gen_self_niche_bound(Some(quote!(#repr_c_struct_name #ty_generics)));
-    let field_lowering_bounds = gen_field_lowering_bounds::<false>(&types, generics, lowering);
-    let field_type_bounds = gen_field_niche_type_bounds(&types, lowering);
-    let (fields_tuple, c_fields_tuple, accessors) = match lowering {
-        ReprFamily::NoRepr => build_extern_c_type_tuple(&types),
-        ReprFamily::ReprC => build_type_tuple(&types),
-    };
+    let field_lowering_bounds = gen_extern_c_bounds::<false>(&types, generics);
+    let field_type_bounds = gen_field_niche_type_bounds(&types);
+    let (fields_tuple, c_fields_tuple, accessors) = build_extern_c_type_tuple(&types);
 
     if let Some(FfiTypeKindAttribute::Transparent(Some(niche_value))) = ffi_type_kind {
         return quote! {
@@ -133,14 +120,7 @@ pub fn gen_enum_niche_ir(
     generics: &syn::Generics,
     variants: &[SpannedValue<FfiTypeVariant>],
 ) -> TokenStream {
-    gen_enum_niche_ir_with_mode(
-        repr,
-        enum_name,
-        generics,
-        variants,
-        ReprFamily::NoRepr,
-        None,
-    )
+    gen_enum_niche_ir_with_mode(repr, enum_name, generics, variants, None)
 }
 
 pub fn gen_enum_niche_ir_with_mode(
@@ -148,7 +128,6 @@ pub fn gen_enum_niche_ir_with_mode(
     enum_name: &syn::Ident,
     generics: &syn::Generics,
     variants: &[SpannedValue<FfiTypeVariant>],
-    lowering: ReprFamily,
     ffi_type_kind: Option<&FfiTypeKindAttribute>,
 ) -> TokenStream {
     let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
@@ -182,8 +161,8 @@ pub fn gen_enum_niche_ir_with_mode(
     } else {
         quote! { Self: co3::ExternC<CType: Copy>, }
     };
-    let field_lowering_bounds = gen_field_lowering_bounds::<true>(&field_types, generics, lowering);
-    let field_type_bounds = gen_field_niche_type_bounds(&field_types, lowering);
+    let field_lowering_bounds = gen_extern_c_bounds::<true>(&field_types, generics);
+    let field_type_bounds = gen_field_niche_type_bounds(&field_types);
 
     if let Some(FfiTypeKindAttribute::Transparent(Some(niche_value))) = ffi_type_kind {
         return quote! {
@@ -235,7 +214,7 @@ pub fn gen_enum_niche_ir_with_mode(
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use crate::utils::build_extern_c_type_tuple;
 
     fn make_types(count: usize) -> Vec<syn::Type> {
         (0..count)
@@ -250,7 +229,7 @@ mod tests {
     fn test_base_case_1_element() {
         let types = make_types(1);
         let refs: Vec<_> = types.iter().collect();
-        let (result, _, accessors) = build_type_tuple(&refs);
+        let (result, _, accessors) = build_extern_c_type_tuple(&refs);
 
         let expected: syn::Type = syn::parse_quote! {
             (T0,)
@@ -269,7 +248,7 @@ mod tests {
     fn test_base_case_12_elements() {
         let types = make_types(12);
         let refs: Vec<_> = types.iter().collect();
-        let (result, _, accessors) = build_type_tuple(&refs);
+        let (result, _, accessors) = build_extern_c_type_tuple(&refs);
 
         let expected: syn::Type = syn::parse_quote! {
             (T0, T1, T2, T3, T4, T5, T6, T7, T8, T9, T10, T11,)
@@ -302,7 +281,7 @@ mod tests {
     fn test_13_elements() {
         let types = make_types(13);
         let refs: Vec<_> = types.iter().collect();
-        let (result, _, accessors) = build_type_tuple(&refs);
+        let (result, _, accessors) = build_extern_c_type_tuple(&refs);
 
         let expected: syn::Type = syn::parse_quote! {
             (
@@ -339,7 +318,7 @@ mod tests {
     fn test_24_elements() {
         let types = make_types(24);
         let refs: Vec<_> = types.iter().collect();
-        let (result, _, accessors) = build_type_tuple(&refs);
+        let (result, _, accessors) = build_extern_c_type_tuple(&refs);
 
         let expected: syn::Type = syn::parse_quote! {
             (
@@ -387,7 +366,7 @@ mod tests {
     fn test_25_elements() {
         let types = make_types(25);
         let refs: Vec<_> = types.iter().collect();
-        let (result, _, accessors) = build_type_tuple(&refs);
+        let (result, _, accessors) = build_extern_c_type_tuple(&refs);
 
         let expected: syn::Type = syn::parse_quote! {
             (
@@ -437,7 +416,7 @@ mod tests {
     fn test_36_elements() {
         let types = make_types(36);
         let refs: Vec<_> = types.iter().collect();
-        let (result, _, accessors) = build_type_tuple(&refs);
+        let (result, _, accessors) = build_extern_c_type_tuple(&refs);
 
         let expected: syn::Type = syn::parse_quote! {
             (
@@ -498,7 +477,7 @@ mod tests {
     fn test_37_elements() {
         let types = make_types(37);
         let refs: Vec<_> = types.iter().collect();
-        let (result, _, accessors) = build_type_tuple(&refs);
+        let (result, _, accessors) = build_extern_c_type_tuple(&refs);
 
         let expected: syn::Type = syn::parse_quote! {
             (
@@ -561,7 +540,7 @@ mod tests {
     fn test_144_elements() {
         let types = make_types(144);
         let refs: Vec<_> = types.iter().collect();
-        let (result, _, accessors) = build_type_tuple(&refs);
+        let (result, _, accessors) = build_extern_c_type_tuple(&refs);
 
         let expected: syn::Type = syn::parse_quote! {
             (
@@ -740,7 +719,7 @@ mod tests {
     //fn test_145_elements() {
     //    let types = make_types(145);
     //    let refs: Vec<_> = types.iter().collect();
-    //    let (result, _, accessors) = build_type_tuple(&refs);
+    //    let (result, _, accessors) = build_extern_c_type_tuple(&refs);
 
     //    let expected: syn::Type = syn::parse_quote! {
     //        (
