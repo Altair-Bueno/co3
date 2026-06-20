@@ -4,7 +4,7 @@ use crate::{
     CFnArg, ExternC, ReprC,
     borrow::{Borrow, BorrowCast, ToOwned},
     handle::Erase,
-    ir::{ReprFamily, Robust, Transmuted},
+    ir::ReprFamily,
     niche::{NicheFamily, WithoutNiche},
     size::SizeFamily,
     stored::{SoftDecodeOwned, SoftEncodeOwned},
@@ -120,14 +120,6 @@ impl<C> CSlice<C> {
     pub(crate) const fn from_raw_parts(data: *const C, len: usize) -> Self {
         Self { data, len }
     }
-
-    pub(crate) const fn as_ptr(&self) -> *const C {
-        self.data
-    }
-
-    pub(crate) const fn len(&self) -> usize {
-        self.len
-    }
 }
 
 impl<C> CSliceMut<C> {
@@ -154,14 +146,6 @@ impl<C> CSliceMut<C> {
     /// Create [`Self`] from a raw data pointer and slice metadata.
     pub(crate) const fn from_raw_parts_mut(data: *mut C, len: usize) -> Self {
         Self { data, len }
-    }
-
-    pub(crate) fn as_mut_ptr(&mut self) -> *mut C {
-        self.data
-    }
-
-    pub(crate) const fn len(&self) -> usize {
-        self.len
     }
 }
 

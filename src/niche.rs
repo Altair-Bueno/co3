@@ -11,8 +11,7 @@ use disjoint_impls::disjoint_impls;
 use crate::boxed::{CBox, CBoxedSlice};
 use crate::{
     ExternC, assert_arr_has_non_zero_len,
-    result::CResult,
-    size::{DynTraitLike, MetaSized, SizeFamily, SliceLike, Thin},
+    size::{MetaSized, SizeFamily, Thin},
     slice::{CSlice, CSliceMut},
 };
 
@@ -126,20 +125,14 @@ disjoint_impls! {
         type Kind;
     }
 
-    impl<R: SizeFamily<Kind = MetaSized<SliceLike>> + ?Sized> NicheFamily for &R {
-        type Kind = WithCustomNiche;
-    }
-    impl<R: SizeFamily<Kind = MetaSized<DynTraitLike>> + ?Sized> NicheFamily for &R {
+    impl<R: SizeFamily<Kind = MetaSized<K>> + ?Sized, K> NicheFamily for &R {
         type Kind = WithCustomNiche;
     }
     impl<R: SizeFamily<Kind: Thin> + ?Sized> NicheFamily for &R {
         type Kind = WithStableNiche;
     }
 
-    impl<R: SizeFamily<Kind = MetaSized<SliceLike>> + ?Sized> NicheFamily for &mut R {
-        type Kind = WithCustomNiche;
-    }
-    impl<R: SizeFamily<Kind = MetaSized<DynTraitLike>> + ?Sized> NicheFamily for &mut R {
+    impl<R: SizeFamily<Kind = MetaSized<K>> + ?Sized, K> NicheFamily for &mut R {
         type Kind = WithCustomNiche;
     }
     impl<R: SizeFamily<Kind: Thin> + ?Sized> NicheFamily for &mut R {
@@ -147,11 +140,7 @@ disjoint_impls! {
     }
 
     #[cfg(feature = "alloc")]
-    impl<R: SizeFamily<Kind = MetaSized<SliceLike>> + ?Sized> NicheFamily for Box<R> {
-        type Kind = WithCustomNiche;
-    }
-    #[cfg(feature = "alloc")]
-    impl<R: SizeFamily<Kind = MetaSized<DynTraitLike>> + ?Sized> NicheFamily for Box<R> {
+    impl<R: SizeFamily<Kind = MetaSized<K>> + ?Sized, K> NicheFamily for Box<R> {
         type Kind = WithCustomNiche;
     }
     #[cfg(feature = "alloc")]
@@ -175,10 +164,10 @@ disjoint_impls! {
     // TODO: IMHO compiler should be able to resolve circular dependencies here, but it doesn't work for now so I've bounded previous with Niche
     // This issue could be of some help: https://github.com/mversic/co3/issues/33. This seems to be a limitation of the compiler known as
     // circular/cyclic resolution or (co)inductive cycle. The case shown here creates a cycle but only one solution is possible afaik
-    //impl<R: NicheFamily<Kind = WithCustomNiche>> NicheFamily for Option<R> where Option<Self>: ReprFamily<Kind = Option<WithCustomNiche>> {
+    //impl<R: NicheFamily<Kind = WithCustomNiche>> NicheFamily for Option<R> where Option<Self>: ReprFamily<Kind: ReprRustOrTransmutedNonRobust> {
     //    type Kind = WithCustomNiche;
     //}
-    //impl<R: NicheFamily<Kind = WithCustomNiche>> NicheFamily for Option<R> where Option<Self>: ReprFamily<Kind = Option<WithoutNiche>> {
+    //impl<R: NicheFamily<Kind = WithCustomNiche>> NicheFamily for Option<R> where Option<Self>: ReprFamily<Kind = ReprRust> {
     //    type Kind = WithoutNiche;
     //}
     impl<R: NicheFamily<Kind = WithCustomNiche>> NicheFamily for Option<R> where Self: Niche {
@@ -222,20 +211,11 @@ impl Niche for Option<Option<bool>> {
     const NICHE_VALUE: Self::CType = 4;
 }
 
-impl<T, E> Niche for Result<T, E>
-where
-    Self: ExternC<CType = CResult<T::CType, E::CType>>,
-    T: NicheFamily<Kind = crate::niche::WithoutNiche> + ExternC<CType: Copy>,
-    E: NicheFamily<Kind = crate::niche::WithoutNiche> + ExternC<CType: Copy>,
-{
-    const NICHE_VALUE: Self::CType = CResult::niche();
-}
-
 unsafe impl<R: ?Sized> StableNiche for &R where Self: Niche {}
 unsafe impl<R: ?Sized> StableNiche for &mut R where Self: Niche {}
 #[cfg(feature = "alloc")]
 unsafe impl<R: ?Sized> StableNiche for Box<R> where Self: Niche {}
-unsafe impl<R: ?Sized> StableNiche for core::ptr::NonNull<R> where Self: Niche {}
+unsafe impl<R: ?Sized> StableNiche for NonNull<R> where Self: Niche {}
 
 impl WithNiche for WithStableNiche {}
 impl WithNiche for WithCustomNiche {}
@@ -301,7 +281,7 @@ impl Add for WithCustomNiche {
 mod tests {
     #[cfg(feature = "alloc")]
     use alloc_crate::string::String;
-    use core::{mem::ManuallyDrop, ptr::NonNull};
+    use core::{mem::ManuallyDrop, num::NonZero};
 
     use static_assertions::{assert_impl_all, assert_not_impl_any};
 
@@ -310,6 +290,8 @@ mod tests {
         Decode, Encode, ReprC,
         ir::{ReprFamily, ReprRust},
         slice::CSlice,
+        stored::SoftEncodeOwned,
+        tuple::CTuple2,
     };
 
     #[test]
@@ -330,12 +312,15 @@ mod tests {
             Encode,
 
         );
-        // TODO: Depends on: https://github.com/mversic/co3/issues/33
-        //assert_impl_all!(Option<(u8, NonZeroU8)>:
-        //    NicheFamily<Kind = WithoutNiche>,
-        //    ReprFamily<Kind = ReprRust>,
-        //    ExternC<CType = CTuple2<u8, u8>>
-        //);
+        assert_impl_all!(Option<(u8, NonZero<u8>)>:
+            ReprFamily<Kind = ReprRust>,
+            // TODO: Depends on: https://github.com/mversic/co3/issues/33
+            //NicheFamily<Kind = WithoutNiche>,
+            //Niche<CType = CTuple2<u8, u8>>,
+            ExternC<CType = CTuple2<u8, u8>>,
+            Decode<'static>,
+            Encode,
+        );
 
         assert_not_impl_any!(Option<bool>: ReprC);
         assert_not_impl_any!(Option<Option<bool>>: ReprC);
@@ -344,7 +329,10 @@ mod tests {
     #[test]
     fn niche_values() {
         assert_eq!(core::ptr::null::<u8>(), None::<&bool>.encode());
-        assert_eq!(core::ptr::null::<u8>(), None::<&mut bool>.encode());
+        assert_eq!(
+            core::ptr::null::<u8>(),
+            None::<&mut bool>.soft_encode(&mut Default::default())
+        );
 
         #[cfg(feature = "alloc")]
         assert_eq!(CBoxedSlice::<u8>::none(), None::<String>.encode());
@@ -353,13 +341,13 @@ mod tests {
 
         assert_eq!(CSlice::<u8>::none(), None::<&str>.encode());
 
+        #[cfg(feature = "alloc")]
         assert_eq!(
             co3::slice::CSliceMut::<u8>::none(),
-            None::<&mut str>.encode()
+            None::<&mut str>.soft_encode(&mut Default::default())
         );
 
-        #[cfg(feature = "alloc")]
-        assert_eq!(core::ptr::null_mut(), None::<NonNull<String>>.encode());
+        assert_eq!(core::ptr::null_mut(), None::<NonNull<u32>>.encode());
 
         #[cfg(feature = "alloc")]
         assert_eq!(

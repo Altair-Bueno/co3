@@ -190,10 +190,10 @@ pub(crate) fn derive_transparent_item(input: &FfiTypeInput) -> TokenStream {
         };
 
     let impl_drop_assert = assert_no_drop(&input.generics, name);
-    let (trait_, impl_drop_assert) = if input.data.is_enum() {
-        (quote!(NoDropSizedTransparent), quote! {})
+    let trait_ = if input.data.is_enum() {
+        quote!(SizedTransparent)
     } else {
-        (quote!(Transparent), impl_drop_assert)
+        quote!(Transparent)
     };
 
     let for_dummy = input
@@ -214,32 +214,32 @@ pub(crate) fn derive_transparent_item(input: &FfiTypeInput) -> TokenStream {
             }
         }
 
-        impl #impl_generics co3::SoftEncodeOwned for #name #ty_generics
+        impl #impl_generics co3::stored::SoftEncodeOwned for #name #ty_generics
         where
-            #for_dummy #target: co3::SoftEncodeOwned,
+            #for_dummy #target: co3::stored::SoftEncodeOwned,
             #predicates
         {
-            type Store = <#target as co3::SoftEncodeOwned>::Store;
+            type Store = <#target as co3::stored::SoftEncodeOwned>::Store;
 
             #[inline(always)]
             fn soft_encode<'itm>(self, store: &'itm mut Self::Store) -> Self::CType
             where
                 Self: 'itm,
             {
-                co3::SoftEncodeOwned::soft_encode(#access_target, store)
+                co3::stored::SoftEncodeOwned::soft_encode(#access_target, store)
             }
         }
 
-        impl<'d, #params> co3::SoftDecodeOwned<'d> for #name #ty_generics
+        impl<'d, #params> co3::stored::SoftDecodeOwned<'d> for #name #ty_generics
         where
-            #target: co3::SoftDecodeOwned<'d>,
+            #target: co3::stored::SoftDecodeOwned<'d>,
             #predicates
         {
-            type Store = <#target as co3::SoftDecodeOwned<'d>>::Store;
+            type Store = <#target as co3::stored::SoftDecodeOwned<'d>>::Store;
 
             #[inline(always)]
             unsafe fn soft_decode<'itm: 'd>(source: Self::CType, store: &'itm mut Self::Store) -> Option<Self> {
-                co3::SoftDecodeOwned::soft_decode(source, store).map(|target| #construct_self)
+                co3::stored::SoftDecodeOwned::soft_decode(source, store).map(|target| #construct_self)
             }
         }
 

@@ -161,14 +161,6 @@ impl<C> CBox<C> {
 }
 
 impl<C, A: Allocator> CBox<C, A> {
-    pub const fn as_ptr(&self) -> *const C {
-        self.data
-    }
-
-    pub fn as_mut_ptr(&mut self) -> *mut C {
-        self.data
-    }
-
     pub(crate) unsafe fn read(self) -> C {
         unsafe { self.data.read() }
     }
@@ -185,13 +177,6 @@ impl<C, A: Allocator> CBox<C, A> {
     /// Returns `true` if the option is a `None` value.
     pub const fn is_none(&self) -> bool {
         self.data.is_null()
-    }
-
-    pub const fn cast<T>(self) -> CBox<T, A> {
-        CBox {
-            data: self.data.cast(),
-            allocator: self.allocator,
-        }
     }
 }
 
@@ -245,14 +230,6 @@ impl<C, A: Allocator> CBoxedSlice<C, A> {
             // SAFETY: allocator will never be used
             allocator: unsafe { core::mem::zeroed() },
         }
-    }
-
-    pub(crate) const fn len(&self) -> usize {
-        self.len
-    }
-
-    pub(crate) fn into_non_null(self) -> Option<NonNull<C>> {
-        NonNull::new(self.data)
     }
 
     pub(crate) unsafe fn deallocate(&self) -> bool {

@@ -7,7 +7,7 @@ use crate::{
     borrow::{Borrow, BorrowCast, ToOwned},
     handle::Erase,
     ir::ReprFamily,
-    niche::{NicheFamily, WithoutNiche},
+    niche::{Niche, NicheFamily, WithoutNiche},
     size::SizeFamily,
     stored::{SoftDecodeOwned, SoftEncodeOwned},
     transmute::CheckedTransmute,
@@ -123,6 +123,15 @@ unsafe impl<T: ReprC + Copy, E: ReprC + Copy> CFnArg for CResult<T, E> {}
 impl<T: ReprC + Copy, E: ReprC + Copy> ExternC for CResult<T, E> {
     type CType = Self;
 }
+impl<T, E> Niche for Result<T, E>
+where
+    Self: ExternC<CType = CResult<T::CType, E::CType>>,
+    T: NicheFamily<Kind = crate::niche::WithoutNiche> + ExternC<CType: Copy>,
+    E: NicheFamily<Kind = crate::niche::WithoutNiche> + ExternC<CType: Copy>,
+{
+    const NICHE_VALUE: Self::CType = CResult::niche();
+}
+
 impl<T: ReprC + Copy, E: ReprC + Copy> SoftEncodeOwned for CResult<T, E> {
     type Store = ();
 
@@ -166,10 +175,6 @@ impl<'itm, T: Copy, E: Copy> ToOwned<'itm> for CResult<T, E> {
     }
 }
 
-unsafe impl<T: Erase<Erased: Copy> + Copy, E: Erase<Erased: Copy> + Copy> Erase for CResult<T, E> {
-    type Erased = CResult<T::Erased, E::Erased>;
-}
-
 unsafe impl<
     T: BorrowCast<AsConst: Copy, AsMut: Copy> + Copy,
     E: BorrowCast<AsConst: Copy, AsMut: Copy> + Copy,
@@ -177,4 +182,11 @@ unsafe impl<
 {
     type AsConst = CResult<T::AsConst, E::AsConst>;
     type AsMut = CResult<T::AsMut, E::AsMut>;
+}
+unsafe impl<T: Erase<Erased: Copy> + Copy, E: Erase<Erased: Copy> + Copy> Erase for CResult<T, E> {
+    type Erased = CResult<T::Erased, E::Erased>;
+}
+
+unsafe impl<T: Erase<Erased: Sized>, E: Erase<Erased: Sized>> Erase for Result<T, E> {
+    type Erased = Result<T::Erased, E::Erased>;
 }

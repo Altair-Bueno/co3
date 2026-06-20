@@ -4,17 +4,89 @@ use crate::{
     CFnArg, CFnReturn, Decode, ExternC, ReprC,
     borrow::{Borrow, BorrowCast, ToOwned},
     handle::Erase,
-    ir::{NonRobust, ReprFamily, ReprRust, Transmuted},
+    ir::{NonRobust, ReprFamily, Robust, Transmuted},
     niche::{Niche, NicheFamily, WithCustomNiche, WithoutNiche},
-    reprC,
     size::{MetaSized, SizeFamily, SliceLike},
     stored::{SoftDecodeOwned, SoftEncodeOwned},
     transmute::CheckedTransmute,
 };
 
 macro_rules! primitive_derive {
-    ( $($primitive:ty),* $(,)? ) => { $(
-        reprC! { unsafe impl SizedRobust for $primitive {} } )*
+    ( $primitive:ty ) => {
+        impl ReprFamily for $primitive {
+            type Kind = Transmuted<Robust>;
+        }
+        impl SizeFamily for $primitive {
+            type Kind = crate::size::Sized;
+        }
+        impl NicheFamily for $primitive {
+            type Kind = WithoutNiche;
+        }
+
+        unsafe impl ReprC for $primitive {}
+        unsafe impl CFnArg for $primitive {}
+
+        impl ExternC for $primitive {
+            type CType = Self;
+        }
+
+        unsafe impl CheckedTransmute for $primitive {
+            #[inline(always)]
+            unsafe fn is_valid(_: &Self::CType) -> bool {
+                true
+            }
+        }
+
+        impl SoftEncodeOwned for $primitive {
+            type Store = ();
+
+            #[inline(always)]
+            fn soft_encode<'itm>(self, (): &mut ()) -> Self::CType
+            where
+                Self: 'itm,
+            {
+                self
+            }
+        }
+        impl<'d> SoftDecodeOwned<'d> for $primitive {
+            type Store = ();
+
+            #[inline(always)]
+            unsafe fn soft_decode<'itm: 'd>(source: Self::CType, (): &mut ()) -> Option<Self> {
+                Some(source)
+            }
+        }
+
+        impl Borrow for $primitive {
+            type Borrowed<'itm>
+                = Self
+            where
+                Self: 'itm;
+
+            type Owner = ();
+
+            #[inline(always)]
+            fn borrow<'itm>(self, (): &mut ()) -> Self::Borrowed<'itm>
+            where
+                Self: 'itm,
+            {
+                self
+            }
+        }
+        impl<'itm> ToOwned<'itm> for $primitive {
+            #[inline(always)]
+            fn to_owned(source: Self) -> Self {
+                source
+            }
+        }
+
+        unsafe impl Erase for $primitive {
+            type Erased = Self;
+        }
+        unsafe impl BorrowCast for $primitive {
+            type AsConst = Self;
+            type AsMut = Self;
+        }
     };
 }
 
@@ -182,7 +254,20 @@ macro_rules! fieldless_enum_derive {
     };
 }
 
-primitive_derive! { usize, isize, u8, i8, u16, i16, u32, i32, u64, i64, u128, i128, f32, f64 }
+primitive_derive! { usize }
+primitive_derive! { isize }
+primitive_derive! { u8 }
+primitive_derive! { i8 }
+primitive_derive! { u16 }
+primitive_derive! { i16 }
+primitive_derive! { u32 }
+primitive_derive! { i32 }
+primitive_derive! { u64 }
+primitive_derive! { i64 }
+primitive_derive! { u128 }
+primitive_derive! { i128 }
+primitive_derive! { f32 }
+primitive_derive! { f64 }
 
 raw_pointer_derive! { const }
 raw_pointer_derive! { mut }
@@ -243,4 +328,100 @@ fieldless_enum_derive! {
 fieldless_enum_derive! {
     bool => u8: {2}:
     |i: &u8| *i == 0 || *i == 1
+}
+
+#[cfg(test)]
+mod tests {
+    #[cfg(feature = "alloc")]
+    use alloc_crate::{boxed::Box, vec::Vec};
+    use static_assertions::assert_impl_all;
+
+    use super::*;
+    #[cfg(feature = "alloc")]
+    use crate::boxed::{CBox, CBoxedSlice};
+    use crate::{
+        Encode,
+        ir::{ReprRust, Robust},
+        niche::{StableNiche, WithStableNiche},
+        option::COption,
+        slice::{CSlice, CSliceMut},
+    };
+
+    #[test]
+    fn robust_u8() {
+        assert_impl_all!(u8:
+            ReprFamily<Kind = Transmuted<Robust>>,
+            NicheFamily<Kind = WithoutNiche>,
+            ExternC<CType = u8>,
+            Decode<'static>,
+            Encode,
+            ReprC,
+        );
+        assert_impl_all!(&u8:
+            ReprFamily<Kind = Transmuted<NonRobust>>,
+            NicheFamily<Kind = WithStableNiche>,
+            StableNiche<CType = *const u8>,
+            Decode<'static>,
+            Encode,
+        );
+        assert_impl_all!(&mut u8:
+            ReprFamily<Kind = Transmuted<NonRobust>>,
+            NicheFamily<Kind = WithStableNiche>,
+            StableNiche<CType = *mut u8>,
+            Decode<'static>,
+            Encode,
+        );
+        #[cfg(feature = "alloc")]
+        assert_impl_all!(Box<u8>:
+            ReprFamily<Kind = Transmuted<NonRobust>>,
+            NicheFamily<Kind = WithStableNiche>,
+            StableNiche<CType = CBox<u8>>,
+            Decode<'static>,
+            Encode,
+        );
+        assert_impl_all!(&[u8]:
+            ReprFamily<Kind = ReprRust>,
+            NicheFamily<Kind = WithCustomNiche>,
+            Niche<CType = CSlice<u8>>,
+            Decode<'static>,
+            Encode,
+        );
+        assert_impl_all!(&mut [u8]:
+            ReprFamily<Kind = ReprRust>,
+            NicheFamily<Kind = WithCustomNiche>,
+            Niche<CType = CSliceMut<u8>>,
+            Decode<'static>,
+            Encode,
+        );
+        #[cfg(feature = "alloc")]
+        assert_impl_all!(Box<[u8]>:
+            ReprFamily<Kind = ReprRust>,
+            NicheFamily<Kind = WithCustomNiche>,
+            Niche<CType = CBoxedSlice<u8>>,
+            Decode<'static>,
+            Encode,
+        );
+        #[cfg(feature = "alloc")]
+        assert_impl_all!(Vec<u8>:
+            ReprFamily<Kind = ReprRust>,
+            NicheFamily<Kind = WithCustomNiche>,
+            Niche<CType = CBoxedSlice<u8>>,
+            Decode<'static>,
+            Encode,
+        );
+        assert_impl_all!([u8; 2]:
+            ReprFamily<Kind = Transmuted<Robust>>,
+            NicheFamily<Kind = WithoutNiche>,
+            Decode<'static>,
+            Encode,
+            ReprC,
+        );
+        assert_impl_all!(Option<u8>:
+            ReprFamily<Kind = ReprRust>,
+            NicheFamily<Kind = WithCustomNiche>,
+            Niche<CType = COption<u8>>,
+            Decode<'static>,
+            Encode,
+        );
+    }
 }

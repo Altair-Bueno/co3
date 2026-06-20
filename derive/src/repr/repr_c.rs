@@ -68,15 +68,6 @@ fn gen_transparent_view_impl<const ADD_COPY: bool>(
             type Kind = <#owner_ty as co3::ir::ReprFamily>::Kind;
         }
 
-        // FIXME:
-        //impl #impl_generics co3::ir::EncodeReprFamily for #name #ty_generics
-        //where
-        //    #owner_const_view<#(#owner_ty_generics),*>: co3::ir::EncodeReprFamily,
-        //    #predicates
-        //{
-        //    type Kind = <#owner_const_view<#(#owner_ty_generics),*> as co3::ir::EncodeReprFamily>::Kind;
-        //}
-
         unsafe impl #impl_generics co3::transmute::CheckedTransmute for #name #ty_generics
         where
             #borrow_cast_equality_bounds
@@ -409,10 +400,6 @@ pub(crate) fn derive_fieldless_enum(
             type Kind = co3::ir::Transmuted<co3::ir::NonRobust>;
         }
 
-        impl #impl_generics co3::ir::EncodeReprFamily for #enum_name #ty_generics #where_clause {
-            type Kind = co3::ir::Transmuted<co3::ir::NonRobust>;
-        }
-
         unsafe #impl_generics impl co3::transmute::CheckedTransmute for #enum_name #ty_generics #where_clause {
             #[inline(always)]
             unsafe fn is_valid(#target_arg: &Self::CType) -> bool {
@@ -506,6 +493,198 @@ pub(super) fn assert_no_drop(generics: &syn::Generics, ident: &syn::Ident) -> To
     }
 }
 
+pub(crate) fn gen_robust_impls<const ADD_COPY: bool>(
+    ident: &syn::Ident,
+    generics: &syn::Generics,
+    extra_bounds: TokenStream,
+) -> TokenStream {
+    let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
+    let predicates = where_clause.as_ref().map(|w| &w.predicates);
+    let params = &generics.params;
+
+    let copy_bound = ADD_COPY.then(|| {
+        if generics.params.is_empty() {
+            quote! { for<'_dummy> Self: Copy, }
+        } else {
+            quote! { Self: Copy, }
+        }
+    });
+
+    let robust_impls = gen_robust_common_impls::<ADD_COPY>(ident, generics, extra_bounds.clone());
+
+    quote! {
+        impl #impl_generics co3::ir::ReprFamily for #ident #ty_generics
+        where
+            #extra_bounds
+            #predicates
+        {
+            type Kind = co3::ir::Transmuted<co3::ir::Robust>;
+        }
+
+        impl #impl_generics co3::niche::NicheFamily for #ident #ty_generics
+        where
+            #extra_bounds
+            #copy_bound
+            #predicates
+        {
+            type Kind = co3::niche::WithoutNiche;
+        }
+
+        impl #impl_generics co3::borrow::Borrow for #ident #ty_generics
+        where
+            #extra_bounds
+            #copy_bound
+            #predicates
+        {
+            type Borrowed<'itm> = Self;
+            type Owner = ();
+
+            #[inline(always)]
+            fn borrow<'itm>(self, (): &mut ()) -> <Self as co3::borrow::Borrow>::Borrowed<'itm> {
+                self
+            }
+        }
+        impl<'itm, #params> co3::borrow::ToOwned<'itm> for #ident #ty_generics
+        where
+            #extra_bounds
+            #predicates
+        {
+            #[inline(always)]
+            fn to_owned(source: Self) -> Self {
+                source
+            }
+        }
+
+        #robust_impls
+    }
+}
+
+fn gen_robust_common_impls<const ADD_COPY: bool>(
+    ident: &syn::Ident,
+    generics: &syn::Generics,
+    extra_bounds: TokenStream,
+) -> TokenStream {
+    let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
+    let predicates = where_clause.as_ref().map(|w| &w.predicates);
+    let params = &generics.params;
+
+    let size_family = if ADD_COPY {
+        gen_struct_size_family(ident, generics, field_types, extra_bounds)
+    } else {
+        gen_sized_family(ident, generics, extra_bounds.clone())
+    };
+
+    let copy_bound = ADD_COPY.then(|| {
+        if generics.params.is_empty() {
+            quote! { for<'_dummy> Self: Copy, }
+        } else {
+            quote! { Self: Copy, }
+        }
+    });
+
+    quote! {
+        #size_family
+
+        unsafe impl #impl_generics co3::ReprC for #ident #ty_generics
+        where
+            #extra_bounds
+            #predicates
+        {}
+        unsafe impl #impl_generics co3::CFnArg for #ident #ty_generics
+        where
+            #extra_bounds
+            #copy_bound
+            #predicates
+        {}
+
+        unsafe impl #impl_generics co3::transmute::CheckedTransmute for #ident #ty_generics
+        where
+            #extra_bounds
+            #predicates
+        {
+            #[inline(always)]
+            unsafe fn is_valid(_: &Self::CType) -> bool {
+                true
+            }
+        }
+
+        impl #impl_generics co3::ExternC for #ident #ty_generics
+        where
+            #extra_bounds
+            #predicates
+        {
+            type CType = Self;
+        }
+        impl #impl_generics co3::stored::SoftEncodeOwned for #ident #ty_generics
+        where
+            #extra_bounds
+            #copy_bound
+            #predicates
+        {
+            type Store = ();
+
+            #[inline(always)]
+            fn soft_encode<'itm>(self, (): &mut ()) -> Self::CType
+            where
+                Self: 'itm,
+            {
+                self
+            }
+        }
+        impl<'d, #params> co3::stored::SoftDecodeOwned<'d> for #ident #ty_generics
+        where
+            #extra_bounds
+            #copy_bound
+            #predicates
+        {
+            type Store = ();
+
+            #[inline(always)]
+            unsafe fn soft_decode<'itm: 'd>(source: Self::CType, (): &mut ()) -> Option<Self> {
+                Some(source)
+            }
+        }
+
+        unsafe impl #impl_generics co3::handle::Erase for #ident #ty_generics
+        where
+            #extra_bounds
+            #predicates
+        {
+            type Erased = Self;
+        }
+
+    }
+}
+
+fn gen_robust_borrow_cast_impl<const ADD_COPY: bool>(
+    ident: &syn::Ident,
+    generics: &syn::Generics,
+    extra_bounds: TokenStream,
+) -> TokenStream {
+    let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
+    let predicates = where_clause.as_ref().map(|w| &w.predicates);
+
+    let copy_bound = ADD_COPY.then(|| {
+        if generics.params.is_empty() {
+            quote! { for<'_dummy> Self: Copy, }
+        } else {
+            quote! { Self: Copy, }
+        }
+    });
+
+    quote! {
+        unsafe impl #impl_generics co3::borrow::BorrowCast for #ident #ty_generics
+        where
+            #extra_bounds
+            #copy_bound
+            #predicates
+        {
+            type AsConst = Self;
+            type AsMut = Self;
+        }
+    }
+}
+
 pub(super) fn gen_repr_c_struct(
     struct_name: &syn::Ident,
     vis: &syn::Visibility,
@@ -557,12 +736,9 @@ pub(super) fn gen_repr_c_struct(
     };
 
     let doc = format!(" FFI-safe equivalent of [`{struct_name}`]");
-    let size_family_impl = gen_struct_size_family(
-        &repr_c_struct_name,
-        generics,
-        &field_types,
-        gen_extern_c_bounds::<false>(&field_types, generics),
-    );
+    let extern_c_bounds = gen_extern_c_bounds::<false>(&field_types, generics);
+    let size_family_impl =
+        gen_struct_size_family(&repr_c_struct_name, generics, &field_types, extern_c_bounds);
 
     let repr_c_struct = gen_repr_c_type::<false>(
         doc,
@@ -728,7 +904,6 @@ fn gen_repr_c_data_enum(
 ) -> (syn::Ident, TokenStream) {
     let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
 
-    let params = &generics.params;
     let predicates = where_clause
         .as_ref()
         .map(|where_clause| &where_clause.predicates);
@@ -763,6 +938,13 @@ fn gen_repr_c_data_enum(
         quote! { SizedRobust },
         quote! { #extern_c_bounds },
     );
+    let robust_impls =
+        gen_robust_impls::<false>(&repr_c_enum_name, generics, quote! { #extern_c_bounds });
+    let robust_borrow_cast_impl = gen_robust_borrow_cast_impl::<false>(
+        &repr_c_enum_name,
+        generics,
+        quote! { #extern_c_bounds },
+    );
 
     let repr_c_enum = quote! {
         #payload_def
@@ -792,9 +974,8 @@ fn gen_repr_c_data_enum(
             #predicates
         {}
 
-        co3::reprC! {
-            unsafe impl(#params) SizedRobust for #repr_c_enum_name #ty_generics where (#extern_c_bounds #predicates) {}
-        }
+        #robust_impls
+        #robust_borrow_cast_impl
 
         #borrow_cast_impl
     };
@@ -815,26 +996,31 @@ fn gen_repr_c_type<const IS_UNION: bool>(
     field_types: &[&syn::Type],
 ) -> TokenStream {
     let type_bounds = gen_extern_c_bounds::<IS_UNION>(field_types, generics);
-    let copy_bounds = (!IS_UNION)
-        .then(|| lowered_field_copy_bounds(field_types, generics))
-        .unwrap_or_default();
+
+    let copy_bounds = if !IS_UNION {
+        lowered_field_copy_bounds(field_types, generics)
+    } else {
+        Default::default()
+    };
+
     let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
-    let params = &generics.params;
     let predicates = where_clause
         .as_ref()
         .map(|where_clause| &where_clause.predicates);
 
-    let (robust_kind, type_bounds, copy_bounds) = if IS_UNION {
+    let (robust_kind, type_bounds, copy_bounds, sized_robust) = if IS_UNION {
         (
             quote! {SizedRobust},
             type_bounds.clone(),
             type_bounds.clone(),
+            true,
         )
     } else {
         (
             quote! {Robust},
             type_bounds.clone(),
             quote! { #copy_bounds #type_bounds },
+            false,
         )
     };
 
@@ -869,6 +1055,9 @@ fn gen_repr_c_type<const IS_UNION: bool>(
         robust_kind.clone(),
         type_bounds.clone(),
     );
+    let robust_impls = gen_robust_impls::<true>(&ident, generics, type_bounds.clone());
+    let robust_borrow_cast_impl =
+        gen_robust_borrow_cast_impl(&ident, generics, type_bounds.clone());
 
     quote! {
         #[repr(C)]
@@ -892,9 +1081,8 @@ fn gen_repr_c_type<const IS_UNION: bool>(
 
         #borrow_cast_impl
 
-        co3::reprC! {
-            unsafe impl(#params) #robust_kind for #ident #ty_generics where (#type_bounds #predicates) {}
-        }
+        #robust_impls
+        #robust_borrow_cast_impl
     }
 }
 
@@ -1023,7 +1211,7 @@ fn gen_borrow_cast_type_def<const IS_UNION: bool>(
 ) -> TokenStream {
     let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
     let predicates = where_clause.as_ref().map(|w| &w.predicates);
-    let params = &generics.params;
+    let sized_robust = robust_kind.to_string() == "SizedRobust";
 
     let item = if IS_UNION {
         quote! {
@@ -1063,15 +1251,17 @@ fn gen_borrow_cast_type_def<const IS_UNION: bool>(
         }
     };
 
+    let robust_impls = if sized_robust {
+        gen_robust_impls::<false>(ident, generics, view_bounds.clone())
+    } else {
+        gen_robust_impls::<true>(ident, generics, view_bounds.clone())
+    };
+    let robust_borrow_cast_impl = gen_robust_borrow_cast_impl(ident, generics, view_bounds.clone());
+
     quote! {
         #item
-
-        co3::reprC! {
-            unsafe impl(#params) #robust_kind for #ident #ty_generics where (
-                #view_bounds
-                #predicates
-            ) {}
-        }
+        #robust_impls
+        #robust_borrow_cast_impl
     }
 }
 
@@ -1143,10 +1333,16 @@ fn gen_transparent_impl<'a, const ADD_COPY: bool>(
 ) -> TokenStream {
     let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
     let predicates = where_clause.as_ref().map(|w| &w.predicates);
+    let params = &generics.params;
 
     let fields = fields.into_iter().map(|f| &f.ty).collect::<Vec<_>>();
     let flat_transmute_bounds = gen_flat_transmute_extern_c_bounds(&fields, generics);
     let extern_c_bounds = gen_extern_c_bounds::<ADD_COPY>(&fields, generics);
+
+    let for_dummy = generics
+        .params
+        .is_empty()
+        .then_some(quote! { for<'_dummy> });
 
     let repr_family_kind = fields
         .iter()
@@ -1159,13 +1355,9 @@ fn gen_transparent_impl<'a, const ADD_COPY: bool>(
             type Kind = #repr_family_kind;
         }
 
-        //impl #impl_generics co3::ir::EncodeReprFamily for #item_name #ty_generics #where_clause {
-        //    type Kind = #(<#fields as co3::ir::EncodeReprFamily>::Kind)+*;
-        //}
-
-        unsafe impl #impl_generics co3::transmute::CheckedTransmute for #item_name #ty_generics
+        unsafe impl<#params, K> co3::transmute::CheckedTransmute for #item_name #ty_generics
         where
-            // Self: co3::ir::ReprFamily<Kind = co3::ir::Transmuted<K>>,
+            #for_dummy Self: co3::ir::ReprFamily<Kind = co3::ir::Transmuted<K>>,
             #flat_transmute_bounds
             #extern_c_bounds
             #predicates

@@ -31,8 +31,8 @@ pub(super) fn derive_no_repr_struct<const IS_VIEW: bool>(
     let repr_c_struct_name = gen_repr_c_item_name(name);
     let repr_c_struct = gen_repr_c_struct(name, vis, generics, fields);
     let field_types = fields.iter().map(|f| &f.ty).collect::<Vec<_>>();
-    let self_bounds = gen_extern_c_bounds::<false>(&field_types, generics);
-    let size_family_impl = gen_struct_size_family(name, generics, &field_types, self_bounds);
+    let extern_c_bounds = gen_extern_c_bounds::<false>(&field_types, generics);
+    let size_family_impl = gen_struct_size_family(name, generics, &field_types, extern_c_bounds);
 
     let field_rust_stores = fields.iter().map(|field| {
         let ty = &field.ty;
@@ -671,10 +671,16 @@ where
         quote! { <#(#borrowed_ty_args),*> }
     };
 
-    let sized_bound = (ADD_SIZED_BOUND && generics.params.is_empty())
-        .then_some(quote! { for<'_dummy> Self: Sized, });
+    let sized_bound = ADD_SIZED_BOUND.then(|| {
+        if generics.params.is_empty() {
+            quote! { for<'_dummy> Self: Sized, }
+        } else {
+            quote! { Self: Sized, }
+        }
+    });
 
     quote! {
+        #impl_drop_assert
         #borrowed_item
         #store_defs
 
@@ -695,11 +701,9 @@ where
             where
                 Self: '_išč,
             {
-                #impl_drop_assert
                 #borrow_impl
             }
         }
-
         impl<'_išč, #params> co3::borrow::ToOwned<'_išč> for #name #ty_generics
         where
             #to_owned_bounds
@@ -892,13 +896,11 @@ fn gen_ir_impl<const ADD_COPY: bool>(
 ) -> TokenStream {
     let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
     let predicates = where_clause.as_ref().map(|w| &w.predicates);
-    let params = &generics.params;
-
     let extern_c_bounds = gen_extern_c_bounds::<ADD_COPY>(fields, generics);
 
     quote! {
-        co3::reprC! {
-            impl(#params) ReprRust for #type_name #ty_generics where (#predicates) {}
+        impl #impl_generics co3::ir::ReprFamily for #type_name #ty_generics #where_clause {
+            type Kind = co3::ir::ReprRust;
         }
 
         impl #impl_generics co3::ExternC for #type_name #ty_generics
@@ -998,14 +1000,13 @@ fn gen_view_ir_impl<const ADD_COPY: bool>(
     });
     let view_bounds = gen_view_bounds::<ADD_COPY>(fields.iter().copied(), generics);
 
-    let params = &generics.params;
     let predicates = where_clause
         .as_ref()
         .map(|where_clause| &where_clause.predicates);
 
     quote! {
-        co3::reprC! {
-            impl(#params) ReprRust for #view_name #ty_generics where (#predicates) {}
+        impl #impl_generics co3::ir::ReprFamily for #view_name #ty_generics #where_clause {
+            type Kind = co3::ir::ReprRust;
         }
 
         impl #impl_generics co3::ExternC for #view_name #ty_generics where

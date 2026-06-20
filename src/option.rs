@@ -98,9 +98,9 @@ unsafe impl<T: ReprC + Copy> CFnArg for COption<T> {}
 impl<T: ReprC> ExternC for COption<T> {
     type CType = COption<T>;
 }
-impl<R: ReprC + Copy> Niche for Option<R>
+impl<R, C: Copy> Niche for Option<R>
 where
-    Self: ExternC<CType = COption<R>>,
+    Self: ExternC<CType = COption<C>>,
 {
     const NICHE_VALUE: Self::CType = COption::none();
 }
@@ -147,11 +147,14 @@ impl<'itm, T> ToOwned<'itm> for COption<T> {
     }
 }
 
+unsafe impl<T: BorrowCast> BorrowCast for COption<T> {
+    type AsConst = COption<T::AsConst>;
+    type AsMut = COption<T::AsMut>;
+}
 unsafe impl<T: Erase<Erased: Sized>> Erase for COption<T> {
     type Erased = COption<T::Erased>;
 }
 
-unsafe impl<T: BorrowCast> BorrowCast for COption<T> {
-    type AsConst = COption<T::AsConst>;
-    type AsMut = COption<T::AsMut>;
+unsafe impl<T: Erase<Erased: Sized>> Erase for Option<T> {
+    type Erased = Option<T::Erased>;
 }

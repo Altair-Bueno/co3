@@ -1,7 +1,7 @@
 //! Utilities for defining opaque pointer handles and shared handle logic.
 #[cfg(feature = "alloc")]
-use alloc_crate::{boxed::Box, string::String, vec::Vec};
-use core::{ffi::c_void, mem::ManuallyDrop};
+use alloc_crate::{boxed::Box, vec::Vec};
+use core::ffi::c_void;
 
 use crate::Encode;
 
@@ -160,34 +160,12 @@ unsafe impl Erase for str {
 unsafe impl<T: Erase<Erased: Sized>> Erase for [T] {
     type Erased = [T::Erased];
 }
-unsafe impl<T: Erase<Erased: Sized>> Erase for Option<T> {
-    type Erased = Option<T::Erased>;
-}
 
-unsafe impl<T: Erase> Erase for core::cell::UnsafeCell<T> {
-    type Erased = core::cell::UnsafeCell<T::Erased>;
-}
-unsafe impl<T: Erase> Erase for core::cell::Cell<T> {
-    type Erased = core::cell::Cell<T::Erased>;
-}
 unsafe impl<T: Erase> Erase for core::marker::PhantomData<T> {
     type Erased = core::marker::PhantomData<T::Erased>;
-}
-unsafe impl<T: Erase<Erased: Sized>, E: Erase<Erased: Sized>> Erase for Result<T, E> {
-    type Erased = Result<T::Erased, E::Erased>;
-}
-unsafe impl<T: crate::handle::Erase + ?Sized> crate::handle::Erase for ManuallyDrop<T> {
-    type Erased = ManuallyDrop<T::Erased>;
 }
 
 #[cfg(feature = "alloc")]
 unsafe impl<T: Erase<Erased: Sized>> Erase for Vec<T> {
     type Erased = Vec<T::Erased>;
-}
-#[cfg(feature = "alloc")]
-unsafe impl Erase for String {
-    type Erased = Self;
-}
-unsafe impl Erase for () {
-    type Erased = Self;
 }

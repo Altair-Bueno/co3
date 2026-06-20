@@ -1,6 +1,8 @@
 #[cfg(feature = "alloc")]
 use alloc_crate::{boxed::Box, vec::Vec};
-use core::{convert::Infallible, ptr::NonNull};
+use core::convert::Infallible;
+#[cfg(feature = "alloc")]
+use core::ptr::NonNull;
 
 /// Marker for types with a size that can be determined from pointer metadata.
 ///
@@ -34,8 +36,11 @@ pub(crate) trait Thin {}
 impl Thin for Sized {}
 impl Thin for ExternTypeLike {}
 
+#[cfg(feature = "alloc")]
 pub(crate) trait Dst {}
+#[cfg(feature = "alloc")]
 impl Dst for ExternTypeLike {}
+#[cfg(feature = "alloc")]
 impl<K> Dst for MetaSized<K> {}
 
 /// Classifies whether a type has statically known or metadata-dependent layout.

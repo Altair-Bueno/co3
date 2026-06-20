@@ -10,7 +10,6 @@ use core::{convert::Infallible, ops::Add};
 use disjoint_impls::disjoint_impls;
 
 use crate::{
-    ReprC,
     niche::{NicheFamily, WithCustomNiche, WithStableNiche, WithoutNiche},
     size::{MetaSized, SizeFamily, Thin},
 };
@@ -21,7 +20,7 @@ pub enum ReprRust {}
 /// Marker for a type that is transmuted to another type and thus delegates its conversion.
 pub struct Transmuted<K>(core::marker::PhantomData<K>, Infallible);
 
-/// Marker for a robust [`ReprC`] type that does not require conversion
+/// Marker for a robust [`crate::ReprC`] type that does not require conversion
 pub enum Robust {}
 
 /// Marker for a non-robust type that is still transmuted by the ABI layer.
@@ -34,7 +33,7 @@ disjoint_impls! {
     pub trait ReprFamily {
         /// The internal representation (i.e. type family) of the type
         ///
-        /// - If `Self` is [`ReprC`], set [`ReprFamily::Kind`] to [`Transmuted<Robust>`].
+        /// - If `Self` is [`crate::ReprC`], set [`ReprFamily::Kind`] to [`Transmuted<Robust>`].
         ///   The type is passed to FFI functions as-is, without conversion.
         ///
         /// - If [`ReprFamily::Kind`] is [`Transmuted<NonRobust>`] the type has the same
@@ -128,91 +127,6 @@ disjoint_impls! {
         type Kind = ReprRust;
     }
     // TODO: Implement for niche optimized Results
-}
-
-// FIXME: This bound may be useless by now
-disjoint_impls! {
-    // TODO: IMO this bound should be ReprFamily<Kind = Transmuted<K>>
-    // This can be a case in point to split Robustness out of ReprFamily
-    pub trait EncodeReprFamily: ReprFamily {
-        type Kind;
-    }
-
-    //impl<R: ReprFamily<Kind = Robust> + ?Sized> EncodeReprFamily for R {
-    //    type Kind = Robust;
-    //}
-    //impl<R: ReprFamily<Kind = ReprRust> + ?Sized> EncodeReprFamily for R {
-    //    type Kind = ReprRust;
-    //}
-
-    impl<R: EncodeReprFamily, K> EncodeReprFamily for [R]
-    where
-        Self: ReprFamily<Kind = Transmuted<K>>,
-    {
-        type Kind = <R as EncodeReprFamily>::Kind;
-    }
-
-    impl<R: EncodeReprFamily + ?Sized, K> EncodeReprFamily for &R
-    where
-        Self: ReprFamily<Kind = Transmuted<K>>,
-    {
-        type Kind = <R as EncodeReprFamily>::Kind;
-    }
-
-    // NOTE: `ReprC` is doing real work here because it is an `unsafe` trait and guarantees
-    // soundness of every mutation of the pointee from the other side of the `FFI` boundary
-    impl<R: ReprFamily<Kind = Transmuted<Robust>> + ReprC + ?Sized> EncodeReprFamily for &mut R
-    where
-        Self: ReprFamily<Kind = Transmuted<Robust>>,
-    {
-        type Kind = Transmuted<Robust>;
-    }
-    impl<R: ReprFamily<Kind = Transmuted<NonRobust>> + ?Sized> EncodeReprFamily for &mut R
-    where
-        Self: ReprFamily<Kind = Transmuted<NonRobust>>,
-    {
-        // TODO: With a `Unchecked<T>` wrapper we can transmute this
-        type Kind = ReprRust;
-    }
-
-    // FIXME: &UnsafeCell should be distinguished as a mutable reference type
-    // NOTE: `ReprC` is doing real work here because it is an `unsafe` trait and guarantees
-    // soundness of every mutation of the pointee from the other side of the `FFI` boundary
-    //impl<R: ReprFamily<Kind = Robust> + ReprC + ?Sized> EncodeReprFamily for &UnsafeCell<R>
-    //where
-    //    Self: ReprFamily<Kind = Transmuted>,
-    //{
-    //    type Kind = Transmuted;
-    //}
-    //impl<R: NicheFamily<Kind = Transmuted> + ?Sized> EncodeReprFamily for &UnsafeCell<R>
-    //where
-    //    Self: ReprFamily<Kind = Transmuted>,
-    //{
-    //    // TODO: With a `Unchecked<T>` wrapper we can transmute this
-    //    type Kind = ReprRust;
-    //}
-
-    #[cfg(feature = "alloc")]
-    impl<R: EncodeReprFamily + ?Sized, K> EncodeReprFamily for Box<R>
-    where
-        Self: ReprFamily<Kind = Transmuted<K>>,
-    {
-        type Kind = <R as EncodeReprFamily>::Kind;
-    }
-
-    impl<R: EncodeReprFamily, const N: usize, K> EncodeReprFamily for [R; N]
-    where
-        Self: ReprFamily<Kind = Transmuted<K>>,
-    {
-        type Kind = <R as EncodeReprFamily>::Kind;
-    }
-
-    impl<R: EncodeReprFamily, K> EncodeReprFamily for Option<R>
-    where
-        Self: ReprFamily<Kind = Transmuted<K>>,
-    {
-        type Kind = <R as EncodeReprFamily>::Kind;
-    }
 }
 
 #[cfg(feature = "alloc")]

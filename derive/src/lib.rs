@@ -108,7 +108,7 @@ enum DropImpl {
 ///
 /// `is_valid` must not return false positives
 ///
-/// Check [`co3::transmute::CheckedTransmute`] or [`co3::reprC`] for more details
+/// Check [`co3::transmute::CheckedTransmute`] for more details
 ///
 /// ```
 /// use co3::ReprC as ReprCAlias;

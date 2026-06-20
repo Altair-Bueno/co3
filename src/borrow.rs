@@ -1,14 +1,15 @@
 #[cfg(feature = "alloc")]
 use alloc_crate::{borrow::ToOwned as StdToOwned, boxed::Box, string::String, vec::Vec};
 
-use crate::{
-    ReprC,
-    size::{MetaSized, SizeFamily},
-    stored::ArrayStore,
-};
+#[cfg(feature = "alloc")]
+use crate::size::{MetaSized, SizeFamily};
+use crate::{ReprC, stored::ArrayStore};
 
+#[cfg(feature = "alloc")]
 trait NonExternTypeLike {}
+#[cfg(feature = "alloc")]
 impl<K> NonExternTypeLike for MetaSized<K> {}
+#[cfg(feature = "alloc")]
 impl NonExternTypeLike for crate::size::Sized {}
 
 /// A layout-compatible borrowed view of a robust C representation.

@@ -9,6 +9,7 @@ use crate::{
         self, emit_extern_definition, gen_extern_fn_signature, merge_generics,
         normalize_fn_signature,
     },
+    repr::gen_sized_family,
     utils::{DispatchMonomorphizer, is_type_erased},
     wrapper::{
         gen_extern_decl, strip_internal_generic_attrs, wrap_fn_definition, wrap_impl_definition,
@@ -56,48 +57,15 @@ pub(crate) fn emit_decl_exports(abi: syn::Abi, decls: Vec<ForeignItem>) -> Token
                 DropImpl::Impl(impl_) => gen_drop_impl_definition(&abi, impl_),
             });
 
-            let opaque = derive_opaque_item(id.as_deref(), &ty);
+            let opaque = derive_opaque_item(id.as_deref(), ident, &ty.generics);
+            let size_impl = gen_sized_family(ident, &ty.generics, quote! {});
 
             quote! {
                 #opaque
 
                 #drop
+                #size_impl
                 #drop_check
-
-                impl #impl_generics co3::size::SizeFamily for #ident #ty_generics #where_clause {
-                    type Kind = co3::size::Sized;
-                }
-
-                unsafe impl #impl_generics co3::borrow::BorrowCast for #ident #ty_generics #where_clause {
-                    type AsConst = #ident #ty_generics;
-                    type AsMut = #ident #ty_generics;
-                }
-
-                impl #impl_generics co3::borrow::Borrow for #ident #ty_generics #where_clause {
-                    type Borrowed<'itm>
-                        = Self
-                    where
-                        Self: 'itm;
-
-                    type Owner = ();
-
-                    #[inline(always)]
-                    fn borrow<'itm>(self, (): &mut ()) -> Self::Borrowed<'itm>
-                    where
-                        Self: 'itm,
-                    {
-                        self
-                    }
-                }
-                impl<'_dšč, #params> co3::borrow::ToOwned<'_dšč> for #ident #ty_generics where
-                    Self: '_dšč,
-                    #predicates
-                {
-                    #[inline(always)]
-                    fn to_owned(source: Self::Borrowed<'_dšč>) -> Self {
-                        source
-                    }
-                }
 
                 impl #impl_generics co3::stored::SoftEncodeOwned for #ident #ty_generics #where_clause {
                     type Store = ();
@@ -120,6 +88,11 @@ pub(crate) fn emit_decl_exports(abi: syn::Abi, decls: Vec<ForeignItem>) -> Token
                     unsafe fn soft_decode<'_išč: '_dšč>(source: Self::CType, (): &mut ()) -> Option<Self> {
                         Some(source)
                     }
+                }
+
+                unsafe impl #impl_generics co3::borrow::BorrowCast for #ident #ty_generics #where_clause {
+                    type AsConst = Self;
+                    type AsMut = Self;
                 }
 
                 #(#dispatch)*
@@ -516,7 +489,6 @@ fn wrap_extern_type_decl(
             .push(syn::parse_quote! { #extern_type: co3::handle::Handle });
     }
 
-    let opaque_impls = derive_opaque_item(id, &type_);
     let syn::ForeignItemType {
         attrs: type_attrs,
         generics,
@@ -525,18 +497,15 @@ fn wrap_extern_type_decl(
         ..
     } = type_;
 
+    let owned_ident = gen_owned_extern_type_name(&ident);
+    let owned_doc = gen_owned_extern_type_doc(&ident);
+    let owned_repr_c_name = gen_owned_repr_c_name(&ident);
+    let owned_repr_c_doc = format!("FFI-safe representation of `{owned_ident}`");
+    let ident_impls = gen_extern_type_impls(id, &ident, &generics);
+    let owned_impls = gen_owned_extern_type_impls(&ident, &generics);
+    let owned_repr_c_impls = gen_owned_repr_c_impls(&ident, &generics);
+
     let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
-
-    let params = &generics.params;
-    let predicates = where_clause
-        .as_ref()
-        .map(|where_clause| &where_clause.predicates);
-
-    let boxed_ident = format_ident!("Owned{ident}");
-    let boxed_doc = format!("Owned representation of `{ident}`");
-    let owned_repr_c_name = format_ident!("C{boxed_ident}");
-    let owned_repr_c_doc = format!("FFI-safe representation of `{boxed_ident}`");
-
     use syn::GenericParam::*;
     let phantom_data_fields = generics.params.iter().filter_map(|param| match param {
         Lifetime(param) => {
@@ -569,30 +538,109 @@ fn wrap_extern_type_decl(
         //    #vis type #ident #impl_generics #where_clause;
         //}
 
-        #[doc(hidden)]
-        #[doc = #boxed_doc]
+        #[doc = #owned_doc]
         #[repr(transparent)]
-        #vis struct #boxed_ident #impl_generics (*mut #ident #ty_generics) #where_clause;
+        #vis struct #owned_ident #impl_generics (*mut #ident #ty_generics) #where_clause;
 
         #[doc(hidden)]
-        #[doc = #owned_repr_c_doc]
         #[repr(transparent)]
+        #[doc = #owned_repr_c_doc]
         #vis struct #owned_repr_c_name #impl_generics (*mut #ident #ty_generics) #where_clause;
 
+        impl #impl_generics Drop for #owned_ident #ty_generics #where_clause {
+            fn drop(&mut self) {
+                unsafe { core::ptr::drop_in_place(self.0) }
+            }
+        }
+
+        #ident_impls
+        #owned_impls
+        #owned_repr_c_impls
+    }
+}
+
+fn gen_owned_extern_type_name(ident: &syn::Ident) -> syn::Ident {
+    format_ident!("Owned{ident}")
+}
+
+fn gen_owned_repr_c_name(ident: &syn::Ident) -> syn::Ident {
+    format_ident!("C{}", gen_owned_extern_type_name(ident))
+}
+
+fn gen_owned_extern_type_doc(ident: &syn::Ident) -> String {
+    format!("Owned representation of `{ident}`")
+}
+
+fn gen_extern_type_impls(
+    id: Option<&syn::Type>,
+    ident: &syn::Ident,
+    generics: &syn::Generics,
+) -> TokenStream {
+    let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
+    let opaque_impls = derive_opaque_item(id, ident, generics);
+
+    quote! {
+        #opaque_impls
+
+        impl #impl_generics co3::size::SizeFamily for #ident #ty_generics #where_clause {
+            type Kind = co3::size::ExternTypeLike;
+        }
+
+    }
+}
+
+fn gen_owned_repr_c_impls(ident: &syn::Ident, generics: &syn::Generics) -> TokenStream {
+    let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
+    let params = &generics.params;
+    let owned_repr_c_name = gen_owned_repr_c_name(ident);
+    let size_impl = gen_sized_family(&owned_repr_c_name, generics, quote! {});
+
+    quote! {
         impl #impl_generics #owned_repr_c_name #ty_generics #where_clause {
             fn is_none(&self) -> bool {
                 self.0.is_null()
             }
         }
 
-        impl #impl_generics Clone for #owned_repr_c_name #ty_generics #where_clause {
-            fn clone(&self) -> Self { *self }
+        #size_impl
+        impl #impl_generics co3::ir::ReprFamily for #owned_repr_c_name #ty_generics #where_clause {
+            type Kind = co3::ir::Transmuted<co3::ir::Robust>;
+        }
+        impl #impl_generics co3::niche::NicheFamily for #owned_repr_c_name #ty_generics #where_clause {
+            type Kind = co3::niche::WithoutNiche;
         }
 
-        impl #impl_generics Copy for #owned_repr_c_name #ty_generics #where_clause {}
+        unsafe impl #impl_generics co3::ReprC for #owned_repr_c_name #ty_generics #where_clause {}
+        unsafe impl #impl_generics co3::CFnArg for #owned_repr_c_name #ty_generics #where_clause {}
 
-        co3::reprC! {
-            unsafe impl(#params) SizedRobust for #owned_repr_c_name #ty_generics where (#predicates) {}
+        unsafe impl #impl_generics co3::transmute::CheckedTransmute for #owned_repr_c_name #ty_generics #where_clause {
+            #[inline(always)]
+            unsafe fn is_valid(_: &Self::CType) -> bool {
+                true
+            }
+        }
+
+        impl #impl_generics co3::ExternC for #owned_repr_c_name #ty_generics #where_clause {
+            type CType = Self;
+        }
+        impl #impl_generics co3::stored::SoftEncodeOwned for #owned_repr_c_name #ty_generics #where_clause {
+            type Store = ();
+
+            #[inline(always)]
+            fn soft_encode<'itm>(self, (): &mut ()) -> Self::CType
+            where
+                Self: 'itm,
+            {
+                self
+            }
+        }
+        impl<'d, #params> co3::stored::SoftDecodeOwned<'d> for #owned_repr_c_name #ty_generics #where_clause {
+            type Store = ();
+
+            #[inline(always)]
+            unsafe fn soft_decode<'itm: 'd>(source: Self::CType, (): &mut ()) -> Option<Self> {
+                Some(source)
+            }
         }
 
         unsafe impl #impl_generics co3::borrow::BorrowCast for #owned_repr_c_name #ty_generics #where_clause {
@@ -600,19 +648,33 @@ fn wrap_extern_type_decl(
             type AsMut = *mut #ident #ty_generics;
         }
 
-        impl #impl_generics co3::size::SizeFamily for #boxed_ident #ty_generics #where_clause {
-            type Kind = co3::size::Sized;
+        impl #impl_generics Clone for #owned_repr_c_name #ty_generics #where_clause {
+            fn clone(&self) -> Self { *self }
         }
+        impl #impl_generics Copy for #owned_repr_c_name #ty_generics #where_clause {}
+    }
+}
 
-        impl #impl_generics co3::ir::ReprFamily for #boxed_ident #ty_generics #where_clause {
+fn gen_owned_extern_type_impls(ident: &syn::Ident, generics: &syn::Generics) -> TokenStream {
+    let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
+    let params = &generics.params;
+
+    let owned_ident = gen_owned_extern_type_name(ident);
+    let owned_repr_c_name = gen_owned_repr_c_name(ident);
+
+    let size_impl = gen_sized_family(&owned_ident, generics, quote! {});
+
+    quote! {
+        #size_impl
+
+        impl #impl_generics co3::ir::ReprFamily for #owned_ident #ty_generics #where_clause {
             type Kind = co3::ir::Transmuted<co3::ir::NonRobust>;
         }
-
-        impl #impl_generics co3::niche::NicheFamily for #boxed_ident #ty_generics #where_clause {
+        impl #impl_generics co3::niche::NicheFamily for #owned_ident #ty_generics #where_clause {
             type Kind = co3::niche::WithStableNiche;
         }
 
-        unsafe impl #impl_generics co3::transmute::CheckedTransmute for #boxed_ident #ty_generics #where_clause {
+        unsafe impl #impl_generics co3::transmute::CheckedTransmute for #owned_ident #ty_generics #where_clause {
             #[inline(always)]
             unsafe fn is_valid(target: &Self::CType) -> bool {
                 // NOTE: Null pointer is validated although it's not strictly required
@@ -622,82 +684,80 @@ fn wrap_extern_type_decl(
             }
         }
 
-        impl #impl_generics co3::niche::Niche for #boxed_ident #ty_generics #where_clause {
+        impl #impl_generics co3::ExternC for #owned_ident #ty_generics #where_clause {
+            type CType = #owned_repr_c_name #ty_generics;
+        }
+        impl #impl_generics co3::niche::Niche for #owned_ident #ty_generics #where_clause {
             const NICHE_VALUE: Self::CType = #owned_repr_c_name(core::ptr::null_mut());
         }
 
-        unsafe impl #impl_generics co3::niche::StableNiche for #boxed_ident #ty_generics #where_clause {}
+        unsafe impl #impl_generics co3::niche::StableNiche for #owned_ident #ty_generics #where_clause {}
 
-        impl #impl_generics Drop for #boxed_ident #ty_generics #where_clause {
-            fn drop(&mut self) {
-                unsafe { core::ptr::drop_in_place(self.0) }
+        impl #impl_generics co3::stored::SoftEncodeOwned for #owned_ident #ty_generics #where_clause {
+            type Store = ();
+
+            #[inline(always)]
+            fn soft_encode<'itm>(self, (): &mut ()) -> Self::CType
+            where
+                Self: 'itm,
+            {
+                #owned_repr_c_name(core::mem::ManuallyDrop::new(self).0)
+            }
+        }
+        impl<'d, #params> co3::stored::SoftDecodeOwned<'d> for #owned_ident #ty_generics #where_clause {
+            type Store = ();
+
+            #[inline(always)]
+            unsafe fn soft_decode<'itm: 'd>(source: Self::CType, (): &mut ()) -> Option<Self> {
+                unsafe { <Self as co3::transmute::CheckedTransmute>::is_valid(&source) }.then_some(Self(source.0))
             }
         }
 
-        impl #impl_generics core::ops::Deref for #boxed_ident #ty_generics #where_clause {
+        unsafe impl #impl_generics co3::handle::Erase for #owned_ident #ty_generics #where_clause {
+            type Erased = *mut core::ffi::c_void;
+        }
+
+        impl #impl_generics core::ops::Deref for #owned_ident #ty_generics #where_clause {
             type Target = #ident #ty_generics;
 
             fn deref(&self) -> &Self::Target {
                 unsafe { &*self.0 }
             }
         }
-
-        impl #impl_generics core::ops::DerefMut for #boxed_ident #ty_generics #where_clause {
+        impl #impl_generics core::ops::DerefMut for #owned_ident #ty_generics #where_clause {
             fn deref_mut(&mut self) -> &mut Self::Target {
                 unsafe { &mut *self.0 }
             }
         }
 
-        impl #impl_generics core::convert::AsRef<#ident #ty_generics> for #boxed_ident #ty_generics #where_clause {
+        impl #impl_generics core::convert::AsRef<#ident #ty_generics> for #owned_ident #ty_generics #where_clause {
             fn as_ref(&self) -> &#ident #ty_generics {
                 self
             }
         }
-
-        impl #impl_generics core::convert::AsMut<#ident #ty_generics> for #boxed_ident #ty_generics #where_clause {
+        impl #impl_generics core::convert::AsMut<#ident #ty_generics> for #owned_ident #ty_generics #where_clause {
             fn as_mut(&mut self) -> &mut #ident #ty_generics {
                 self
             }
         }
 
-        impl #impl_generics core::borrow::Borrow<#ident #ty_generics> for #boxed_ident #ty_generics #where_clause {
+        impl #impl_generics core::borrow::Borrow<#ident #ty_generics> for #owned_ident #ty_generics #where_clause {
             fn borrow(&self) -> &#ident #ty_generics {
                 self
             }
         }
-
-        impl #impl_generics core::borrow::BorrowMut<#ident #ty_generics> for #boxed_ident #ty_generics #where_clause {
+        impl #impl_generics core::borrow::BorrowMut<#ident #ty_generics> for #owned_ident #ty_generics #where_clause {
             fn borrow_mut(&mut self) -> &mut #ident #ty_generics {
                 self
             }
-        }
-
-        #opaque_impls
-        impl #impl_generics co3::size::SizeFamily for #ident #ty_generics #where_clause {
-            type Kind = co3::size::ExternTypeLike;
-        }
-
-        unsafe impl #impl_generics co3::transmute::CheckedTransmute for #ident #ty_generics #where_clause {
-            #[inline(always)]
-            unsafe fn is_valid(target: &Self::CType) -> bool {
-                true
-            }
-        }
-
-        unsafe impl #impl_generics co3::handle::Erase for #boxed_ident #ty_generics #where_clause {
-            type Erased = *mut core::ffi::c_void;
         }
     }
 }
 
 fn derive_opaque_item(
     id: Option<&syn::Type>,
-    syn::ForeignItemType {
-        attrs: _,
-        ident,
-        generics,
-        ..
-    }: &syn::ForeignItemType,
+    ident: &syn::Ident,
+    generics: &syn::Generics,
 ) -> TokenStream {
     let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
     let handle_family_impl = id.map(|id| gen_handle_family_impl(ident, generics, id));
@@ -710,6 +770,13 @@ fn derive_opaque_item(
         }
 
         unsafe impl #impl_generics co3::ReprC for #ident #ty_generics #where_clause {}
+
+        unsafe impl #impl_generics co3::transmute::CheckedTransmute for #ident #ty_generics #where_clause {
+            #[inline(always)]
+            unsafe fn is_valid(_: &Self::CType) -> bool {
+                true
+            }
+        }
 
         impl #impl_generics co3::ExternC for #ident #ty_generics #where_clause {
             type CType = Self;

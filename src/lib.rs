@@ -7,10 +7,12 @@
 extern crate alloc as alloc_crate;
 extern crate self as co3;
 
-use core::cell::UnsafeCell;
-
 #[cfg(feature = "alloc")]
 use alloc_crate::{borrow::ToOwned, boxed::Box, vec::Vec};
+use core::{
+    cell::{Cell, UnsafeCell},
+    mem::ManuallyDrop,
+};
 
 #[cfg(feature = "derive")]
 pub use co3_derive::*;
@@ -21,17 +23,19 @@ use disjoint_impls::disjoint_impls;
 pub use impls::impls;
 
 #[cfg(feature = "alloc")]
-use crate::boxed::{CBox, CBoxedSlice};
 use crate::{
     borrow::BorrowCast,
+    boxed::{CBox, CBoxedSlice},
+};
+use crate::{
     ir::{NonRobust, ReprFamily, ReprRust, Transmuted},
-    niche::{Niche, NicheFamily, WithCustomNiche, WithoutNiche},
+    niche::{NicheFamily, WithNiche, WithoutNiche},
     option::COption,
     out_ptr::Zst,
     result::CResult,
     size::{MetaSized, SizeFamily, SliceLike, Thin, Wide},
     slice::{CSlice, CSliceMut},
-    stored::{SoftDecodeOwned, SoftEncodeOwned, Store},
+    stored::{ReprRustOrTransmutedNonRobust, SoftDecodeOwned, SoftEncodeOwned, Store},
 };
 
 #[cfg(feature = "alloc")]
@@ -123,17 +127,6 @@ pub trait Decode<'d>: SoftDecode<'d> {
     unsafe fn decode(source: Self::CType) -> Option<Self>;
 }
 
-pub trait Mutability {
-    type Kind;
-}
-
-pub enum InteriorMutability {}
-pub enum ExteriorMutability {}
-
-impl<R> Mutability for UnsafeCell<R> {
-    type Kind = InteriorMutability;
-}
-
 disjoint_impls! {
     /// A Rust type that has an `extern "C"` ABI
     pub trait ExternC {
@@ -141,18 +134,12 @@ disjoint_impls! {
         type CType: ReprC + ?Sized;
     }
 
-    impl<R: ExternC + ?Sized> ExternC for &R
+    impl<R: ReprFamily + SizeFamily<Kind: Thin> + ExternC + ?Sized> ExternC for &R
     where
-        Self: ReprFamily<Kind = Transmuted<NonRobust>>,
+        Self: ReprFamily<Kind: ReprRustOrTransmutedNonRobust>,
     {
         type CType = *const R::CType;
     }
-    //impl<R: Mutability<Kind = InteriorMutability> + ExternC + ?Sized> ExternC for &R
-    //where
-    //    Self: ReprFamily<Kind = Transmuted<NonRobust>>,
-    //{
-    //    type CType = *mut R::CType;
-    //}
     impl<R: ReprFamily<Kind = Transmuted<K>> + SizeFamily<Kind = MetaSized<SliceLike>> + ?Sized, K> ExternC for &R
     where
         Self: ReprFamily<Kind = ReprRust>,
@@ -160,21 +147,6 @@ disjoint_impls! {
         <<R as Wide>::Data as ExternC>::CType: Copy,
     {
         type CType = CSlice<<R::Data as ExternC>::CType>;
-    }
-    //impl<R: ReprFamily<Kind = Transmuted<K>> + SizeFamily<Kind = MetaSized<SliceLike>> + ?Sized, K> ExternC for &R
-    //where
-    //    Self: ReprFamily<Kind = ReprRust>,
-    //    R: Mutability<Kind = InteriorMutability>,
-    //    R: Wide<Data: ExternC, Metadata = usize>,
-    //    <<R as Wide>::Data as ExternC>::CType: Copy,
-    //{
-    //    type CType = CSliceMut<<R::Data as ExternC>::CType>;
-    //}
-    impl<R: ReprFamily<Kind = ReprRust> + SizeFamily<Kind: Thin> + ExternC + ?Sized> ExternC for &R
-    where
-        Self: ReprFamily<Kind = ReprRust>,
-    {
-        type CType = *const R::CType;
     }
     #[cfg(feature = "alloc")]
     impl<R: ReprFamily<Kind = ReprRust> + SizeFamily<Kind = MetaSized<K>> + ?Sized, K> ExternC for &R
@@ -185,9 +157,9 @@ disjoint_impls! {
         type CType = <<R::Owned as ExternC>::CType as BorrowCast>::AsConst;
     }
 
-    impl<R: ExternC + ?Sized> ExternC for &mut R
+    impl<R: ReprFamily + SizeFamily<Kind: Thin> + ExternC + ?Sized> ExternC for &mut R
     where
-        Self: ReprFamily<Kind = Transmuted<NonRobust>>,
+        Self: ReprFamily<Kind: ReprRustOrTransmutedNonRobust>,
     {
         type CType = *mut R::CType;
     }
@@ -199,12 +171,6 @@ disjoint_impls! {
     {
         type CType = CSliceMut<<R::Data as ExternC>::CType>;
     }
-    impl<R: ReprFamily<Kind = ReprRust> + SizeFamily<Kind: Thin> + ExternC + ?Sized> ExternC for &mut R
-    where
-        Self: ReprFamily<Kind = ReprRust>,
-    {
-        type CType = *mut R::CType;
-    }
     #[cfg(feature = "alloc")]
     impl<R: ReprFamily<Kind = ReprRust> + SizeFamily<Kind = MetaSized<K>> + ?Sized, K> ExternC for &mut R
     where
@@ -215,10 +181,10 @@ disjoint_impls! {
     }
 
     #[cfg(feature = "alloc")]
-    impl<R: ExternC> ExternC for Box<R>
+    impl<R: ReprFamily + SizeFamily<Kind = crate::size::Sized> + ExternC> ExternC for Box<R>
     where
-        Self: ReprFamily<Kind = Transmuted<NonRobust>>,
-        <R as ExternC>::CType: Copy,
+        Self: ReprFamily<Kind: ReprRustOrTransmutedNonRobust>,
+        <R as ExternC>::CType: Sized,
     {
         type CType = CBox<R::CType>;
     }
@@ -232,14 +198,6 @@ disjoint_impls! {
         type CType = CBoxedSlice<<R::Data as ExternC>::CType>;
     }
     #[cfg(feature = "alloc")]
-    impl<R: ReprFamily<Kind = ReprRust> + SizeFamily<Kind = crate::size::Sized> + ExternC> ExternC for Box<R>
-    where
-        Self: ReprFamily<Kind = ReprRust>,
-        <R as ExternC>::CType: Copy,
-    {
-        type CType = CBox<R::CType>;
-    }
-    #[cfg(feature = "alloc")]
     impl<R: ReprFamily<Kind = ReprRust> + SizeFamily<Kind = MetaSized<K>> + ?Sized, K> ExternC for Box<R>
     where
         Self: ReprFamily<Kind = ReprRust>,
@@ -250,15 +208,11 @@ disjoint_impls! {
 
     impl<R: NicheFamily<Kind = WithoutNiche> + ExternC> ExternC for Option<R>
     where
-        Self: ReprFamily<Kind = ReprRust>,
         <R as ExternC>::CType: Copy,
     {
         type CType = COption<R::CType>;
     }
-    impl<R: NicheFamily<Kind = WithCustomNiche> + Niche> ExternC for Option<R>
-    where
-        Self: ReprFamily<Kind = ReprRust>,
-    {
+    impl<R: NicheFamily<Kind: WithNiche> + ExternC> ExternC for Option<R> {
         type CType = R::CType;
     }
 
@@ -279,17 +233,9 @@ disjoint_impls! {
 
 disjoint_impls! {
     /// Facilitates conversion from a Rust type into a corresponding C-compatible representation.
-    pub trait SoftEncode: SoftEncodeOwned {
-        /// Convert from [`Self`] into [`Self::CType`].
-        fn soft_encode<'itm>(self, store: &'itm mut Self::Store) -> Self::CType
-        where
-            Self: 'itm
-        {
-            SoftEncodeOwned::soft_encode(self, store)
-        }
-    }
+    pub trait SoftEncode: SoftEncodeOwned {}
 
-    // FIXME: we'll have to inline this impls almost certainly. Look at raw pointers
+    // FIXME: we'll have to inline this impl almost certainly. Look at raw pointers
     impl<R, K> SoftEncode for R
     where
         R: ReprFamily<Kind = Transmuted<K>> + SoftEncodeOwned,
@@ -305,16 +251,6 @@ disjoint_impls! {
         Self: ReprFamily<Kind = ReprRust> + SoftEncodeOwned,
     {}
 
-    impl<R: ReprC + ?Sized> SoftEncode for *const R
-    where
-        Self: ReprFamily<Kind = ReprRust> + SoftEncodeOwned,
-    {}
-
-    impl<R: ReprC + ?Sized> SoftEncode for *mut R
-    where
-        Self: ReprFamily<Kind = ReprRust> + SoftEncodeOwned,
-    {}
-
     #[cfg(feature = "alloc")]
     impl<R: ReprFamily<Kind = Transmuted<K>> + SizeFamily<Kind = MetaSized<SliceLike>> + ?Sized, K> SoftEncode for Box<R>
     where
@@ -326,9 +262,9 @@ disjoint_impls! {
         Self: ReprFamily<Kind = ReprRust> + SoftEncodeOwned,
     {}
 
-    impl<R: SoftEncode, const N: usize> SoftEncode for [R; N]
+    impl<R: SoftEncode<CType: Copy>, const N: usize> SoftEncode for [R; N]
     where
-        Self: ReprFamily<Kind = ReprRust> + SoftEncodeOwned,
+        Self: ReprFamily<Kind = ReprRust>,
     {}
 
     impl<R: SoftEncode> SoftEncode for Option<R>
@@ -341,21 +277,36 @@ disjoint_impls! {
         Self: ReprFamily<Kind = ReprRust> + SoftEncodeOwned,
     {}
     // TODO: Implement for niche optimized Results
+
+    impl<R: ReprC + ?Sized> SoftEncode for *const R
+    where
+        Self: ReprFamily<Kind = ReprRust>,
+    {}
+
+    impl<R: ReprC + ?Sized> SoftEncode for *mut R
+    where
+        Self: ReprFamily<Kind = ReprRust>,
+    {}
+
+    impl<R: SoftEncode> SoftEncode for UnsafeCell<R>
+    where
+        Self: ReprFamily<Kind = ReprRust>,
+    {}
+
+    impl<R: SoftEncode> SoftEncode for Cell<R>
+    where
+        Self: ReprFamily<Kind = ReprRust>,
+    {}
+
+    impl<R: SoftEncode> SoftEncode for ManuallyDrop<R>
+    where
+        Self: ReprFamily<Kind = ReprRust>,
+    {}
 }
 
 disjoint_impls! {
     /// Facilitates conversion into a Rust type from a corresponding C-compatible representation.
-    pub trait SoftDecode<'d>: SoftDecodeOwned<'d> {
-
-        /// Perform the conversion from [`Self::CType`] into [`Self`]
-        ///
-        /// # Safety
-        ///
-        /// - All conversions from a pointer must ensure pointer validity beforehand
-        unsafe fn soft_decode<'itm: 'd>(source: Self::CType, store: &'itm mut Self::Store) -> Option<Self> {
-            unsafe { SoftDecodeOwned::soft_decode(source, store) }
-        }
-    }
+    pub trait SoftDecode<'d>: SoftDecodeOwned<'d> {}
 
     impl<'d, R, K> SoftDecode<'d> for R
     where
@@ -383,9 +334,9 @@ disjoint_impls! {
         Self: ReprFamily<Kind = ReprRust> + SoftDecodeOwned<'d>,
     {}
 
-    impl<'d, R: SoftDecode<'d>, const N: usize> SoftDecode<'d> for [R; N]
+    impl<'d, R: SoftDecode<'d, CType: Copy>, const N: usize> SoftDecode<'d> for [R; N]
     where
-        Self: ReprFamily<Kind = ReprRust> + SoftDecodeOwned<'d>,
+        Self: ReprFamily<Kind = ReprRust>,
     {}
 
     impl<'d, R: SoftDecode<'d>> SoftDecode<'d> for Option<R>
@@ -398,6 +349,31 @@ disjoint_impls! {
         Self: ReprFamily<Kind = ReprRust> + SoftDecodeOwned<'d>,
     {}
     // TODO: Implement for niche optimized Results
+
+    impl<'d, R: ReprC + ?Sized> SoftDecode<'d> for *const R
+    where
+        Self: ReprFamily<Kind = ReprRust>,
+    {}
+
+    impl<'d, R: ReprC + ?Sized> SoftDecode<'d> for *mut R
+    where
+        Self: ReprFamily<Kind = ReprRust>,
+    {}
+
+    impl<'d, R: SoftDecode<'d>> SoftDecode<'d> for UnsafeCell<R>
+    where
+        Self: ReprFamily<Kind = ReprRust>,
+    {}
+
+    impl<'d, R: SoftDecode<'d>> SoftDecode<'d> for Cell<R>
+    where
+        Self: ReprFamily<Kind = ReprRust>,
+    {}
+
+    impl<'d, R: SoftDecode<'d>> SoftDecode<'d> for ManuallyDrop<R>
+    where
+        Self: ReprFamily<Kind = ReprRust>,
+    {}
 }
 
 #[cfg(feature = "alloc")]
@@ -406,33 +382,11 @@ impl<R: ExternC<CType: Copy>> ExternC for Vec<R> {
 }
 
 #[cfg(feature = "alloc")]
-impl<R> SoftEncode for Vec<R>
-where
-    Self: SoftEncodeOwned<Store = <Box<[R]> as SoftEncodeOwned>::Store>,
-    Self: ExternC<CType = <Box<[R]> as ExternC>::CType>,
-    Box<[R]>: SoftEncode,
-{
-    fn soft_encode<'itm>(self, store: &'itm mut Self::Store) -> Self::CType
-    where
-        Self: 'itm,
-    {
-        SoftEncode::soft_encode(self.into_boxed_slice(), store)
-    }
-}
-
+impl<R: SoftEncodeOwned<CType: Copy>> SoftEncode for Vec<R> where Box<[R]>: SoftEncode {}
 #[cfg(feature = "alloc")]
-impl<'d, R> SoftDecode<'d> for Vec<R>
-where
-    Self: SoftDecodeOwned<'d, Store = <Box<[R]> as SoftDecodeOwned<'d>>::Store>,
-    Self: ExternC<CType = <Box<[R]> as ExternC>::CType>,
-    Box<[R]>: SoftDecode<'d>,
+impl<'d, R: SoftDecodeOwned<'d, CType: Copy>> SoftDecode<'d> for Vec<R> where
+    Box<[R]>: SoftDecode<'d>
 {
-    unsafe fn soft_decode<'itm: 'd>(
-        source: Self::CType,
-        store: &'itm mut Self::Store,
-    ) -> Option<Self> {
-        unsafe { <Box<[R]> as SoftDecode<'d>>::soft_decode(source, store) }.map(Into::into)
-    }
 }
 
 impl<R: SoftEncode<Store: Zst>> Encode for R {
@@ -441,7 +395,7 @@ impl<R: SoftEncode<Store: Zst>> Encode for R {
         Self: 'itm,
     {
         let mut store = Default::default();
-        SoftEncodeOwned::soft_encode(self, &mut store)
+        self.soft_encode(&mut store)
     }
 }
 
@@ -451,619 +405,8 @@ impl<'d, R: SoftDecode<'d, Store: Zst> + 'd> Decode<'d> for R {
         // SAFETY: `Decode` is only blanket-implemented for zero-sized stores, so extending the
         // borrow of the local store does not extend the lifetime of any backing data.
         let store = unsafe { core::mem::transmute::<&mut R::Store, &'d mut R::Store>(&mut store) };
-        unsafe { <Self as SoftDecode>::soft_decode(source, store) }
+        unsafe { Self::soft_decode(source, store) }
     }
-}
-
-/// Macro for defining FFI types of a known category ([`crate::ir::Robust`], [`Transmuted`] or [`ReprRust`]).
-///
-/// The implementation for an FFI type of one of the categories incurs a lot of bloat that
-/// is reduced by the use of this macro
-///
-/// # Safety
-///
-/// * [`crate::ir::Robust`] derives [`ReprC`]. Check safety invariants for [`ReprC`]
-/// * [`Transmuted`] derives [`CheckedTransmute`]. Check safety invariants for [`CheckedTransmute`]
-///
-/// # Example
-///
-/// ```
-/// use co3::{
-///     borrow::{EncodeAsRef, SoftDecodeView},
-///     ir::{SizeFamily, Sized},
-///     reprC
-/// };
-///
-/// #[repr(C)]
-/// #[derive(Clone, Copy)]
-/// struct Robust(u64, i32);
-///
-/// #[repr(transparent)]
-/// struct MyPtr<T>(*mut T);
-///
-/// #[repr(transparent)]
-/// struct Wrapper(u32);
-///
-/// struct ReprRust<T: ?Sized>(u64, T);
-///
-/// co3::reprC! {
-///     // SAFETY: Type MUST NOT have traps
-///     unsafe impl Robust for Robust {}
-/// }
-///
-/// co3::reprC! {
-///     // SAFETY: `Self::is_valid` must not return false posives
-///     unsafe impl(T) Transparent for MyPtr<T> where (T: Copy) {
-///         const NICHE_VALUE: Self::CType = core::ptr::null_mut();
-///
-///         type Target = $target:ty;
-///         fn is_valid(target: &Self::CType) -> bool {
-///             !target.is_null()
-///         }
-///     }
-/// }
-///
-/// // If validation fn or niche value is given,
-/// // wrapper type delegates to the inner type
-/// co3::reprC! {
-///     unsafe impl Transparent for Wrapper {
-///         type Target = u32;
-///     }
-/// }
-///
-/// co3::reprC! {
-///     // To use this type one still has to implement
-///     // a suite of additional conversion traits
-///     impl(T: ?Sized) ReprRust for ReprRust<T> {}
-/// }
-///
-///
-/// // Some extra glue that is required:
-///
-/// impl<T> Drop for MyPtr<T> {
-///     fn drop(&mut self) {
-///         unimplemented!("Do a cleanup")
-///     }
-/// }
-///
-/// impl SizeFamily for Robust {
-///     type Kind = Sized;
-/// }
-/// impl<T: ?Sized + SizeFamily> SizeFamily for ReprRust<T> {
-///     type Kind = T::Kind;
-/// }
-///
-/// ```
-#[doc(hidden)]
-#[macro_export]
-macro_rules! reprC {
-    (impl $(( $($params:tt)* ))? ReprRust for $self_ty:ty $(where ($($preds:tt)*))? {}) => {
-        impl<$($($params)*)?> $crate::ir::ReprFamily for $self_ty $(where $($preds)*)? {
-            type Kind = $crate::ir::ReprRust;
-        }
-    };
-
-    (unsafe impl $(())? Robust for $self_ty:ty $(where ($($preds:tt)*))? {}) => {
-        $crate::reprC! { @robust_common [for<'_dummy> Self: Copy,] [] $self_ty $([$($preds)*])? }
-    };
-    (unsafe impl ( $($params:tt)+ ) Robust for $self_ty:ty $(where ($($preds:tt)*))? {}) => {
-        $crate::reprC! { @robust_common [Self: Copy,] [$($params)+] $self_ty $([$($preds)*])? }
-    };
-
-    (unsafe impl $(( $($params:tt)+ ))? SizedRobust for $self_ty:ty $(where ($($preds:tt)*))? {}) => {
-        $crate::reprC! { @sized_size_family [$($($params)+)?] $self_ty $([$($preds)*])? }
-        // TODO: Self: Copy is here just to satisfy for CFnArg. find different approach
-        $crate::reprC! { @robust_common [Self: Copy,] [$($($params)+)?] $self_ty $([$($preds)*])? }
-    };
-    (unsafe impl $(())? SizedRobust for $self_ty:ty $(where ($($preds:tt)*))? {}) => {
-        $crate::reprC! { @sized_size_family [] $self_ty $([$($preds)*])? }
-        $crate::reprC! { @robust_common [] [] $self_ty $([$($preds)*])? }
-    };
-
-    (@robust_common [$($copy_bound:tt)*] [$($impl_generics:tt)*] $self_ty:ty $([$($preds:tt)*])?) => {
-        // TODO: How can Robust types implement Drop if they are Copy? ?Sized can implement Drop
-        $crate::reprC! { @assert_no_drop [$($impl_generics)*] $self_ty $([$($preds)*])? }
-
-        const _: () = {
-            #[expect(dead_code)]
-            trait AssertNonZst {
-                fn assert_non_zst();
-            }
-
-            impl<$($impl_generics)*> AssertNonZst for $self_ty where $($copy_bound)* $($($preds)*)? {
-                fn assert_non_zst() {
-                    const {
-                        assert!(
-                            core::mem::size_of::<Self>() != 0,
-                            "custom ZSTs are not supported yet"
-                        );
-                    }
-                }
-            }
-        };
-
-        unsafe impl<$($impl_generics)*> $crate::ReprC for $self_ty where $($($preds)*)? {}
-
-        unsafe impl<$($impl_generics)*> $crate::CFnArg for $self_ty where
-            $($copy_bound)*
-            $($($preds)*)?
-        {}
-
-        impl<$($impl_generics)*> $crate::ExternC for $self_ty where $($($preds)*)? {
-            type CType = Self;
-        }
-
-        unsafe impl<$($impl_generics)*> $crate::transmute::CheckedTransmute for $self_ty $(where $($preds)*)? {
-            #[inline(always)]
-            unsafe fn is_valid(_: &Self::CType) -> bool {
-                true
-            }
-        }
-
-        impl<$($impl_generics)*> $crate::stored::SoftEncodeOwned for $self_ty where
-            $($copy_bound)*
-            $($($preds)*)?
-        {
-            type Store = ();
-
-            #[inline(always)]
-            fn soft_encode<'itm>(self, (): &mut ()) -> Self::CType
-            where
-                Self: 'itm,
-            {
-                self
-            }
-        }
-
-        impl<'d, $($impl_generics)*> $crate::stored::SoftDecodeOwned<'d> for $self_ty where
-            $($copy_bound)*
-            $($($preds)*)?
-        {
-            type Store = ();
-
-            #[inline(always)]
-            unsafe fn soft_decode<'itm: 'd>(source: Self::CType, (): &mut ()) -> Option<Self> {
-                Some(source)
-            }
-        }
-
-        impl<$($impl_generics)*> $crate::ir::ReprFamily for $self_ty $(where $($preds)*)? {
-            type Kind = $crate::ir::Transmuted<$crate::ir::Robust>;
-        }
-
-        impl<$($impl_generics)*> $crate::niche::NicheFamily for $self_ty where
-            $($copy_bound)*
-            $($($preds)*)?
-        {
-            type Kind = $crate::niche::WithoutNiche;
-        }
-
-        impl<$($impl_generics)*> $crate::borrow::Borrow for $self_ty where
-            $($copy_bound)*
-            $($($preds)*)?
-        {
-            type Borrowed<'itm>
-                = Self
-            where
-                Self: 'itm;
-
-            type Owner = ();
-
-            #[inline(always)]
-            fn borrow<'itm>(self, (): &mut ()) -> <Self as $crate::borrow::Borrow>::Borrowed<'itm>
-            where
-                Self: 'itm,
-            {
-                self
-            }
-        }
-
-        impl<'itm, $($impl_generics)*> $crate::borrow::ToOwned<'itm> for $self_ty where
-            $($copy_bound)*
-            $($($preds)*)?
-        {
-            #[inline(always)]
-            fn to_owned(source: Self) -> Self {
-                source
-            }
-        }
-
-        unsafe impl<$($impl_generics)*> $crate::handle::Erase for $self_ty $(where $($preds)*)? {
-            type Erased = Self;
-        }
-
-        unsafe impl<$($impl_generics)*> $crate::borrow::BorrowCast for $self_ty where
-            $($copy_bound)*
-            $($($preds)*)?
-        {
-            type AsConst = Self;
-            type AsMut = Self;
-        }
-    };
-
-    (unsafe impl $(())? Transparent for $self_ty:ty $(where ( $($preds:tt)* ))? {
-        type Target = $target:ty;
-    }) => {
-        impl $crate::size::SizeFamily for $self_ty where $($($preds)*)? {
-            type Kind = <$target as $crate::size::SizeFamily>::Kind;
-        }
-
-        $crate::reprC! {
-            @transmuted_delegate_niche_valid [for<'_dummy>] [for<'_dummy> Self: Sized,] [] $self_ty [$target] $([$($preds)*])? {}
-        }
-
-    };
-    (unsafe impl ( $($params:tt)+ ) Transparent for $self_ty:ty $(where ( $($preds:tt)* ))? {
-        type Target = $target:ty;
-    }) => {
-        impl<$($params)*> $crate::size::SizeFamily for $self_ty where
-            $target: $crate::size::SizeFamily,
-            $($($preds)*)?
-        {
-            type Kind = <$target as $crate::size::SizeFamily>::Kind;
-        }
-
-        $crate::reprC! {
-            @transmuted_delegate_niche_valid [] [Self: Sized,] [$($params)+] $self_ty [$target] $([$($preds)*])? {}
-        }
-
-    };
-
-    (unsafe impl $(())? NoDropSizedTransparent for $self_ty:ty $(where ( $($preds:tt)* ))? {
-        type Target = $target:ty;
-    }) => {
-        $crate::reprC! { @no_drop_sized_transmuted [] $self_ty $([$($preds)*])? {} }
-
-        $crate::reprC! {
-            @transmuted_delegate_niche_valid [for<'_dummy>] [] [] $self_ty [$target] $([$($preds)*])? {}
-        }
-    };
-    (unsafe impl ( $($params:tt)+ ) NoDropSizedTransparent for $self_ty:ty $(where ( $($preds:tt)* ))? {
-        type Target = $target:ty;
-    }) => {
-        $crate::reprC! { @no_drop_sized_transmuted [$($params)+] $self_ty $([$($preds)*])? {} }
-
-        $crate::reprC! {
-            @transmuted_delegate_niche_valid [] [] [$($params)+] $self_ty [$target] $([$($preds)*])? {}
-        }
-    };
-
-    (unsafe impl $(())? Transparent for $self_ty:ty $(where ( $($preds:tt)* ))? {
-        type Target = $target:ty;
-
-        fn is_valid($target_var:ident: $target_ty:ty) -> $ret_val:ty
-            $block:block
-    }) => {
-        impl $crate::size::SizeFamily for $self_ty where $($($preds)*)? {
-            type Kind = <$target as $crate::size::SizeFamily>::Kind;
-        }
-
-        $crate::reprC! {
-            @transmuted_delegate_niche_sized [] [for<'_dummy> Self: Sized,] [] $self_ty [$target] $([$($preds)*])? {
-                fn is_valid($target_var: $target_ty) -> bool $block
-            }
-        }
-
-    };
-    (unsafe impl ( $($params:tt)+ ) Transparent for $self_ty:ty $(where ( $($preds:tt)* ))? {
-        type Target = $target:ty;
-
-        fn is_valid($target_var:ident: $target_ty:ty) -> $ret_val:ty
-            $block:block
-    }) => {
-        impl<$($params)+> $crate::size::SizeFamily for $self_ty where
-            $target: $crate::size::SizeFamily,
-            $($($preds)*)?
-        {
-            type Kind = <$target as $crate::size::SizeFamily>::Kind;
-        }
-
-        $crate::reprC! {
-            @transmuted_delegate_niche_sized [] [Self: Sized,] [$($params)+] $self_ty [$target] $([$($preds)*])? {
-                fn is_valid($target_var: $target_ty) -> bool $block
-            }
-        }
-
-    };
-
-    (unsafe impl $(())? NoDropSizedTransparent for $self_ty:ty $(where ( $($preds:tt)* ))? {
-        type Target = $target:ty;
-
-        fn is_valid($target_var:ident: $target_ty:ty) -> $ret_val:ty
-            $block:block
-    }) => {
-        $crate::reprC! { @no_drop_sized_transmuted [] $self_ty $([$($preds)*])? {} }
-
-        $crate::reprC! {
-            @transmuted_delegate_niche_sized [for<'_dummy>] [] [] $self_ty [$target] $([$($preds)*])? {
-                fn is_valid($target_var: $target_ty) -> bool $block
-            }
-        }
-    };
-    (unsafe impl ( $($params:tt)+ ) NoDropSizedTransparent for $self_ty:ty $(where ( $($preds:tt)* ))? {
-        type Target = $target:ty;
-
-        fn is_valid($target_var:ident: $target_ty:ty) -> $ret_val:ty
-            $block:block
-    }) => {
-        $crate::reprC! { @no_drop_sized_transmuted [$($params)+] $self_ty $([$($preds)*])? {} }
-
-        $crate::reprC! {
-            @transmuted_delegate_niche_sized [] [] [$($params)+] $self_ty [$target] $([$($preds)*])? {
-                fn is_valid($target_var: $target_ty) -> bool $block
-            }
-        }
-    };
-
-    (unsafe impl $(())? Transparent for $self_ty:ty $(where ( $($preds:tt)* ))? {
-        const NICHE_VALUE: $niche_ty:ty = $niche_value:expr;
-
-        type Target = $target:ty;
-        fn is_valid($target_var:ident: $target_ty:ty) -> $ret_val:ty
-            $block:block
-    }) => {
-        impl $crate::size::SizeFamily for $self_ty where $($($preds)*)? {
-            type Kind = <$target as $crate::size::SizeFamily>::Kind;
-        }
-
-        $crate::reprC! {
-            @transmuted_explicit_niche [for<'_dummy>] [for<'_dummy> Self: Sized,] [] $self_ty [$target] $([$($preds)*])? {
-                const NICHE_VALUE: $niche_ty = $niche_value;
-
-                fn is_valid($target_var: $target_ty) -> bool $block
-            }
-        }
-
-    };
-    (unsafe impl ( $($params:tt)+ ) Transparent for $self_ty:ty $(where ( $($preds:tt)* ))? {
-        const NICHE_VALUE: $niche_ty:ty = $niche_value:expr;
-
-        type Target = $target:ty;
-        fn is_valid($target_var:ident: $target_ty:ty) -> $ret_val:ty
-            $block:block
-    }) => {
-        impl<$($params)+> $crate::size::SizeFamily for $self_ty where
-            $target: $crate::size::SizeFamily,
-            $($($preds)*)?
-        {
-            type Kind = <$target as $crate::size::SizeFamily>::Kind;
-        }
-
-        $crate::reprC! {
-            @transmuted_explicit_niche [] [Self: Sized,] [$($params)+] $self_ty [$target] $([$($preds)*])? {
-                const NICHE_VALUE: $niche_ty = $niche_value;
-
-                fn is_valid($target_var: $target_ty) -> bool $block
-            }
-        }
-
-    };
-
-    (unsafe impl $(())? NoDropSizedTransparent for $self_ty:ty $(where ( $($preds:tt)* ))? {
-        const NICHE_VALUE: $niche_ty:ty = $niche_value:expr;
-
-        type Target = $target:ty;
-        fn is_valid($target_var:ident: $target_ty:ty) -> $ret_val:ty
-            $block:block
-    }) => {
-        $crate::reprC! { @no_drop_sized_transmuted [] $self_ty $([$($preds)*])? {} }
-
-        $crate::reprC! {
-            @transmuted_explicit_niche [for<'_dummy>] [] [] $self_ty [$target] $([$($preds)*])? {
-                const NICHE_VALUE: $niche_ty = $niche_value;
-
-                fn is_valid($target_var: $target_ty) -> bool $block
-            }
-        }
-    };
-    (unsafe impl ( $($params:tt)+ ) NoDropSizedTransparent for $self_ty:ty $(where ( $($preds:tt)* ))? {
-        const NICHE_VALUE: $niche_ty:ty = $niche_value:expr;
-
-        type Target = $target:ty;
-        fn is_valid($target_var:ident: $target_ty:ty) -> $ret_val:ty
-            $block:block
-    }) => {
-        $crate::reprC! { @no_drop_sized_transmuted [$($params)+] $self_ty $([$($preds)*])? {} }
-
-        $crate::reprC! {
-            @transmuted_explicit_niche [] [] [$($params)+] $self_ty [$target] $([$($preds)*])? {
-                const NICHE_VALUE: $niche_ty = $niche_value;
-
-                fn is_valid($target_var: $target_ty) -> bool $block
-            }
-        }
-    };
-
-    (@no_drop_sized_transmuted [$($impl_generics:tt)*] $self_ty:ty $([$($preds:tt)*])? {}) => {
-        $crate::reprC! { @sized_size_family [$($impl_generics)*] $self_ty $([$($preds)*])? }
-        $crate::reprC! { @assert_no_drop [$($impl_generics)*] $self_ty $([$($preds)*])? }
-    };
-
-    (@transmuted_delegate_niche_valid [$($for_dummy:tt)*] [$($sized_bound:tt)*] [$($impl_generics:tt)*] $self_ty:ty [$target:ty] $([$($preds:tt)*])? {}) => {
-        $crate::reprC! {
-            @transmuted_delegate_niche_sized [$($for_dummy)*] [$($sized_bound)*] [$($impl_generics)*] $self_ty [$target] $([$($preds)*])? {
-                fn is_valid(_target: &Self::CType) -> bool {
-                    unsafe { <$target as $crate::transmute::CheckedTransmute>::is_valid(*$target_ty) }
-                }
-            }
-        }
-    };
-
-    (@transmuted_delegate_niche_sized [$($for_dummy:tt)*] [$($sized_bound:tt)*] [$($impl_generics:tt)*] $self_ty:ty [$target:ty] $([$($preds:tt)*])? {
-        fn is_valid($target_var:ident: $target_ty:ty) -> bool $block:block
-    }) => {
-        unsafe impl<$($impl_generics)*> $crate::ReprC for $self_ty where
-            $($for_dummy)* $target: $crate::ReprC,
-            $($($preds)*)?
-        {}
-
-        unsafe impl<$($impl_generics)*> $crate::CFnArg for $self_ty where
-            $($for_dummy)* $target: $crate::CFnArg,
-            $($($preds)*)?
-        {}
-
-        impl<$($impl_generics)*> $crate::ir::ReprFamily for $self_ty where
-            $target: $crate::ir::ReprFamily,
-            $($($preds)*)?
-        {
-            type Kind = <$target as $crate::ir::ReprFamily>::Kind;
-        }
-
-        impl<$($impl_generics)*> $crate::ir::EncodeReprFamily for $self_ty where
-            $target: $crate::ir::EncodeReprFamily,
-            $($($preds)*)?
-        {
-            type Kind = <$target as $crate::ir::EncodeReprFamily>::Kind;
-        }
-
-        impl<$($impl_generics)*> $crate::niche::NicheFamily for $self_ty where
-            $($for_dummy)* $target: $crate::niche::NicheFamily,
-            $($sized_bound)*
-            $($($preds)*)?
-        {
-            type Kind = <$target as $crate::niche::NicheFamily>::Kind;
-        }
-
-        $crate::reprC! {
-            @transmuted_common [$($for_dummy)*] [$($impl_generics)*] $self_ty [$target] $([$($preds)*])? {
-                fn is_valid($target_var: $target_ty) -> bool $block
-            }
-        }
-
-        impl<$($impl_generics)*> $crate::niche::Niche for $self_ty where
-            Self: $crate::ExternC<CType = <$target as $crate::ExternC>::CType>,
-            $($for_dummy)* $target: $crate::niche::Niche,
-            $($sized_bound)*
-            $($($preds)*)?
-        {
-            const NICHE_VALUE: <Self as $crate::ExternC>::CType = <$target as $crate::niche::Niche>::NICHE_VALUE;
-        }
-
-        unsafe impl<$($impl_generics)*> $crate::niche::StableNiche for $self_ty
-        where
-            $($for_dummy)* $target: $crate::niche::StableNiche,
-            Self: $crate::niche::Niche,
-            $($sized_bound)*
-            $($($preds)*)?
-        {}
-    };
-
-    (@transmuted_explicit_niche [$($for_dummy:tt)*] [$($sized_bound:tt)*] [$($impl_generics:tt)*] $self_ty:ty [$target:ty] $([$($preds:tt)*])? {
-        const NICHE_VALUE: $niche_ty:ty = $niche_value:expr;
-
-        fn is_valid($target_var:ident: $target_ty:ty) -> bool $block:block
-    }) => {
-        impl<$($impl_generics)*> $crate::ir::ReprFamily for $self_ty where
-            $target: $crate::ir::ReprFamily,
-            $($($preds)*)?
-        {
-            type Kind = <$crate::ir::Transmuted<$crate::ir::NonRobust> as core::ops::Add<<$target as $crate::ir::ReprFamily>::Kind>>::Output;
-        }
-
-        //impl<$($impl_generics)*> $crate::ir::EncodeReprFamily for $self_ty where
-        //    $target: $crate::ir::EncodeReprFamily,
-        //    $($($preds)*)?
-        //{
-        //    type Kind = <$target as $crate::ir::EncodeReprFamily>::Kind;
-        //}
-
-        impl<$($impl_generics)*> $crate::niche::NicheFamily for $self_ty where
-            $($sized_bound)*
-            $($($preds)*)?
-        {
-            type Kind = $crate::niche::WithCustomNiche;
-        }
-
-        $crate::reprC! {
-            @transmuted_common [$($for_dummy)*] [$($impl_generics)*] $self_ty [$target] $([$($preds)*])? {
-                fn is_valid($target_var: $target_ty) -> bool $block
-            }
-        }
-
-        impl<$($impl_generics)*> $crate::niche::Niche for $self_ty where
-            $($sized_bound)*
-            $($($preds)*)?
-        {
-            const NICHE_VALUE: $niche_ty = {
-                assert!($crate::impls!
-                    ($target: $crate::niche::NicheFamily<Kind = $crate::niche::WithoutNiche>),
-                    "Transmuted CAN'T define a custom niche if target has a niche"
-                );
-
-                $niche_value
-            };
-        }
-    };
-
-    (@transmuted_common [$($for_dummy:tt)*] [$($impl_generics:tt)*] $self_ty:ty [$target:ty] $([$($preds:tt)*])? {
-        fn is_valid($target_var:ident: $target_ty:ty) -> bool $block:block
-    }) => {
-        unsafe impl<'d, $($impl_generics)*> $crate::transmute::CheckedTransmute for $self_ty where
-            &'d $target_ty: $crate::Decode<'d, CType = *const <$target_ty as $crate::ExternC>::CType>,
-            $($for_dummy)* $target: $crate::transmute::CheckedTransmute,
-            $($($preds)*)?
-        {
-            #[inline(always)]
-            unsafe fn is_valid($target_var: &$target_ty) -> bool {
-                let Some($target_var) = (unsafe { <&$target_ty as $crate::Decode>::decode($target_var) }) else {
-                    return false;
-                };
-
-                $block
-            }
-        }
-
-        impl<$($impl_generics)*> $crate::ExternC for $self_ty where $($($preds)*)? {
-            type CType = <$target as $crate::ExternC>::CType;
-        }
-
-        unsafe impl<$($impl_generics)*> $crate::handle::Erase for $self_ty where
-            $($for_dummy)* $target: $crate::handle::Erase,
-            $($($preds)*)?
-        {
-            type Erased = <$target as $crate::handle::Erase>::Erased;
-        }
-    };
-
-    (@assert_no_drop [$($impl_generics:tt)*] $self_ty:ty $([$($preds:tt)*])?) => {
-        const _: () = {
-            #[expect(dead_code)]
-            trait AssertNoDrop {
-                fn assert_no_drop();
-            }
-
-            impl<$($impl_generics)*> AssertNoDrop for $self_ty $(where $($preds)*)? {
-                fn assert_no_drop() {
-                    const { assert!($crate::impls!(Self: !Drop)); }
-                }
-            }
-        };
-    };
-
-    (@assert_no_drop [$($impl_generics:tt)*] $self_ty:ty $([$($preds:tt)*])?) => {
-        const _: () = {
-            #[expect(dead_code)]
-            trait AssertNoDrop {
-                fn assert_no_drop();
-            }
-
-            impl<$($impl_generics)*> AssertNoDrop for $self_ty $(where $($preds)*)? {
-                fn assert_no_drop() {
-                    const {
-                        // TODO: This is heuristic so it might
-                        // make sense to reintroduce `DropFamily`
-                        assert!(!core::mem::needs_drop::<Self>());
-                    }
-                }
-            }
-        };
-    };
-
-    (@sized_size_family [$($impl_generics:tt)*] $self_ty:ty $([$($preds:tt)*])?) => {
-        impl<$($impl_generics)*> $crate::size::SizeFamily for $self_ty $(where $($preds)*)? {
-            type Kind = $crate::size::Sized;
-        }
-    };
 }
 
 // TODO: Check https://github.com/mversic/co3/issues/13
@@ -1072,94 +415,9 @@ const fn assert_arr_has_non_zero_len<const N: usize>() {
 }
 
 #[cfg(test)]
+#[cfg(feature = "alloc")]
 mod tests {
-    use static_assertions::assert_impl_all;
-
     use super::*;
-    use crate::{
-        ir::Robust,
-        niche::{Niche, NicheFamily, StableNiche, WithStableNiche},
-    };
-
-    #[test]
-    fn robust_u8() {
-        assert_impl_all!(u8:
-            ReprFamily<Kind = Transmuted<Robust>>,
-            NicheFamily<Kind = WithoutNiche>,
-            ExternC<CType = u8>,
-            SoftDecode<'static>,
-            SoftEncode,
-            ReprC,
-        );
-        assert_impl_all!(&u8:
-            ReprFamily<Kind = Transmuted<NonRobust>>,
-            NicheFamily<Kind = WithStableNiche>,
-            StableNiche<CType = *const u8>,
-            SoftDecode<'static>,
-            SoftEncode,
-        );
-        assert_impl_all!(&mut u8:
-            ReprFamily<Kind = Transmuted<NonRobust>>,
-            NicheFamily<Kind = WithStableNiche>,
-            StableNiche<CType = *mut u8>,
-            SoftDecode<'static>,
-            SoftEncode,
-        );
-        // FIXME:
-        //assert_impl_all!(Box<u8>:
-        //    ReprFamily<Kind = Transmuted<Robust>>,
-        //    NicheFamily<Kind = WithStableNiche>,
-        //    StableNiche<CType = *mut u8>,
-        //    SoftDecode<'static>,
-        //    SoftEncode,
-        //);
-        assert_impl_all!(&[u8]:
-            ReprFamily<Kind = ReprRust>,
-            NicheFamily<Kind = WithCustomNiche>,
-            Niche<CType = CSlice<u8>>,
-            SoftDecode<'static>,
-            SoftEncode,
-        );
-        assert_impl_all!(&mut [u8]:
-            ReprFamily<Kind = ReprRust>,
-            NicheFamily<Kind = WithCustomNiche>,
-            Niche<CType = CSliceMut<u8>>,
-            SoftDecode<'static>,
-            SoftEncode,
-        );
-        #[cfg(feature = "alloc")]
-        assert_impl_all!(Box<[u8]>:
-            ReprFamily<Kind = ReprRust>,
-            NicheFamily<Kind = WithCustomNiche>,
-            Niche<CType = CBoxedSlice<u8>>,
-            // FIXME:
-            //SoftDecode<'static>,
-            SoftEncode,
-        );
-        #[cfg(feature = "alloc")]
-        assert_impl_all!(Vec<u8>:
-            ReprFamily<Kind = ReprRust>,
-            NicheFamily<Kind = WithCustomNiche>,
-            Niche<CType = CBoxedSlice<u8>>,
-            // FIXME:
-            //SoftDecode<'static>,
-            SoftEncode,
-        );
-        assert_impl_all!([u8; 2]:
-            ReprFamily<Kind = Transmuted<Robust>>,
-            NicheFamily<Kind = WithoutNiche>,
-            SoftDecode<'static>,
-            SoftEncode,
-            ReprC,
-        );
-        assert_impl_all!(Option<u8>:
-            ReprFamily<Kind = ReprRust>,
-            NicheFamily<Kind = WithCustomNiche>,
-            Niche<CType = COption<u8>>,
-            SoftDecode<'static>,
-            SoftEncode,
-        );
-    }
 
     #[test]
     fn encode_stored_mut_ref() {
@@ -1169,7 +427,7 @@ mod tests {
         let value_mut_ref: &mut Option<u8> = &mut value;
         {
             let mut store = Box::default();
-            let encoded = SoftEncode::soft_encode(value_mut_ref, &mut *store);
+            let encoded = value_mut_ref.soft_encode(&mut *store);
             unsafe {
                 *encoded = COption::Some(other);
             }
@@ -1181,7 +439,7 @@ mod tests {
         let ref_mut: &mut [_] = &mut slice;
         {
             let mut store = Box::default();
-            let encoded = SoftEncode::soft_encode(ref_mut, &mut *store);
+            let encoded = ref_mut.soft_encode(&mut *store);
             let c_slice = unsafe { encoded.into_rust().unwrap() };
             c_slice[0] = COption::Some(other);
             store.sync().unwrap();
@@ -1196,9 +454,8 @@ mod tests {
         let new_val: u8 = 42;
         {
             let mut store = Box::default();
-            let decoded =
-                unsafe { <&mut Option<u8> as SoftDecode>::soft_decode(c_ptr, &mut *store) }
-                    .unwrap();
+            let decoded = unsafe { <&mut _>::soft_decode(c_ptr, &mut *store) }.unwrap();
+
             *decoded = Some(new_val);
             store.sync().unwrap();
         }
@@ -1209,9 +466,8 @@ mod tests {
         let x: u8 = 10;
         {
             let mut store = Box::default();
-            let decoded =
-                unsafe { <&mut [Option<u8>] as SoftDecode>::soft_decode(c_slice, &mut *store) }
-                    .unwrap();
+            let decoded = unsafe { <&mut [_]>::soft_decode(c_slice, &mut *store) }.unwrap();
+
             decoded[0] = Some(x);
             store.sync().unwrap();
         }
@@ -1229,7 +485,7 @@ mod tests {
         {
             let mut store = Box::default();
 
-            let encoded = SoftEncode::soft_encode(slice_ref, &mut store);
+            let encoded = slice_ref.soft_encode(&mut store);
             let c_slice = unsafe { encoded.into_rust().unwrap() };
 
             c_slice[0] = CTuple1(100);
@@ -1249,8 +505,7 @@ mod tests {
 
         {
             let mut store = Box::default();
-            let decoded =
-                unsafe { <&mut [(_,)] as SoftDecode>::soft_decode(c_slice, &mut store) }.unwrap();
+            let decoded = unsafe { <&mut [(_,)]>::soft_decode(c_slice, &mut store) }.unwrap();
 
             decoded[0].0 = 100;
             store.sync().unwrap();
