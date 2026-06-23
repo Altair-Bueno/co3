@@ -22,7 +22,7 @@ pub unsafe trait CheckedTransmute: ExternC {
     unsafe fn is_valid(target: &Self::CType) -> bool;
 }
 
-unsafe impl<R: ExternC + CheckedTransmute + ?Sized> CheckedTransmute for &R
+unsafe impl<R: CheckedTransmute + ?Sized> CheckedTransmute for &R
 where
     Self: ExternC<CType = *const R::CType>,
 {
@@ -36,7 +36,7 @@ where
     }
 }
 
-unsafe impl<R: ExternC + CheckedTransmute + ?Sized> CheckedTransmute for &mut R
+unsafe impl<R: CheckedTransmute + ?Sized> CheckedTransmute for &mut R
 where
     Self: ExternC<CType = *mut R::CType>,
 {
@@ -57,7 +57,7 @@ where
 {
     #[inline(always)]
     unsafe fn is_valid(target: &Self::CType) -> bool {
-        if target.is_none() {
+        if target.is_niche() {
             return false;
         }
 
@@ -80,7 +80,7 @@ unsafe impl<R: CheckedTransmute<CType: Copy>, const N: usize> CheckedTransmute f
     }
 }
 
-unsafe impl<R: StableNiche + CheckedTransmute> CheckedTransmute for Option<R>
+unsafe impl<R: CheckedTransmute<CType: Copy> + StableNiche> CheckedTransmute for Option<R>
 where
     Self: ExternC<CType = R::CType>,
 {

@@ -1,13 +1,13 @@
 //! FFI-safe equivalent of [`core::result`] related functionality
 
-use core::ops::Add;
+use core::{mem::MaybeUninit, ops::Add};
 
 use crate::{
-    CFnArg, ExternC, FfiReturn, ReprC,
+    CFnArg, ExternC, FfiReturn, ReprC, SoftDecode, SoftEncode,
     borrow::{Borrow, BorrowCast, ToOwned},
     handle::Erase,
     ir::ReprFamily,
-    niche::{Niche, NicheFamily, WithoutNiche},
+    niche::{NicheFamily, WithoutNiche},
     size::SizeFamily,
     stored::{SoftDecodeOwned, SoftEncodeOwned},
     transmute::CheckedTransmute,
@@ -15,23 +15,92 @@ use crate::{
 
 /// FFI-safe equivalent of [`core::result::Result`]
 #[repr(C)]
-pub union CResult<T: Copy, E: Copy> {
-    ok: CResultOk<T>,
-    err: CResultErr<E>,
+pub union ReprCResult<T: Copy, E: Copy> {
+    ok: ReprCResultOk<T>,
+    err: ReprCResultErr<E>,
 }
 
 #[repr(C)]
-struct CResultOk<T>(u8, T);
+#[derive(Clone, Copy)]
+struct ReprCResultOk<T: Copy>(u8, MaybeUninit<T>);
 
 #[repr(C)]
-struct CResultErr<E>(u8, E);
+#[derive(Clone, Copy)]
+struct ReprCResultErr<E: Copy>(u8, MaybeUninit<E>);
 
-impl<T: Copy, E: Copy> CResult<T, E> {
+impl<T: core::fmt::Debug + Copy, E: core::fmt::Debug + Copy> core::fmt::Debug
+    for ReprCResult<T, E>
+{
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        match self.tag() {
+            0 => f
+                .debug_tuple("ReprCResult::Ok")
+                .field(unsafe { self.ok.1.assume_init_ref() })
+                .finish(),
+            1 => f
+                .debug_tuple("ReprCResult::Err")
+                .field(unsafe { self.err.1.assume_init_ref() })
+                .finish(),
+            tag => f
+                .debug_struct("ReprCResult::<invalid>")
+                .field("tag", &tag)
+                .finish(),
+        }
+    }
+}
+
+impl<T: PartialEq + Copy, E: PartialEq + Copy> PartialEq for ReprCResult<T, E> {
+    fn eq(&self, other: &Self) -> bool {
+        match (self.tag(), other.tag()) {
+            (0, 0) => {
+                let self_payload = unsafe { self.ok.1.assume_init_ref() };
+                let other_payload = unsafe { other.ok.1.assume_init_ref() };
+
+                self_payload == other_payload
+            }
+            (1, 1) => {
+                let self_payload = unsafe { self.err.1.assume_init_ref() };
+                let other_payload = unsafe { other.err.1.assume_init_ref() };
+
+                self_payload == other_payload
+            }
+            _ => false,
+        }
+    }
+}
+
+impl<T: PartialOrd + Copy, E: PartialOrd + Copy> PartialOrd for ReprCResult<T, E> {
+    fn partial_cmp(&self, other: &Self) -> Option<core::cmp::Ordering> {
+        match (self.tag(), other.tag()) {
+            (0, 0) => {
+                let self_payload = unsafe { self.ok.1.assume_init_ref() };
+                let other_payload = unsafe { other.ok.1.assume_init_ref() };
+
+                self_payload.partial_cmp(other_payload)
+            }
+            (0, 1) => Some(core::cmp::Ordering::Greater),
+            (1, 0) => Some(core::cmp::Ordering::Less),
+            (1, 1) => {
+                let self_payload = unsafe { self.err.1.assume_init_ref() };
+                let other_payload = unsafe { other.err.1.assume_init_ref() };
+
+                self_payload.partial_cmp(other_payload)
+            }
+            _ => None,
+        }
+    }
+}
+
+impl<T: Copy, E: Copy> ReprCResult<T, E> {
+    pub(crate) const NICHE_VALUE: Self = Self {
+        ok: ReprCResultOk(2, MaybeUninit::uninit()),
+    };
+
     /// Construct the success value
     #[expect(non_snake_case)]
     pub const fn Ok(ok: T) -> Self {
         Self {
-            ok: CResultOk(0, ok),
+            ok: ReprCResultOk(0, MaybeUninit::new(ok)),
         }
     }
 
@@ -39,13 +108,7 @@ impl<T: Copy, E: Copy> CResult<T, E> {
     #[expect(non_snake_case)]
     pub const fn Err(err: E) -> Self {
         Self {
-            err: CResultErr(1, err),
-        }
-    }
-
-    pub(crate) const fn niche() -> Self {
-        Self {
-            ok: CResultOk(2, unsafe { core::mem::zeroed() }),
+            err: ReprCResultErr(1, MaybeUninit::new(err)),
         }
     }
 
@@ -54,9 +117,31 @@ impl<T: Copy, E: Copy> CResult<T, E> {
         // SAFETY: Variant structs have tag as the first field
         unsafe { *core::ptr::from_ref(&self).cast::<u8>() }
     }
+
+    #[inline(always)]
+    fn forward_payload<U: Copy, V: Copy>(self) -> ReprCResult<U, V> {
+        let mut output = MaybeUninit::<ReprCResult<U, V>>::uninit();
+
+        unsafe {
+            core::ptr::copy_nonoverlapping(
+                core::ptr::from_ref(&self).cast::<u8>(),
+                output.as_mut_ptr().cast::<u8>(),
+                core::cmp::min(size_of::<Self>(), size_of::<ReprCResult<U, V>>()),
+            );
+
+            output.assume_init()
+        }
+    }
 }
 
-impl<T: Copy, E: Copy> From<Result<T, E>> for CResult<T, E> {
+impl<T: Copy, E: Copy> Copy for ReprCResult<T, E> {}
+impl<T: Copy, E: Copy> Clone for ReprCResult<T, E> {
+    fn clone(&self) -> Self {
+        *self
+    }
+}
+
+impl<T: Copy, E: Copy> From<Result<T, E>> for ReprCResult<T, E> {
     fn from(value: Result<T, E>) -> Self {
         match value {
             Ok(ok) => Self::Ok(ok),
@@ -65,128 +150,185 @@ impl<T: Copy, E: Copy> From<Result<T, E>> for CResult<T, E> {
     }
 }
 
-impl<T: Copy, E: Copy> TryFrom<CResult<T, E>> for Result<T, E> {
+impl<T: Copy, E: Copy> TryFrom<ReprCResult<T, E>> for Result<T, E> {
     type Error = FfiReturn;
 
-    fn try_from(value: CResult<T, E>) -> Result<Self, Self::Error> {
+    fn try_from(value: ReprCResult<T, E>) -> Result<Self, Self::Error> {
         match value.tag() {
-            0 => Ok(Ok(unsafe { value.ok.1 })),
-            1 => Ok(Err(unsafe { value.err.1 })),
+            0 => Ok(Ok(unsafe { value.ok.1.assume_init() })),
+            1 => Ok(Err(unsafe { value.err.1.assume_init() })),
             _ => Err(FfiReturn::TrapRepresentation),
         }
     }
 }
 
-impl<T: Copy, E: Copy> Copy for CResult<T, E> {}
-impl<T: Copy, E: Copy> Clone for CResult<T, E> {
-    fn clone(&self) -> Self {
-        *self
-    }
-}
-
-impl<T: Copy> Copy for CResultOk<T> {}
-impl<T: Copy> Clone for CResultOk<T> {
-    fn clone(&self) -> Self {
-        *self
-    }
-}
-
-impl<E: Copy> Copy for CResultErr<E> {}
-impl<E: Copy> Clone for CResultErr<E> {
-    fn clone(&self) -> Self {
-        *self
-    }
-}
-
-impl<T: ReprFamily<Kind: Add<E::Kind>> + Copy, E: ReprFamily + Copy> ReprFamily for CResult<T, E> {
+impl<T: ReprFamily<Kind: Add<E::Kind>> + Copy, E: ReprFamily + Copy> ReprFamily
+    for ReprCResult<T, E>
+{
     type Kind = <T::Kind as Add<E::Kind>>::Output;
 }
 
-impl<T: Copy, E: Copy> SizeFamily for CResult<T, E> {
+impl<T: Copy, E: Copy> SizeFamily for ReprCResult<T, E> {
     type Kind = crate::size::Sized;
 }
 
-impl<T: Copy, E: Copy> NicheFamily for CResult<T, E> {
+impl<T: Copy, E: Copy> NicheFamily for ReprCResult<T, E> {
     type Kind = WithoutNiche;
 }
 
-unsafe impl<T: ReprC + Copy, E: ReprC + Copy> CheckedTransmute for CResult<T, E> {
-    #[inline(always)]
-    unsafe fn is_valid(_: &Self::CType) -> bool {
-        true
-    }
-}
-
-unsafe impl<T: ReprC + Copy, E: ReprC + Copy> ReprC for CResult<T, E> {}
-unsafe impl<T: ReprC + Copy, E: ReprC + Copy> CFnArg for CResult<T, E> {}
-
-impl<T: ReprC + Copy, E: ReprC + Copy> ExternC for CResult<T, E> {
-    type CType = Self;
-}
-impl<T, E> Niche for Result<T, E>
+impl<T: Borrow + Copy, E: Borrow + Copy> Borrow for ReprCResult<T, E>
 where
-    Self: ExternC<CType = CResult<T::CType, E::CType>>,
-    T: NicheFamily<Kind = crate::niche::WithoutNiche> + ExternC<CType: Copy>,
-    E: NicheFamily<Kind = crate::niche::WithoutNiche> + ExternC<CType: Copy>,
+    for<'itm> T::Borrowed<'itm>: Copy,
+    for<'itm> E::Borrowed<'itm>: Copy,
 {
-    const NICHE_VALUE: Self::CType = CResult::niche();
-}
-
-impl<T: ReprC + Copy, E: ReprC + Copy> SoftEncodeOwned for CResult<T, E> {
-    type Store = ();
-
-    #[inline(always)]
-    fn soft_encode<'itm>(self, (): &mut ()) -> Self::CType
-    where
-        Self: 'itm,
-    {
-        self
-    }
-}
-impl<'d, T: ReprC + Copy, E: ReprC + Copy> SoftDecodeOwned<'d> for CResult<T, E> {
-    type Store = ();
-
-    #[inline(always)]
-    unsafe fn soft_decode<'itm: 'd>(source: Self::CType, (): &mut ()) -> Option<Self> {
-        Some(source)
-    }
-}
-
-impl<T: Copy, E: Copy> Borrow for CResult<T, E> {
     type Borrowed<'itm>
-        = Self
+        = ReprCResult<T::Borrowed<'itm>, E::Borrowed<'itm>>
     where
         Self: 'itm;
 
-    type Owner = ();
+    type Owner = Option<Result<T::Owner, E::Owner>>;
 
     #[inline(always)]
-    fn borrow<'itm>(self, (): &mut ()) -> Self::Borrowed<'itm>
+    fn borrow<'itm>(self, owner: &'itm mut Self::Owner) -> Self::Borrowed<'itm>
     where
         Self: 'itm,
     {
-        self
+        match self.tag() {
+            0 => {
+                let Result::Ok(owner) = owner.insert(Result::Ok(Default::default())) else {
+                    unreachable!()
+                };
+
+                ReprCResult::Ok(unsafe { self.ok.1.assume_init() }.borrow(owner))
+            }
+            1 => {
+                let Result::Err(owner) = owner.insert(Result::Err(Default::default())) else {
+                    unreachable!()
+                };
+
+                ReprCResult::Err(unsafe { self.err.1.assume_init() }.borrow(owner))
+            }
+            _ => self.forward_payload(),
+        }
     }
 }
-impl<'itm, T: Copy, E: Copy> ToOwned<'itm> for CResult<T, E> {
+impl<'itm, T: ToOwned<'itm> + Copy, E: ToOwned<'itm> + Copy> ToOwned<'itm> for ReprCResult<T, E>
+where
+    for<'borrow> T::Borrowed<'borrow>: Copy,
+    for<'borrow> E::Borrowed<'borrow>: Copy,
+{
     #[inline(always)]
-    fn to_owned(source: Self) -> Self {
-        source
+    fn to_owned(source: Self::Borrowed<'itm>) -> Self {
+        match source.tag() {
+            0 => Self::Ok(T::to_owned(unsafe { source.ok.1.assume_init() })),
+            1 => Self::Err(E::to_owned(unsafe { source.err.1.assume_init() })),
+            _ => source.forward_payload(),
+        }
     }
 }
+
+impl<T: ExternC<CType: Copy> + Copy, E: ExternC<CType: Copy> + Copy> ExternC for ReprCResult<T, E> {
+    type CType = ReprCResult<T::CType, E::CType>;
+}
+impl<T: SoftEncodeOwned<CType: Copy> + Copy, E: SoftEncodeOwned<CType: Copy> + Copy> SoftEncodeOwned
+    for ReprCResult<T, E>
+{
+    type Store = Option<Result<T::Store, E::Store>>;
+
+    #[inline(always)]
+    fn soft_encode<'itm>(self, store: &'itm mut Self::Store) -> Self::CType
+    where
+        Self: 'itm,
+    {
+        match self.tag() {
+            0 => {
+                let Result::Ok(store) = store.insert(Result::Ok(Default::default())) else {
+                    unreachable!()
+                };
+
+                ReprCResult::Ok(unsafe { self.ok.1.assume_init() }.soft_encode(store))
+            }
+            1 => {
+                let Result::Err(store) = store.insert(Result::Err(Default::default())) else {
+                    unreachable!()
+                };
+
+                ReprCResult::Err(unsafe { self.err.1.assume_init() }.soft_encode(store))
+            }
+            _ => self.forward_payload(),
+        }
+    }
+}
+impl<'d, T: SoftDecodeOwned<'d, CType: Copy> + Copy, E: SoftDecodeOwned<'d, CType: Copy> + Copy>
+    SoftDecodeOwned<'d> for ReprCResult<T, E>
+{
+    type Store = Option<Result<T::Store, E::Store>>;
+
+    #[inline(always)]
+    unsafe fn soft_decode<'itm: 'd>(
+        source: Self::CType,
+        store: &'itm mut Self::Store,
+    ) -> Option<Self> {
+        match source.tag() {
+            0 => {
+                let Result::Ok(store) = store.insert(Result::Ok(Default::default())) else {
+                    unreachable!()
+                };
+
+                Some(Self::Ok(unsafe {
+                    T::soft_decode(source.ok.1.assume_init(), store)?
+                }))
+            }
+            1 => {
+                let Result::Err(store) = store.insert(Result::Err(Default::default())) else {
+                    unreachable!()
+                };
+
+                Some(Self::Err(unsafe {
+                    E::soft_decode(source.err.1.assume_init(), store)?
+                }))
+            }
+            _ => Some(source.forward_payload()),
+        }
+    }
+}
+
+impl<T: SoftEncode<CType: Copy> + Copy, E: SoftEncode<CType: Copy> + Copy> SoftEncode
+    for ReprCResult<T, E>
+{
+}
+impl<'d, T: SoftDecode<'d, CType: Copy> + Copy, E: SoftDecode<'d, CType: Copy> + Copy>
+    SoftDecode<'d> for ReprCResult<T, E>
+{
+}
+
+unsafe impl<T: CheckedTransmute<CType: Copy> + Copy, E: CheckedTransmute<CType: Copy> + Copy>
+    CheckedTransmute for ReprCResult<T, E>
+{
+    #[inline(always)]
+    unsafe fn is_valid(target: &Self::CType) -> bool {
+        match target.tag() {
+            0 => unsafe { T::is_valid(&*target.ok.1.as_ptr()) },
+            1 => unsafe { E::is_valid(&*target.err.1.as_ptr()) },
+            _ => true,
+        }
+    }
+}
+
+unsafe impl<T: ReprC + Copy, E: ReprC + Copy> ReprC for ReprCResult<T, E> {}
+unsafe impl<T: ReprC + Copy, E: ReprC + Copy> CFnArg for ReprCResult<T, E> {}
 
 unsafe impl<
     T: BorrowCast<AsConst: Copy, AsMut: Copy> + Copy,
     E: BorrowCast<AsConst: Copy, AsMut: Copy> + Copy,
-> BorrowCast for CResult<T, E>
+> BorrowCast for ReprCResult<T, E>
 {
-    type AsConst = CResult<T::AsConst, E::AsConst>;
-    type AsMut = CResult<T::AsMut, E::AsMut>;
-}
-unsafe impl<T: Erase<Erased: Copy> + Copy, E: Erase<Erased: Copy> + Copy> Erase for CResult<T, E> {
-    type Erased = CResult<T::Erased, E::Erased>;
+    type AsConst = ReprCResult<T::AsConst, E::AsConst>;
+    type AsMut = ReprCResult<T::AsMut, E::AsMut>;
 }
 
-unsafe impl<T: Erase<Erased: Sized>, E: Erase<Erased: Sized>> Erase for Result<T, E> {
-    type Erased = Result<T::Erased, E::Erased>;
+unsafe impl<T: Erase<Erased: Copy> + Copy, E: Erase<Erased: Copy> + Copy> Erase
+    for ReprCResult<T, E>
+{
+    type Erased = ReprCResult<T::Erased, E::Erased>;
 }

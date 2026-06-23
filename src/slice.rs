@@ -1,7 +1,7 @@
 //! Logic related to the conversion of slices to and from FFI-compatible representation
 
 use crate::{
-    CFnArg, ExternC, ReprC,
+    CFnArg, ExternC, ReprC, SoftDecode, SoftEncode,
     borrow::{Borrow, BorrowCast, ToOwned},
     handle::Erase,
     ir::ReprFamily,
@@ -97,12 +97,11 @@ impl_raw_slice_methods! { CSlice<C>, CSliceMut<C> }
 
 impl<C> CSlice<C> {
     /// Set the slice's data pointer to null
-    pub const fn none() -> Self {
-        Self {
-            data: core::ptr::null(),
-            len: 0,
-        }
-    }
+    pub(crate) const NICHE_VALUE: Self = Self {
+        data: core::ptr::null(),
+        // TODO: Use MaybeUninit for len?
+        len: 0,
+    };
 
     /// Create [`Self`] from shared slice
     pub const fn from_slice(source: Option<&[C]>) -> Self {
@@ -113,7 +112,7 @@ impl<C> CSlice<C> {
             };
         }
 
-        Self::none()
+        Self::NICHE_VALUE
     }
 
     /// Create [`Self`] from a raw data pointer and slice metadata.
@@ -124,12 +123,11 @@ impl<C> CSlice<C> {
 
 impl<C> CSliceMut<C> {
     /// Set the slice's data pointer to null
-    pub const fn none() -> Self {
-        Self {
-            data: core::ptr::null_mut(),
-            len: 0,
-        }
-    }
+    pub(crate) const NICHE_VALUE: Self = Self {
+        data: core::ptr::null_mut(),
+        // TODO: Use MaybeUninit for len?
+        len: 0,
+    };
 
     /// Create [`Self`] from mutable slice
     pub const fn from_slice(source: Option<&mut [C]>) -> Self {
@@ -140,7 +138,7 @@ impl<C> CSliceMut<C> {
             };
         }
 
-        Self::none()
+        Self::NICHE_VALUE
     }
 
     /// Create [`Self`] from a raw data pointer and slice metadata.
@@ -193,15 +191,28 @@ macro_rules! impl_slice_carrier {
             type Kind = WithoutNiche;
         }
 
-        unsafe impl<C: ReprC> CheckedTransmute for $ty<C> {
+        impl<C> Borrow for $ty<C> {
+            type Borrowed<'itm>
+                = Self
+            where
+                Self: 'itm;
+
+            type Owner = ();
+
             #[inline(always)]
-            unsafe fn is_valid(_: &Self::CType) -> bool {
-                true
+            fn borrow<'itm>(self, (): &mut ()) -> Self::Borrowed<'itm>
+            where
+                Self: 'itm,
+            {
+                self
             }
         }
-
-        unsafe impl<C: ReprC> ReprC for $ty<C> {}
-        unsafe impl<C: ReprC> CFnArg for $ty<C> {}
+        impl<'itm, C> ToOwned<'itm> for $ty<C> {
+            #[inline(always)]
+            fn to_owned(source: Self) -> Self {
+                source
+            }
+        }
 
         impl<C: ReprC> ExternC for $ty<C> {
             type CType = Self;
@@ -225,36 +236,26 @@ macro_rules! impl_slice_carrier {
                 Some(source)
             }
         }
-        impl<C> Borrow for $ty<C> {
-            type Borrowed<'itm>
-                = Self
-            where
-                Self: 'itm;
 
-            type Owner = ();
+        impl<C: ReprC> SoftEncode for $ty<C> {}
+        impl<'d, C: ReprC> SoftDecode<'d> for $ty<C> {}
 
+        unsafe impl<C: ReprC> CheckedTransmute for $ty<C> {
             #[inline(always)]
-            fn borrow<'itm>(self, (): &mut ()) -> Self::Borrowed<'itm>
-            where
-                Self: 'itm,
-            {
-                self
+            unsafe fn is_valid(_: &Self::CType) -> bool {
+                true
             }
         }
 
-        impl<'itm, C> ToOwned<'itm> for $ty<C> {
-            #[inline(always)]
-            fn to_owned(source: Self) -> Self {
-                source
-            }
-        }
-
-        unsafe impl<C: Erase<Erased: Copy>> Erase for $ty<C> {
-            type Erased = $ty<C::Erased>;
-        }
+        unsafe impl<C: ReprC> ReprC for $ty<C> {}
+        unsafe impl<C: ReprC> CFnArg for $ty<C> {}
         unsafe impl<C: ReprC> BorrowCast for $ty<C> {
             type AsConst = Self;
             type AsMut = Self;
+        }
+
+        unsafe impl<C: Erase<Erased: Sized>> Erase for $ty<C> {
+            type Erased = $ty<C::Erased>;
         }
     };
 }

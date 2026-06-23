@@ -1,7 +1,7 @@
 //! Logic related to the conversion of primitives to and from FFI-compatible representation
 
 use crate::{
-    CFnArg, CFnReturn, Decode, ExternC, ReprC,
+    CFnArg, CFnReturn, Decode, ExternC, ReprC, SoftDecode, SoftEncode,
     borrow::{Borrow, BorrowCast, ToOwned},
     handle::Erase,
     ir::{NonRobust, ReprFamily, Robust, Transmuted},
@@ -21,40 +21,6 @@ macro_rules! primitive_derive {
         }
         impl NicheFamily for $primitive {
             type Kind = WithoutNiche;
-        }
-
-        unsafe impl ReprC for $primitive {}
-        unsafe impl CFnArg for $primitive {}
-
-        impl ExternC for $primitive {
-            type CType = Self;
-        }
-
-        unsafe impl CheckedTransmute for $primitive {
-            #[inline(always)]
-            unsafe fn is_valid(_: &Self::CType) -> bool {
-                true
-            }
-        }
-
-        impl SoftEncodeOwned for $primitive {
-            type Store = ();
-
-            #[inline(always)]
-            fn soft_encode<'itm>(self, (): &mut ()) -> Self::CType
-            where
-                Self: 'itm,
-            {
-                self
-            }
-        }
-        impl<'d> SoftDecodeOwned<'d> for $primitive {
-            type Store = ();
-
-            #[inline(always)]
-            unsafe fn soft_decode<'itm: 'd>(source: Self::CType, (): &mut ()) -> Option<Self> {
-                Some(source)
-            }
         }
 
         impl Borrow for $primitive {
@@ -80,9 +46,45 @@ macro_rules! primitive_derive {
             }
         }
 
+        impl ExternC for $primitive {
+            type CType = Self;
+        }
+        impl SoftEncodeOwned for $primitive {
+            type Store = ();
+
+            #[inline(always)]
+            fn soft_encode<'itm>(self, (): &mut ()) -> Self::CType
+            where
+                Self: 'itm,
+            {
+                self
+            }
+        }
+        impl<'d> SoftDecodeOwned<'d> for $primitive {
+            type Store = ();
+
+            #[inline(always)]
+            unsafe fn soft_decode<'itm: 'd>(source: Self::CType, (): &mut ()) -> Option<Self> {
+                Some(source)
+            }
+        }
+
+        impl SoftEncode for $primitive {}
+        impl SoftDecode<'_> for $primitive {}
+
+        unsafe impl CheckedTransmute for $primitive {
+            #[inline(always)]
+            unsafe fn is_valid(_: &Self::CType) -> bool {
+                true
+            }
+        }
+
         unsafe impl Erase for $primitive {
             type Erased = Self;
         }
+
+        unsafe impl ReprC for $primitive {}
+        unsafe impl CFnArg for $primitive {}
         unsafe impl BorrowCast for $primitive {
             type AsConst = Self;
             type AsMut = Self;
@@ -100,39 +102,6 @@ macro_rules! raw_pointer_derive {
         }
         impl<R: ?Sized> NicheFamily for *$mutability R {
             type Kind = WithoutNiche;
-        }
-
-        unsafe impl<R: ReprC + ?Sized> CheckedTransmute for *$mutability R {
-            #[inline(always)]
-            unsafe fn is_valid(_: &Self::CType) -> bool {
-                true
-            }
-        }
-
-        unsafe impl<R: ReprC + ?Sized> ReprC for *$mutability R {}
-        unsafe impl<R: ReprC + ?Sized> CFnArg for *$mutability R {}
-
-        impl<R: ReprC + ?Sized> ExternC for *$mutability R {
-            type CType = Self;
-        }
-        impl<R: ReprC + ?Sized> SoftEncodeOwned for *$mutability R {
-            type Store = ();
-
-            #[inline(always)]
-            fn soft_encode<'itm>(self, (): &mut ()) -> Self::CType
-            where
-                Self: 'itm,
-            {
-                self
-            }
-        }
-        impl<'d, R: ReprC + ?Sized> SoftDecodeOwned<'d> for *$mutability R {
-            type Store = ();
-
-            #[inline(always)]
-            unsafe fn soft_decode<'itm: 'd>(source: Self::CType, (): &mut ()) -> Option<Self> {
-                Some(source)
-            }
         }
 
         impl<R: ?Sized> Borrow for *$mutability R {
@@ -158,9 +127,45 @@ macro_rules! raw_pointer_derive {
             }
         }
 
+        impl<R: ReprC + ?Sized> ExternC for *$mutability R {
+            type CType = Self;
+        }
+        impl<R: ReprC + ?Sized> SoftEncodeOwned for *$mutability R {
+            type Store = ();
+
+            #[inline(always)]
+            fn soft_encode<'itm>(self, (): &mut ()) -> Self::CType
+            where
+                Self: 'itm,
+            {
+                self
+            }
+        }
+        impl<'d, R: ReprC + ?Sized> SoftDecodeOwned<'d> for *$mutability R {
+            type Store = ();
+
+            #[inline(always)]
+            unsafe fn soft_decode<'itm: 'd>(source: Self::CType, (): &mut ()) -> Option<Self> {
+                Some(source)
+            }
+        }
+
+        impl<R: ReprC + ?Sized> SoftEncode for *$mutability R {}
+        impl<R: ReprC + ?Sized> SoftDecode<'_> for *$mutability R {}
+
+        unsafe impl<R: ReprC + ?Sized> CheckedTransmute for *$mutability R {
+            #[inline(always)]
+            unsafe fn is_valid(_: &Self::CType) -> bool {
+                true
+            }
+        }
+
         unsafe impl<R: Erase + ?Sized> Erase for *$mutability R {
             type Erased = *$mutability R::Erased;
         }
+
+        unsafe impl<R: ReprC + ?Sized> ReprC for *$mutability R {}
+        unsafe impl<R: ReprC + ?Sized> CFnArg for *$mutability R {}
         unsafe impl<R: ReprC + ?Sized> BorrowCast for *$mutability R {
             type AsConst = Self;
             type AsMut = Self;
@@ -204,13 +209,26 @@ macro_rules! fieldless_enum_derive {
             }
         }
 
+        impl Borrow for $src {
+            type Borrowed<'itm> = Self;
+
+            type Owner = ();
+
+            #[inline(always)]
+            fn borrow<'itm>(self, (): &mut ()) -> Self::Borrowed<'itm> {
+                self
+            }
+        }
+        impl<'itm> ToOwned<'itm> for $src {
+            #[inline(always)]
+            fn to_owned(source: Self::Borrowed<'itm>) -> Self {
+                source
+            }
+        }
+
         impl ExternC for $src {
             type CType = $dst;
         }
-        impl Niche for $src {
-            const NICHE_VALUE: Self::CType = $niche_val;
-        }
-
         impl SoftEncodeOwned for $src {
             type Store = ();
 
@@ -231,21 +249,11 @@ macro_rules! fieldless_enum_derive {
             }
         }
 
-        impl Borrow for $src {
-            type Borrowed<'itm> = Self;
+        impl SoftEncode for $src {}
+        impl SoftDecode<'_> for $src {}
 
-            type Owner = ();
-
-            #[inline(always)]
-            fn borrow<'itm>(self, (): &mut ()) -> Self::Borrowed<'itm> {
-                self
-            }
-        }
-        impl<'itm> ToOwned<'itm> for $src {
-            #[inline(always)]
-            fn to_owned(source: Self::Borrowed<'itm>) -> Self {
-                source
-            }
+        impl Niche for $src {
+            const NICHE_VALUE: Self::CType = $niche_val;
         }
 
         unsafe impl Erase for $src {
@@ -293,7 +301,7 @@ impl<T, const N: usize> SizeFamily for [T; N] {
 }
 
 unsafe impl<R: ReprC, const N: usize> ReprC for [R; N] {}
-impl<R: ExternC<CType: Copy>, const N: usize> ExternC for [R; N] {
+impl<R: ExternC<CType: Sized>, const N: usize> ExternC for [R; N] {
     type CType = [R::CType; N];
 }
 
@@ -343,7 +351,7 @@ mod tests {
         Encode,
         ir::{ReprRust, Robust},
         niche::{StableNiche, WithStableNiche},
-        option::COption,
+        option::ReprCOption,
         slice::{CSlice, CSliceMut},
     };
 
@@ -419,7 +427,7 @@ mod tests {
         assert_impl_all!(Option<u8>:
             ReprFamily<Kind = ReprRust>,
             NicheFamily<Kind = WithCustomNiche>,
-            Niche<CType = COption<u8>>,
+            Niche<CType = ReprCOption<u8>>,
             Decode<'static>,
             Encode,
         );

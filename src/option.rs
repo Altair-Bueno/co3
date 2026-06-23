@@ -1,32 +1,84 @@
 //! FFI-safe equivalent of [`core::option`] related functionality
 
+use core::mem::MaybeUninit;
+
 use crate::{
-    CFnArg, ExternC, FfiReturn, ReprC,
+    CFnArg, ExternC, FfiReturn, ReprC, SoftDecode, SoftEncode,
     borrow::{Borrow, BorrowCast, ToOwned},
     handle::Erase,
     ir::ReprFamily,
-    niche::{Niche, NicheFamily, WithoutNiche},
+    niche::{NicheFamily, WithoutNiche},
     size::SizeFamily,
     stored::{SoftDecodeOwned, SoftEncodeOwned},
     transmute::CheckedTransmute,
 };
 
 /// FFI-safe equivalent of [`core::option::Option`] for [`crate::ReprC`] types
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
 #[repr(C)]
-pub struct COption<T> {
+pub struct ReprCOption<T> {
     tag: u8,
-    payload: T,
+    payload: MaybeUninit<T>,
 }
 
-impl<T> COption<T> {
+impl<T: core::fmt::Debug> core::fmt::Debug for ReprCOption<T> {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        match self.tag {
+            0 => f.write_str("ReprCOption::None"),
+            1 => f
+                .debug_tuple("ReprCOption::Some")
+                .field(unsafe { self.payload.assume_init_ref() })
+                .finish(),
+            tag => f
+                .debug_struct("ReprCOption::<invalid>")
+                .field("tag", &tag)
+                .finish(),
+        }
+    }
+}
+
+impl<T: PartialEq> PartialEq for ReprCOption<T> {
+    fn eq(&self, other: &Self) -> bool {
+        match (self.tag, other.tag) {
+            (0, 0) => true,
+            (1, 1) => {
+                let self_payload = unsafe { self.payload.assume_init_ref() };
+                let other_payload = unsafe { other.payload.assume_init_ref() };
+
+                self_payload == other_payload
+            }
+            _ => false,
+        }
+    }
+}
+impl<T: PartialOrd> PartialOrd for ReprCOption<T> {
+    fn partial_cmp(&self, other: &Self) -> Option<core::cmp::Ordering> {
+        match (self.tag, other.tag) {
+            (0, 0) => Some(core::cmp::Ordering::Equal),
+            (0, 1) => Some(core::cmp::Ordering::Less),
+            (1, 0) => Some(core::cmp::Ordering::Greater),
+            (1, 1) => {
+                let self_payload = unsafe { self.payload.assume_init_ref() };
+                let other_payload = unsafe { other.payload.assume_init_ref() };
+
+                self_payload.partial_cmp(other_payload)
+            }
+            _ => None,
+        }
+    }
+}
+
+impl<T> ReprCOption<T> {
+    pub(crate) const NICHE_VALUE: Self = Self {
+        tag: 2,
+        payload: MaybeUninit::uninit(),
+    };
+
     /// Construct no value
     #[expect(non_snake_case)]
     pub const fn None() -> Self {
         Self {
             tag: 0,
-            // SAFETY: `ReprC` types can't have any trap representations here
-            payload: unsafe { core::mem::zeroed() },
+            payload: MaybeUninit::uninit(),
         }
     }
 
@@ -35,19 +87,36 @@ impl<T> COption<T> {
     pub const fn Some(value: T) -> Self {
         Self {
             tag: 1,
-            payload: value,
+            payload: MaybeUninit::new(value),
         }
     }
 
-    pub(crate) const fn none() -> Self {
-        Self {
-            tag: 2,
-            payload: unsafe { core::mem::zeroed() },
+    fn forward_payload<U>(self) -> ReprCOption<U> {
+        let mut output = MaybeUninit::<ReprCOption<U>>::uninit();
+
+        unsafe {
+            let output_ptr = output.as_mut_ptr();
+            core::ptr::addr_of_mut!((*output_ptr).tag).write(self.tag);
+
+            core::ptr::copy_nonoverlapping(
+                self.payload.as_ptr().cast::<u8>(),
+                core::ptr::addr_of_mut!((*output_ptr).payload).cast::<u8>(),
+                core::cmp::min(size_of::<T>(), size_of::<U>()),
+            );
+
+            output.assume_init()
         }
     }
 }
 
-impl<T> From<Option<T>> for COption<T> {
+impl<T: Copy> Copy for ReprCOption<T> {}
+impl<T: Copy> Clone for ReprCOption<T> {
+    fn clone(&self) -> Self {
+        *self
+    }
+}
+
+impl<T> From<Option<T>> for ReprCOption<T> {
     fn from(value: Option<T>) -> Self {
         match value {
             Some(value) => Self::Some(value),
@@ -56,105 +125,121 @@ impl<T> From<Option<T>> for COption<T> {
     }
 }
 
-impl<T> TryFrom<COption<T>> for Option<T> {
+impl<T> TryFrom<ReprCOption<T>> for Option<T> {
     type Error = FfiReturn;
 
-    fn try_from(value: COption<T>) -> Result<Self, Self::Error> {
+    fn try_from(value: ReprCOption<T>) -> Result<Self, Self::Error> {
         match value.tag {
             0 => Ok(None),
-            1 => Ok(Some(value.payload)),
+            1 => Ok(Some(unsafe { value.payload.assume_init() })),
             _ => Err(FfiReturn::TrapRepresentation),
         }
     }
 }
 
-impl<T: Copy> Copy for COption<T> {}
-impl<T: Copy> Clone for COption<T> {
-    fn clone(&self) -> Self {
-        *self
-    }
-}
-
-impl<T: ReprFamily> ReprFamily for COption<T> {
+impl<T: ReprFamily> ReprFamily for ReprCOption<T> {
     type Kind = T::Kind;
 }
-impl<T> SizeFamily for COption<T> {
+impl<T> SizeFamily for ReprCOption<T> {
     type Kind = crate::size::Sized;
 }
-impl<T> NicheFamily for COption<T> {
+impl<T> NicheFamily for ReprCOption<T> {
     type Kind = WithoutNiche;
 }
 
-unsafe impl<T: ReprC + CheckedTransmute> CheckedTransmute for COption<T> {
-    #[inline(always)]
-    unsafe fn is_valid(_: &Self::CType) -> bool {
-        true
-    }
-}
-
-unsafe impl<T: ReprC> ReprC for COption<T> {}
-unsafe impl<T: ReprC + Copy> CFnArg for COption<T> {}
-
-impl<T: ReprC> ExternC for COption<T> {
-    type CType = COption<T>;
-}
-impl<R, C: Copy> Niche for Option<R>
-where
-    Self: ExternC<CType = COption<C>>,
-{
-    const NICHE_VALUE: Self::CType = COption::none();
-}
-impl<T: ReprC + Copy> SoftEncodeOwned for COption<T> {
-    type Store = ();
-
-    #[inline(always)]
-    fn soft_encode<'itm>(self, (): &mut ()) -> Self::CType
-    where
-        Self: 'itm,
-    {
-        self
-    }
-}
-impl<'d, T: ReprC + Copy> SoftDecodeOwned<'d> for COption<T> {
-    type Store = ();
-
-    #[inline(always)]
-    unsafe fn soft_decode<'itm: 'd>(source: Self::CType, (): &mut ()) -> Option<Self> {
-        Some(source)
-    }
-}
-impl<T> Borrow for COption<T> {
+impl<T: Borrow> Borrow for ReprCOption<T> {
     type Borrowed<'itm>
-        = Self
+        = ReprCOption<T::Borrowed<'itm>>
     where
         Self: 'itm;
 
-    type Owner = ();
+    type Owner = T::Owner;
 
     #[inline(always)]
-    fn borrow<'itm>(self, (): &mut ()) -> Self::Borrowed<'itm>
+    fn borrow<'itm>(self, owner: &'itm mut Self::Owner) -> Self::Borrowed<'itm>
     where
         Self: 'itm,
     {
-        self
+        match self.tag {
+            1 => {
+                let payload = unsafe { self.payload.assume_init() };
+                ReprCOption::Some(payload.borrow(owner))
+            }
+            _ => self.forward_payload(),
+        }
     }
 }
-
-impl<'itm, T> ToOwned<'itm> for COption<T> {
+impl<'itm, T: ToOwned<'itm>> ToOwned<'itm> for ReprCOption<T> {
     #[inline(always)]
-    fn to_owned(source: Self) -> Self {
-        source
+    fn to_owned(source: Self::Borrowed<'itm>) -> Self {
+        match source.tag {
+            1 => {
+                let payload = unsafe { source.payload.assume_init() };
+                Self::Some(T::to_owned(payload))
+            }
+            _ => source.forward_payload(),
+        }
     }
 }
 
-unsafe impl<T: BorrowCast> BorrowCast for COption<T> {
-    type AsConst = COption<T::AsConst>;
-    type AsMut = COption<T::AsMut>;
+impl<T: ExternC<CType: Sized>> ExternC for ReprCOption<T> {
+    type CType = ReprCOption<T::CType>;
 }
-unsafe impl<T: Erase<Erased: Sized>> Erase for COption<T> {
-    type Erased = COption<T::Erased>;
+impl<T: SoftEncodeOwned<CType: Copy>> SoftEncodeOwned for ReprCOption<T> {
+    type Store = T::Store;
+
+    #[inline(always)]
+    fn soft_encode<'itm>(self, store: &'itm mut Self::Store) -> Self::CType
+    where
+        Self: 'itm,
+    {
+        match self.tag {
+            1 => {
+                let payload = unsafe { self.payload.assume_init() };
+                ReprCOption::Some(payload.soft_encode(store))
+            }
+            _ => self.forward_payload(),
+        }
+    }
+}
+impl<'d, T: SoftDecodeOwned<'d, CType: Copy>> SoftDecodeOwned<'d> for ReprCOption<T> {
+    type Store = T::Store;
+
+    #[inline(always)]
+    unsafe fn soft_decode<'itm: 'd>(
+        source: Self::CType,
+        store: &'itm mut Self::Store,
+    ) -> Option<Self> {
+        match source.tag {
+            1 => {
+                let payload = unsafe { T::soft_decode(source.payload.assume_init(), store)? };
+                Some(Self::Some(payload))
+            }
+            _ => Some(source.forward_payload()),
+        }
+    }
 }
 
-unsafe impl<T: Erase<Erased: Sized>> Erase for Option<T> {
-    type Erased = Option<T::Erased>;
+impl<T: SoftEncode<CType: Copy>> SoftEncode for ReprCOption<T> {}
+impl<'d, T: SoftDecode<'d, CType: Copy>> SoftDecode<'d> for ReprCOption<T> {}
+
+unsafe impl<T: CheckedTransmute<CType: Copy>> CheckedTransmute for ReprCOption<T> {
+    #[inline(always)]
+    unsafe fn is_valid(target: &Self::CType) -> bool {
+        match target.tag {
+            1 => unsafe { T::is_valid(&*target.payload.as_ptr()) },
+            _ => true,
+        }
+    }
+}
+
+unsafe impl<T: ReprC> ReprC for ReprCOption<T> {}
+unsafe impl<T: ReprC + Copy> CFnArg for ReprCOption<T> {}
+
+unsafe impl<T: BorrowCast> BorrowCast for ReprCOption<T> {
+    type AsConst = ReprCOption<T::AsConst>;
+    type AsMut = ReprCOption<T::AsMut>;
+}
+unsafe impl<T: Erase<Erased: Sized>> Erase for ReprCOption<T> {
+    type Erased = ReprCOption<T::Erased>;
 }

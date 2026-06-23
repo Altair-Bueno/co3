@@ -4,7 +4,7 @@ use alloc_crate::boxed::Box;
 use core::ptr::NonNull;
 
 use crate::{
-    CFnArg, ExternC, ReprC,
+    CFnArg, ExternC, ReprC, SoftDecode, SoftEncode,
     alloc::{Allocator, Global},
     borrow::{Borrow, BorrowCast, ToOwned},
     handle::Erase,
@@ -138,7 +138,7 @@ impl<C> CBox<C> {
     /// Create [`Self`] from a [`Box<C>`].
     pub fn from_box(source: Option<Box<C>>) -> Self {
         let Some(source) = source else {
-            return Self::none();
+            return Self::NICHE_VALUE;
         };
 
         Self {
@@ -161,21 +161,20 @@ impl<C> CBox<C> {
 }
 
 impl<C, A: Allocator> CBox<C, A> {
+    /// Set the pointer to null.
+    pub(crate) const NICHE_VALUE: Self = Self {
+        data: core::ptr::null_mut(),
+        // TODO: Figure out if this is correct
+        // SAFETY: allocator will never be used
+        allocator: unsafe { core::mem::zeroed() },
+    };
+
     pub(crate) unsafe fn read(self) -> C {
         unsafe { self.data.read() }
     }
 
-    /// Set the pointer to null.
-    pub const fn none() -> Self {
-        Self {
-            data: core::ptr::null_mut(),
-            // SAFETY: allocator will never be used
-            allocator: unsafe { core::mem::zeroed() },
-        }
-    }
-
     /// Returns `true` if the option is a `None` value.
-    pub const fn is_none(&self) -> bool {
+    pub(crate) const fn is_niche(&self) -> bool {
         self.data.is_null()
     }
 }
@@ -201,7 +200,7 @@ impl<C> CBoxedSlice<C> {
         let mut boxed_slice = core::mem::ManuallyDrop::new(source);
 
         let Some(boxed_slice) = boxed_slice.as_deref_mut() else {
-            return Self::none();
+            return Self::NICHE_VALUE;
         };
 
         Self {
@@ -223,14 +222,12 @@ impl<C> CBoxedSlice<C> {
 
 impl<C, A: Allocator> CBoxedSlice<C, A> {
     /// Set the slice's data pointer to null
-    pub const fn none() -> Self {
-        Self {
-            data: core::ptr::null_mut(),
-            len: 0,
-            // SAFETY: allocator will never be used
-            allocator: unsafe { core::mem::zeroed() },
-        }
-    }
+    pub(crate) const NICHE_VALUE: Self = Self {
+        data: core::ptr::null_mut(),
+        len: 0,
+        // SAFETY: allocator will never be used
+        allocator: unsafe { core::mem::zeroed() },
+    };
 
     pub(crate) unsafe fn deallocate(&self) -> bool {
         if self.data.is_null() || self.len == 0 {
@@ -278,15 +275,28 @@ macro_rules! impl_boxed_carrier {
             type Kind = WithoutNiche;
         }
 
-        unsafe impl<C: ReprC, A: Allocator> CheckedTransmute for $ty<C, A> {
+        impl<C, A: Allocator> Borrow for $ty<C, A> {
+            type Borrowed<'itm>
+                = Self
+            where
+                Self: 'itm;
+
+            type Owner = ();
+
             #[inline(always)]
-            unsafe fn is_valid(_: &Self::CType) -> bool {
-                true
+            fn borrow<'itm>(self, (): &mut ()) -> Self::Borrowed<'itm>
+            where
+                Self: 'itm,
+            {
+                self
             }
         }
-
-        unsafe impl<C: ReprC, A: Allocator> ReprC for $ty<C, A> {}
-        unsafe impl<C: ReprC, A: Allocator> CFnArg for $ty<C, A> {}
+        impl<'itm, C, A: Allocator> ToOwned<'itm> for $ty<C, A> {
+            #[inline(always)]
+            fn to_owned(source: Self) -> Self {
+                source
+            }
+        }
 
         impl<C: ReprC, A: Allocator> ExternC for $ty<C, A> {
             type CType = Self;
@@ -311,30 +321,20 @@ macro_rules! impl_boxed_carrier {
             }
         }
 
-        impl<C, A: Allocator> Borrow for $ty<C, A> {
-            type Borrowed<'itm>
-                = Self
-            where
-                Self: 'itm;
+        impl<'d, C: ReprC, A: Allocator> SoftDecode<'d> for $ty<C, A> {}
+        impl<C: ReprC, A: Allocator> SoftEncode for $ty<C, A> {}
 
-            type Owner = ();
-
+        unsafe impl<C: ReprC, A: Allocator> CheckedTransmute for $ty<C, A> {
             #[inline(always)]
-            fn borrow<'itm>(self, (): &mut ()) -> Self::Borrowed<'itm>
-            where
-                Self: 'itm,
-            {
-                self
-            }
-        }
-        impl<'itm, C, A: Allocator> ToOwned<'itm> for $ty<C, A> {
-            #[inline(always)]
-            fn to_owned(source: Self) -> Self {
-                source
+            unsafe fn is_valid(_: &Self::CType) -> bool {
+                true
             }
         }
 
-        unsafe impl<C: Erase<Erased: Copy>, A: Allocator> Erase for $ty<C, A> {
+        unsafe impl<C: ReprC, A: Allocator> ReprC for $ty<C, A> {}
+        unsafe impl<C: ReprC, A: Allocator> CFnArg for $ty<C, A> {}
+
+        unsafe impl<C: Erase<Erased: Sized>, A: Allocator> Erase for $ty<C, A> {
             type Erased = $ty<C::Erased>;
         }
     };

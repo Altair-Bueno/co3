@@ -9,7 +9,7 @@ use crate::{
         self, emit_extern_definition, gen_extern_fn_signature, merge_generics,
         normalize_fn_signature,
     },
-    repr::gen_sized_family,
+    repr::gen_sized_family_impl,
     utils::{DispatchMonomorphizer, is_type_erased},
     wrapper::{
         gen_extern_decl, strip_internal_generic_attrs, wrap_fn_definition, wrap_impl_definition,
@@ -58,7 +58,7 @@ pub(crate) fn emit_decl_exports(abi: syn::Abi, decls: Vec<ForeignItem>) -> Token
             });
 
             let opaque = derive_opaque_item(id.as_deref(), ident, &ty.generics);
-            let size_impl = gen_sized_family(ident, &ty.generics, quote! {});
+            let size_impl = gen_sized_family_impl(ident, &ty.generics);
 
             quote! {
                 #opaque
@@ -593,7 +593,7 @@ fn gen_owned_repr_c_impls(ident: &syn::Ident, generics: &syn::Generics) -> Token
     let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
     let params = &generics.params;
     let owned_repr_c_name = gen_owned_repr_c_name(ident);
-    let size_impl = gen_sized_family(&owned_repr_c_name, generics, quote! {});
+    let size_impl = gen_sized_family_impl(&owned_repr_c_name, generics);
 
     quote! {
         impl #impl_generics #owned_repr_c_name #ty_generics #where_clause {
@@ -662,7 +662,7 @@ fn gen_owned_extern_type_impls(ident: &syn::Ident, generics: &syn::Generics) -> 
     let owned_ident = gen_owned_extern_type_name(ident);
     let owned_repr_c_name = gen_owned_repr_c_name(ident);
 
-    let size_impl = gen_sized_family(&owned_ident, generics, quote! {});
+    let size_impl = gen_sized_family_impl(&owned_ident, generics);
 
     quote! {
         #size_impl

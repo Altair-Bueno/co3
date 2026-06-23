@@ -169,3 +169,11 @@ unsafe impl<T: Erase> Erase for core::marker::PhantomData<T> {
 unsafe impl<T: Erase<Erased: Sized>> Erase for Vec<T> {
     type Erased = Vec<T::Erased>;
 }
+
+unsafe impl<T: Erase<Erased: Sized>> Erase for Option<T> {
+    type Erased = Option<T::Erased>;
+}
+
+unsafe impl<T: Erase<Erased: Sized>, E: Erase<Erased: Sized>> Erase for Result<T, E> {
+    type Erased = Result<T::Erased, E::Erased>;
+}

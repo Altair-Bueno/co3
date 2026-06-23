@@ -10,7 +10,9 @@ use disjoint_impls::disjoint_impls;
 #[cfg(feature = "alloc")]
 use crate::boxed::{CBox, CBoxedSlice};
 use crate::{
-    ExternC, assert_arr_has_non_zero_len,
+    ExternC, ReprC, assert_arr_has_non_zero_len,
+    option::ReprCOption,
+    result::ReprCResult,
     size::{MetaSized, SizeFamily, Thin},
     slice::{CSlice, CSliceMut},
 };
@@ -54,7 +56,7 @@ disjoint_impls! {
     where
         Self: ExternC<CType = CSlice<C>>,
     {
-        const NICHE_VALUE: Self::CType = CSlice::none();
+        const NICHE_VALUE: Self::CType = CSlice::NICHE_VALUE;
     }
 
     impl<R, C> Niche for &mut R
@@ -67,7 +69,7 @@ disjoint_impls! {
     where
         Self: ExternC<CType = CSliceMut<C>>,
     {
-        const NICHE_VALUE: Self::CType = CSliceMut::none();
+        const NICHE_VALUE: Self::CType = CSliceMut::NICHE_VALUE;
     }
 
     #[cfg(feature = "alloc")]
@@ -75,14 +77,14 @@ disjoint_impls! {
     where
         Self: ExternC<CType = CBox<C>>,
     {
-        const NICHE_VALUE: Self::CType = CBox::none();
+        const NICHE_VALUE: Self::CType = CBox::NICHE_VALUE;
     }
     #[cfg(feature = "alloc")]
     impl<R: ?Sized, C> Niche for Box<R>
     where
         Self: ExternC<CType = CBoxedSlice<C>>,
     {
-        const NICHE_VALUE: Self::CType = CBoxedSlice::none();
+        const NICHE_VALUE: Self::CType = CBoxedSlice::NICHE_VALUE;
     }
 
     impl<T, C> Niche for NonNull<T>
@@ -115,10 +117,10 @@ disjoint_impls! {
         /// The internal representation (i.e. type family) of the type
         ///
         /// - If `Self` doesn't have any niche value, set [`NicheFamily::Kind`] to [`WithoutNiche`].
-        ///   `Option<T>` will be serialized as [`crate::option::COption`]
+        ///   `Option<T>` will be serialized as [`crate::option::ReprCOption`]
         ///
         /// - If `Self` has a compiler guaranteed niche value, set [`NicheFamily::Kind`] to [`WithStableNiche`].
-        ///   `Option<T>` will be blindly transmuted into the underlying [`crate::ReprC`] type
+        ///   `Option<T>` will be blindly transmuted into the underlying [`ReprC`] type
         ///
         /// - Otherwise, if `Self` has at least one trap, set [`NicheFamily::Kind`] to [`WithCustomNiche`].
         ///   `Option<T>` will be serialized into a [`T::CType`] with a manually set niche value
@@ -190,7 +192,7 @@ impl<R, C> Niche for Vec<R>
 where
     Self: ExternC<CType = CBoxedSlice<C>>,
 {
-    const NICHE_VALUE: Self::CType = CBoxedSlice::none();
+    const NICHE_VALUE: Self::CType = CBoxedSlice::NICHE_VALUE;
 }
 
 impl<R: Niche, const N: usize> Niche for [R; N]
@@ -201,6 +203,21 @@ where
         assert_arr_has_non_zero_len::<N>();
         [R::NICHE_VALUE; N]
     };
+}
+
+impl<R, C: ReprC + Copy> Niche for Option<R>
+where
+    Self: ExternC<CType = ReprCOption<C>>,
+{
+    const NICHE_VALUE: Self::CType = ReprCOption::NICHE_VALUE;
+}
+impl<T: ExternC<CType: Copy>, E: ExternC<CType: Copy>> Niche for Result<T, E>
+where
+    Self: ExternC<CType = ReprCResult<T::CType, E::CType>>,
+    T: NicheFamily<Kind = crate::niche::WithoutNiche>,
+    E: NicheFamily<Kind = crate::niche::WithoutNiche>,
+{
+    const NICHE_VALUE: Self::CType = ReprCResult::NICHE_VALUE;
 }
 
 // TODO: Depends on: https://github.com/mversic/co3/issues/33
@@ -291,7 +308,7 @@ mod tests {
         ir::{ReprFamily, ReprRust},
         slice::CSlice,
         stored::SoftEncodeOwned,
-        tuple::CTuple2,
+        tuple::ReprCTuple2,
     };
 
     #[test]
@@ -316,8 +333,8 @@ mod tests {
             ReprFamily<Kind = ReprRust>,
             // TODO: Depends on: https://github.com/mversic/co3/issues/33
             //NicheFamily<Kind = WithoutNiche>,
-            //Niche<CType = CTuple2<u8, u8>>,
-            ExternC<CType = CTuple2<u8, u8>>,
+            //Niche<CType = ReprCTuple2<u8, u8>>,
+            ExternC<CType = ReprCTuple2<u8, u8>>,
             Decode<'static>,
             Encode,
         );
@@ -335,15 +352,15 @@ mod tests {
         );
 
         #[cfg(feature = "alloc")]
-        assert_eq!(CBoxedSlice::<u8>::none(), None::<String>.encode());
+        assert_eq!(CBoxedSlice::<u8>::NICHE_VALUE, None::<String>.encode());
         #[cfg(feature = "alloc")]
-        assert_eq!(CBoxedSlice::<u8>::none(), None::<Box<str>>.encode());
+        assert_eq!(CBoxedSlice::<u8>::NICHE_VALUE, None::<Box<str>>.encode());
 
-        assert_eq!(CSlice::<u8>::none(), None::<&str>.encode());
+        assert_eq!(CSlice::<u8>::NICHE_VALUE, None::<&str>.encode());
 
         #[cfg(feature = "alloc")]
         assert_eq!(
-            co3::slice::CSliceMut::<u8>::none(),
+            co3::slice::CSliceMut::<u8>::NICHE_VALUE,
             None::<&mut str>.soft_encode(&mut Default::default())
         );
 
@@ -351,7 +368,7 @@ mod tests {
 
         #[cfg(feature = "alloc")]
         assert_eq!(
-            CBoxedSlice::<u8>::none(),
+            CBoxedSlice::<u8>::NICHE_VALUE,
             None::<ManuallyDrop<String>>.encode()
         );
 

@@ -13,7 +13,7 @@ use crate::{
     dispatch::{find_dispatch_attr, parse_dispatch_attr, parse_handle_id_attr},
     generate::{emit_decl_exports, expand_extern_import_decls},
     parse::ParsedForeignItem,
-    repr::derive_extern_c,
+    repr::derive_repr_c,
     utils::{
         has_non_lifetime_generics, is_drop_impl, is_type_erased, path_symbol_name, push_error,
         type_symbol_name,
@@ -21,7 +21,6 @@ use crate::{
     validate::{validate_dispatch_self_id, validate_export_decls, validate_extern_decls},
 };
 
-mod attr;
 mod dispatch;
 mod ffi_fn;
 mod generate;
@@ -99,16 +98,9 @@ enum DropImpl {
 ///
 /// # Attributes
 ///
-/// * `#[reprC(NICHE_VALUE = <expr>)]`
-/// customizes [`co3::niche::Niche`] value.
-/// * `#[reprC(is_valid = |field| ...)]`
-/// on a field customizes validation for the decoded field.
-///
-/// # Safety
-///
-/// `is_valid` must not return false positives
-///
-/// Check [`co3::transmute::CheckedTransmute`] for more details
+/// * `#[reprC(NICHE_VALUE = <expr>)]` on a struct customizes [`co3::niche::Niche`] value
+/// * `#[reprC(is_valid = |[fieldN]| ...)]` on a struct or variant customizes validation
+/// * `#[id($type)]` defines `co3::handle::HandleFamily::Kind`
 ///
 /// ```
 /// use co3::ReprC as ReprCAlias;
@@ -122,18 +114,14 @@ enum DropImpl {
 #[proc_macro_derive(ReprC, attributes(reprC, id))]
 pub fn repr_c_derive(item: syn::DeriveInput) -> Result<TokenStream> {
     if let Some(export_attr) = item.attrs.iter().find(|attr| {
-        attr.path()
-            .segments
-            .last()
-            .is_some_and(|seg| seg.ident == "export")
+        let last_seg = attr.path().segments.last();
+        last_seg.is_some_and(|seg| seg.ident == "export")
     }) {
-        return Err(syn::Error::new_spanned(
-            export_attr,
-            "Opaque items can't derive ReprC",
-        ));
+        let err_msg = "Opaque items can't derive ReprC";
+        return Err(syn::Error::new_spanned(export_attr, err_msg));
     }
 
-    derive_extern_c(&item)
+    derive_repr_c(&item)
 }
 
 #[manyhow]
@@ -192,7 +180,7 @@ fn extern__(input: TokenStream) -> Result<TokenStream> {
     Ok(expand_extern_import_decls(abi, &attrs, decls))
 }
 
-/// Generate FFI functions
+/// Quick and dirty way to define exports. Prefer using `export_C!` for production code
 ///
 /// Works on `impl` blocks and free `fn` items.
 /// Type items are not supported by this attribute; use `export_!`/`export_C!` for selecting individual exports.

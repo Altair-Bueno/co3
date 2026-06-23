@@ -1,329 +1,147 @@
-use std::fmt::{Display, Formatter};
-
-use darling::{
-    FromAttributes, FromDeriveInput, FromField, FromVariant, ast::Style, util::SpannedValue,
-};
-use proc_macro2::{Span, TokenStream};
+use proc_macro2::TokenStream;
 use quote::quote;
-use syn::{
-    Attribute, Field, Ident, ext::IdentExt as _, parse::ParseStream, spanned::Spanned as _,
-    visit::Visit,
-};
+use syn::{Attribute, Ident, spanned::Spanned as _, visit::Visit};
 
 use crate::{
-    attr::repr::{Repr, ReprKind},
     generate::gen_handle_family_impl,
-    repr::{
-        no_repr::derive_no_repr_fieldless_enum,
-        repr_c::{
-            derive_data_enum, derive_fieldless_enum, derive_repr_c_data_enum, derive_repr_c_struct,
-        },
-    },
+    repr::attr::{ReprKind, parse_repr},
+    repr::item::{derive_fieldless_enum, derive_item, field_vars},
     utils::push_error,
 };
-use no_repr::{derive_no_repr_data_enum, derive_no_repr_struct};
-use transparent::derive_transparent_item;
 
+mod attr;
+mod borrow;
+mod ctype;
+mod erased;
+mod item;
 mod niche;
-mod no_repr;
-mod repr_c;
-mod transparent;
-
-#[derive(Debug)]
-enum FfiTypeToken {
-    Transparent(Option<syn::Expr>),
-}
-
-impl Display for FfiTypeToken {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        match self {
-            FfiTypeToken::Transparent(niche) => {
-                write!(f, "#[reprC(")?;
-                if let Some(niche) = niche {
-                    write!(f, "NICHE_VALUE = {}", quote!(#niche))?;
-                }
-                write!(f, ")]")
-            }
-        }
-    }
-}
-
-#[derive(Debug)]
-struct SpannedFfiTypeToken {
-    span: Span,
-    token: FfiTypeToken,
-}
-
-impl syn::parse::Parse for SpannedFfiTypeToken {
-    fn parse(input: ParseStream) -> syn::Result<Self> {
-        fn join_span(span: &mut Option<Span>, new_span: Span) {
-            *span = Some(match *span {
-                Some(existing) => existing.join(new_span).unwrap_or(existing),
-                None => new_span,
-            });
-        }
-
-        let mut span: Option<Span> = None;
-        let mut niche_value = None;
-
-        while !input.is_empty() {
-            let ident: Ident = input.call(Ident::parse_any)?;
-            join_span(&mut span, ident.span());
-
-            match ident.to_string().as_str() {
-                "NICHE_VALUE" => {
-                    input.parse::<syn::Token![=]>()?;
-                    let value: syn::Expr = input.parse()?;
-                    join_span(&mut span, value.span());
-                    niche_value = Some(value);
-                }
-                other => {
-                    return Err(syn::Error::new(
-                        ident.span(),
-                        format!("unknown type kind: {other}"),
-                    ));
-                }
-            }
-
-            if input.is_empty() {
-                break;
-            }
-
-            if input.peek(syn::Token![,]) {
-                let comma: syn::token::Comma = input.parse()?;
-                join_span(&mut span, comma.span);
-                if input.is_empty() {
-                    break;
-                }
-            } else {
-                return Err(input.error("expected `,`"));
-            }
-        }
-
-        let span = span.unwrap_or_else(Span::call_site);
-
-        if niche_value.is_none() {
-            return Err(syn::Error::new(span, "expected ffi type kind"));
-        }
-
-        Ok(Self {
-            span,
-            token: FfiTypeToken::Transparent(niche_value),
-        })
-    }
-}
-
-/// This represents an `#[reprC(...)]` attribute on a type
-#[derive(Debug, PartialEq, Eq, Clone)]
-pub enum FfiTypeKindAttribute {
-    Transparent(Option<syn::Expr>),
-}
-
-impl syn::parse::Parse for FfiTypeKindAttribute {
-    fn parse(input: ParseStream) -> syn::Result<Self> {
-        input
-            .call(SpannedFfiTypeToken::parse)
-            .map(|token| match token.token {
-                FfiTypeToken::Transparent(niche_value) => {
-                    FfiTypeKindAttribute::Transparent(niche_value)
-                }
-            })
-    }
-}
 
 const FFI_TYPE_ATTR: &str = "reprC";
 
-pub struct FfiTypeAttr {
-    pub kind: Option<FfiTypeKindAttribute>,
-}
+fn parse_repr_c_parts(
+    attrs: &[Attribute],
+) -> syn::Result<(Option<syn::Expr>, Option<syn::ExprClosure>)> {
+    let Some(attr) = find_single_attr_opt(FFI_TYPE_ATTR, attrs)? else {
+        return Ok((None, None));
+    };
 
-impl FromAttributes for FfiTypeAttr {
-    fn from_attributes(attrs: &[Attribute]) -> darling::Result<Self> {
-        let mut accumulator = darling::error::Accumulator::default();
-        let kind = accumulator
-            .handle(parse_single_list_attr_opt(FFI_TYPE_ATTR, attrs))
-            .flatten();
-        accumulator.finish_with(Self { kind })
-    }
-}
+    let mut niche_value = None;
+    let mut is_valid = None;
+    let mut is_view = false;
 
-pub type FfiTypeData = darling::ast::Data<SpannedValue<FfiTypeVariant>, FfiTypeField>;
-
-pub struct FfiTypeInput {
-    pub ident: syn::Ident,
-    pub vis: syn::Visibility,
-    pub generics: syn::Generics,
-    pub data: FfiTypeData,
-    pub handle_id: Option<syn::Type>,
-    repr_attr: Repr,
-    pub ffi_type_attr: FfiTypeAttr,
-    pub span: Span,
-}
-
-impl darling::FromDeriveInput for FfiTypeInput {
-    fn from_derive_input(input: &syn::DeriveInput) -> darling::Result<Self> {
-        let ident = input.ident.clone();
-        let vis = input.vis.clone();
-        let generics = input.generics.clone();
-        let data = darling::ast::Data::try_from(&input.data)?;
-        let handle_id = parse_single_list_attr_opt::<syn::Type>("id", &input.attrs)?;
-        let repr_attr = Repr::from_attributes(&input.attrs)?;
-        let ffi_type_attr = FfiTypeAttr::from_attributes(&input.attrs)?;
-        let span = input.span();
-
-        Ok(FfiTypeInput {
-            ident,
-            vis,
-            generics,
-            data,
-            handle_id,
-            repr_attr,
-            ffi_type_attr,
-            span,
-        })
-    }
-}
-
-#[derive(FromVariant)]
-pub struct FfiTypeVariant {
-    pub ident: syn::Ident,
-    pub discriminant: Option<syn::Expr>,
-    pub fields: darling::ast::Fields<FfiTypeField>,
-}
-
-pub struct FfiTypeField {
-    pub ident: Option<syn::Ident>,
-    pub ty: syn::Type,
-    pub is_valid: Option<syn::ExprClosure>,
-}
-
-struct FfiTypeFieldAttr {
-    is_valid: syn::ExprClosure,
-}
-
-impl syn::parse::Parse for FfiTypeFieldAttr {
-    fn parse(input: ParseStream) -> syn::Result<Self> {
-        let ident: Ident = input.call(Ident::parse_any)?;
-        if ident != "is_valid" {
-            return Err(syn::Error::new(
-                ident.span(),
-                format!("unknown field attribute: {ident}"),
-            ));
+    attr.parse_nested_meta(|meta| {
+        if meta.path.is_ident("view") {
+            is_view = true;
+            return Ok(());
         }
 
-        input.parse::<syn::Token![=]>()?;
-        let is_valid: syn::ExprClosure = input.parse()?;
-
-        if !input.is_empty() {
-            if input.peek(syn::Token![,]) {
-                input.parse::<syn::Token![,]>()?;
+        if meta.path.is_ident("NICHE_VALUE") {
+            let value: syn::Expr = meta.value()?.parse()?;
+            if niche_value.replace(value).is_some() {
+                return Err(meta.error("Duplicate `NICHE_VALUE` within attribute"));
             }
-
-            if !input.is_empty() {
-                return Err(input.error("unexpected tokens after `is_valid` closure"));
-            }
+            return Ok(());
         }
 
-        Ok(Self { is_valid })
+        if meta.path.is_ident("is_valid") {
+            let value: syn::ExprClosure = meta.value()?.parse()?;
+            if is_valid.replace(value).is_some() {
+                return Err(meta.error("Duplicate `is_valid` within attribute"));
+            }
+            return Ok(());
+        }
+
+        Err(meta.error("unknown type kind"))
+    })?;
+
+    if niche_value.is_none() && is_valid.is_none() && !is_view {
+        return Err(syn::Error::new_spanned(attr, "expected ffi type kind"));
     }
+
+    Ok((niche_value, is_valid))
 }
 
-impl FromField for FfiTypeField {
-    fn from_field(field: &Field) -> darling::Result<Self> {
-        let ty = field.ty.clone();
-        let mut accumulator = darling::error::Accumulator::default();
-        let is_valid = accumulator
-            .handle(parse_single_list_attr_opt::<FfiTypeFieldAttr>(
-                FFI_TYPE_ATTR,
-                &field.attrs,
-            ))
-            .flatten()
-            .map(|attr| attr.is_valid);
-        let ident = field.ident.clone();
-        accumulator.finish_with(Self {
-            ty,
-            ident,
-            is_valid,
-        })
+fn infer_struct_is_valid_from_niche(
+    fields: &syn::Fields,
+    niche_value: Option<&syn::Expr>,
+    is_valid: &mut Option<syn::ExprClosure>,
+) {
+    let Some(niche_value) = niche_value else {
+        return;
+    };
+
+    if is_valid.is_some() {
+        return;
     }
+
+    let field_vars = field_vars(fields);
+    let niche_fields = match fields {
+        syn::Fields::Unnamed(_) => (0..fields.iter().count())
+            .map(|i| {
+                let i = syn::Index::from(i);
+                quote! { __co3_niche_value.#i }
+            })
+            .collect::<Vec<_>>(),
+        syn::Fields::Named(_) | syn::Fields::Unit => fields
+            .iter()
+            .filter_map(|field| {
+                let field_name = field.ident.as_ref()?;
+                Some(quote! { __co3_niche_value.#field_name })
+            })
+            .collect::<Vec<_>>(),
+    };
+
+    *is_valid = Some(syn::parse_quote! {
+        |#(#field_vars),*| {
+            let __co3_niche_value = #niche_value;
+            #(*#field_vars != #niche_fields)||*
+        }
+    });
 }
 
-pub fn derive_extern_c(input: &syn::DeriveInput) -> syn::Result<TokenStream> {
-    derive_extern_c_internal::<false>(input)
-}
-
-pub(crate) fn derive_extern_c_internal<const IS_VIEW: bool>(
-    input: &syn::DeriveInput,
-) -> syn::Result<TokenStream> {
+pub(crate) fn derive_repr_c(input: &syn::DeriveInput) -> syn::Result<TokenStream> {
     let mut errors = None::<syn::Error>;
-    let mut input = FfiTypeInput::from_derive_input(input)
-        .map_err(|err| syn::Error::new_spanned(input, err.to_string()))?;
-    let is_transparent = matches!(input.repr_attr.kind.as_deref(), Some(ReprKind::Transparent));
+
+    let repr_attr = parse_repr(&input.attrs)?;
+    let (niche_value, mut is_valid) = parse_repr_c_parts(&input.attrs)?;
+    let handle_id = parse_single_list_attr_opt::<syn::Type>("id", &input.attrs)?;
 
     match &input.data {
-        // FIXME: allow ZST fields as long as there is at least one non-ZST
-        darling::ast::Data::Struct(darling::ast::Fields {
-            style: Style::Unit, ..
-        }) => {
-            push_error(
-                &mut errors,
-                syn::Error::new(
-                    input.span,
-                    "Unit struct is a ZST. You can declare it as an opaque type in `export_!` or `extern_!` with `type Foo;`",
-                ),
-            );
+        syn::Data::Struct(data) => {
+            validate_fields_no_ffi_type_attr(&data.fields, &mut errors);
+            infer_struct_is_valid_from_niche(&data.fields, niche_value.as_ref(), &mut is_valid);
         }
-        darling::ast::Data::Enum(variants)
-            // FIXME: allow ZST fields as long as there is at least one non-ZST
-            if variants.len() == 1 && variants[0].fields.fields.is_empty() =>
-        {
-            push_error(
-                &mut errors,
-                syn::Error::new(
-                    input.span,
-                    "Single-variant fieldless enum is a ZST. You can declare it as an opaque type in `export_!` or `extern_!` with `type Foo;`",
-                ),
-            );
-        }
-        darling::ast::Data::Struct(_) => {}
-        darling::ast::Data::Enum(variants) => {
-            if variants.iter().all(|v| v.fields.fields.is_empty())
-                && matches!(input.ffi_type_attr.kind, Some(FfiTypeKindAttribute::Transparent(_)))
-            {
-                push_error(
-                    &mut errors,
-                    syn::Error::new_spanned(
-                        &input.ident,
-                        "`NICHE_VALUE` is not supported on fieldless enums",
-                    ),
-                );
+        syn::Data::Enum(data) => {
+            if is_valid.is_some() {
+                let err_msg = "`is_valid` is only supported on structs or enum variants";
+                push_error(&mut errors, syn::Error::new_spanned(&input.ident, err_msg));
             }
 
-            for variant in variants {
+            if niche_value.is_some() {
+                let err_msg = "`NICHE_VALUE` is only supported on structs";
+                push_error(&mut errors, syn::Error::new_spanned(&input.ident, err_msg));
+            }
+
+            if matches!(repr_attr.as_ref(), Some(ReprKind::C(None))) {
+                let err_msg = "#[repr(C)]` not supported; use `#[repr(int)]`/`#[repr(C, int)]`";
+                push_error(&mut errors, syn::Error::new_spanned(&input.ident, err_msg));
+            }
+
+            for variant in &data.variants {
+                validate_fields_no_ffi_type_attr(&variant.fields, &mut errors);
                 if variant.discriminant.is_some() {
-                    push_error(
-                        &mut errors,
-                        syn::Error::new(variant.span(), "Explicit discriminants are not supported"),
-                    );
+                    let err_msg = "Explicit discriminants are not supported";
+                    push_error(&mut errors, syn::Error::new(variant.span(), err_msg));
                 }
 
-                if !is_transparent {
-                    match &variant.fields.style {
-                        Style::Tuple if variant.fields.fields.len() > 1 => push_error(
-                            &mut errors,
-                            syn::Error::new(
-                                variant.span(),
-                                "Tuple variants with arity > 1 are not supported",
-                            ),
-                        ),
-                        Style::Struct => push_error(
-                            &mut errors,
-                            syn::Error::new(variant.span(), "Structure variants are not supported"),
-                        ),
-                        _ => {}
-                    }
+                if parse_repr_c_parts(&variant.attrs)?.0.is_some() {
+                    let err_msg = "`NICHE_VALUE` is only supported on types";
+                    push_error(&mut errors, syn::Error::new(variant.span(), err_msg));
                 }
             }
+        }
+        syn::Data::Union(_) => {
+            return Err(syn::Error::new_spanned(input, "Unions are not supported"));
         }
     }
 
@@ -331,104 +149,55 @@ pub(crate) fn derive_extern_c_internal<const IS_VIEW: bool>(
         return Err(errors);
     }
 
-    input.generics.make_where_clause();
-    let tokens = match input.repr_attr.kind.as_deref() {
-        Some(ReprKind::Transparent) => derive_transparent_item(&input),
-        Some(ReprKind::C(None)) if let darling::ast::Data::Struct(fields) = input.data => {
-            derive_repr_c_struct::<IS_VIEW>(
-                &input.ident,
-                &input.vis,
-                &input.generics,
-                &fields,
-                input.ffi_type_attr.kind.as_ref(),
-            )
-        }
-        Some(ReprKind::C(None)) => {
-            let err_msg = "repr(C) on enums requires a primitive type (e.g., repr(C, u8))";
+    let mut generics = input.generics.clone();
+    generics.make_where_clause();
+    let tokens = match &input.data {
+        syn::Data::Struct(_) => derive_item(
+            repr_attr.as_ref(),
+            input,
+            niche_value.as_ref(),
+            is_valid.as_ref(),
+        ),
+        syn::Data::Enum(data) if data.variants.is_empty() => {
+            // TODO: Support uninhabited enums. yes, it is possible
+            let err_msg = "Uninhabited enum is a never type. You can declare it as an opaque type in `export_!` or `extern_!` with `type Foo;`";
             push_error(&mut errors, syn::Error::new_spanned(&input.ident, err_msg));
 
             quote! {}
         }
-        Some(ReprKind::C(Some(repr)))
-            if let darling::ast::Data::Enum(variants) = &input.data
-                && variants.iter().any(|v| !v.fields.fields.is_empty()) =>
-        {
-            derive_repr_c_data_enum::<IS_VIEW>(
-                *repr,
-                &input.ident,
-                &input.vis,
-                &input.generics,
-                variants,
-                input.ffi_type_attr.kind.as_ref(),
-            )
-        }
-        Some(ReprKind::C(Some(_))) => quote! {},
-        Some(ReprKind::Primitive(repr)) if let darling::ast::Data::Enum(variants) = &input.data => {
-            if variants.iter().all(|v| v.fields.fields.is_empty()) {
-                derive_fieldless_enum(*repr, &input.ident, &input.generics, variants)
+        syn::Data::Enum(data) => {
+            if data
+                .variants
+                .iter()
+                .all(|v| matches!(v.fields, syn::Fields::Unit))
+            {
+                derive_fieldless_enum(repr_attr.as_ref(), &input.ident, &generics, &data.variants)
             } else {
-                derive_data_enum::<IS_VIEW>(
-                    *repr,
-                    &input.ident,
-                    &input.vis,
-                    &input.generics,
-                    variants,
-                    input.ffi_type_attr.kind.as_ref(),
-                )
+                derive_item(repr_attr.as_ref(), input, None, None)
             }
         }
-        Some(ReprKind::Primitive(_)) => quote! {},
-        None => match &input.data {
-            darling::ast::Data::Enum(variants) if variants.is_empty() => {
-                push_error(
-                    &mut errors,
-                    syn::Error::new_spanned(
-                        &input.ident,
-                        "Uninhabited enum is a never type. You can declare it as an opaque type in `export_!` or `extern_!` with `type Foo;`",
-                    ),
-                );
-
-                quote! {}
-            }
-            darling::ast::Data::Enum(variants) => {
-                if variants.iter().all(|v| v.fields.fields.is_empty()) {
-                    derive_no_repr_fieldless_enum(&input.ident, &input.generics, variants)
-                } else {
-                    derive_no_repr_data_enum::<IS_VIEW>(
-                        &input.ident,
-                        &input.vis,
-                        &input.generics,
-                        variants,
-                    )
-                }
-            }
-            darling::ast::Data::Struct(fields) => derive_no_repr_struct::<IS_VIEW>(
-                &input.ident,
-                &input.vis,
-                &input.generics,
-                fields,
-                input.ffi_type_attr.kind.as_ref(),
-            ),
-        },
+        syn::Data::Union(_) => unreachable!(),
     };
 
     if let Some(errors) = errors {
         Err(errors)
     } else {
-        let handle_family_impl = input
-            .handle_id
+        let drop_impl_assert = assert_no_drop(&generics, &input.ident);
+
+        let handle_family_impl = handle_id
             .as_ref()
-            .map(|id| gen_handle_family_impl(&input.ident, &input.generics, id));
+            .map(|id| gen_handle_family_impl(&input.ident, &generics, id));
 
         Ok(quote! {
             #handle_family_impl
+            #drop_impl_assert
 
             #tokens
         })
     }
 }
 
-/// Parses a single attribute of the form `#[attr_name(...)]` for darling using a `syn::parse::Parse` implementation.
+/// Parses a single attribute of the form `#[attr_name(...)]`.
 ///
 /// If no attribute with specified name is found, returns `Ok(None)`.
 ///
@@ -439,25 +208,18 @@ pub(crate) fn derive_extern_c_internal<const IS_VIEW: bool>(
 pub fn parse_single_list_attr_opt<Body: syn::parse::Parse>(
     attr_name: &str,
     attrs: &[syn::Attribute],
-) -> darling::Result<Option<Body>> {
-    let mut accumulator = Default::default();
-
-    let Some(attr) = find_single_attr_opt(&mut accumulator, attr_name, attrs) else {
-        return accumulator.finish_with(None);
+) -> syn::Result<Option<Body>> {
+    let Some(attr) = find_single_attr_opt(attr_name, attrs)? else {
+        return Ok(None);
     };
 
-    let mut kind = None;
-
     match &attr.meta {
-        syn::Meta::Path(_) | syn::Meta::NameValue(_) => accumulator.push(darling::Error::custom(
+        syn::Meta::Path(_) | syn::Meta::NameValue(_) => Err(syn::Error::new_spanned(
+            attr,
             format!("Expected #[{}(...)] attribute to be a list", attr_name),
         )),
-        syn::Meta::List(list) => {
-            kind = accumulator.handle(syn::parse2(list.tokens.clone()).map_err(Into::into));
-        }
+        syn::Meta::List(list) => syn::parse2(list.tokens.clone()).map(Some),
     }
-
-    accumulator.finish_with(kind)
 }
 
 /// Finds an optional single attribute with specified name.
@@ -465,88 +227,73 @@ pub fn parse_single_list_attr_opt<Body: syn::parse::Parse>(
 /// Returns `None` if no attributes with specified name are found.
 ///
 /// Emits an error into accumulator if multiple attributes with specified name are found.
-#[must_use]
 pub fn find_single_attr_opt<'a>(
-    accumulator: &mut darling::error::Accumulator,
     attr_name: &str,
     attrs: &'a [syn::Attribute],
-) -> Option<&'a syn::Attribute> {
+) -> syn::Result<Option<&'a syn::Attribute>> {
+    fn join_spans(spans: impl IntoIterator<Item = proc_macro2::Span>) -> Option<proc_macro2::Span> {
+        let mut iter = spans.into_iter();
+        let first = iter.next()?;
+        Some(iter.try_fold(first, |a, b| a.join(b)).unwrap_or(first))
+    }
+
     let matching_attrs = attrs
         .iter()
         .filter(|a| a.path().is_ident(attr_name))
         .collect::<Vec<_>>();
     let attr = match *matching_attrs.as_slice() {
-        [] => {
-            return None;
-        }
+        [] => return Ok(None),
         [attr] => attr,
         [attr, ref tail @ ..] => {
-            // allow parsing to proceed further to collect more errors
-            accumulator.push(
-                darling::Error::custom(format!("Only one #[{}] attribute is allowed!", attr_name))
-                    .with_spans(tail.iter().map(syn::spanned::Spanned::span)),
-            );
-            attr
+            return Err(syn::Error::new(
+                join_spans(tail.iter().map(syn::spanned::Spanned::span))
+                    .unwrap_or_else(|| attr.span()),
+                format!("Only one #[{}] attribute is allowed!", attr_name),
+            ));
         }
     };
 
-    Some(attr)
+    Ok(Some(attr))
 }
 
-/// Extension trait for [`darling::Error`].
-///
-/// Currently exists to add `with_spans` method.
-pub trait DarlingErrorExt: Sized {
-    /// Attaches a combination of multiple spans to the error.
-    ///
-    /// Note that it only attaches the first span on stable rustc, as the `Span::join` method is not yet stabilized (<https://github.com/rust-lang/rust/issues/54725#issuecomment-649078500>).
-    #[must_use]
-    fn with_spans(self, spans: impl IntoIterator<Item = impl Into<proc_macro2::Span>>) -> Self;
-}
-
-impl DarlingErrorExt for darling::Error {
-    fn with_spans(self, spans: impl IntoIterator<Item = impl Into<proc_macro2::Span>>) -> Self {
-        // Unfortunately, the story for combining multiple spans in rustc proc macro is not yet complete.
-        // (see https://github.com/rust-lang/rust/issues/54725#issuecomment-649078500, https://github.com/rust-lang/rust/issues/54725#issuecomment-1547795742)
-        // syn does some hacks to get error reporting that is a bit better: https://docs.rs/syn/2.0.37/src/syn/error.rs.html#282
-        // we can't to that because darling's error type does not let us do that.
-
-        // on nightly, we are fine, as `.join` method works. On stable, we fall back to returning the first span.
-
-        let mut iter = spans.into_iter();
-        let Some(first) = iter.next() else {
-            return self;
-        };
-        let first: proc_macro2::Span = first.into();
-        let r = iter
-            .try_fold(first, |a, b| a.join(b.into()))
-            .unwrap_or(first);
-
-        self.with_span(&r)
-    }
-}
-
-/// Visitor to check if a type contains any of the specified type parameters
-struct TypeParamVisitor<'a> {
-    type_params: &'a [&'a syn::Ident],
-    is_generic: bool,
-}
-
-impl Visit<'_> for TypeParamVisitor<'_> {
-    fn visit_type_path(&mut self, type_path: &syn::TypePath) {
-        if let Some(ident) = type_path.path.get_ident()
-            && self.type_params.contains(&ident)
-        {
-            self.is_generic = true;
+fn validate_fields_no_ffi_type_attr(fields: &syn::Fields, errors: &mut Option<syn::Error>) {
+    for field in fields {
+        match find_single_attr_opt(FFI_TYPE_ATTR, &field.attrs) {
+            Ok(Some(attr)) => {
+                let err_msg = "`is_valid` is only supported on structs or enum variants";
+                push_error(errors, syn::Error::new_spanned(attr, err_msg));
+            }
+            Ok(None) => {}
+            Err(err) => push_error(errors, err),
         }
-
-        syn::visit::visit_type_path(self, type_path);
     }
 }
 
 /// Check if a type contains any of the type parameters from generics
-pub fn is_type_parameterized(ty: &syn::Type, generics: &syn::Generics) -> bool {
-    let type_param_idents: Vec<_> = generics.type_params().map(|tp| &tp.ident).collect();
+fn is_type_parameterized(ty: &syn::Type, generics: &syn::Generics) -> bool {
+    /// Visitor to check if a type contains any of the specified type parameters
+    struct TypeParamVisitor<'a> {
+        type_params: &'a [&'a syn::Ident],
+        is_generic: bool,
+    }
+
+    impl Visit<'_> for TypeParamVisitor<'_> {
+        fn visit_type_path(&mut self, type_path: &syn::TypePath) {
+            if type_path.qself.is_none()
+                && let Some(first_segment) = type_path.path.segments.first()
+                && self.type_params.contains(&&first_segment.ident)
+            {
+                self.is_generic = true;
+            }
+
+            syn::visit::visit_type_path(self, type_path);
+        }
+    }
+
+    let type_param_idents = generics
+        .type_params()
+        .map(|param| &param.ident)
+        .collect::<Vec<_>>();
 
     let mut visitor = TypeParamVisitor {
         type_params: &type_param_idents,
@@ -557,50 +304,164 @@ pub fn is_type_parameterized(ty: &syn::Type, generics: &syn::Generics) -> bool {
     visitor.is_generic
 }
 
-pub(crate) fn gen_struct_size_family(
-    struct_name: &Ident,
-    generics: &syn::Generics,
-    field_types: &[&syn::Type],
-    extra_bounds: TokenStream,
-) -> TokenStream {
+pub(crate) fn gen_sized_family_impl(type_name: &Ident, generics: &syn::Generics) -> TokenStream {
     let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
-    let predicates = where_clause.as_ref().map(|w| &w.predicates);
-
-    let Some(last_field) = field_types.last() else {
-        return gen_sized_family(struct_name, generics, quote! {});
-    };
-
-    let last_field_bound = is_type_parameterized(last_field, generics).then_some(quote! {
-        #last_field: co3::size::SizeFamily,
-    });
 
     quote! {
-        impl #impl_generics co3::size::SizeFamily for #struct_name #ty_generics
-        where
-            #last_field_bound
-            #extra_bounds
-            #predicates
-        {
-            type Kind = <#last_field as co3::size::SizeFamily>::Kind;
+        impl #impl_generics co3::size::SizeFamily for #type_name #ty_generics #where_clause {
+            type Kind = co3::size::Sized;
         }
     }
 }
 
-pub(super) fn gen_sized_family(
-    type_name: &Ident,
+fn assert_no_drop(generics: &syn::Generics, ident: &syn::Ident) -> TokenStream {
+    let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
+
+    quote! {
+        const _: () = {
+            #[expect(dead_code)]
+            trait AssertNoDrop {
+                fn assert_no_drop();
+            }
+
+            impl #impl_generics AssertNoDrop for #ident #ty_generics #where_clause {
+                fn assert_no_drop() {
+                    const {
+                        assert!(co3::impls!(Self: !Drop));
+                    }
+                }
+            }
+        };
+    }
+}
+
+fn repr_type_name(repr: &syn::Type) -> Option<&str> {
+    let syn::Type::Path(type_path) = repr else {
+        return None;
+    };
+
+    type_path
+        .path
+        .get_ident()
+        .map(syn::Ident::to_string)
+        .map(|s| match s.as_str() {
+            "u8" => "u8",
+            "i8" => "i8",
+            "u16" => "u16",
+            "i16" => "i16",
+            "u32" => "u32",
+            "i32" => "i32",
+            "u64" => "u64",
+            "i64" => "i64",
+            _ => "",
+        })
+        .filter(|s| !s.is_empty())
+}
+
+pub fn repr_type_is_signed(repr: &syn::Type) -> bool {
+    matches!(repr_type_name(repr), Some("i8" | "i16" | "i32" | "i64"))
+}
+
+pub(super) fn enum_tag_type(repr: Option<&ReprKind>, variants_len: usize) -> Option<syn::Type> {
+    fn infer_repr(num_variants: usize) -> syn::Type {
+        const U8_CAPACITY: usize = u8::MAX as usize + 1;
+        const U16_CAPACITY: usize = u16::MAX as usize + 1;
+        const U32_CAPACITY: usize = u32::MAX as usize + 1;
+
+        #[expect(clippy::match_overlapping_arm)]
+        match num_variants {
+            0..=U8_CAPACITY => syn::parse_quote!(u8),
+            0..=U16_CAPACITY => syn::parse_quote!(u16),
+            0..=U32_CAPACITY => syn::parse_quote!(u32),
+            // TODO: is this correct
+            _ => syn::parse_quote!(u64),
+        }
+    }
+
+    match repr {
+        None => Some(infer_repr(variants_len)),
+        Some(ReprKind::Transparent) => None,
+        Some(ReprKind::C(None)) => unreachable!(),
+        Some(ReprKind::C(Some(repr))) | Some(ReprKind::Primitive(repr)) => Some(*repr.clone()),
+    }
+}
+
+/// Checks if an enum exhausts all possible values of its repr type
+fn is_exhaustive_enum(num_variants: usize, repr: &syn::Type) -> bool {
+    fn repr_type_bit_width(repr: &syn::Type) -> Option<u32> {
+        match repr_type_name(repr)? {
+            "u8" | "i8" => Some(8),
+            "u16" | "i16" => Some(16),
+            "u32" | "i32" => Some(32),
+            "u64" | "i64" => Some(64),
+            _ => None,
+        }
+    }
+
+    let max_values = match repr_type_bit_width(repr) {
+        Some(8) => 1u64 << 8,
+        Some(16) => 1u64 << 16,
+        Some(32) => 1u64 << 32,
+        // TODO: Can we have a 128-bit platform?
+        Some(64) | None | Some(_) => return false,
+    };
+
+    num_variants as u64 == max_values
+}
+
+pub fn gen_size_family_impl(
+    name: &Ident,
     generics: &syn::Generics,
-    extra_bounds: TokenStream,
+    fields: &[&syn::Type],
 ) -> TokenStream {
     let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
     let predicates = where_clause.as_ref().map(|w| &w.predicates);
 
+    let field_bounds = fields
+        .iter()
+        .filter(|ty| is_type_parameterized(ty, generics))
+        .map(|ty| quote! { #ty: co3::size::SizeFamily, });
+
+    let size_kind = fields
+        .last()
+        .map(|field| quote! { <#field as co3::size::SizeFamily>::Kind })
+        .unwrap_or_else(|| quote! { co3::size::Sized });
+
     quote! {
-        impl #impl_generics co3::size::SizeFamily for #type_name #ty_generics
-        where
-            #extra_bounds
+        impl #impl_generics co3::size::SizeFamily for #name #ty_generics where
+            #(#field_bounds)*
             #predicates
         {
-            type Kind = co3::size::Sized;
+            type Kind = #size_kind;
         }
     }
+}
+
+fn generic_param_idents<'a>(
+    generics: impl IntoIterator<Item = &'a syn::GenericParam>,
+) -> impl Iterator<Item = TokenStream> {
+    generics.into_iter().map(|param| match param {
+        syn::GenericParam::Lifetime(syn::LifetimeParam { lifetime, .. }) => quote! { #lifetime },
+        syn::GenericParam::Type(syn::TypeParam { ident, .. }) => quote! { #ident },
+        syn::GenericParam::Const(syn::ConstParam { ident, .. }) => quote! { #ident },
+    })
+}
+
+fn is_view(attrs: &[syn::Attribute]) -> bool {
+    attrs
+        .iter()
+        .filter(|attr| attr.path().is_ident(FFI_TYPE_ATTR))
+        .any(|attr| {
+            let mut is_view = false;
+
+            let _ = attr.parse_nested_meta(|meta| {
+                if meta.path.is_ident("view") {
+                    is_view = true;
+                }
+
+                Ok(())
+            });
+
+            is_view
+        })
 }

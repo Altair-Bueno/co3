@@ -5,6 +5,8 @@ use alloc_crate::{borrow::ToOwned as StdToOwned, boxed::Box, string::String, vec
 use crate::size::{MetaSized, SizeFamily};
 use crate::{ReprC, stored::ArrayStore};
 
+// TODO: Remove this once extern types are stable
+// https://github.com/rust-lang/rust/issues/43467
 #[cfg(feature = "alloc")]
 trait NonExternTypeLike {}
 #[cfg(feature = "alloc")]
@@ -163,7 +165,7 @@ impl<R: SizeFamily<Kind: NonExternTypeLike> + ?Sized> Borrow for Box<R> {
     where
         Self: 'itm;
 
-    // NOTE: If Option<R> was used a potentially
+    // NOTE: If just `Self` was used, a potentially
     // large value would be placed on the stack
     type Owner = Option<Self>;
 
@@ -212,32 +214,6 @@ impl<'itm, R: Clone> ToOwned<'itm> for Vec<R> {
     }
 }
 
-#[cfg(feature = "alloc")]
-impl Borrow for String {
-    type Borrowed<'itm>
-        = &'itm str
-    where
-        Self: 'itm;
-
-    type Owner = Self;
-
-    #[inline(always)]
-    fn borrow<'itm>(self, store: &'itm mut Self::Owner) -> Self::Borrowed<'itm>
-    where
-        Self: 'itm,
-    {
-        *store = self;
-        store
-    }
-}
-#[cfg(feature = "alloc")]
-impl<'itm> ToOwned<'itm> for String {
-    #[inline(always)]
-    fn to_owned(source: Self::Borrowed<'itm>) -> Self {
-        source.into()
-    }
-}
-
 impl<R: Borrow, const N: usize> Borrow for [R; N] {
     type Borrowed<'itm>
         = [R::Borrowed<'itm>; N]
@@ -271,20 +247,4 @@ impl<'itm, R: ToOwned<'itm>, const N: usize> ToOwned<'itm> for [R; N] {
     fn to_owned(source: Self::Borrowed<'itm>) -> Self {
         source.map(R::to_owned)
     }
-}
-
-impl Borrow for () {
-    type Borrowed<'itm>
-        = Self
-    where
-        Self: 'itm;
-
-    type Owner = ();
-
-    #[inline(always)]
-    fn borrow<'itm>(self, (): &mut ()) -> Self::Borrowed<'itm> {}
-}
-impl<'itm> ToOwned<'itm> for () {
-    #[inline(always)]
-    fn to_owned(_: ()) -> Self {}
 }

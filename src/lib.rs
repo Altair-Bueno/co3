@@ -9,10 +9,6 @@ extern crate self as co3;
 
 #[cfg(feature = "alloc")]
 use alloc_crate::{borrow::ToOwned, boxed::Box, vec::Vec};
-use core::{
-    cell::{Cell, UnsafeCell},
-    mem::ManuallyDrop,
-};
 
 #[cfg(feature = "derive")]
 pub use co3_derive::*;
@@ -30,9 +26,9 @@ use crate::{
 use crate::{
     ir::{NonRobust, ReprFamily, ReprRust, Transmuted},
     niche::{NicheFamily, WithNiche, WithoutNiche},
-    option::COption,
+    option::ReprCOption,
     out_ptr::Zst,
-    result::CResult,
+    result::ReprCResult,
     size::{MetaSized, SizeFamily, SliceLike, Thin, Wide},
     slice::{CSlice, CSliceMut},
     stored::{ReprRustOrTransmutedNonRobust, SoftDecodeOwned, SoftEncodeOwned, Store},
@@ -43,6 +39,8 @@ pub mod alloc;
 pub mod borrow;
 #[cfg(feature = "alloc")]
 pub mod boxed;
+#[doc(hidden)]
+pub mod either;
 pub mod handle;
 pub mod ir;
 pub mod niche;
@@ -144,7 +142,7 @@ disjoint_impls! {
     where
         Self: ReprFamily<Kind = ReprRust>,
         R: Wide<Data: ExternC, Metadata = usize>,
-        <<R as Wide>::Data as ExternC>::CType: Copy,
+        <<R as Wide>::Data as ExternC>::CType: Sized,
     {
         type CType = CSlice<<R::Data as ExternC>::CType>;
     }
@@ -167,7 +165,7 @@ disjoint_impls! {
     where
         Self: ReprFamily<Kind = ReprRust>,
         R: Wide<Data: ExternC, Metadata = usize>,
-        <<R as Wide>::Data as ExternC>::CType: Copy,
+        <<R as Wide>::Data as ExternC>::CType: Sized,
     {
         type CType = CSliceMut<<R::Data as ExternC>::CType>;
     }
@@ -193,7 +191,7 @@ disjoint_impls! {
     where
         Self: ReprFamily<Kind = ReprRust>,
         R: Wide<Data: ExternC, Metadata = usize>,
-        <<R as Wide>::Data as ExternC>::CType: Copy,
+        <<R as Wide>::Data as ExternC>::CType: Sized,
     {
         type CType = CBoxedSlice<<R::Data as ExternC>::CType>;
     }
@@ -208,9 +206,9 @@ disjoint_impls! {
 
     impl<R: NicheFamily<Kind = WithoutNiche> + ExternC> ExternC for Option<R>
     where
-        <R as ExternC>::CType: Copy,
+        <R as ExternC>::CType: Sized,
     {
-        type CType = COption<R::CType>;
+        type CType = ReprCOption<R::CType>;
     }
     impl<R: NicheFamily<Kind: WithNiche> + ExternC> ExternC for Option<R> {
         type CType = R::CType;
@@ -226,7 +224,7 @@ disjoint_impls! {
         <R as ExternC>::CType: Copy,
         <E as ExternC>::CType: Copy,
     {
-        type CType = CResult<R::CType, E::CType>;
+        type CType = ReprCResult<R::CType, E::CType>;
     }
     // TODO: Implement for niche optimized Results
 }
@@ -235,72 +233,15 @@ disjoint_impls! {
     /// Facilitates conversion from a Rust type into a corresponding C-compatible representation.
     pub trait SoftEncode: SoftEncodeOwned {}
 
-    // FIXME: we'll have to inline this impl almost certainly. Look at raw pointers
-    impl<R, K> SoftEncode for R
-    where
-        R: ReprFamily<Kind = Transmuted<K>> + SoftEncodeOwned,
-    {}
-
-    impl<'a, R: ?Sized> SoftEncode for &'a R
-    where
-        Self: ReprFamily<Kind = ReprRust> + SoftEncodeOwned,
-    {}
-
-    impl<'a, R: ?Sized> SoftEncode for &'a mut R
-    where
-        Self: ReprFamily<Kind = ReprRust> + SoftEncodeOwned,
-    {}
-
     #[cfg(feature = "alloc")]
-    impl<R: ReprFamily<Kind = Transmuted<K>> + SizeFamily<Kind = MetaSized<SliceLike>> + ?Sized, K> SoftEncode for Box<R>
+    impl<R: ?Sized, K> SoftEncode for Box<R>
     where
-        Self: ReprFamily<Kind = ReprRust> + SoftEncodeOwned,
+        Self: ReprFamily<Kind = Transmuted<K>> + SoftEncodeOwned,
     {}
     #[cfg(feature = "alloc")]
-    impl<R: ReprFamily<Kind = ReprRust> + SoftEncode> SoftEncode for Box<R>
+    impl<R: ReprFamily<Kind = Transmuted<K>> + ?Sized, K> SoftEncode for Box<R>
     where
         Self: ReprFamily<Kind = ReprRust> + SoftEncodeOwned,
-    {}
-
-    impl<R: SoftEncode<CType: Copy>, const N: usize> SoftEncode for [R; N]
-    where
-        Self: ReprFamily<Kind = ReprRust>,
-    {}
-
-    impl<R: SoftEncode> SoftEncode for Option<R>
-    where
-        Self: ReprFamily<Kind = ReprRust> + SoftEncodeOwned,
-    {}
-
-    impl<R: SoftEncode, E: SoftEncode> SoftEncode for Result<R, E>
-    where
-        Self: ReprFamily<Kind = ReprRust> + SoftEncodeOwned,
-    {}
-    // TODO: Implement for niche optimized Results
-
-    impl<R: ReprC + ?Sized> SoftEncode for *const R
-    where
-        Self: ReprFamily<Kind = ReprRust>,
-    {}
-
-    impl<R: ReprC + ?Sized> SoftEncode for *mut R
-    where
-        Self: ReprFamily<Kind = ReprRust>,
-    {}
-
-    impl<R: SoftEncode> SoftEncode for UnsafeCell<R>
-    where
-        Self: ReprFamily<Kind = ReprRust>,
-    {}
-
-    impl<R: SoftEncode> SoftEncode for Cell<R>
-    where
-        Self: ReprFamily<Kind = ReprRust>,
-    {}
-
-    impl<R: SoftEncode> SoftEncode for ManuallyDrop<R>
-    where
-        Self: ReprFamily<Kind = ReprRust>,
     {}
 }
 
@@ -308,84 +249,54 @@ disjoint_impls! {
     /// Facilitates conversion into a Rust type from a corresponding C-compatible representation.
     pub trait SoftDecode<'d>: SoftDecodeOwned<'d> {}
 
-    impl<'d, R, K> SoftDecode<'d> for R
-    where
-        R: ReprFamily<Kind = Transmuted<K>> + SoftDecodeOwned<'d>,
-    {}
-
-    impl<'d, R: ?Sized> SoftDecode<'d> for &'d R
-    where
-        Self: ReprFamily<Kind = ReprRust> + SoftDecodeOwned<'d>,
-    {}
-
-    impl<'d, R: ?Sized> SoftDecode<'d> for &'d mut R
-    where
-        Self: ReprFamily<Kind = ReprRust> + SoftDecodeOwned<'d>,
-    {}
-
     #[cfg(feature = "alloc")]
-    impl<'d, R: ReprFamily<Kind = Transmuted<K>> + SizeFamily<Kind = MetaSized<SliceLike>> + ?Sized, K> SoftDecode<'d> for Box<R>
+    impl<'d, R: ?Sized, K> SoftDecode<'d> for Box<R>
     where
-        Self: ReprFamily<Kind = ReprRust> + SoftDecodeOwned<'d>,
+        Self: ReprFamily<Kind = Transmuted<K>> + SoftDecodeOwned<'d>,
     {}
     #[cfg(feature = "alloc")]
-    impl<'d, R: ReprFamily<Kind = ReprRust> + SoftDecode<'d>> SoftDecode<'d> for Box<R>
+    impl<'d, R: ReprFamily<Kind = Transmuted<K>> + ?Sized, K> SoftDecode<'d> for Box<R>
     where
         Self: ReprFamily<Kind = ReprRust> + SoftDecodeOwned<'d>,
-    {}
-
-    impl<'d, R: SoftDecode<'d, CType: Copy>, const N: usize> SoftDecode<'d> for [R; N]
-    where
-        Self: ReprFamily<Kind = ReprRust>,
-    {}
-
-    impl<'d, R: SoftDecode<'d>> SoftDecode<'d> for Option<R>
-    where
-        Self: ReprFamily<Kind = ReprRust> + SoftDecodeOwned<'d>,
-    {}
-
-    impl<'d, R: SoftDecode<'d>, E: SoftDecode<'d>> SoftDecode<'d> for Result<R, E>
-    where
-        Self: ReprFamily<Kind = ReprRust> + SoftDecodeOwned<'d>,
-    {}
-    // TODO: Implement for niche optimized Results
-
-    impl<'d, R: ReprC + ?Sized> SoftDecode<'d> for *const R
-    where
-        Self: ReprFamily<Kind = ReprRust>,
-    {}
-
-    impl<'d, R: ReprC + ?Sized> SoftDecode<'d> for *mut R
-    where
-        Self: ReprFamily<Kind = ReprRust>,
-    {}
-
-    impl<'d, R: SoftDecode<'d>> SoftDecode<'d> for UnsafeCell<R>
-    where
-        Self: ReprFamily<Kind = ReprRust>,
-    {}
-
-    impl<'d, R: SoftDecode<'d>> SoftDecode<'d> for Cell<R>
-    where
-        Self: ReprFamily<Kind = ReprRust>,
-    {}
-
-    impl<'d, R: SoftDecode<'d>> SoftDecode<'d> for ManuallyDrop<R>
-    where
-        Self: ReprFamily<Kind = ReprRust>,
     {}
 }
 
+impl<R: ?Sized> SoftEncode for &R where Self: SoftEncodeOwned {}
+impl<R: ?Sized> SoftEncode for &mut R where Self: SoftEncodeOwned {}
+
+impl<'d, R: ?Sized> SoftDecode<'d> for &'d R where Self: SoftDecodeOwned<'d> {}
+impl<'d, R: ?Sized> SoftDecode<'d> for &'d mut R where Self: SoftDecodeOwned<'d> {}
+
+impl<R: SoftEncode, const N: usize> SoftEncode for [R; N] where Self: SoftEncodeOwned {}
+impl<'d, R: SoftDecode<'d>, const N: usize> SoftDecode<'d> for [R; N] where Self: SoftDecodeOwned<'d>
+{}
+
+impl<R: SoftEncode> SoftEncode for Option<R> where Self: SoftEncodeOwned {}
+impl<'d, R: SoftDecode<'d>> SoftDecode<'d> for Option<R> where Self: SoftDecodeOwned<'d> {}
+
+impl<R: SoftEncode, E: SoftEncode> SoftEncode for Result<R, E> where Self: SoftEncodeOwned {}
+impl<'d, R: SoftDecode<'d>, E: SoftDecode<'d>> SoftDecode<'d> for Result<R, E> where
+    Self: SoftDecodeOwned<'d>
+{
+}
+
 #[cfg(feature = "alloc")]
-impl<R: ExternC<CType: Copy>> ExternC for Vec<R> {
+impl<R: ExternC<CType: Sized>> ExternC for Vec<R> {
     type CType = CBoxedSlice<R::CType>;
 }
 
 #[cfg(feature = "alloc")]
-impl<R: SoftEncodeOwned<CType: Copy>> SoftEncode for Vec<R> where Box<[R]>: SoftEncode {}
+impl<R> SoftEncode for Vec<R>
+where
+    Self: SoftEncodeOwned,
+    Box<[R]>: SoftEncode,
+{
+}
 #[cfg(feature = "alloc")]
-impl<'d, R: SoftDecodeOwned<'d, CType: Copy>> SoftDecode<'d> for Vec<R> where
-    Box<[R]>: SoftDecode<'d>
+impl<'d, R> SoftDecode<'d> for Vec<R>
+where
+    Self: SoftDecodeOwned<'d>,
+    Box<[R]>: SoftDecode<'d>,
 {
 }
 
@@ -429,7 +340,7 @@ mod tests {
             let mut store = Box::default();
             let encoded = value_mut_ref.soft_encode(&mut *store);
             unsafe {
-                *encoded = COption::Some(other);
+                *encoded = ReprCOption::Some(other);
             }
             store.sync().unwrap();
         }
@@ -441,7 +352,7 @@ mod tests {
             let mut store = Box::default();
             let encoded = ref_mut.soft_encode(&mut *store);
             let c_slice = unsafe { encoded.into_rust().unwrap() };
-            c_slice[0] = COption::Some(other);
+            c_slice[0] = ReprCOption::Some(other);
             store.sync().unwrap();
         }
         assert_eq!(slice, [Some(42u8)]);
@@ -449,7 +360,7 @@ mod tests {
 
     #[test]
     fn decode_stored_mut_ref() {
-        let mut c_opt = COption::Some(1u8);
+        let mut c_opt = ReprCOption::Some(1u8);
         let c_ptr: *mut _ = &mut c_opt;
         let new_val: u8 = 42;
         {
@@ -459,9 +370,9 @@ mod tests {
             *decoded = Some(new_val);
             store.sync().unwrap();
         }
-        assert_eq!(c_opt, COption::Some(42u8));
+        assert_eq!(c_opt, ReprCOption::Some(42u8));
 
-        let mut c_opts = [COption::Some(1u8)];
+        let mut c_opts = [ReprCOption::Some(1u8)];
         let c_slice = CSliceMut::from_slice(Some(&mut c_opts));
         let x: u8 = 10;
         {
@@ -471,13 +382,13 @@ mod tests {
             decoded[0] = Some(x);
             store.sync().unwrap();
         }
-        assert_eq!(c_opts[0], COption::Some(10u8));
+        assert_eq!(c_opts[0], ReprCOption::Some(10u8));
     }
 
     #[test]
     #[cfg(feature = "alloc")]
     fn encode_stored_ref_mut_slice() {
-        use crate::tuple::CTuple1;
+        use crate::tuple::ReprCTuple1;
 
         let mut tuples = [(1_u32,)];
         let slice_ref: &mut [_] = &mut tuples;
@@ -488,7 +399,7 @@ mod tests {
             let encoded = slice_ref.soft_encode(&mut store);
             let c_slice = unsafe { encoded.into_rust().unwrap() };
 
-            c_slice[0] = CTuple1(100);
+            c_slice[0] = ReprCTuple1(100);
             store.sync().unwrap();
         }
 
@@ -498,9 +409,9 @@ mod tests {
     #[test]
     #[cfg(feature = "alloc")]
     fn decode_stored_ref_mut_slice() {
-        use crate::tuple::CTuple1;
+        use crate::tuple::ReprCTuple1;
 
-        let mut tuples = [CTuple1(10)];
+        let mut tuples = [ReprCTuple1(10)];
         let c_slice = CSliceMut::from_slice(Some(&mut tuples));
 
         {

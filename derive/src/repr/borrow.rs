@@ -1,0 +1,502 @@
+use proc_macro2::TokenStream;
+use quote::{format_ident, quote};
+use syn::{DeriveInput, Ident, parse_quote};
+
+use crate::repr::{
+    ctype::gen_ctype_name,
+    generic_param_idents, is_type_parameterized, is_view,
+    item::{field_vars, gen_fields_destructure},
+    parse_repr_c_parts,
+};
+
+pub(super) fn gen_item_view(input: &DeriveInput) -> TokenStream {
+    if is_view(&input.attrs) {
+        return quote! {};
+    }
+
+    let mut view_def = input.clone();
+    rewrite_view_attrs(&mut view_def);
+
+    view_def.ident = gen_view_name(&input.ident);
+
+    rewrite_view_generics(&mut view_def);
+    rewrite_view_fields(&mut view_def.data);
+
+    quote! {
+        #[derive(co3::ReprC)]
+        #[reprC(view)]
+        #[doc(hidden)]
+        #view_def
+    }
+}
+
+pub(super) fn gen_item_borrow_impls(input: &DeriveInput) -> TokenStream {
+    match &input.data {
+        syn::Data::Struct(data) => {
+            gen_struct_borrow_impls(&input.ident, &input.generics, &data.fields)
+        }
+        syn::Data::Enum(data) => {
+            gen_enum_borrow_impls(&input.ident, &input.generics, &data.variants)
+        }
+        syn::Data::Union(_) => unreachable!(),
+    }
+}
+
+fn gen_struct_borrow_impls(
+    name: &Ident,
+    generics: &syn::Generics,
+    fields: &syn::Fields,
+) -> TokenStream {
+    let fields_destructure = gen_fields_destructure(fields);
+
+    let view_name = gen_view_name(name);
+    let field_tys = fields.iter().map(|field| &field.ty).collect::<Vec<_>>();
+    let owner_type = struct_view_owner_type(fields);
+    let borrowed_fields = gen_field_borrow_exprs(fields);
+    let borrowed_view = gen_record_construction(quote! { #view_name }, fields, &borrowed_fields);
+    let to_owned_body = gen_record_to_owned(quote!(Self), fields);
+
+    let (borrow_impl, to_owned_impl) = (
+        quote! {
+            let Self #fields_destructure = self;
+            #borrowed_view
+        },
+        quote! {
+            let #view_name #fields_destructure = source;
+            #to_owned_body
+        },
+    );
+
+    gen_borrow_impls::<true>(
+        name,
+        generics,
+        &field_tys,
+        owner_type,
+        borrow_impl,
+        to_owned_impl,
+    )
+}
+
+fn gen_enum_borrow_impls(
+    name: &Ident,
+    generics: &syn::Generics,
+    variants: &syn::punctuated::Punctuated<syn::Variant, syn::Token![,]>,
+) -> TokenStream {
+    let fields = variants
+        .iter()
+        .flat_map(|variant| variant.fields.iter().map(|field| &field.ty))
+        .collect::<Vec<_>>();
+
+    let view_name = gen_view_name(name);
+    let owner_either_ty = gen_either_name(variants.len());
+
+    let owner_type = enum_view_owner_type(variants);
+    let (variants_borrow, variants_to_owned): (Vec<_>, Vec<_>) = variants
+        .iter()
+        .enumerate()
+        .map(|(idx, variant)| {
+            let variant_name = &variant.ident;
+            let field_vars = field_vars(&variant.fields);
+            let destructure_fields = gen_fields_destructure(&variant.fields);
+            let view_head = quote! { #view_name::#variant_name };
+            let owned_head = quote! { Self::#variant_name };
+            let borrowed_variant = gen_record_construction(view_head, &variant.fields, &field_vars);
+            let to_owned_body = gen_record_to_owned(owned_head, &variant.fields);
+
+            let owner_variant = either_variant_name(idx);
+            let owner_vars = (0..field_vars.len())
+                .map(|idx| format_ident!("__co3_owner_{idx}"))
+                .collect::<Vec<_>>();
+            let borrow_stmts = field_vars
+                .iter()
+                .zip(&owner_vars)
+                .map(|(field_var, owner_var)| quote! {
+                    let #field_var = co3::borrow::Borrow::borrow(#field_var, #owner_var);
+                });
+
+            (
+                quote! {
+                    Self::#variant_name #destructure_fields => {
+                        let co3::either::#owner_either_ty::#owner_variant(owner) =
+                            owner.insert(co3::either::#owner_either_ty::#owner_variant(Default::default()))
+                        else {
+                            unreachable!()
+                        };
+
+                        let (#(#owner_vars,)*) = owner;
+                        #(#borrow_stmts)*
+                        #borrowed_variant
+                    }
+                },
+                quote! {
+                    #view_name::#variant_name #destructure_fields => #to_owned_body
+                },
+            )
+        })
+        .unzip();
+
+    let (borrow_impl, to_owned_impl) = (
+        quote! { match self { #(#variants_borrow,)* } },
+        quote! {
+            match source { #(#variants_to_owned,)* }
+        },
+    );
+
+    gen_borrow_impls::<false>(
+        name,
+        generics,
+        &fields,
+        owner_type,
+        borrow_impl,
+        to_owned_impl,
+    )
+}
+
+fn gen_borrow_impls<const ADD_SIZED: bool>(
+    name: &Ident,
+    generics: &syn::Generics,
+    fields: &[&syn::Type],
+    owner_type: TokenStream,
+    borrow_impl: TokenStream,
+    to_owned_impl: TokenStream,
+) -> TokenStream {
+    let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
+    let predicates = where_clause.as_ref().map(|w| &w.predicates);
+    let params = &generics.params;
+
+    let view_ty_generics = generic_param_idents(&generics.params);
+    let borrow_bounds = gen_field_trait_bounds(generics, fields, quote! { co3::borrow::Borrow });
+    let to_owned_bounds =
+        gen_field_trait_bounds(generics, fields, quote! { co3::borrow::ToOwned<'_išč> });
+
+    let view_name = gen_view_name(name);
+    let sized_bound = ADD_SIZED.then(|| {
+        if generics.params.is_empty() {
+            quote! { for<'_dummy> Self: Sized, }
+        } else {
+            quote! { Self: Sized, }
+        }
+    });
+
+    quote! {
+        impl #impl_generics co3::borrow::Borrow for #name #ty_generics
+        where
+            #(#borrow_bounds,)*
+            #sized_bound
+            #predicates
+        {
+            type Borrowed<'_išč>
+                = #view_name<'_išč #(, #view_ty_generics)*>
+            where
+                Self: '_išč;
+
+            type Owner = #owner_type;
+
+            #[inline(always)]
+            fn borrow<'_išč>(self, owner: &'_išč mut Self::Owner) -> Self::Borrowed<'_išč>
+            where
+                Self: '_išč,
+            {
+                #borrow_impl
+            }
+        }
+
+        impl<'_išč, #params> co3::borrow::ToOwned<'_išč> for #name #ty_generics
+        where
+            #(#to_owned_bounds,)*
+            #sized_bound
+            #predicates
+        {
+            #[inline(always)]
+            fn to_owned(source: Self::Borrowed<'_išč>) -> Self {
+                #to_owned_impl
+            }
+        }
+    }
+}
+
+fn struct_view_owner_type(fields: &syn::Fields) -> TokenStream {
+    let owners = fields.iter().map(|syn::Field { ty, .. }| {
+        quote! { <#ty as co3::borrow::Borrow>::Owner }
+    });
+
+    quote!((#(#owners,)*))
+}
+
+fn enum_view_owner_type(
+    variants: &syn::punctuated::Punctuated<syn::Variant, syn::Token![,]>,
+) -> TokenStream {
+    let either_name = gen_either_name(variants.len());
+
+    let owners = variants
+        .iter()
+        .map(|variant| struct_view_owner_type(&variant.fields));
+
+    quote! { core::option::Option<co3::either::#either_name<#(#owners),*>> }
+}
+
+fn gen_field_borrow_exprs(fields: &syn::Fields) -> Vec<TokenStream> {
+    let field_vars = field_vars(fields);
+
+    field_vars
+        .iter()
+        .enumerate()
+        .map(|(idx, field_var)| {
+            let idx = syn::Index::from(idx);
+            quote! { co3::borrow::Borrow::borrow(#field_var, &mut owner.#idx) }
+        })
+        .collect()
+}
+
+fn gen_record_construction(
+    head: TokenStream,
+    fields: &syn::Fields,
+    values: &[impl quote::ToTokens],
+) -> TokenStream {
+    match fields {
+        syn::Fields::Named(_) | syn::Fields::Unit => {
+            let field_names: Vec<_> = fields.iter().filter_map(|f| f.ident.as_ref()).collect();
+
+            quote! { #head { #(#field_names: #values),* } }
+        }
+        syn::Fields::Unnamed(_) => quote! { #head(#(#values),*) },
+    }
+}
+
+fn gen_record_to_owned(head: TokenStream, fields: &syn::Fields) -> TokenStream {
+    let field_vars = field_vars(fields);
+
+    match fields {
+        syn::Fields::Named(_) | syn::Fields::Unit => {
+            let field_names: Vec<_> = fields.iter().filter_map(|f| f.ident.as_ref()).collect();
+
+            quote! { #head { #(#field_names: co3::borrow::ToOwned::to_owned(#field_vars)),* } }
+        }
+        syn::Fields::Unnamed(_) => {
+            quote! { #head(#(co3::borrow::ToOwned::to_owned(#field_vars)),*) }
+        }
+    }
+}
+
+fn rewrite_view_fields(data: &mut syn::Data) {
+    match data {
+        syn::Data::Struct(data) => rewrite_view_field_tys(&mut data.fields),
+        syn::Data::Enum(data) => {
+            for variant in &mut data.variants {
+                rewrite_view_field_tys(&mut variant.fields);
+            }
+        }
+        syn::Data::Union(_) => unreachable!(),
+    }
+}
+
+fn rewrite_view_attrs(input: &mut DeriveInput) {
+    match &mut input.data {
+        syn::Data::Struct(data) => rewrite_view_repr_c_attrs(&mut input.attrs, &data.fields),
+        syn::Data::Enum(data) => {
+            for variant in &mut data.variants {
+                rewrite_view_repr_c_attrs(&mut variant.attrs, &variant.fields);
+            }
+        }
+        _ => {}
+    }
+}
+
+fn rewrite_view_repr_c_attrs(attrs: &mut Vec<syn::Attribute>, fields: &syn::Fields) {
+    let (niche_value, is_valid) = parse_repr_c_parts(attrs).unwrap();
+
+    attrs.retain(|a| !a.path().is_ident("reprC"));
+    if niche_value.is_none() && is_valid.is_none() {
+        return;
+    }
+
+    if let Some(niche_value) = niche_value {
+        let view_niche_value = quote!(co3::borrow::borrow_cast(#niche_value));
+        attrs.push(parse_quote! { #[reprC(NICHE_VALUE = #view_niche_value)] });
+    }
+
+    if let Some(is_valid) = is_valid {
+        let view_is_valid = gen_view_is_valid_attr(&is_valid, fields);
+        attrs.push(parse_quote! { #[reprC(is_valid = #view_is_valid)] });
+    }
+}
+
+fn gen_view_is_valid_attr(_is_valid: &syn::ExprClosure, fields: &syn::Fields) -> TokenStream {
+    let field_vars = field_vars(fields);
+
+    quote! {
+        is_valid = |#(#field_vars),*| {
+            // TODO: This should do what exactly? I think it takes a kind of double reference.
+            // More precisely it takes &CTypeConstView and then wants to get &CType which is
+            // likely just not possible at least not atm, we'll need a new trait for this that
+            // is opposite of BorrowCast
+            //
+            // I know, we can just cast a pointer. This would have to mean that BorrowCast
+            // is correctly implemented. If there aren't there already we should add bounds on
+            // CheckedTransmute implementation that would make this upcast to owned view SAFE
+            unimplemented!()
+        }
+    }
+}
+
+fn rewrite_view_generics(input: &mut DeriveInput) {
+    let field_tys = match &input.data {
+        syn::Data::Struct(data) => data.fields.iter().map(|f| &f.ty).collect::<Vec<_>>(),
+        syn::Data::Enum(data) => data
+            .variants
+            .iter()
+            .flat_map(|v| v.fields.iter().map(|f| &f.ty))
+            .collect::<Vec<_>>(),
+        syn::Data::Union(_) => unreachable!(),
+    };
+
+    let borrow_bounds =
+        gen_field_trait_bounds(&input.generics, &field_tys, quote! { co3::borrow::Borrow })
+            .collect::<Vec<_>>();
+
+    input.generics.params.insert(0, parse_quote!('_dšč));
+    let where_clause = input.generics.make_where_clause();
+    where_clause.predicates.push(parse_quote!(Self: '_dšč));
+
+    where_clause.predicates.extend(borrow_bounds);
+}
+
+fn rewrite_view_field_tys(fields: &mut syn::Fields) {
+    for field in fields {
+        let ty = &field.ty;
+
+        field.ty = parse_quote! {
+            <#ty as co3::borrow::Borrow>::Borrowed<'_dšč>
+        };
+    }
+}
+
+pub fn gen_either_name(len: usize) -> Ident {
+    format_ident!("Either{len}")
+}
+
+pub fn either_variant_name(idx: usize) -> Ident {
+    format_ident!("V{idx}")
+}
+
+pub(super) fn gen_view_owner_name(view_name: &Ident) -> Ident {
+    let view_name_str = view_name.to_string();
+    let owned_name = view_name_str.strip_suffix("View").unwrap();
+    Ident::new(owned_name, view_name.span())
+}
+
+pub(super) fn gen_view_ctype_name(view_name: &Ident) -> Ident {
+    gen_const_view_name(&gen_ctype_name(&gen_view_owner_name(view_name)))
+}
+
+pub(super) fn gen_const_view_name(name: &Ident) -> Ident {
+    Ident::new(&format!("{name}ConstView"), name.span())
+}
+
+fn gen_view_name(name: &Ident) -> Ident {
+    format_ident!("{name}View")
+}
+
+pub fn gen_identity_borrow_impls(name: &Ident, generics: &syn::Generics) -> TokenStream {
+    let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
+    let params = &generics.params;
+
+    quote! {
+        impl #impl_generics co3::borrow::Borrow for #name #ty_generics #where_clause {
+            type Borrowed<'_išč>
+                = Self
+            where
+                Self: '_išč;
+
+            type Owner = ();
+
+            #[inline(always)]
+            fn borrow<'_išč>(self, (): &mut ()) -> Self::Borrowed<'_išč>
+            where
+                Self: '_išč,
+            {
+                self
+            }
+        }
+
+        impl<'d, #params> co3::borrow::ToOwned<'d> for #name #ty_generics #where_clause {
+            fn to_owned(source: Self) -> Self {
+                source
+            }
+        }
+    }
+}
+
+pub fn gen_borrow_cast_eq_bounds(fields: &[&syn::Type]) -> TokenStream {
+    let bounds = fields.iter().map(|borrowed_ty| {
+        let syn::Type::Path(syn::TypePath {
+            qself: Some(syn::QSelf { ty, .. }),
+            ..
+        }) = borrowed_ty
+        else {
+            unreachable!()
+        };
+
+        quote! {
+            #borrowed_ty: co3::ExternC<
+            // FIXME: Is this required? what about CheckedTransmute
+                CType = <<#ty as co3::ExternC>::CType as co3::borrow::BorrowCast>::AsConst
+            >
+        }
+    });
+
+    quote! { #(#bounds,)* }
+}
+
+pub fn gen_view_family_impls(name: &Ident, generics: &syn::Generics) -> TokenStream {
+    let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
+    let predicates = where_clause.as_ref().map(|w| &w.predicates);
+
+    let owner_ty_generics =
+        generic_param_idents(generics.params.iter().skip(1)).collect::<Vec<_>>();
+
+    let owner_name = gen_view_owner_name(name);
+    let for_dummy = if owner_ty_generics.is_empty() {
+        quote! { for<'_dummy> }
+    } else {
+        quote! {}
+    };
+
+    quote! {
+        impl #impl_generics co3::ir::ReprFamily for #name #ty_generics
+        where
+            #owner_name<#(#owner_ty_generics),*>: co3::ir::ReprFamily,
+            #predicates
+        {
+            type Kind = <#owner_name<#(#owner_ty_generics),*> as co3::ir::ReprFamily>::Kind;
+        }
+
+        impl #impl_generics co3::size::SizeFamily for #name #ty_generics
+        where
+            #owner_name<#(#owner_ty_generics),*>: co3::size::SizeFamily,
+            #predicates
+        {
+            type Kind = <#owner_name<#(#owner_ty_generics),*> as co3::size::SizeFamily>::Kind;
+        }
+
+        impl #impl_generics co3::niche::NicheFamily for #name #ty_generics
+        where
+            #for_dummy #owner_name<#(#owner_ty_generics),*>: co3::niche::NicheFamily,
+            Self: Sized,
+            #predicates
+        {
+            type Kind = <#owner_name<#(#owner_ty_generics),*> as co3::niche::NicheFamily>::Kind;
+        }
+    }
+}
+
+fn gen_field_trait_bounds<'a>(
+    generics: &'a syn::Generics,
+    fields: &'a [&syn::Type],
+    bound: TokenStream,
+) -> impl Iterator<Item = syn::WherePredicate> + use<'a> {
+    fields.iter().map(move |ty| {
+        let for_dummy = (!is_type_parameterized(ty, generics)).then_some(quote! { for<'_dummy> });
+        parse_quote! { #for_dummy #ty: #bound }
+    })
+}
