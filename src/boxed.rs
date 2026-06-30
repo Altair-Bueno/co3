@@ -4,15 +4,15 @@ use alloc_crate::boxed::Box;
 use core::ptr::NonNull;
 
 use crate::{
-    CFnArg, ExternC, ReprC, SoftDecode, SoftEncode,
+    CFnArg, Decode, Encode, ExternC, RobustReprC,
     alloc::{Allocator, Global},
-    borrow::{Borrow, BorrowCast, ToOwned},
+    borrow::{Borrow, BorrowCast, BorrowCastMut, ToOwned},
     handle::Erase,
     ir::ReprFamily,
     niche::{NicheFamily, WithoutNiche},
     size::SizeFamily,
     slice::{CSlice, CSliceMut},
-    stored::{SoftDecodeOwned, SoftEncodeOwned},
+    stored::{DecodeOwned, EncodeOwned},
     transmute::CheckedTransmute,
 };
 
@@ -298,41 +298,44 @@ macro_rules! impl_boxed_carrier {
             }
         }
 
-        impl<C: ReprC, A: Allocator> ExternC for $ty<C, A> {
+        impl<C: RobustReprC, A: Allocator> ExternC for $ty<C, A> {
             type CType = Self;
         }
-        impl<C: ReprC, A: Allocator> SoftEncodeOwned for $ty<C, A> {
+        impl<C: RobustReprC, A: Allocator> EncodeOwned for $ty<C, A> {
             type Store = ();
 
             #[inline(always)]
-            fn soft_encode<'itm>(self, (): &mut ()) -> Self::CType
+            fn soft_encode_owned<'itm>(self, (): &mut ()) -> Self::CType
             where
                 Self: 'itm,
             {
                 self
             }
         }
-        impl<'d, C: ReprC, A: Allocator> SoftDecodeOwned<'d> for $ty<C, A> {
+        impl<'d, C: RobustReprC, A: Allocator> DecodeOwned<'d> for $ty<C, A> {
             type Store = ();
 
             #[inline(always)]
-            unsafe fn soft_decode<'itm: 'd>(source: Self::CType, (): &mut ()) -> Option<Self> {
+            unsafe fn soft_decode_owned<'itm: 'd>(
+                source: Self::CType,
+                (): &mut (),
+            ) -> Option<Self> {
                 Some(source)
             }
         }
 
-        impl<'d, C: ReprC, A: Allocator> SoftDecode<'d> for $ty<C, A> {}
-        impl<C: ReprC, A: Allocator> SoftEncode for $ty<C, A> {}
+        impl<'d, C: RobustReprC, A: Allocator> Decode<'d> for $ty<C, A> {}
+        impl<C: RobustReprC, A: Allocator> Encode for $ty<C, A> {}
 
-        unsafe impl<C: ReprC, A: Allocator> CheckedTransmute for $ty<C, A> {
+        unsafe impl<C: RobustReprC, A: Allocator> CheckedTransmute for $ty<C, A> {
             #[inline(always)]
             unsafe fn is_valid(_: &Self::CType) -> bool {
                 true
             }
         }
 
-        unsafe impl<C: ReprC, A: Allocator> ReprC for $ty<C, A> {}
-        unsafe impl<C: ReprC, A: Allocator> CFnArg for $ty<C, A> {}
+        unsafe impl<C: RobustReprC, A: Allocator> RobustReprC for $ty<C, A> {}
+        unsafe impl<C: RobustReprC, A: Allocator> CFnArg for $ty<C, A> {}
 
         unsafe impl<C: Erase<Erased: Sized>, A: Allocator> Erase for $ty<C, A> {
             type Erased = $ty<C::Erased>;
@@ -343,12 +346,16 @@ macro_rules! impl_boxed_carrier {
 impl_boxed_carrier! { CBox }
 impl_boxed_carrier! { CBoxedSlice }
 
-unsafe impl<C: ReprC, A: Allocator> BorrowCast for CBox<C, A> {
+unsafe impl<C: RobustReprC, A: Allocator> BorrowCast for CBox<C, A> {
     type AsConst = *const C;
+}
+unsafe impl<C: RobustReprC, A: Allocator> BorrowCastMut for CBox<C, A> {
     type AsMut = *mut C;
 }
 
-unsafe impl<C: ReprC, A: Allocator> BorrowCast for CBoxedSlice<C, A> {
+unsafe impl<C: RobustReprC, A: Allocator> BorrowCast for CBoxedSlice<C, A> {
     type AsConst = CSlice<C>;
+}
+unsafe impl<C: RobustReprC, A: Allocator> BorrowCastMut for CBoxedSlice<C, A> {
     type AsMut = CSliceMut<C>;
 }

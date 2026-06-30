@@ -1,5 +1,11 @@
-error: `NICHE_VALUE` is not supported on fieldless enums
- --> tests/ui_fail/fieldless_enum_custom_niche.rs:6:10
+error: `NICHE_VALUE` is only supported on structs
+ --> tests/ui_fail/fieldless_enum_custom_niche.rs:5:10
   |
-6 | pub enum PrimitiveFieldless {
-  |          ^^^^^^^^^^^^^^^^^^
+5 | pub enum PrimitiveFieldless1 {
+  |          ^^^^^^^^^^^^^^^^^^^
+
+error: `is_valid` is only supported on structs or enum variants
+  --> tests/ui_fail/fieldless_enum_custom_niche.rs:14:10
+   |
+14 | pub enum PrimitiveFieldless2 {
+   |          ^^^^^^^^^^^^^^^^^^^

@@ -56,7 +56,7 @@ pub fn gen_struct_niche_ir_with_mode(
     if let Some(niche_value) = niche_value {
         return quote! {
             impl #impl_generics co3::niche::Niche for #struct_name #ty_generics where
-                #field_lowering_bounds
+                #(#field_lowering_bounds,)*
                 #field_type_bounds
                 #self_bounds
                 #predicates
@@ -86,7 +86,7 @@ pub fn gen_struct_niche_ir_with_mode(
 
     quote! {
         impl #impl_generics co3::niche::Niche for #struct_name #ty_generics where
-            #field_lowering_bounds
+            #(#field_lowering_bounds,)*
             #field_type_bounds
             #self_bounds
             #for_dummy #fields_tuple: co3::niche::Niche<CType = #c_fields_tuple>,
@@ -152,7 +152,7 @@ pub fn gen_enum_niche_ir_with_mode(
     if let Some(niche_value) = custom_niche_value {
         return quote! {
             impl #impl_generics co3::niche::Niche for #enum_name #ty_generics where
-                #field_lowering_bounds
+                #(#field_lowering_bounds,)*
                 #field_type_bounds
                 #self_bounds
                 #predicates
@@ -176,7 +176,7 @@ pub fn gen_enum_niche_ir_with_mode(
 
     quote! {
         impl #impl_generics co3::niche::Niche for #enum_name #ty_generics where
-            #field_lowering_bounds
+            #(#field_lowering_bounds,)*
             #field_type_bounds
             #self_bounds
             #predicates

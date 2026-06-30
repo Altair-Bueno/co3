@@ -15,10 +15,10 @@ error[E0277]: the trait bound `[u8; 2]: CFnArg` is not satisfied
              *mut R
              CBox<C, A>
              CBoxedSlice<C, A>
-             COption<T>
              COwnedMyType
-             CResult<T, E>
              CSlice<C>
+             CSliceMut<C>
+             ReprCOption<T>
            and $N others
    = note: this error originates in the macro `export_C` (in Nightly builds, run with -Z macro-backtrace for more info)
 
@@ -39,10 +39,10 @@ error[E0277]: the trait bound `(): CFnArg` is not satisfied
              *mut R
              CBox<C, A>
              CBoxedSlice<C, A>
-             COption<T>
              COwnedMyType
-             CResult<T, E>
              CSlice<C>
+             CSliceMut<C>
+             ReprCOption<T>
            and $N others
    = note: this error originates in the macro `export_C` (in Nightly builds, run with -Z macro-backtrace for more info)
 
@@ -63,10 +63,10 @@ error[E0277]: the trait bound `[u8; 2]: CFnReturn` is not satisfied
              *mut R
              CBox<C, A>
              CBoxedSlice<C, A>
-             COption<T>
              COwnedMyType
-             CResult<T, E>
              CSlice<C>
+             CSliceMut<C>
+             ReprCOption<T>
            and $N others
    = note: required for `[u8; 2]` to implement `CFnReturn`
    = note: required for `[u8; 2]` to implement `OutPtr`
@@ -89,10 +89,10 @@ error[E0277]: the trait bound `[u8; 2]: CFnArg` is not satisfied
              *mut R
              CBox<C, A>
              CBoxedSlice<C, A>
-             COption<T>
              COwnedMyType
-             CResult<T, E>
              CSlice<C>
+             CSliceMut<C>
+             ReprCOption<T>
            and $N others
    = note: this error originates in the macro `extern_C` (in Nightly builds, run with -Z macro-backtrace for more info)
 
@@ -113,10 +113,10 @@ error[E0277]: the trait bound `(): CFnArg` is not satisfied
              *mut R
              CBox<C, A>
              CBoxedSlice<C, A>
-             COption<T>
              COwnedMyType
-             CResult<T, E>
              CSlice<C>
+             CSliceMut<C>
+             ReprCOption<T>
            and $N others
    = note: this error originates in the macro `extern_C` (in Nightly builds, run with -Z macro-backtrace for more info)
 
@@ -137,10 +137,10 @@ error[E0277]: the trait bound `[u8; 2]: CFnReturn` is not satisfied
              *mut R
              CBox<C, A>
              CBoxedSlice<C, A>
-             COption<T>
              COwnedMyType
-             CResult<T, E>
              CSlice<C>
+             CSliceMut<C>
+             ReprCOption<T>
            and $N others
    = note: required for `[u8; 2]` to implement `CFnReturn`
    = note: required for `[u8; 2]` to implement `OutPtr`
@@ -182,10 +182,10 @@ error[E0277]: the trait bound `(): CFnArg` is not satisfied
              *mut R
              CBox<C, A>
              CBoxedSlice<C, A>
-             COption<T>
              COwnedMyType
-             CResult<T, E>
              CSlice<C>
+             CSliceMut<C>
+             ReprCOption<T>
            and $N others
 note: required by a bound in `provider::_::disallowed_types_by_val`
   --> tests/ui_fail/disallowed_types.rs:31:5
@@ -213,10 +213,10 @@ error[E0277]: the trait bound `(): CFnArg` is not satisfied
              *mut R
              CBox<C, A>
              CBoxedSlice<C, A>
-             COption<T>
              COwnedMyType
-             CResult<T, E>
              CSlice<C>
+             CSliceMut<C>
+             ReprCOption<T>
            and $N others
 note: required by a bound in `disallowed_types_by_ref::disallowed_types_by_ref`
   --> tests/ui_fail/disallowed_types.rs:45:1
@@ -244,10 +244,10 @@ error[E0277]: the trait bound `[u8; 2]: CFnArg` is not satisfied
              *mut R
              CBox<C, A>
              CBoxedSlice<C, A>
-             COption<T>
              COwnedMyType
-             CResult<T, E>
              CSlice<C>
+             CSliceMut<C>
+             ReprCOption<T>
            and $N others
 note: required by a bound in `disallowed_types_by_ref::disallowed_types_by_ref`
   --> tests/ui_fail/disallowed_types.rs:45:1
@@ -275,10 +275,10 @@ error[E0277]: the trait bound `(): CFnArg` is not satisfied
              *mut R
              CBox<C, A>
              CBoxedSlice<C, A>
-             COption<T>
              COwnedMyType
-             CResult<T, E>
              CSlice<C>
+             CSliceMut<C>
+             ReprCOption<T>
            and $N others
 note: required by a bound in `disallowed_types_by_val::disallowed_types_by_val`
   --> tests/ui_fail/disallowed_types.rs:45:1
@@ -306,10 +306,10 @@ error[E0277]: the trait bound `[u8; 2]: CFnArg` is not satisfied
              *mut R
              CBox<C, A>
              CBoxedSlice<C, A>
-             COption<T>
              COwnedMyType
-             CResult<T, E>
              CSlice<C>
+             CSliceMut<C>
+             ReprCOption<T>
            and $N others
 note: required by a bound in `disallowed_types_by_val::disallowed_types_by_val`
   --> tests/ui_fail/disallowed_types.rs:45:1

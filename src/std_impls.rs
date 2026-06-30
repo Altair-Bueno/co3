@@ -10,27 +10,22 @@ use core::{
 };
 
 use crate::{
-    ExternC, NonRobust, ReprC, SoftDecode, SoftEncode,
-    borrow::{Borrow, BorrowCast, ToOwned},
+    Decode, Encode, ExternC, NonRobust, RobustReprC,
+    borrow::{Borrow, BorrowCast, BorrowCastMut, ToOwned},
     handle::Erase,
-    ir::{ReprFamily, Robust, Transmuted},
+    ir::{ReprC, ReprFamily, Robust},
     niche::{Niche, NicheFamily, StableNiche, WithStableNiche, WithoutNiche},
     size::{MetaSized, SizeFamily, SliceLike},
-    stored::{SoftDecodeOwned, SoftEncodeOwned},
+    stored::{DecodeOwned, EncodeOwned},
     transmute::CheckedTransmute,
 };
 #[cfg(feature = "alloc")]
-use crate::{
-    boxed::CBoxedSlice,
-    ir::ReprRust,
-    niche::WithCustomNiche,
-    stored::{DecodeOwned, EncodeOwned},
-};
+use crate::{boxed::CBoxedSlice, ir::ReprRust, niche::WithCustomNiche};
 
 macro_rules! non_zero_derive {
     ($($primitive:ty),+ $(,)?) => {$(
         impl ReprFamily for NonZero<$primitive> {
-            type Kind = Transmuted<NonRobust>;
+            type Kind = ReprC<NonRobust>;
         }
         impl SizeFamily for NonZero<$primitive> {
             type Kind = crate::size::Sized;
@@ -65,28 +60,28 @@ macro_rules! non_zero_derive {
         impl ExternC for NonZero<$primitive> {
             type CType = $primitive;
         }
-        impl SoftEncodeOwned for NonZero<$primitive> {
+        impl EncodeOwned for NonZero<$primitive> {
             type Store = ();
 
             #[inline(always)]
-            fn soft_encode<'itm>(self, (): &mut ()) -> Self::CType
+            fn soft_encode_owned<'itm>(self, (): &mut ()) -> Self::CType
             where
                 Self: 'itm
             {
                 self.get()
             }
         }
-        impl<'d> SoftDecodeOwned<'d> for NonZero<$primitive> {
+        impl<'d> DecodeOwned<'d> for NonZero<$primitive> {
             type Store = ();
 
             #[inline(always)]
-            unsafe fn soft_decode<'itm: 'd>(source: Self::CType, (): &mut ()) -> Option<Self> {
+            unsafe fn soft_decode_owned<'itm: 'd>(source: Self::CType, (): &mut ()) -> Option<Self> {
                 Self::new(source)
             }
         }
 
-        impl SoftEncode for NonZero<$primitive> {}
-        impl SoftDecode<'_> for NonZero<$primitive> {}
+        impl Encode for NonZero<$primitive> {}
+        impl Decode<'_> for NonZero<$primitive> {}
 
         unsafe impl CheckedTransmute for NonZero<$primitive> {
             #[inline(always)]
@@ -111,7 +106,7 @@ non_zero_derive! {
 }
 
 impl ReprFamily for c_void {
-    type Kind = Transmuted<Robust>;
+    type Kind = ReprC<Robust>;
 }
 impl SizeFamily for c_void {
     // TODO: Shouldn't it be ExternTypeLike?
@@ -126,12 +121,12 @@ impl ExternC for c_void {
     type CType = Self;
 }
 
-unsafe impl ReprC for c_void {}
+unsafe impl RobustReprC for c_void {}
 
 // TODO: To support ZST types properly we should introduce better SizeFamily disambiguation
 // then we can implement for any ZST type including PhantomData
 impl ReprFamily for () {
-    type Kind = Transmuted<Robust>;
+    type Kind = ReprC<Robust>;
 }
 impl SizeFamily for () {
     type Kind = crate::size::Sized;
@@ -159,32 +154,34 @@ impl<'itm> ToOwned<'itm> for () {
 impl ExternC for () {
     type CType = Self;
 }
-impl SoftEncodeOwned for () {
+impl EncodeOwned for () {
     type Store = ();
 
     #[inline(always)]
-    fn soft_encode<'itm>(self, (): &'itm mut Self::Store) -> Self::CType
+    fn soft_encode_owned<'itm>(self, (): &'itm mut Self::Store) -> Self::CType
     where
         Self: 'itm,
     {
         self
     }
 }
-impl<'d> SoftDecodeOwned<'d> for () {
+impl<'d> DecodeOwned<'d> for () {
     type Store = ();
 
     #[inline(always)]
-    unsafe fn soft_decode<'itm: 'd>(source: Self::CType, (): &mut ()) -> Option<Self> {
+    unsafe fn soft_decode_owned<'itm: 'd>(source: Self::CType, (): &mut ()) -> Option<Self> {
         Some(source)
     }
 }
 
-impl SoftEncode for () {}
-impl SoftDecode<'_> for () {}
+impl Encode for () {}
+impl Decode<'_> for () {}
 
-unsafe impl ReprC for () {}
+unsafe impl RobustReprC for () {}
 unsafe impl BorrowCast for () {
     type AsConst = Self;
+}
+unsafe impl BorrowCastMut for () {
     type AsMut = Self;
 }
 
@@ -192,8 +189,8 @@ unsafe impl Erase for () {
     type Erased = Self;
 }
 
-impl<T: ReprFamily<Kind: Add<Transmuted<NonRobust>>> + ?Sized> ReprFamily for NonNull<T> {
-    type Kind = <T::Kind as Add<Transmuted<NonRobust>>>::Output;
+impl<T: ReprFamily<Kind: Add<ReprC<NonRobust>>> + ?Sized> ReprFamily for NonNull<T> {
+    type Kind = <T::Kind as Add<ReprC<NonRobust>>>::Output;
 }
 impl<T: ?Sized> SizeFamily for NonNull<T> {
     type Kind = crate::size::Sized;
@@ -225,38 +222,38 @@ impl<'itm, T: ?Sized + 'itm> ToOwned<'itm> for NonNull<T> {
     }
 }
 
-impl<T: ReprC + ?Sized> ExternC for NonNull<T> {
+impl<T: RobustReprC + ?Sized> ExternC for NonNull<T> {
     // TODO: afaik the pointer is not necessarily mutable just non-null
     type CType = <*mut T as ExternC>::CType;
 }
-impl<T: ReprC + ?Sized> SoftEncodeOwned for NonNull<T> {
-    type Store = <*mut T as SoftEncodeOwned>::Store;
+impl<T: RobustReprC + ?Sized> EncodeOwned for NonNull<T> {
+    type Store = <*mut T as EncodeOwned>::Store;
 
     #[inline(always)]
-    fn soft_encode<'itm>(self, store: &'itm mut Self::Store) -> Self::CType
+    fn soft_encode_owned<'itm>(self, store: &'itm mut Self::Store) -> Self::CType
     where
         Self: 'itm,
     {
-        self.as_ptr().soft_encode(store)
+        self.as_ptr().soft_encode_owned(store)
     }
 }
-impl<'d, T: ReprC + ?Sized> SoftDecodeOwned<'d> for NonNull<T> {
-    type Store = <*mut T as SoftDecodeOwned<'d>>::Store;
+impl<'d, T: RobustReprC + ?Sized> DecodeOwned<'d> for NonNull<T> {
+    type Store = <*mut T as DecodeOwned<'d>>::Store;
 
     #[inline(always)]
-    unsafe fn soft_decode<'itm: 'd>(
+    unsafe fn soft_decode_owned<'itm: 'd>(
         source: Self::CType,
         store: &'itm mut Self::Store,
     ) -> Option<Self> {
-        let ptr = unsafe { SoftDecodeOwned::soft_decode(source, store)? };
+        let ptr = unsafe { DecodeOwned::soft_decode_owned(source, store)? };
         NonNull::new(ptr)
     }
 }
 
-impl<T: ReprC + ?Sized> SoftEncode for NonNull<T> {}
-impl<T: ReprC + ?Sized> SoftDecode<'_> for NonNull<T> {}
+impl<T: RobustReprC + ?Sized> Encode for NonNull<T> {}
+impl<T: RobustReprC + ?Sized> Decode<'_> for NonNull<T> {}
 
-unsafe impl<T: ReprC + ?Sized> CheckedTransmute for NonNull<T> {
+unsafe impl<T: RobustReprC + ?Sized> CheckedTransmute for NonNull<T> {
     #[inline(always)]
     unsafe fn is_valid(target: &Self::CType) -> bool {
         !target.is_null()
@@ -267,7 +264,7 @@ unsafe impl<T: Erase + ?Sized> Erase for NonNull<T> {
     type Erased = NonNull<T::Erased>;
 }
 impl ReprFamily for str {
-    type Kind = Transmuted<NonRobust>;
+    type Kind = ReprC<NonRobust>;
 }
 impl SizeFamily for str {
     type Kind = MetaSized<SliceLike>;
@@ -321,32 +318,32 @@ impl ExternC for String {
     type CType = <Vec<u8> as ExternC>::CType;
 }
 #[cfg(feature = "alloc")]
-impl SoftEncodeOwned for String {
+impl EncodeOwned for String {
     type Store = ();
 
     #[inline(always)]
-    fn soft_encode<'itm>(self, (): &mut ()) -> Self::CType
+    fn soft_encode_owned<'itm>(self, (): &mut ()) -> Self::CType
     where
         Self: 'itm,
     {
-        self.into_bytes().encode()
+        EncodeOwned::encode_owned(self.into_bytes())
     }
 }
 #[cfg(feature = "alloc")]
-impl<'d> SoftDecodeOwned<'d> for String {
+impl<'d> DecodeOwned<'d> for String {
     type Store = ();
 
     #[inline(always)]
-    unsafe fn soft_decode<'itm: 'd>(source: Self::CType, (): &mut ()) -> Option<Self> {
-        let bytes = unsafe { DecodeOwned::decode(source)? };
+    unsafe fn soft_decode_owned<'itm: 'd>(source: Self::CType, (): &mut ()) -> Option<Self> {
+        let bytes = unsafe { DecodeOwned::decode_owned(source)? };
         String::from_utf8(bytes).ok()
     }
 }
 
 #[cfg(feature = "alloc")]
-impl SoftEncode for String {}
+impl Encode for String {}
 #[cfg(feature = "alloc")]
-impl SoftDecode<'_> for String {}
+impl Decode<'_> for String {}
 
 #[cfg(feature = "alloc")]
 impl Niche for String {
@@ -394,31 +391,31 @@ impl<'itm, T: ToOwned<'itm>> ToOwned<'itm> for UnsafeCell<T> {
 impl<R: ExternC + ?Sized> ExternC for UnsafeCell<R> {
     type CType = R::CType;
 }
-impl<R: SoftEncodeOwned<CType: Copy>> SoftEncodeOwned for UnsafeCell<R> {
+impl<R: EncodeOwned<CType: Copy>> EncodeOwned for UnsafeCell<R> {
     type Store = R::Store;
 
     #[inline(always)]
-    fn soft_encode<'itm>(self, store: &'itm mut Self::Store) -> Self::CType
+    fn soft_encode_owned<'itm>(self, store: &'itm mut Self::Store) -> Self::CType
     where
         Self: 'itm,
     {
-        self.into_inner().soft_encode(store)
+        self.into_inner().soft_encode_owned(store)
     }
 }
-impl<'d, R: SoftDecodeOwned<'d, CType: Copy>> SoftDecodeOwned<'d> for UnsafeCell<R> {
+impl<'d, R: DecodeOwned<'d, CType: Copy>> DecodeOwned<'d> for UnsafeCell<R> {
     type Store = R::Store;
 
     #[inline(always)]
-    unsafe fn soft_decode<'itm: 'd>(
+    unsafe fn soft_decode_owned<'itm: 'd>(
         source: Self::CType,
         store: &'itm mut Self::Store,
     ) -> Option<Self> {
-        unsafe { R::soft_decode(source, store) }.map(Self::new)
+        unsafe { R::soft_decode_owned(source, store) }.map(Self::new)
     }
 }
 
-impl<R: SoftEncode<CType: Copy>> SoftEncode for UnsafeCell<R> {}
-impl<'d, R: SoftDecode<'d, CType: Copy>> SoftDecode<'d> for UnsafeCell<R> {}
+impl<R: Encode<CType: Copy>> Encode for UnsafeCell<R> {}
+impl<'d, R: Decode<'d, CType: Copy>> Decode<'d> for UnsafeCell<R> {}
 
 unsafe impl<T: CheckedTransmute + ?Sized> CheckedTransmute for UnsafeCell<T> {
     #[inline(always)]
@@ -467,31 +464,31 @@ impl<'itm, T: ToOwned<'itm>> ToOwned<'itm> for Cell<T> {
 impl<R: ExternC + ?Sized> ExternC for Cell<R> {
     type CType = R::CType;
 }
-impl<R: SoftEncodeOwned<CType: Copy>> SoftEncodeOwned for Cell<R> {
+impl<R: EncodeOwned<CType: Copy>> EncodeOwned for Cell<R> {
     type Store = R::Store;
 
     #[inline(always)]
-    fn soft_encode<'itm>(self, store: &'itm mut Self::Store) -> Self::CType
+    fn soft_encode_owned<'itm>(self, store: &'itm mut Self::Store) -> Self::CType
     where
         Self: 'itm,
     {
-        self.into_inner().soft_encode(store)
+        self.into_inner().soft_encode_owned(store)
     }
 }
-impl<'d, R: SoftDecodeOwned<'d, CType: Copy>> SoftDecodeOwned<'d> for Cell<R> {
+impl<'d, R: DecodeOwned<'d, CType: Copy>> DecodeOwned<'d> for Cell<R> {
     type Store = R::Store;
 
     #[inline(always)]
-    unsafe fn soft_decode<'itm: 'd>(
+    unsafe fn soft_decode_owned<'itm: 'd>(
         source: Self::CType,
         store: &'itm mut Self::Store,
     ) -> Option<Self> {
-        unsafe { R::soft_decode(source, store) }.map(Self::new)
+        unsafe { R::soft_decode_owned(source, store) }.map(Self::new)
     }
 }
 
-impl<R: SoftEncode<CType: Copy>> SoftEncode for Cell<R> {}
-impl<'d, R: SoftDecode<'d, CType: Copy>> SoftDecode<'d> for Cell<R> {}
+impl<R: Encode<CType: Copy>> Encode for Cell<R> {}
+impl<'d, R: Decode<'d, CType: Copy>> Decode<'d> for Cell<R> {}
 
 unsafe impl<T: CheckedTransmute + ?Sized> CheckedTransmute for Cell<T> {
     #[inline(always)]
@@ -540,35 +537,35 @@ impl<'itm, T: ToOwned<'itm>> ToOwned<'itm> for ManuallyDrop<T> {
 impl<T: ExternC + ?Sized> ExternC for ManuallyDrop<T> {
     type CType = T::CType;
 }
-impl<R: SoftEncodeOwned<CType: Copy>> SoftEncodeOwned for ManuallyDrop<R> {
+impl<R: EncodeOwned<CType: Copy>> EncodeOwned for ManuallyDrop<R> {
     type Store = R::Store;
 
     #[inline(always)]
-    fn soft_encode<'itm>(self, store: &'itm mut Self::Store) -> Self::CType
+    fn soft_encode_owned<'itm>(self, store: &'itm mut Self::Store) -> Self::CType
     where
         Self: 'itm,
     {
         // FIXME: I think t's not ok to get owned type and encode it
-        // ManuallyDrop::into_inner(self).soft_encode(store)
+        // ManuallyDrop::into_inner(self).soft_encode_owned(store)
         unimplemented!()
     }
 }
-impl<'d, R: SoftDecodeOwned<'d, CType: Copy>> SoftDecodeOwned<'d> for ManuallyDrop<R> {
+impl<'d, R: DecodeOwned<'d, CType: Copy>> DecodeOwned<'d> for ManuallyDrop<R> {
     type Store = R::Store;
 
     #[inline(always)]
-    unsafe fn soft_decode<'itm: 'd>(
+    unsafe fn soft_decode_owned<'itm: 'd>(
         source: Self::CType,
         store: &'itm mut Self::Store,
     ) -> Option<Self> {
         // FIXME: I think t's not ok to get owned type and encode it
-        //unsafe { R::soft_decode(source, store) }.map(Self::new)
+        //unsafe { R::soft_decode_owned(source, store) }.map(Self::new)
         unimplemented!()
     }
 }
 
-impl<R: SoftEncode<CType: Copy>> SoftEncode for ManuallyDrop<R> {}
-impl<'d, R: SoftDecode<'d, CType: Copy>> SoftDecode<'d> for ManuallyDrop<R> {}
+impl<R: Encode<CType: Copy>> Encode for ManuallyDrop<R> {}
+impl<'d, R: Decode<'d, CType: Copy>> Decode<'d> for ManuallyDrop<R> {}
 
 unsafe impl<T: CheckedTransmute + ?Sized> CheckedTransmute for ManuallyDrop<T> {
     #[inline(always)]
@@ -606,21 +603,21 @@ mod tests {
     #[test]
     fn manually_drop_inner_without_drop() {
         assert_impl_all!(ManuallyDrop<u8>:
-            ReprFamily<Kind = Transmuted<Robust>>,
+            ReprFamily<Kind = ReprC<Robust>>,
             NicheFamily<Kind = WithoutNiche>,
             ExternC<CType = u8>,
             Decode<'static>,
             Encode,
         );
         assert_impl_all!(&ManuallyDrop<u8>:
-            ReprFamily<Kind = Transmuted<NonRobust>>,
+            ReprFamily<Kind = ReprC<NonRobust>>,
             NicheFamily<Kind = WithStableNiche>,
             StableNiche<CType = *const u8>,
             Decode<'static>,
             Encode,
         );
         assert_impl_all!(&mut ManuallyDrop<u8>:
-            ReprFamily<Kind = Transmuted<NonRobust>>,
+            ReprFamily<Kind = ReprC<NonRobust>>,
             NicheFamily<Kind = WithStableNiche>,
             StableNiche<CType = *mut u8>,
             Decode<'static>,
@@ -628,7 +625,7 @@ mod tests {
         );
         #[cfg(feature = "alloc")]
         assert_impl_all!(Box<ManuallyDrop<u8>>:
-            ReprFamily<Kind = Transmuted<NonRobust>>,
+            ReprFamily<Kind = ReprC<NonRobust>>,
             NicheFamily<Kind = WithStableNiche>,
             StableNiche<CType = CBox<u8>>,
             Decode<'static>,
@@ -665,7 +662,7 @@ mod tests {
             Encode,
         );
         assert_impl_all!([ManuallyDrop<u8>; 2]:
-            ReprFamily<Kind = Transmuted<Robust>>,
+            ReprFamily<Kind = ReprC<Robust>>,
             NicheFamily<Kind = WithoutNiche>,
             ExternC<CType = [u8; 2]>,
             Decode<'static>,
@@ -679,7 +676,7 @@ mod tests {
             Encode,
         );
 
-        assert_not_impl_any!(ManuallyDrop<u8>: ReprC);
+        assert_not_impl_any!(ManuallyDrop<u8>: RobustReprC);
     }
 
     #[cfg(feature = "alloc")]
@@ -696,15 +693,15 @@ mod tests {
             ReprFamily<Kind = ReprRust>,
             NicheFamily<Kind = WithStableNiche>,
             StableNiche<CType = *const CBoxedSlice<u8>>,
-            SoftDecode<'static>,
-            SoftEncode,
+            Decode<'static>,
+            Encode,
         );
         assert_impl_all!(&mut ManuallyDrop<String>:
             ReprFamily<Kind = ReprRust>,
             NicheFamily<Kind = WithStableNiche>,
             StableNiche<CType = *mut CBoxedSlice<u8>>,
-            SoftDecode<'static>,
-            SoftEncode,
+            Decode<'static>,
+            Encode,
         );
         assert_impl_all!(Box<ManuallyDrop<String>>:
             ReprFamily<Kind = ReprRust>,
@@ -717,15 +714,15 @@ mod tests {
             ReprFamily<Kind = ReprRust>,
             NicheFamily<Kind = WithCustomNiche>,
             Niche<CType = CSlice<CBoxedSlice<u8>>>,
-            SoftDecode<'static>,
-            SoftEncode,
+            Decode<'static>,
+            Encode,
         );
         assert_impl_all!(&mut [ManuallyDrop<String>]:
             ReprFamily<Kind = ReprRust>,
             NicheFamily<Kind = WithCustomNiche>,
             Niche<CType = CSliceMut<CBoxedSlice<u8>>>,
-            SoftDecode<'static>,
-            SoftEncode,
+            Decode<'static>,
+            Encode,
         );
         assert_impl_all!(Box<[ManuallyDrop<String>]>:
             ReprFamily<Kind = ReprRust>,
@@ -757,23 +754,18 @@ mod tests {
             Decode<'static>,
             Encode,
         );
-        assert_not_impl_any!(ManuallyDrop<String>: ReprC);
-
-        assert_not_impl_any!(&ManuallyDrop<String>: EncodeOwned, DecodeOwned<'static>);
-        assert_not_impl_any!(&[ManuallyDrop<String>]: EncodeOwned, DecodeOwned<'static>);
-        assert_not_impl_any!(&mut ManuallyDrop<String>: EncodeOwned, DecodeOwned<'static>);
-        assert_not_impl_any!(&mut [ManuallyDrop<String>]: EncodeOwned, DecodeOwned<'static>);
+        assert_not_impl_any!(ManuallyDrop<String>: RobustReprC);
 
         #[cfg(feature = "alloc")]
-        assert_not_impl_any!(Box<[ManuallyDrop<String>]>: SoftEncode, SoftDecode<'static>);
+        assert_not_impl_any!(Box<[ManuallyDrop<String>]>: Encode, Decode<'static>);
         #[cfg(feature = "alloc")]
-        assert_not_impl_any!(Vec<ManuallyDrop<String>>: SoftEncode, SoftDecode<'static>);
+        assert_not_impl_any!(Vec<ManuallyDrop<String>>: Encode, Decode<'static>);
     }
 
     #[test]
     fn str_is_supported() {
         assert_impl_all!(str:
-            ReprFamily<Kind = Transmuted<NonRobust>>,
+            ReprFamily<Kind = ReprC<NonRobust>>,
         );
 
         assert_impl_all!(&str:
@@ -789,7 +781,7 @@ mod tests {
             NicheFamily<Kind = WithCustomNiche>,
             Niche<CType = CSliceMut<u8>>,
             Decode<'static>,
-            SoftEncode,
+            Encode,
         );
         #[cfg(feature = "alloc")]
         assert_impl_all!(Box<str>:
@@ -799,22 +791,19 @@ mod tests {
             Decode<'static>,
             Encode,
         );
-
-        #[cfg(feature = "alloc")]
-        assert_not_impl_any!(&mut str: EncodeOwned);
     }
 
     #[test]
     fn robust_unsafe_cell() {
         assert_impl_all!(UnsafeCell<u8>:
-            ReprFamily<Kind = Transmuted<Robust>>,
+            ReprFamily<Kind = ReprC<Robust>>,
             NicheFamily<Kind = WithoutNiche>,
             ExternC<CType = u8>,
             Decode<'static>,
             Encode,
         );
         assert_impl_all!(&UnsafeCell<u8>:
-            ReprFamily<Kind = Transmuted<NonRobust>>,
+            ReprFamily<Kind = ReprC<NonRobust>>,
             NicheFamily<Kind = WithStableNiche>,
             StableNiche<CType = *const u8>,
             // FIXME: UnsafeCell refs are mut
@@ -823,7 +812,7 @@ mod tests {
             Encode,
         );
         assert_impl_all!(&mut UnsafeCell<u8>:
-            ReprFamily<Kind = Transmuted<NonRobust>>,
+            ReprFamily<Kind = ReprC<NonRobust>>,
             NicheFamily<Kind = WithStableNiche>,
             StableNiche<CType = *mut u8>,
             Decode<'static>,
@@ -831,7 +820,7 @@ mod tests {
         );
         #[cfg(feature = "alloc")]
         assert_impl_all!(Box<UnsafeCell<u8>>:
-            ReprFamily<Kind = Transmuted<NonRobust>>,
+            ReprFamily<Kind = ReprC<NonRobust>>,
             NicheFamily<Kind = WithStableNiche>,
             StableNiche<CType = CBox<u8>>,
             Decode<'static>,
@@ -868,7 +857,7 @@ mod tests {
             Encode,
         );
         assert_impl_all!([UnsafeCell<u8>; 2]:
-            ReprFamily<Kind = Transmuted<Robust>>,
+            ReprFamily<Kind = ReprC<Robust>>,
             NicheFamily<Kind = WithoutNiche>,
             ExternC<CType = [u8; 2]>,
             Decode<'static>,
@@ -882,20 +871,20 @@ mod tests {
             Encode,
         );
 
-        assert_not_impl_any!(UnsafeCell<u8>: ReprC);
+        assert_not_impl_any!(UnsafeCell<u8>: RobustReprC);
     }
 
     #[test]
     fn non_robust_unsafe_cell() {
         assert_impl_all!(UnsafeCell<NonZero<u8>>:
-            ReprFamily<Kind = Transmuted<NonRobust>>,
+            ReprFamily<Kind = ReprC<NonRobust>>,
             NicheFamily<Kind = WithoutNiche>,
             ExternC<CType = u8>,
             Decode<'static>,
             Encode,
         );
         assert_impl_all!(&UnsafeCell<NonZero<u8>>:
-            ReprFamily<Kind = Transmuted<NonRobust>>,
+            ReprFamily<Kind = ReprC<NonRobust>>,
             NicheFamily<Kind = WithStableNiche>,
             StableNiche<CType = *const u8>,
             // FIXME: UnsafeCell refs are mut
@@ -904,14 +893,14 @@ mod tests {
             Encode,
         );
         assert_impl_all!(&mut UnsafeCell<NonZero<u8>>:
-            ReprFamily<Kind = Transmuted<NonRobust>>,
+            ReprFamily<Kind = ReprC<NonRobust>>,
             NicheFamily<Kind = WithStableNiche>,
             StableNiche<CType = *mut u8>,
             Decode<'static>,
         );
         #[cfg(feature = "alloc")]
         assert_impl_all!(Box<UnsafeCell<NonZero<u8>>>:
-            ReprFamily<Kind = Transmuted<NonRobust>>,
+            ReprFamily<Kind = ReprC<NonRobust>>,
             NicheFamily<Kind = WithStableNiche>,
             StableNiche<CType = CBox<u8>>,
             Decode<'static>,
@@ -947,7 +936,7 @@ mod tests {
             Encode,
         );
         assert_impl_all!([UnsafeCell<NonZero<u8>>; 2]:
-            ReprFamily<Kind = Transmuted<NonRobust>>,
+            ReprFamily<Kind = ReprC<NonRobust>>,
             NicheFamily<Kind = WithoutNiche>,
             ExternC<CType = [u8; 2]>,
             Decode<'static>,
@@ -961,9 +950,6 @@ mod tests {
             Encode,
         );
 
-        assert_not_impl_any!(UnsafeCell<NonZero<u8>>: ReprC);
-
-        assert_not_impl_any!(&mut UnsafeCell<NonZero<u8>>: SoftEncodeOwned);
-        assert_not_impl_any!(&mut [UnsafeCell<NonZero<u8>>]: SoftEncodeOwned);
+        assert_not_impl_any!(UnsafeCell<NonZero<u8>>: RobustReprC);
     }
 }

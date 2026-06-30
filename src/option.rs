@@ -3,17 +3,17 @@
 use core::mem::MaybeUninit;
 
 use crate::{
-    CFnArg, ExternC, FfiReturn, ReprC, SoftDecode, SoftEncode,
-    borrow::{Borrow, BorrowCast, ToOwned},
+    CFnArg, Decode, Encode, ExternC, FfiReturn, RobustReprC,
+    borrow::{Borrow, BorrowCast, BorrowCastMut, ToOwned},
     handle::Erase,
     ir::ReprFamily,
     niche::{NicheFamily, WithoutNiche},
     size::SizeFamily,
-    stored::{SoftDecodeOwned, SoftEncodeOwned},
+    stored::{DecodeOwned, EncodeOwned},
     transmute::CheckedTransmute,
 };
 
-/// FFI-safe equivalent of [`core::option::Option`] for [`crate::ReprC`] types
+/// FFI-safe equivalent of [`core::option::Option`] for [`crate::RobustReprC`] types
 #[repr(C)]
 pub struct ReprCOption<T> {
     tag: u8,
@@ -185,34 +185,34 @@ impl<'itm, T: ToOwned<'itm>> ToOwned<'itm> for ReprCOption<T> {
 impl<T: ExternC<CType: Sized>> ExternC for ReprCOption<T> {
     type CType = ReprCOption<T::CType>;
 }
-impl<T: SoftEncodeOwned<CType: Copy>> SoftEncodeOwned for ReprCOption<T> {
+impl<T: EncodeOwned<CType: Copy>> EncodeOwned for ReprCOption<T> {
     type Store = T::Store;
 
     #[inline(always)]
-    fn soft_encode<'itm>(self, store: &'itm mut Self::Store) -> Self::CType
+    fn soft_encode_owned<'itm>(self, store: &'itm mut Self::Store) -> Self::CType
     where
         Self: 'itm,
     {
         match self.tag {
             1 => {
                 let payload = unsafe { self.payload.assume_init() };
-                ReprCOption::Some(payload.soft_encode(store))
+                ReprCOption::Some(payload.soft_encode_owned(store))
             }
             _ => self.forward_payload(),
         }
     }
 }
-impl<'d, T: SoftDecodeOwned<'d, CType: Copy>> SoftDecodeOwned<'d> for ReprCOption<T> {
+impl<'d, T: DecodeOwned<'d, CType: Copy>> DecodeOwned<'d> for ReprCOption<T> {
     type Store = T::Store;
 
     #[inline(always)]
-    unsafe fn soft_decode<'itm: 'd>(
+    unsafe fn soft_decode_owned<'itm: 'd>(
         source: Self::CType,
         store: &'itm mut Self::Store,
     ) -> Option<Self> {
         match source.tag {
             1 => {
-                let payload = unsafe { T::soft_decode(source.payload.assume_init(), store)? };
+                let payload = unsafe { T::soft_decode_owned(source.payload.assume_init(), store)? };
                 Some(Self::Some(payload))
             }
             _ => Some(source.forward_payload()),
@@ -220,8 +220,8 @@ impl<'d, T: SoftDecodeOwned<'d, CType: Copy>> SoftDecodeOwned<'d> for ReprCOptio
     }
 }
 
-impl<T: SoftEncode<CType: Copy>> SoftEncode for ReprCOption<T> {}
-impl<'d, T: SoftDecode<'d, CType: Copy>> SoftDecode<'d> for ReprCOption<T> {}
+impl<T: Encode<CType: Copy>> Encode for ReprCOption<T> {}
+impl<'d, T: Decode<'d, CType: Copy>> Decode<'d> for ReprCOption<T> {}
 
 unsafe impl<T: CheckedTransmute<CType: Copy>> CheckedTransmute for ReprCOption<T> {
     #[inline(always)]
@@ -233,11 +233,13 @@ unsafe impl<T: CheckedTransmute<CType: Copy>> CheckedTransmute for ReprCOption<T
     }
 }
 
-unsafe impl<T: ReprC> ReprC for ReprCOption<T> {}
-unsafe impl<T: ReprC + Copy> CFnArg for ReprCOption<T> {}
+unsafe impl<T: RobustReprC> RobustReprC for ReprCOption<T> {}
+unsafe impl<T: RobustReprC + Copy> CFnArg for ReprCOption<T> {}
 
-unsafe impl<T: BorrowCast> BorrowCast for ReprCOption<T> {
+unsafe impl<T: BorrowCast<AsConst: Copy> + Copy> BorrowCast for ReprCOption<T> {
     type AsConst = ReprCOption<T::AsConst>;
+}
+unsafe impl<T: BorrowCastMut<AsMut: Copy> + Copy> BorrowCastMut for ReprCOption<T> {
     type AsMut = ReprCOption<T::AsMut>;
 }
 unsafe impl<T: Erase<Erased: Sized>> Erase for ReprCOption<T> {

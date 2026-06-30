@@ -321,7 +321,7 @@ fn gen_input_conversion_stmts(inputs: &Punctuated<FnArg, syn::Token![,]>) -> Tok
             quote! {
                 let mut #store_name = Default::default();
 
-                let #arg_name = co3::SoftEncode::encode(
+                let #arg_name = co3::Encode::soft_encode(
                     #arg_name, &mut #store_name
                 );
             }

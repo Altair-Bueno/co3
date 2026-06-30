@@ -1,13 +1,13 @@
 //! Logic related to the conversion of slices to and from FFI-compatible representation
 
 use crate::{
-    CFnArg, ExternC, ReprC, SoftDecode, SoftEncode,
-    borrow::{Borrow, BorrowCast, ToOwned},
+    CFnArg, Decode, Encode, ExternC, RobustReprC,
+    borrow::{Borrow, BorrowCast, BorrowCastMut, ToOwned},
     handle::Erase,
     ir::ReprFamily,
     niche::{NicheFamily, WithoutNiche},
     size::SizeFamily,
-    stored::{SoftDecodeOwned, SoftEncodeOwned},
+    stored::{DecodeOwned, EncodeOwned},
     transmute::CheckedTransmute,
 };
 
@@ -184,10 +184,10 @@ macro_rules! impl_slice_carrier {
         impl<C: ReprFamily> ReprFamily for $ty<C> {
             type Kind = C::Kind;
         }
-        impl<C: ReprC> SizeFamily for $ty<C> {
+        impl<C: RobustReprC> SizeFamily for $ty<C> {
             type Kind = crate::size::Sized;
         }
-        impl<C: ReprC> NicheFamily for $ty<C> {
+        impl<C: RobustReprC> NicheFamily for $ty<C> {
             type Kind = WithoutNiche;
         }
 
@@ -214,43 +214,48 @@ macro_rules! impl_slice_carrier {
             }
         }
 
-        impl<C: ReprC> ExternC for $ty<C> {
+        impl<C: RobustReprC> ExternC for $ty<C> {
             type CType = Self;
         }
-        impl<C: ReprC> SoftEncodeOwned for $ty<C> {
+        impl<C: RobustReprC> EncodeOwned for $ty<C> {
             type Store = ();
 
             #[inline(always)]
-            fn soft_encode<'itm>(self, (): &mut ()) -> Self::CType
+            fn soft_encode_owned<'itm>(self, (): &mut ()) -> Self::CType
             where
                 Self: 'itm,
             {
                 self
             }
         }
-        impl<'d, C: ReprC> SoftDecodeOwned<'d> for $ty<C> {
+        impl<'d, C: RobustReprC> DecodeOwned<'d> for $ty<C> {
             type Store = ();
 
             #[inline(always)]
-            unsafe fn soft_decode<'itm: 'd>(source: Self::CType, (): &mut ()) -> Option<Self> {
+            unsafe fn soft_decode_owned<'itm: 'd>(
+                source: Self::CType,
+                (): &mut (),
+            ) -> Option<Self> {
                 Some(source)
             }
         }
 
-        impl<C: ReprC> SoftEncode for $ty<C> {}
-        impl<'d, C: ReprC> SoftDecode<'d> for $ty<C> {}
+        impl<C: RobustReprC> Encode for $ty<C> {}
+        impl<'d, C: RobustReprC> Decode<'d> for $ty<C> {}
 
-        unsafe impl<C: ReprC> CheckedTransmute for $ty<C> {
+        unsafe impl<C: RobustReprC> CheckedTransmute for $ty<C> {
             #[inline(always)]
             unsafe fn is_valid(_: &Self::CType) -> bool {
                 true
             }
         }
 
-        unsafe impl<C: ReprC> ReprC for $ty<C> {}
-        unsafe impl<C: ReprC> CFnArg for $ty<C> {}
-        unsafe impl<C: ReprC> BorrowCast for $ty<C> {
+        unsafe impl<C: RobustReprC> RobustReprC for $ty<C> {}
+        unsafe impl<C: RobustReprC> CFnArg for $ty<C> {}
+        unsafe impl<C: RobustReprC> BorrowCast for $ty<C> {
             type AsConst = Self;
+        }
+        unsafe impl<C: RobustReprC> BorrowCastMut for $ty<C> {
             type AsMut = Self;
         }
 

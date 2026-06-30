@@ -142,7 +142,7 @@ pub(crate) fn gen_input_decode_stmts<'a>(
         };
 
         let decode_call = if soft_for_arg(attrs) {
-            quote! { co3::SoftDecode::decode(#arg_name, &mut __co3_input_stores.#idx) }
+            quote! { co3::Decode::soft_decode(#arg_name, &mut __co3_input_stores.#idx) }
         } else {
             quote! { co3::Decode::decode(#arg_name) }
         };
@@ -165,7 +165,7 @@ pub(crate) fn gen_input_decode_stmts<'a>(
 
         value_tys.push(arg_ty);
         store_tys.push(if soft_for_arg(attrs) {
-            quote!(<#decode_ty as co3::stored::SoftDecodeOwned<'_>>::Store)
+            quote!(<#decode_ty as co3::stored::DecodeOwned<'_>>::Store)
         } else {
             quote!(())
         });

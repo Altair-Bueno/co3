@@ -20,18 +20,18 @@ pub use impls::impls;
 
 #[cfg(feature = "alloc")]
 use crate::{
-    borrow::BorrowCast,
+    borrow::{BorrowCast, BorrowCastMut},
     boxed::{CBox, CBoxedSlice},
 };
 use crate::{
-    ir::{NonRobust, ReprFamily, ReprRust, Transmuted},
+    ir::{NonRobust, ReprC, ReprFamily, ReprRust},
     niche::{NicheFamily, WithNiche, WithoutNiche},
     option::ReprCOption,
     out_ptr::Zst,
     result::ReprCResult,
     size::{MetaSized, SizeFamily, SliceLike, Thin, Wide},
     slice::{CSlice, CSliceMut},
-    stored::{ReprRustOrTransmutedNonRobust, SoftDecodeOwned, SoftEncodeOwned, Store},
+    stored::{DecodeOwned, EncodeOwned, ReprRustOrTransmutedNonRobust, Store},
 };
 
 #[cfg(feature = "alloc")]
@@ -74,33 +74,33 @@ pub enum FfiReturn {
 /// Robust type that conforms to C ABI and can be safely shared across FFI boundaries.
 ///
 /// Note that, for raw pointers, ABI compatibility of referent is not guaranteed. Dereferencing
-/// opaque/extern type pointers which don't also implement `ReprC` is very likely to cause UB.
+/// opaque/extern type pointers which don't also implement `RobustReprC` is very likely to cause UB.
 ///
 /// # Safety
 ///
 /// Type implementing the trait must have a guaranteed C ABI.
-pub unsafe trait ReprC {}
+pub unsafe trait RobustReprC {}
 
-/// `ReprC` type that is allowed as a C static.
+/// `RobustReprC` type that is allowed as a C static.
 ///
 /// # Safety
 ///
 /// Type must be allowed as a C static.
-pub unsafe trait CStatic: ReprC + Copy {}
+pub unsafe trait CStatic: RobustReprC + Copy {}
 
-/// `ReprC` type that is allowed as a C function argument.
+/// `RobustReprC` type that is allowed as a C function argument.
 ///
 /// # Safety
 ///
 /// Type must be allowed as a C function argument type.
-pub unsafe trait CFnArg: ReprC + Copy {}
+pub unsafe trait CFnArg: RobustReprC + Copy {}
 
-/// `ReprC` type that is allowed as a C function return value.
+/// `RobustReprC` type that is allowed as a C function return value.
 ///
 /// # Safety
 ///
 /// Type must be allowed as a C function return type.
-pub unsafe trait CFnReturn: ReprC + Copy {}
+pub unsafe trait CFnReturn: RobustReprC + Copy {}
 
 unsafe impl<T: CFnArg> CStatic for T {}
 unsafe impl<T: CFnArg, const N: usize> CStatic for [T; N] {}
@@ -108,28 +108,11 @@ unsafe impl<T: CFnArg, const N: usize> CStatic for [T; N] {}
 unsafe impl<T: CFnArg> CFnReturn for T {}
 unsafe impl CFnReturn for () {}
 
-/// Refer to [`SoftEncode`]
-pub trait Encode: SoftEncode {
-    fn encode<'itm>(self) -> Self::CType
-    where
-        Self: 'itm;
-}
-
-/// Refer to [`SoftDecode`]
-pub trait Decode<'d>: SoftDecode<'d> {
-    /// Perform the conversion from [`Self::CType`] into [`Self`]
-    ///
-    /// # Safety
-    ///
-    /// - All conversions from a pointer must ensure pointer validity beforehand
-    unsafe fn decode(source: Self::CType) -> Option<Self>;
-}
-
 disjoint_impls! {
     /// A Rust type that has an `extern "C"` ABI
     pub trait ExternC {
         /// The C-compatible representation of this Rust type.
-        type CType: ReprC + ?Sized;
+        type CType: RobustReprC + ?Sized;
     }
 
     impl<R: ReprFamily + SizeFamily<Kind: Thin> + ExternC + ?Sized> ExternC for &R
@@ -138,7 +121,7 @@ disjoint_impls! {
     {
         type CType = *const R::CType;
     }
-    impl<R: ReprFamily<Kind = Transmuted<K>> + SizeFamily<Kind = MetaSized<SliceLike>> + ?Sized, K> ExternC for &R
+    impl<R: ReprFamily<Kind = ReprC<K>> + SizeFamily<Kind = MetaSized<SliceLike>> + ?Sized, K> ExternC for &R
     where
         Self: ReprFamily<Kind = ReprRust>,
         R: Wide<Data: ExternC, Metadata = usize>,
@@ -161,7 +144,7 @@ disjoint_impls! {
     {
         type CType = *mut R::CType;
     }
-    impl<R: ReprFamily<Kind = Transmuted<K>> + SizeFamily<Kind = MetaSized<SliceLike>> + ?Sized, K> ExternC for &mut R
+    impl<R: ReprFamily<Kind = ReprC<K>> + SizeFamily<Kind = MetaSized<SliceLike>> + ?Sized, K> ExternC for &mut R
     where
         Self: ReprFamily<Kind = ReprRust>,
         R: Wide<Data: ExternC, Metadata = usize>,
@@ -173,9 +156,9 @@ disjoint_impls! {
     impl<R: ReprFamily<Kind = ReprRust> + SizeFamily<Kind = MetaSized<K>> + ?Sized, K> ExternC for &mut R
     where
         Self: ReprFamily<Kind = ReprRust>,
-        R: ToOwned<Owned: ExternC<CType: BorrowCast>>,
+        R: ToOwned<Owned: ExternC<CType: BorrowCastMut>>,
     {
-        type CType = <<R::Owned as ExternC>::CType as BorrowCast>::AsMut;
+        type CType = <<R::Owned as ExternC>::CType as BorrowCastMut>::AsMut;
     }
 
     #[cfg(feature = "alloc")]
@@ -187,7 +170,7 @@ disjoint_impls! {
         type CType = CBox<R::CType>;
     }
     #[cfg(feature = "alloc")]
-    impl<R: ReprFamily<Kind = Transmuted<K>> + SizeFamily<Kind = MetaSized<SliceLike>> + ?Sized, K> ExternC for Box<R>
+    impl<R: ReprFamily<Kind = ReprC<K>> + SizeFamily<Kind = MetaSized<SliceLike>> + ?Sized, K> ExternC for Box<R>
     where
         Self: ReprFamily<Kind = ReprRust>,
         R: Wide<Data: ExternC, Metadata = usize>,
@@ -231,54 +214,83 @@ disjoint_impls! {
 
 disjoint_impls! {
     /// Facilitates conversion from a Rust type into a corresponding C-compatible representation.
-    pub trait SoftEncode: SoftEncodeOwned {}
+    pub trait Encode: EncodeOwned {
+        fn soft_encode<'itm>(self, store: &'itm mut Self::Store) -> Self::CType
+        where
+            Self: 'itm,
+        {
+            self.soft_encode_owned(store)
+        }
+
+        fn encode(self) -> Self::CType
+        where
+            Self::Store: Zst,
+        {
+            self.encode_owned()
+        }
+    }
 
     #[cfg(feature = "alloc")]
-    impl<R: ?Sized, K> SoftEncode for Box<R>
+    impl<R: ?Sized, K> Encode for Box<R>
     where
-        Self: ReprFamily<Kind = Transmuted<K>> + SoftEncodeOwned,
+        Self: ReprFamily<Kind = ReprC<K>> + EncodeOwned,
     {}
     #[cfg(feature = "alloc")]
-    impl<R: ReprFamily<Kind = Transmuted<K>> + ?Sized, K> SoftEncode for Box<R>
+    impl<R: ReprFamily<Kind = ReprC<K>> + ?Sized, K> Encode for Box<R>
     where
-        Self: ReprFamily<Kind = ReprRust> + SoftEncodeOwned,
+        Self: ReprFamily<Kind = ReprRust> + EncodeOwned,
     {}
 }
 
 disjoint_impls! {
     /// Facilitates conversion into a Rust type from a corresponding C-compatible representation.
-    pub trait SoftDecode<'d>: SoftDecodeOwned<'d> {}
+    pub trait Decode<'d>: DecodeOwned<'d> {
+        unsafe fn soft_decode<'itm: 'd>(
+            source: Self::CType,
+            store: &'itm mut Self::Store,
+        ) -> Option<Self> {
+            unsafe { DecodeOwned::soft_decode_owned(source, store) }
+        }
+
+        /// Perform the conversion from [`Self::CType`] into [`Self`] without external storage.
+        ///
+        /// # Safety
+        ///
+        /// - All conversions from a pointer must ensure pointer validity beforehand
+        unsafe fn decode(source: Self::CType) -> Option<Self>
+        where
+            Self::Store: Zst + 'd,
+        {
+            unsafe { DecodeOwned::decode_owned(source) }
+        }
+    }
 
     #[cfg(feature = "alloc")]
-    impl<'d, R: ?Sized, K> SoftDecode<'d> for Box<R>
+    impl<'d, R: ?Sized, K> Decode<'d> for Box<R>
     where
-        Self: ReprFamily<Kind = Transmuted<K>> + SoftDecodeOwned<'d>,
+        Self: ReprFamily<Kind = ReprC<K>> + DecodeOwned<'d>,
     {}
     #[cfg(feature = "alloc")]
-    impl<'d, R: ReprFamily<Kind = Transmuted<K>> + ?Sized, K> SoftDecode<'d> for Box<R>
+    impl<'d, R: ReprFamily<Kind = ReprC<K>> + ?Sized, K> Decode<'d> for Box<R>
     where
-        Self: ReprFamily<Kind = ReprRust> + SoftDecodeOwned<'d>,
+        Self: ReprFamily<Kind = ReprRust> + DecodeOwned<'d>,
     {}
 }
 
-impl<R: ?Sized> SoftEncode for &R where Self: SoftEncodeOwned {}
-impl<R: ?Sized> SoftEncode for &mut R where Self: SoftEncodeOwned {}
+impl<R: ?Sized> Encode for &R where Self: EncodeOwned {}
+impl<R: ?Sized> Encode for &mut R where Self: EncodeOwned {}
 
-impl<'d, R: ?Sized> SoftDecode<'d> for &'d R where Self: SoftDecodeOwned<'d> {}
-impl<'d, R: ?Sized> SoftDecode<'d> for &'d mut R where Self: SoftDecodeOwned<'d> {}
+impl<'d, R: ?Sized> Decode<'d> for &'d R where Self: DecodeOwned<'d> {}
+impl<'d, R: ?Sized> Decode<'d> for &'d mut R where Self: DecodeOwned<'d> {}
 
-impl<R: SoftEncode, const N: usize> SoftEncode for [R; N] where Self: SoftEncodeOwned {}
-impl<'d, R: SoftDecode<'d>, const N: usize> SoftDecode<'d> for [R; N] where Self: SoftDecodeOwned<'d>
-{}
+impl<R: Encode, const N: usize> Encode for [R; N] where Self: EncodeOwned {}
+impl<'d, R: Decode<'d>, const N: usize> Decode<'d> for [R; N] where Self: DecodeOwned<'d> {}
 
-impl<R: SoftEncode> SoftEncode for Option<R> where Self: SoftEncodeOwned {}
-impl<'d, R: SoftDecode<'d>> SoftDecode<'d> for Option<R> where Self: SoftDecodeOwned<'d> {}
+impl<R: Encode> Encode for Option<R> where Self: EncodeOwned {}
+impl<'d, R: Decode<'d>> Decode<'d> for Option<R> where Self: DecodeOwned<'d> {}
 
-impl<R: SoftEncode, E: SoftEncode> SoftEncode for Result<R, E> where Self: SoftEncodeOwned {}
-impl<'d, R: SoftDecode<'d>, E: SoftDecode<'d>> SoftDecode<'d> for Result<R, E> where
-    Self: SoftDecodeOwned<'d>
-{
-}
+impl<R: Encode, E: Encode> Encode for Result<R, E> where Self: EncodeOwned {}
+impl<'d, R: Decode<'d>, E: Decode<'d>> Decode<'d> for Result<R, E> where Self: DecodeOwned<'d> {}
 
 #[cfg(feature = "alloc")]
 impl<R: ExternC<CType: Sized>> ExternC for Vec<R> {
@@ -286,38 +298,18 @@ impl<R: ExternC<CType: Sized>> ExternC for Vec<R> {
 }
 
 #[cfg(feature = "alloc")]
-impl<R> SoftEncode for Vec<R>
+impl<R> Encode for Vec<R>
 where
-    Self: SoftEncodeOwned,
-    Box<[R]>: SoftEncode,
+    Self: EncodeOwned,
+    Box<[R]>: Encode,
 {
 }
 #[cfg(feature = "alloc")]
-impl<'d, R> SoftDecode<'d> for Vec<R>
+impl<'d, R> Decode<'d> for Vec<R>
 where
-    Self: SoftDecodeOwned<'d>,
-    Box<[R]>: SoftDecode<'d>,
+    Self: DecodeOwned<'d>,
+    Box<[R]>: Decode<'d>,
 {
-}
-
-impl<R: SoftEncode<Store: Zst>> Encode for R {
-    fn encode<'itm>(self) -> Self::CType
-    where
-        Self: 'itm,
-    {
-        let mut store = Default::default();
-        self.soft_encode(&mut store)
-    }
-}
-
-impl<'d, R: SoftDecode<'d, Store: Zst> + 'd> Decode<'d> for R {
-    unsafe fn decode(source: Self::CType) -> Option<Self> {
-        let mut store = Default::default();
-        // SAFETY: `Decode` is only blanket-implemented for zero-sized stores, so extending the
-        // borrow of the local store does not extend the lifetime of any backing data.
-        let store = unsafe { core::mem::transmute::<&mut R::Store, &'d mut R::Store>(&mut store) };
-        unsafe { Self::soft_decode(source, store) }
-    }
 }
 
 // TODO: Check https://github.com/mversic/co3/issues/13

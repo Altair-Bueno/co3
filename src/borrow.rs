@@ -1,9 +1,9 @@
 #[cfg(feature = "alloc")]
-use alloc_crate::{borrow::ToOwned as StdToOwned, boxed::Box, string::String, vec::Vec};
+use alloc_crate::{borrow::ToOwned as StdToOwned, boxed::Box, vec::Vec};
 
 #[cfg(feature = "alloc")]
 use crate::size::{MetaSized, SizeFamily};
-use crate::{ReprC, stored::ArrayStore};
+use crate::{RobustReprC, stored::ArrayStore};
 
 // TODO: Remove this once extern types are stable
 // https://github.com/rust-lang/rust/issues/43467
@@ -14,24 +14,28 @@ impl<K> NonExternTypeLike for MetaSized<K> {}
 #[cfg(feature = "alloc")]
 impl NonExternTypeLike for crate::size::Sized {}
 
+// TODO: ?Sized bound is nonsensical but required for derives to work
 /// A layout-compatible borrowed view of a robust C representation.
 ///
 /// # Safety
 ///
 /// - only owned to borrowed pointer casting is allowed
-// TODO: Stupid trait with a stupid name and stupid bounds
-pub unsafe trait BorrowCast: ReprC + Sized {
-    type AsConst: ReprC;
-    type AsMut: ReprC;
+// TODO: Stupid trait with a stupid name
+pub unsafe trait BorrowCast: RobustReprC {
+    type AsConst: RobustReprC + ?Sized;
+}
+
+pub unsafe trait BorrowCastMut: RobustReprC {
+    type AsMut: RobustReprC + ?Sized;
 }
 
 #[inline(always)]
-pub fn borrow_cast<C: BorrowCast>(source: C) -> C::AsConst {
+pub fn borrow_cast<C: BorrowCast<AsConst: Copy> + Copy>(source: C) -> C::AsConst {
     unsafe { core::mem::transmute_copy(&source) }
 }
 
 #[inline(always)]
-pub fn borrow_cast_mut<C: BorrowCast>(source: C) -> C::AsMut {
+pub fn borrow_cast_mut<C: BorrowCastMut<AsMut: Copy> + Copy>(source: C) -> C::AsMut {
     unsafe { core::mem::transmute_copy(&source) }
 }
 

@@ -439,7 +439,6 @@ pub fn gen_borrow_cast_eq_bounds(fields: &[&syn::Type]) -> TokenStream {
 
         quote! {
             #borrowed_ty: co3::ExternC<
-            // FIXME: Is this required? what about CheckedTransmute
                 CType = <<#ty as co3::ExternC>::CType as co3::borrow::BorrowCast>::AsConst
             >
         }

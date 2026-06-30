@@ -67,16 +67,16 @@ impl Drop for DataEnumWithDrop {
 }
 
 #[derive(ReprC)]
-enum NoReprDataEnumWithoutDrop {
+enum ReprRustDataEnumWithoutDrop {
     A(u8),
 }
 
 #[derive(ReprC)]
-enum NoReprDataEnumWithDrop {
+enum ReprRustDataEnumWithDrop {
     A(u8),
 }
 
-impl Drop for NoReprDataEnumWithDrop {
+impl Drop for ReprRustDataEnumWithDrop {
     fn drop(&mut self) {}
 }
 
@@ -105,12 +105,12 @@ impl Drop for TransparentStructWithDrop {
 }
 
 #[derive(ReprC)]
-struct NoReprStructWithoutDrop(u8);
+struct ReprRustStructWithoutDrop(u8);
 
 #[derive(ReprC)]
-struct NoReprStructWithDrop(u8);
+struct ReprRustStructWithDrop(u8);
 
-impl Drop for NoReprStructWithDrop {
+impl Drop for ReprRustStructWithDrop {
     fn drop(&mut self) {}
 }
 

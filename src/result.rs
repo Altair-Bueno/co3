@@ -3,13 +3,13 @@
 use core::{mem::MaybeUninit, ops::Add};
 
 use crate::{
-    CFnArg, ExternC, FfiReturn, ReprC, SoftDecode, SoftEncode,
-    borrow::{Borrow, BorrowCast, ToOwned},
+    CFnArg, Decode, Encode, ExternC, FfiReturn, RobustReprC,
+    borrow::{Borrow, BorrowCast, BorrowCastMut, ToOwned},
     handle::Erase,
     ir::ReprFamily,
     niche::{NicheFamily, WithoutNiche},
     size::SizeFamily,
-    stored::{SoftDecodeOwned, SoftEncodeOwned},
+    stored::{DecodeOwned, EncodeOwned},
     transmute::CheckedTransmute,
 };
 
@@ -230,13 +230,13 @@ where
 impl<T: ExternC<CType: Copy> + Copy, E: ExternC<CType: Copy> + Copy> ExternC for ReprCResult<T, E> {
     type CType = ReprCResult<T::CType, E::CType>;
 }
-impl<T: SoftEncodeOwned<CType: Copy> + Copy, E: SoftEncodeOwned<CType: Copy> + Copy> SoftEncodeOwned
+impl<T: EncodeOwned<CType: Copy> + Copy, E: EncodeOwned<CType: Copy> + Copy> EncodeOwned
     for ReprCResult<T, E>
 {
     type Store = Option<Result<T::Store, E::Store>>;
 
     #[inline(always)]
-    fn soft_encode<'itm>(self, store: &'itm mut Self::Store) -> Self::CType
+    fn soft_encode_owned<'itm>(self, store: &'itm mut Self::Store) -> Self::CType
     where
         Self: 'itm,
     {
@@ -246,26 +246,26 @@ impl<T: SoftEncodeOwned<CType: Copy> + Copy, E: SoftEncodeOwned<CType: Copy> + C
                     unreachable!()
                 };
 
-                ReprCResult::Ok(unsafe { self.ok.1.assume_init() }.soft_encode(store))
+                ReprCResult::Ok(unsafe { self.ok.1.assume_init() }.soft_encode_owned(store))
             }
             1 => {
                 let Result::Err(store) = store.insert(Result::Err(Default::default())) else {
                     unreachable!()
                 };
 
-                ReprCResult::Err(unsafe { self.err.1.assume_init() }.soft_encode(store))
+                ReprCResult::Err(unsafe { self.err.1.assume_init() }.soft_encode_owned(store))
             }
             _ => self.forward_payload(),
         }
     }
 }
-impl<'d, T: SoftDecodeOwned<'d, CType: Copy> + Copy, E: SoftDecodeOwned<'d, CType: Copy> + Copy>
-    SoftDecodeOwned<'d> for ReprCResult<T, E>
+impl<'d, T: DecodeOwned<'d, CType: Copy> + Copy, E: DecodeOwned<'d, CType: Copy> + Copy>
+    DecodeOwned<'d> for ReprCResult<T, E>
 {
     type Store = Option<Result<T::Store, E::Store>>;
 
     #[inline(always)]
-    unsafe fn soft_decode<'itm: 'd>(
+    unsafe fn soft_decode_owned<'itm: 'd>(
         source: Self::CType,
         store: &'itm mut Self::Store,
     ) -> Option<Self> {
@@ -276,7 +276,7 @@ impl<'d, T: SoftDecodeOwned<'d, CType: Copy> + Copy, E: SoftDecodeOwned<'d, CTyp
                 };
 
                 Some(Self::Ok(unsafe {
-                    T::soft_decode(source.ok.1.assume_init(), store)?
+                    T::soft_decode_owned(source.ok.1.assume_init(), store)?
                 }))
             }
             1 => {
@@ -285,7 +285,7 @@ impl<'d, T: SoftDecodeOwned<'d, CType: Copy> + Copy, E: SoftDecodeOwned<'d, CTyp
                 };
 
                 Some(Self::Err(unsafe {
-                    E::soft_decode(source.err.1.assume_init(), store)?
+                    E::soft_decode_owned(source.err.1.assume_init(), store)?
                 }))
             }
             _ => Some(source.forward_payload()),
@@ -293,12 +293,9 @@ impl<'d, T: SoftDecodeOwned<'d, CType: Copy> + Copy, E: SoftDecodeOwned<'d, CTyp
     }
 }
 
-impl<T: SoftEncode<CType: Copy> + Copy, E: SoftEncode<CType: Copy> + Copy> SoftEncode
+impl<T: Encode<CType: Copy> + Copy, E: Encode<CType: Copy> + Copy> Encode for ReprCResult<T, E> {}
+impl<'d, T: Decode<'d, CType: Copy> + Copy, E: Decode<'d, CType: Copy> + Copy> Decode<'d>
     for ReprCResult<T, E>
-{
-}
-impl<'d, T: SoftDecode<'d, CType: Copy> + Copy, E: SoftDecode<'d, CType: Copy> + Copy>
-    SoftDecode<'d> for ReprCResult<T, E>
 {
 }
 
@@ -315,15 +312,18 @@ unsafe impl<T: CheckedTransmute<CType: Copy> + Copy, E: CheckedTransmute<CType: 
     }
 }
 
-unsafe impl<T: ReprC + Copy, E: ReprC + Copy> ReprC for ReprCResult<T, E> {}
-unsafe impl<T: ReprC + Copy, E: ReprC + Copy> CFnArg for ReprCResult<T, E> {}
+unsafe impl<T: RobustReprC + Copy, E: RobustReprC + Copy> RobustReprC for ReprCResult<T, E> {}
+unsafe impl<T: RobustReprC + Copy, E: RobustReprC + Copy> CFnArg for ReprCResult<T, E> {}
 
-unsafe impl<
-    T: BorrowCast<AsConst: Copy, AsMut: Copy> + Copy,
-    E: BorrowCast<AsConst: Copy, AsMut: Copy> + Copy,
-> BorrowCast for ReprCResult<T, E>
+unsafe impl<T: BorrowCast<AsConst: Copy> + Copy, E: BorrowCast<AsConst: Copy> + Copy> BorrowCast
+    for ReprCResult<T, E>
 {
     type AsConst = ReprCResult<T::AsConst, E::AsConst>;
+}
+
+unsafe impl<T: BorrowCastMut<AsMut: Copy> + Copy, E: BorrowCastMut<AsMut: Copy> + Copy>
+    BorrowCastMut for ReprCResult<T, E>
+{
     type AsMut = ReprCResult<T::AsMut, E::AsMut>;
 }
 

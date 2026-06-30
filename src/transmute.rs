@@ -109,39 +109,38 @@ mod tests {
     #[cfg(feature = "alloc")]
     use crate::boxed::CBoxedSlice;
     use crate::{
-        Decode, Encode, ReprC, SoftEncode,
-        ir::{NonRobust, ReprFamily, ReprRust, Transmuted},
+        Decode, Encode, RobustReprC,
+        ir::{NonRobust, ReprC, ReprFamily, ReprRust},
         niche::{Niche, NicheFamily, WithCustomNiche, WithStableNiche, WithoutNiche},
         slice::{CSlice, CSliceMut},
-        stored::{EncodeOwned, SoftEncodeOwned},
     };
 
     #[test]
     fn transparent_type() {
         assert_impl_all!(bool:
-            ReprFamily<Kind = Transmuted<NonRobust>>,
+            ReprFamily<Kind = ReprC<NonRobust>>,
             NicheFamily<Kind = WithCustomNiche>,
             Niche<CType = u8>,
             Decode<'static>,
             Encode,
         );
         assert_impl_all!(&bool:
-            ReprFamily<Kind = Transmuted<NonRobust>>,
+            ReprFamily<Kind = ReprC<NonRobust>>,
             NicheFamily<Kind = WithStableNiche>,
             StableNiche<CType = *const u8>,
             Decode<'static>,
             Encode,
         );
         assert_impl_all!(&mut bool:
-            ReprFamily<Kind = Transmuted<NonRobust>>,
+            ReprFamily<Kind = ReprC<NonRobust>>,
             NicheFamily<Kind = WithStableNiche>,
             StableNiche<CType = *mut u8>,
             Decode<'static>,
-            SoftEncode,
+            Encode,
         );
         #[cfg(feature = "alloc")]
         assert_impl_all!(Box<bool>:
-            ReprFamily<Kind = Transmuted<NonRobust>>,
+            ReprFamily<Kind = ReprC<NonRobust>>,
             NicheFamily<Kind = WithStableNiche>,
             StableNiche<CType = CBox<u8>>,
             Decode<'static>,
@@ -160,7 +159,7 @@ mod tests {
             NicheFamily<Kind = WithCustomNiche>,
             Niche<CType = CSliceMut<u8>>,
             Decode<'static>,
-            SoftEncode,
+            Encode,
         );
         #[cfg(feature = "alloc")]
         assert_impl_all!(Box<[bool]>:
@@ -179,7 +178,7 @@ mod tests {
             Encode,
         );
         assert_impl_all!([bool; 2]:
-            ReprFamily<Kind = Transmuted<NonRobust>>,
+            ReprFamily<Kind = ReprC<NonRobust>>,
             NicheFamily<Kind = WithCustomNiche>,
             Niche<CType = [u8; 2]>,
             Decode<'static>,
@@ -192,30 +191,27 @@ mod tests {
             Decode<'static>,
             Encode,
         );
-
-        assert_not_impl_any!(&mut bool: EncodeOwned);
-        assert_not_impl_any!(&mut [bool]: EncodeOwned);
     }
 
     #[test]
     fn robust_ref() {
         assert_impl_all!(&&u8:
-            ReprFamily<Kind = Transmuted<NonRobust>>,
+            ReprFamily<Kind = ReprC<NonRobust>>,
             NicheFamily<Kind = WithStableNiche>,
             StableNiche<CType = *const *const u8>,
             Decode<'static>,
             Encode,
         );
         assert_impl_all!(&mut &u8:
-            ReprFamily<Kind = Transmuted<NonRobust>>,
+            ReprFamily<Kind = ReprC<NonRobust>>,
             NicheFamily<Kind = WithStableNiche>,
             StableNiche<CType = *mut *const u8>,
             Decode<'static>,
-            SoftEncode,
+            Encode,
         );
         #[cfg(feature = "alloc")]
         assert_impl_all!(Box<&bool>:
-            ReprFamily<Kind = Transmuted<NonRobust>>,
+            ReprFamily<Kind = ReprC<NonRobust>>,
             NicheFamily<Kind = WithStableNiche>,
             StableNiche<CType = CBox<*const u8>>,
             Decode<'static>,
@@ -251,7 +247,7 @@ mod tests {
             Encode,
         );
         assert_impl_all!([&u8; 2]:
-            ReprFamily<Kind = Transmuted<NonRobust>>,
+            ReprFamily<Kind = ReprC<NonRobust>>,
             NicheFamily<Kind = WithCustomNiche>,
             Niche<CType = [*const u8; 2]>,
             Decode<'static>,
@@ -259,39 +255,36 @@ mod tests {
         );
         assert_impl_all!(Option<&u8>:
             // FIXME:
-            //ReprFamily<Kind = Transmuted<Robust>>,
-            ReprFamily<Kind = Transmuted<NonRobust>>,
+            //ReprFamily<Kind = ReprC<Robust>>,
+            ReprFamily<Kind = ReprC<NonRobust>>,
             NicheFamily<Kind = WithoutNiche>,
             ExternC<CType = *const u8>,
             Decode<'static>,
             Encode,
         );
 
-        assert_not_impl_any!(Option<&u8>: ReprC);
-
-        assert_not_impl_any!(&mut &u8: EncodeOwned);
-        assert_not_impl_any!(&mut [&u8]: EncodeOwned);
+        assert_not_impl_any!(Option<&u8>: RobustReprC);
     }
 
     #[test]
     fn transparent_ref() {
         assert_impl_all!(&&bool:
-            ReprFamily<Kind = Transmuted<NonRobust>>,
+            ReprFamily<Kind = ReprC<NonRobust>>,
             NicheFamily<Kind = WithStableNiche>,
             StableNiche<CType = *const *const u8>,
             Decode<'static>,
             Encode,
         );
         assert_impl_all!(&mut &bool:
-            ReprFamily<Kind = Transmuted<NonRobust>>,
+            ReprFamily<Kind = ReprC<NonRobust>>,
             NicheFamily<Kind = WithStableNiche>,
             StableNiche<CType = *mut *const u8>,
             Decode<'static>,
-            SoftEncode,
+            Encode,
         );
         #[cfg(feature = "alloc")]
         assert_impl_all!(Box<&bool>:
-            ReprFamily<Kind = Transmuted<NonRobust>>,
+            ReprFamily<Kind = ReprC<NonRobust>>,
             NicheFamily<Kind = WithStableNiche>,
             StableNiche<CType = CBox<*const u8>>,
             Decode<'static>,
@@ -310,7 +303,7 @@ mod tests {
             NicheFamily<Kind = WithCustomNiche>,
             Niche<CType = CSliceMut<*const u8>>,
             Decode<'static>,
-            SoftEncode,
+            Encode,
         );
         #[cfg(feature = "alloc")]
         assert_impl_all!(Box<[&bool]>:
@@ -329,46 +322,43 @@ mod tests {
             Encode,
         );
         assert_impl_all!([&bool; 2]:
-            ReprFamily<Kind = Transmuted<NonRobust>>,
+            ReprFamily<Kind = ReprC<NonRobust>>,
             NicheFamily<Kind = WithCustomNiche>,
             Niche<CType = [*const u8; 2]>,
             Decode<'static>,
             Encode,
         );
         assert_impl_all!(Option<&bool>:
-            ReprFamily<Kind = Transmuted<NonRobust>>,
+            ReprFamily<Kind = ReprC<NonRobust>>,
             NicheFamily<Kind = WithoutNiche>,
             ExternC<CType = *const u8>,
             Decode<'static>,
             Encode,
         );
-
-        assert_not_impl_any!(&mut &bool: EncodeOwned);
-        assert_not_impl_any!(&mut [&bool]: EncodeOwned);
     }
 
     #[test]
     fn robust_ref_mut() {
         assert_impl_all!(&&mut u8:
-            ReprFamily<Kind = Transmuted<NonRobust>>,
+            ReprFamily<Kind = ReprC<NonRobust>>,
             NicheFamily<Kind = WithStableNiche>,
             StableNiche<CType = *const *mut u8>,
             Decode<'static>,
             Encode,
         );
         assert_impl_all!(&mut &mut u8:
-            ReprFamily<Kind = Transmuted<NonRobust>>,
+            ReprFamily<Kind = ReprC<NonRobust>>,
             NicheFamily<Kind = WithStableNiche>,
             StableNiche<CType = *mut *mut u8>,
             Decode<'static>,
         );
         #[cfg(feature = "alloc")]
         assert_impl_all!(Box<&mut u8>:
-            ReprFamily<Kind = Transmuted<NonRobust>>,
+            ReprFamily<Kind = ReprC<NonRobust>>,
             NicheFamily<Kind = WithStableNiche>,
             StableNiche<CType = CBox<*mut u8>>,
             Decode<'static>,
-            SoftEncode,
+            Encode,
         );
         assert_impl_all!(&[&mut u8]:
             ReprFamily<Kind = ReprRust>,
@@ -400,7 +390,7 @@ mod tests {
             Encode,
         );
         assert_impl_all!([&mut u8; 2]:
-            ReprFamily<Kind = Transmuted<NonRobust>>,
+            ReprFamily<Kind = ReprC<NonRobust>>,
             NicheFamily<Kind = WithCustomNiche>,
             Niche<CType = [*mut u8; 2]>,
             Decode<'static>,
@@ -408,42 +398,39 @@ mod tests {
         );
         assert_impl_all!(Option<&mut u8>:
             // FIXME:
-            //ReprFamily<Kind = Transmuted<Robust>>,
-            ReprFamily<Kind = Transmuted<NonRobust>>,
+            //ReprFamily<Kind = ReprC<Robust>>,
+            ReprFamily<Kind = ReprC<NonRobust>>,
             NicheFamily<Kind = WithoutNiche>,
             ExternC<CType = *mut u8>,
             Decode<'static>,
             Encode,
         );
 
-        assert_not_impl_any!(Option<&mut u8>: ReprC);
-
-        assert_not_impl_any!(&mut &mut u8: SoftEncodeOwned);
-        assert_not_impl_any!(&mut [&mut u8]: SoftEncodeOwned);
+        assert_not_impl_any!(Option<&mut u8>: RobustReprC);
     }
 
     #[test]
     fn transparent_ref_mut() {
         assert_impl_all!(&&mut bool:
-            ReprFamily<Kind = Transmuted<NonRobust>>,
+            ReprFamily<Kind = ReprC<NonRobust>>,
             NicheFamily<Kind = WithStableNiche>,
             StableNiche<CType = *const *mut u8>,
             Decode<'static>,
             Encode,
         );
         assert_impl_all!(&mut &mut bool:
-            ReprFamily<Kind = Transmuted<NonRobust>>,
+            ReprFamily<Kind = ReprC<NonRobust>>,
             NicheFamily<Kind = WithStableNiche>,
             StableNiche<CType = *mut *mut u8>,
             Decode<'static>,
         );
         #[cfg(feature = "alloc")]
         assert_impl_all!(Box<&mut bool>:
-            ReprFamily<Kind = Transmuted<NonRobust>>,
+            ReprFamily<Kind = ReprC<NonRobust>>,
             NicheFamily<Kind = WithStableNiche>,
             StableNiche<CType = CBox<*mut u8>>,
             Decode<'static>,
-            SoftEncode,
+            Encode,
         );
         assert_impl_all!(&[&mut bool]:
             ReprFamily<Kind = ReprRust>,
@@ -464,7 +451,7 @@ mod tests {
             NicheFamily<Kind = WithCustomNiche>,
             Niche<CType = CBoxedSlice<*mut u8>>,
             Decode<'static>,
-            SoftEncode,
+            Encode,
         );
         #[cfg(feature = "alloc")]
         assert_impl_all!(Vec<&mut bool>:
@@ -472,33 +459,21 @@ mod tests {
             NicheFamily<Kind = WithCustomNiche>,
             Niche<CType = CBoxedSlice<*mut u8>>,
             Decode<'static>,
-            SoftEncode
+            Encode
         );
         assert_impl_all!([&mut bool; 2]:
-            ReprFamily<Kind = Transmuted<NonRobust>>,
+            ReprFamily<Kind = ReprC<NonRobust>>,
             NicheFamily<Kind = WithCustomNiche>,
             Niche<CType = [*mut u8; 2]>,
             Decode<'static>,
-            SoftEncode
+            Encode
         );
         assert_impl_all!(Option<&mut bool>:
-            ReprFamily<Kind = Transmuted<NonRobust>>,
+            ReprFamily<Kind = ReprC<NonRobust>>,
             NicheFamily<Kind = WithoutNiche>,
             ExternC<CType = *mut u8>,
             Decode<'static>,
-            SoftEncode
+            Encode
         );
-
-        assert_not_impl_any!(&mut &mut bool: SoftEncodeOwned);
-        assert_not_impl_any!(&mut [&mut bool]: SoftEncodeOwned);
-
-        #[cfg(feature = "alloc")]
-        assert_not_impl_any!(Box<&mut bool>: EncodeOwned);
-        #[cfg(feature = "alloc")]
-        assert_not_impl_any!(Box<[&mut bool]>: EncodeOwned);
-        #[cfg(feature = "alloc")]
-        assert_not_impl_any!(Vec<&mut bool>: EncodeOwned);
-        assert_not_impl_any!([&mut bool; 2]: EncodeOwned);
-        assert_not_impl_any!(Option<&mut bool>: EncodeOwned);
     }
 }

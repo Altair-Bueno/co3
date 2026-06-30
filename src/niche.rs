@@ -10,7 +10,7 @@ use disjoint_impls::disjoint_impls;
 #[cfg(feature = "alloc")]
 use crate::boxed::{CBox, CBoxedSlice};
 use crate::{
-    ExternC, ReprC, assert_arr_has_non_zero_len,
+    ExternC, RobustReprC, assert_arr_has_non_zero_len,
     option::ReprCOption,
     result::ReprCResult,
     size::{MetaSized, SizeFamily, Thin},
@@ -20,13 +20,13 @@ use crate::{
 /// Marker trait for an [`NicheFamily`] type of a Rust type that has a niche value (stable or custom)
 ///
 /// There are only 2 notable implementations of this trait:
-/// 1. [`Transmuted`] types have a single stable (compiler guaranteed) niche value (e.g. `&u32`)
+/// 1. [`RobustReprC`] types have a single stable (compiler guaranteed) niche value (e.g. `&u32`)
 /// 2. [`Stored`] types have a custom defined (by this crate) niche value (e.g. `[NonZeroU32; 2]`)
 pub(crate) trait WithNiche {}
 
 /// Marker for a type that has a single stable (compiler guaranteed) niche value (e.g. `&u32`).
 ///
-/// Only a handful of [`crate::transmute::Transmuted`] types have a stable niche
+/// Only a handful of [`crate::ir::ReprC`] types have a stable niche
 pub enum WithStableNiche {}
 
 /// Marker for a type that has a custom defined (by this crate) niche (e.g. `[NonZeroU8; 2]`).
@@ -120,7 +120,7 @@ disjoint_impls! {
         ///   `Option<T>` will be serialized as [`crate::option::ReprCOption`]
         ///
         /// - If `Self` has a compiler guaranteed niche value, set [`NicheFamily::Kind`] to [`WithStableNiche`].
-        ///   `Option<T>` will be blindly transmuted into the underlying [`ReprC`] type
+        ///   `Option<T>` will be blindly transmuted into the underlying [`RobustReprC`] type
         ///
         /// - Otherwise, if `Self` has at least one trap, set [`NicheFamily::Kind`] to [`WithCustomNiche`].
         ///   `Option<T>` will be serialized into a [`T::CType`] with a manually set niche value
@@ -205,7 +205,7 @@ where
     };
 }
 
-impl<R, C: ReprC + Copy> Niche for Option<R>
+impl<R, C: RobustReprC + Copy> Niche for Option<R>
 where
     Self: ExternC<CType = ReprCOption<C>>,
 {
@@ -304,10 +304,9 @@ mod tests {
 
     use super::*;
     use crate::{
-        Decode, Encode, ReprC,
+        Decode, Encode, RobustReprC,
         ir::{ReprFamily, ReprRust},
         slice::CSlice,
-        stored::SoftEncodeOwned,
         tuple::ReprCTuple2,
     };
 
@@ -339,8 +338,8 @@ mod tests {
             Encode,
         );
 
-        assert_not_impl_any!(Option<bool>: ReprC);
-        assert_not_impl_any!(Option<Option<bool>>: ReprC);
+        assert_not_impl_any!(Option<bool>: RobustReprC);
+        assert_not_impl_any!(Option<Option<bool>>: RobustReprC);
     }
 
     #[test]

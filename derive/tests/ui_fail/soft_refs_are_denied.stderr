@@ -1,9 +1,9 @@
 error[E0277]: the trait bound `RefSizedDecodeStore<(u8,), ((),)>: Zst` is not satisfied
-  --> tests/ui_fail/soft_refs_are_denied.rs:16:5
+  --> tests/ui_fail/soft_refs_are_denied.rs:12:5
    |
-16 | /     export_C! {
-17 | |         pub extern "C" fn by_val_is_denied(arg1: &(u8,), #[soft] move arg2: Vec<(u8,)>) -> u8;
-18 | |     }
+12 | /     export_C! {
+13 | |         pub fn by_val_is_denied(arg1: &(u8,), #[soft] move arg2: Vec<(u8,)>) -> u8;
+14 | |     }
    | |_____^ the trait `Zst` is not implemented for `RefSizedDecodeStore<(u8,), ((),)>`
    |
    = help: the following other types implement trait `Zst`:
@@ -16,63 +16,74 @@ error[E0277]: the trait bound `RefSizedDecodeStore<(u8,), ((),)>: Zst` is not sa
              (A, B, C, D, E, F, G)
              (A, B, C, D, E, F, G, H)
            and $N others
-   = note: required for `&(u8,)` to implement `Decode<'_>`
-   = note: this error originates in the macro `export_C` (in Nightly builds, run with -Z macro-backtrace for more info)
-
-error[E0277]: the trait bound `Vec<(u8,)>: SoftDecode<'_>` is not satisfied
-  --> tests/ui_fail/soft_refs_are_denied.rs:16:5
-   |
-16 | /     export_C! {
-17 | |         pub extern "C" fn by_val_is_denied(arg1: &(u8,), #[soft] move arg2: Vec<(u8,)>) -> u8;
-18 | |     }
-   | |_____^ the trait `SoftDecode<'_>` is not implemented for `Vec<(u8,)>`
-   |
-help: the trait `SoftDecode<'_>` is implemented for `Vec<R>`
+note: required by a bound in `decode`
   --> $WORKSPACE/src/lib.rs
    |
-   | / impl<'d, R> SoftDecode<'d> for Vec<R>
-   | | where
-   | |     Self: SoftDecodeOwned<'d, Store = <Box<[R]> as SoftDecodeOwned<'d>>::Store>,
-   | |     Self: ExternC<CType = <Box<[R]> as ExternC>::CType>,
-   | |     Box<[R]>: SoftDecode<'d>,
-   | |_____________________________^
+   |         unsafe fn decode(source: Self::CType) -> Option<Self>
+   |                   ------ required by a bound in this associated function
+   |         where
+   |             Self::Store: Zst + 'd,
+   |                          ^^^ required by this bound in `Decode::decode`
+   = note: this error originates in the macro `export_C` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error[E0271]: type mismatch resolving `<[(u8,)] as ReprFamily>::Kind == ReprC<_>`
+  --> tests/ui_fail/soft_refs_are_denied.rs:12:5
+   |
+12 | /     export_C! {
+13 | |         pub fn by_val_is_denied(arg1: &(u8,), #[soft] move arg2: Vec<(u8,)>) -> u8;
+14 | |     }
+   | |_____^ expected `ReprC<_>`, found `ReprRust`
+   |
+   = note: expected struct `ReprC<_>`
+                found enum `ReprRust`
+   = note: required for `Box<[(u8,)]>` to implement `co3::_::Decode0<'_, ReprRust>`
+   = note: required for `Box<[(u8,)]>` to implement `Decode<'_>`
+   = note: 1 redundant requirement hidden
+   = note: required for `Vec<(u8,)>` to implement `Decode<'_>`
    = note: this error originates in the macro `export_C` (in Nightly builds, run with -Z macro-backtrace for more info)
 
 error[E0277]: the trait bound `RefSizedEncodeStore<(u8,)>: Zst` is not satisfied
-  --> tests/ui_fail/soft_refs_are_denied.rs:34:40
+  --> tests/ui_fail/soft_refs_are_denied.rs:24:40
    |
-28 | / extern_C! {
-29 | |     pub extern "C" fn by_ref_is_allowed(
-30 | |         #[soft] arg1: &(u8,),
-31 | |         #[soft] arg2: Vec<(u8,)>,
-...  |
-34 | |     pub extern "C" fn by_val_is_denied(arg1: &(u8,), #[soft] move arg2: Vec<(u8,)>) -> u8;
+22 | / extern_C! {
+23 | |     pub extern "C" fn by_ref_is_allowed(#[soft] arg1: &(u8,), #[soft] arg2: Vec<(u8,)>) -> u8;
+24 | |     pub extern "C" fn by_val_is_denied(arg1: &(u8,), #[soft] move arg2: Vec<(u8,)>) -> u8;
    | |                                        ^^^^ the trait `Zst` is not implemented for `RefSizedEncodeStore<(u8,)>`
-35 | | }
+25 | | }
    | |_- required by a bound introduced by this call
    |
-   = note: required for `&(u8,)` to implement `Encode`
-help: consider dereferencing here
+   = help: the following other types implement trait `Zst`:
+             ()
+             (A, B)
+             (A, B, C)
+             (A, B, C, D)
+             (A, B, C, D, E)
+             (A, B, C, D, E, F)
+             (A, B, C, D, E, F, G)
+             (A, B, C, D, E, F, G, H)
+           and $N others
+note: required by a bound in `encode`
+  --> $WORKSPACE/src/lib.rs
    |
-34 |     pub extern "C" fn by_val_is_denied(*arg1: &(u8,), #[soft] move arg2: Vec<(u8,)>) -> u8;
-   |                                        +
+   |         fn encode(self) -> Self::CType
+   |            ------ required by a bound in this associated function
+   |         where
+   |             Self::Store: Zst,
+   |                          ^^^ required by this bound in `Encode::encode`
 
-error[E0277]: the trait bound `Vec<(u8,)>: SoftEncode` is not satisfied
-  --> tests/ui_fail/soft_refs_are_denied.rs:34:67
+error[E0271]: type mismatch resolving `<[(u8,)] as ReprFamily>::Kind == ReprC<_>`
+  --> tests/ui_fail/soft_refs_are_denied.rs:24:67
    |
-28 | / extern_C! {
-29 | |     pub extern "C" fn by_ref_is_allowed(
-30 | |         #[soft] arg1: &(u8,),
-31 | |         #[soft] arg2: Vec<(u8,)>,
-...  |
-34 | |     pub extern "C" fn by_val_is_denied(arg1: &(u8,), #[soft] move arg2: Vec<(u8,)>) -> u8;
-   | |                                                                   ^^^^ the trait `SoftEncode` is not implemented for `Vec<(u8,)>`
-35 | | }
+22 | / extern_C! {
+23 | |     pub extern "C" fn by_ref_is_allowed(#[soft] arg1: &(u8,), #[soft] arg2: Vec<(u8,)>) -> u8;
+24 | |     pub extern "C" fn by_val_is_denied(arg1: &(u8,), #[soft] move arg2: Vec<(u8,)>) -> u8;
+   | |                                                                   ^^^^ expected `ReprC<_>`, found `ReprRust`
+25 | | }
    | |_- required by a bound introduced by this call
    |
-help: consider borrowing here
-   |
-34 |     pub extern "C" fn by_val_is_denied(arg1: &(u8,), #[soft] move &arg2: Vec<(u8,)>) -> u8;
-   |                                                                   +
-34 |     pub extern "C" fn by_val_is_denied(arg1: &(u8,), #[soft] move &mut arg2: Vec<(u8,)>) -> u8;
-   |                                                                   ++++
+   = note: expected struct `ReprC<_>`
+                found enum `ReprRust`
+   = note: required for `Box<[(u8,)]>` to implement `co3::_::Encode0<ReprRust>`
+   = note: required for `Box<[(u8,)]>` to implement `Encode`
+   = note: 1 redundant requirement hidden
+   = note: required for `Vec<(u8,)>` to implement `Encode`

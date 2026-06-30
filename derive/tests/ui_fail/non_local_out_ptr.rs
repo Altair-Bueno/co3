@@ -1,16 +1,17 @@
 use co3::{ReprC, extern_C};
 
 #[derive(Clone, ReprC)]
-pub struct NoReprStruct(String);
+pub struct ReprRustStruct(String);
 
 #[derive(Clone, ReprC)]
-pub enum NoReprEnum {
+#[repr(transparent)]
+pub enum ReprRustEnum {
     A(String),
 }
 
 extern_C! {
-    pub fn return_no_repr_struct() -> Vec<NoReprStruct>;
-    pub extern "C" fn return_no_repr_enum() -> Vec<NoReprEnum>;
+    pub fn return_no_repr_struct() -> Vec<ReprRustStruct>;
+    pub extern "C" fn return_no_repr_enum() -> Vec<ReprRustEnum>;
 }
 
 mod provider {
@@ -19,12 +20,12 @@ mod provider {
     use super::*;
 
     #[export("C")]
-    pub fn return_no_repr_struct() -> Vec<NoReprStruct> {
+    pub fn return_no_repr_struct() -> Vec<ReprRustStruct> {
         unimplemented!()
     }
 
     #[export("C")]
-    pub extern "C" fn return_no_repr_enum() -> Vec<NoReprEnum> {
+    pub extern "C" fn return_no_repr_enum() -> Vec<ReprRustEnum> {
         unimplemented!()
     }
 }

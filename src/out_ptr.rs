@@ -45,12 +45,12 @@ pub trait OutPtrWrite: OutPtr {
 
 impl<R> OutPtrWrite for R
 where
-    R: OutPtr<OutPtr = <R as ExternC>::CType> + crate::stored::SoftEncodeOwned,
+    R: OutPtr<OutPtr = <R as ExternC>::CType> + crate::stored::EncodeOwned,
     R::Store: Default,
 {
     unsafe fn write_out(self, out_ptr: *mut Self::OutPtr) {
         let mut store = Default::default();
-        let encoded = crate::stored::SoftEncodeOwned::soft_encode(self, &mut store);
+        let encoded = crate::stored::EncodeOwned::soft_encode_owned(self, &mut store);
 
         unsafe { out_ptr.write(encoded) };
     }
@@ -63,10 +63,10 @@ where
 //    /// a blanket implementation is provided.
 //    pub trait OutPtr: ExternC {
 //        /// Type of the out-pointer
-//        type OutPtr: ReprC;
+//        type OutPtr: RobustReprC;
 //    }
 //
-//    impl<R: ReprC> OutPtr for R
+//    impl<R: RobustReprC> OutPtr for R
 //    where
 //        Self: ReprFamily<Kind = Robust>,
 //    {
@@ -74,13 +74,13 @@ where
 //    }
 //    impl<R: CheckedTransmute<Target: Sized>> OutPtr for R
 //    where
-//        Self: ReprFamily<Kind = Transmuted>,
+//        Self: ReprFamily<Kind = ReprC>,
 //        <R as CheckedTransmute>::Target: OutPtr,
 //    {
 //        type OutPtr = <R::Target as OutPtr>::OutPtr;
 //    }
 //
-//    impl<'a, R: SizeFamily<Kind = SliceLike> + SliceDst<Elem: ReprC> + ?Sized> OutPtr for &'a R
+//    impl<'a, R: SizeFamily<Kind = SliceLike> + SliceDst<Elem: RobustReprC> + ?Sized> OutPtr for &'a R
 //    where
 //        Self: ReprFamily<Kind = &'a Robust>,
 //    {
@@ -95,7 +95,7 @@ where
 //    impl<'a, R: CheckedTransmute + ?Sized> OutPtr for &'a R
 //    where
 //        &'a <R as CheckedTransmute>::Target: OutPtr,
-//        Self: ReprFamily<Kind = &'a Transmuted>,
+//        Self: ReprFamily<Kind = &'a RobustReprC>,
 //    {
 //        type OutPtr = <&'a R::Target as OutPtr>::OutPtr;
 //    }
@@ -117,7 +117,7 @@ where
 //        type OutPtr = CSlice<<R::Elem as OutPtr>::OutPtr>;
 //    }
 //
-//    impl<'a, R: SizeFamily<Kind = SliceLike> + SliceDst<Elem: ReprC> + ?Sized> OutPtr for &'a mut R
+//    impl<'a, R: SizeFamily<Kind = SliceLike> + SliceDst<Elem: RobustReprC> + ?Sized> OutPtr for &'a mut R
 //    where
 //        Self: ReprFamily<Kind = &'a mut Robust>,
 //    {
@@ -126,14 +126,14 @@ where
 //    impl<'a, R: CheckedTransmute + ?Sized> OutPtr for &'a mut R
 //    where
 //        &'a mut <R as CheckedTransmute>::Target: OutPtr,
-//        Self: ReprFamily<Kind = &'a mut Transmuted>,
+//        Self: ReprFamily<Kind = &'a mut RobustReprC>,
 //        R: SizeFamily<Kind = SliceLike>,
 //    {
 //        type OutPtr = <&'a mut R::Target as OutPtr>::OutPtr;
 //    }
 //
 //    #[cfg(feature = "alloc")]
-//    impl<R: SizeFamily<Kind = SliceLike> + SliceDst<Elem: ReprC> + ?Sized> OutPtr for Box<R>
+//    impl<R: SizeFamily<Kind = SliceLike> + SliceDst<Elem: RobustReprC> + ?Sized> OutPtr for Box<R>
 //    where
 //        Self: ReprFamily<Kind = ReprRust>,
 //    {
@@ -216,12 +216,12 @@ where
 //        unsafe fn write_out(self, out_ptr: *mut Self::OutPtr);
 //    }
 //
-//    impl<R: ReprC> OutPtrWrite for R
+//    impl<R: RobustReprC> OutPtrWrite for R
 //    where
 //        Self: ReprFamily<Kind = Robust>,
 //    {
 //        unsafe fn write_out(self, out_ptr: *mut Self::OutPtr) {
-//            let ctype = SoftEncode::encode(self, &mut ());
+//            let ctype = Encode::encode_owned(self, &mut ());
 //
 //            unsafe {
 //                out_ptr.write(ctype);
@@ -230,7 +230,7 @@ where
 //    }
 //    impl<R: CheckedTransmute<Target: Sized>> OutPtrWrite for R
 //    where
-//        Self: ReprFamily<Kind = Transmuted>,
+//        Self: ReprFamily<Kind = ReprC>,
 //        <R as CheckedTransmute>::Target: OutPtrWrite,
 //    {
 //        unsafe fn write_out(self, out_ptr: *mut Self::OutPtr) {
@@ -245,7 +245,7 @@ where
 //    //{
 //    //    unsafe fn write_out(self, out_ptr: *mut Self::OutPtr) {
 //    //        let mut store = Default::default();
-//    //        let _ = self.encode(&mut store);
+//    //        let _ = self.soft_encode_owned(&mut store);
 //    //        let output = store.ctype.unwrap();
 //
 //    //        unsafe {
@@ -262,7 +262,7 @@ where
 //    //    unsafe fn write_out(self, _out_ptr: *mut Self::OutPtr) {
 //    //        unimplemented!()
 //    //        //let mut store = Default::default();
-//    //        //let _ = self.encode(&mut store);
+//    //        //let _ = self.soft_encode_owned(&mut store);
 //    //        //let output = store.ctype.unwrap();
 //
 //    //        //unsafe {
@@ -271,12 +271,12 @@ where
 //    //    }
 //    //}
 //
-//    //impl<'a, R: Dst<Data: ReprC> + ?Sized> OutPtrWrite for &'a R
+//    //impl<'a, R: Dst<Data: RobustReprC> + ?Sized> OutPtrWrite for &'a R
 //    //where
 //    //    Self: ReprFamily<Kind = &'a Robust>,
 //    //{
 //    //    unsafe fn write_out(self, out_ptr: *mut Self::OutPtr) {
-//    //        let ctypes = self.encode(&mut ());
+//    //        let ctypes = self.soft_encode_owned(&mut ());
 //
 //    //        unsafe {
 //    //            out_ptr.write(ctypes);
@@ -289,7 +289,7 @@ where
 //    //{
 //    //    unsafe fn write_out(self, out_ptr: *mut Self::OutPtr) {
 //    //        let mut store = Default::default();
-//    //        let _ = self.encode(&mut store);
+//    //        let _ = self.soft_encode_owned(&mut store);
 //
 //    //        let output = CBoxedSlice::from_boxed_slice(store.0);
 //
@@ -301,7 +301,7 @@ where
 //    //impl<'a, R: CheckedTransmute<Target: Sized + 'a>> OutPtrWrite for &'a R
 //    //where
 //    //    &'a <R as CheckedTransmute>::Target: OutPtrWrite,
-//    //    Self: ReprFamily<Kind = &'a Transmuted>,
+//    //    Self: ReprFamily<Kind = &'a RobustReprC>,
 //    //{
 //    //    unsafe fn write_out(self, out_ptr: *mut Self::OutPtr) {
 //    //        let transmuted = transmute_into_target_ref_slice(self);
@@ -318,7 +318,7 @@ where
 //    //{
 //    //    unsafe fn write_out(self, out_ptr: *mut Self::OutPtr) {
 //    //        let mut store = Default::default();
-//    //        let _ = self.encode(&mut store);
+//    //        let _ = self.soft_encode_owned(&mut store);
 //
 //    //        let output = CBoxedSlice::from_boxed_slice(store.ctypes);
 //
@@ -331,7 +331,7 @@ where
 //    //impl<'a, R: CheckedTransmute<Target: Sized + 'a>> OutPtrWrite for &'a mut R
 //    //where
 //    //    &'a mut <R as CheckedTransmute>::Target: OutPtrWrite,
-//    //    Self: ReprFamily<Kind = &'a mut Transmuted>,
+//    //    Self: ReprFamily<Kind = &'a mut RobustReprC>,
 //    //{
 //    //    unsafe fn write_out(self, out_ptr: *mut Self::OutPtr) {
 //    //        let transmuted = transmute_into_target_slice_mut(self);
@@ -343,12 +343,12 @@ where
 //    //}
 //
 //    //#[cfg(feature = "alloc")]
-//    //impl<R: Dst<Data: ReprC> + ?Sized> OutPtrWrite for Box<R>
+//    //impl<R: Dst<Data: RobustReprC> + ?Sized> OutPtrWrite for Box<R>
 //    //where
 //    //    Self: ReprFamily<Kind = ReprRust>,
 //    //{
 //    //    unsafe fn write_out(self, out_ptr: *mut Self::OutPtr) {
-//    //        let output = self.encode(&mut ());
+//    //        let output = self.soft_encode_owned(&mut ());
 //
 //    //        unsafe {
 //    //            out_ptr.write(output);
@@ -361,7 +361,7 @@ where
 //    //    Self: ReprFamily<Kind = Opaque>,
 //    //{
 //    //    unsafe fn write_out(self, out_ptr: *mut Self::OutPtr) {
-//    //        let output = self.encode(&mut ());
+//    //        let output = self.soft_encode_owned(&mut ());
 //
 //    //        unsafe {
 //    //            out_ptr.write(output);
@@ -390,7 +390,7 @@ where
 //    //    unsafe fn write_out(self, _out_ptr: *mut Self::OutPtr) {
 //    //        unimplemented!()
 //    //        //let mut store = Default::default();
-//    //        //let _ = self.encode(&mut store);
+//    //        //let _ = self.soft_encode_owned(&mut store);
 //
 //    //        //let output = CBoxedSlice::from_boxed_slice(store.ctypes);
 //
@@ -419,7 +419,7 @@ where
 //    //        assert_arr_has_non_zero_len::<N>();
 //
 //    //        let mut store = Default::default();
-//    //        let item = self.encode(&mut store);
+//    //        let item = self.soft_encode_owned(&mut store);
 //
 //    //        unsafe {
 //    //            out_ptr.write(item);
