@@ -556,7 +556,9 @@ fn item_fn_input_arg_type(attrs: &[syn::Attribute], arg_ty: &Type) -> TokenStrea
 
     match ownership_mode_for_arg(attrs) {
         OwnershipMode::ByValue => quote! { #c_type },
-        OwnershipMode::Borrow => quote! { <#c_type as co3::borrow::BorrowCast>::AsConst },
+        OwnershipMode::Borrow => quote! {
+            <#c_type as co3::borrow::BorrowCast>::AsConst
+        },
     }
 }
 

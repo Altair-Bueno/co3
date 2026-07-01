@@ -12,11 +12,10 @@ use core::{
 use crate::{
     Decode, Encode, ExternC, NonRobust, RobustReprC,
     borrow::{Borrow, BorrowCast, BorrowCastMut, ToOwned},
-    handle::Erase,
     ir::{ReprC, ReprFamily, Robust},
     niche::{Niche, NicheFamily, StableNiche, WithStableNiche, WithoutNiche},
     size::{MetaSized, SizeFamily, SliceLike},
-    stored::{DecodeOwned, EncodeOwned},
+    stored::{DecodeOwned, EmptyStore, EncodeOwned},
     transmute::CheckedTransmute,
 };
 #[cfg(feature = "alloc")]
@@ -95,9 +94,7 @@ macro_rules! non_zero_derive {
         }
         unsafe impl StableNiche for NonZero<$primitive> {}
 
-        unsafe impl Erase for NonZero<$primitive> {
-            type Erased = Self;
-        })+
+        )+
     }
 }
 
@@ -120,7 +117,6 @@ impl NicheFamily for c_void {
 impl ExternC for c_void {
     type CType = Self;
 }
-
 unsafe impl RobustReprC for c_void {}
 
 // TODO: To support ZST types properly we should introduce better SizeFamily disambiguation
@@ -185,9 +181,7 @@ unsafe impl BorrowCastMut for () {
     type AsMut = Self;
 }
 
-unsafe impl Erase for () {
-    type Erased = Self;
-}
+unsafe impl EmptyStore for () {}
 
 impl<T: ReprFamily<Kind: Add<ReprC<NonRobust>>> + ?Sized> ReprFamily for NonNull<T> {
     type Kind = <T::Kind as Add<ReprC<NonRobust>>>::Output;
@@ -260,9 +254,6 @@ unsafe impl<T: RobustReprC + ?Sized> CheckedTransmute for NonNull<T> {
     }
 }
 
-unsafe impl<T: Erase + ?Sized> Erase for NonNull<T> {
-    type Erased = NonNull<T::Erased>;
-}
 impl ReprFamily for str {
     type Kind = ReprC<NonRobust>;
 }
@@ -351,9 +342,6 @@ impl Niche for String {
 }
 
 #[cfg(feature = "alloc")]
-unsafe impl Erase for String {
-    type Erased = Self;
-}
 
 impl<T: ReprFamily + ?Sized> ReprFamily for UnsafeCell<T> {
     type Kind = T::Kind;
@@ -424,9 +412,7 @@ unsafe impl<T: CheckedTransmute + ?Sized> CheckedTransmute for UnsafeCell<T> {
     }
 }
 
-unsafe impl<R: Erase + ?Sized> Erase for UnsafeCell<R> {
-    type Erased = UnsafeCell<R::Erased>;
-}
+unsafe impl<T: EmptyStore> EmptyStore for UnsafeCell<T> {}
 
 impl<T: ReprFamily + ?Sized> ReprFamily for Cell<T> {
     type Kind = T::Kind;
@@ -497,9 +483,7 @@ unsafe impl<T: CheckedTransmute + ?Sized> CheckedTransmute for Cell<T> {
     }
 }
 
-unsafe impl<R: Erase + ?Sized> Erase for Cell<R> {
-    type Erased = Cell<R::Erased>;
-}
+unsafe impl<T: EmptyStore> EmptyStore for Cell<T> {}
 
 impl<T: ReprFamily + ?Sized> ReprFamily for ManuallyDrop<T> {
     type Kind = T::Kind;
@@ -579,9 +563,7 @@ impl<T: Niche> Niche for ManuallyDrop<T> {
 }
 unsafe impl<T: StableNiche> StableNiche for ManuallyDrop<T> {}
 
-unsafe impl<T: Erase + ?Sized> Erase for ManuallyDrop<T> {
-    type Erased = ManuallyDrop<T::Erased>;
-}
+unsafe impl<T: EmptyStore> EmptyStore for ManuallyDrop<T> {}
 
 #[cfg(test)]
 mod tests {

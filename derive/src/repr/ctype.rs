@@ -403,10 +403,6 @@ fn gen_robust_impls<const ADD_COPY: bool>(
         }
 
         #codec_impls
-
-        unsafe impl #impl_generics co3::handle::Erase for #ident #ty_generics #where_clause {
-            type Erased = Self;
-        }
     }
 }
 

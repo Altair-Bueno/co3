@@ -27,11 +27,10 @@ use crate::{
     ir::{NonRobust, ReprC, ReprFamily, ReprRust},
     niche::{NicheFamily, WithNiche, WithoutNiche},
     option::ReprCOption,
-    out_ptr::Zst,
     result::ReprCResult,
     size::{MetaSized, SizeFamily, SliceLike, Thin, Wide},
     slice::{CSlice, CSliceMut},
-    stored::{DecodeOwned, EncodeOwned, ReprRustOrTransmutedNonRobust, Store},
+    stored::{DecodeOwned, EmptyStore, EncodeOwned, ReprRustOrTransmutedNonRobust, Store},
 };
 
 #[cfg(feature = "alloc")]
@@ -224,7 +223,7 @@ disjoint_impls! {
 
         fn encode(self) -> Self::CType
         where
-            Self::Store: Zst,
+            Self::Store: EmptyStore,
         {
             self.encode_owned()
         }
@@ -259,7 +258,7 @@ disjoint_impls! {
         /// - All conversions from a pointer must ensure pointer validity beforehand
         unsafe fn decode(source: Self::CType) -> Option<Self>
         where
-            Self::Store: Zst + 'd,
+            Self::Store: EmptyStore + 'd,
         {
             unsafe { DecodeOwned::decode_owned(source) }
         }
@@ -365,7 +364,7 @@ mod tests {
         assert_eq!(c_opt, ReprCOption::Some(42u8));
 
         let mut c_opts = [ReprCOption::Some(1u8)];
-        let c_slice = CSliceMut::from_slice(Some(&mut c_opts));
+        let c_slice = CSliceMut::from_slice(&mut c_opts);
         let x: u8 = 10;
         {
             let mut store = Box::default();
@@ -404,7 +403,7 @@ mod tests {
         use crate::tuple::ReprCTuple1;
 
         let mut tuples = [ReprCTuple1(10)];
-        let c_slice = CSliceMut::from_slice(Some(&mut tuples));
+        let c_slice = CSliceMut::from_slice(&mut tuples);
 
         {
             let mut store = Box::default();

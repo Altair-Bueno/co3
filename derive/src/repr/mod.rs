@@ -12,7 +12,6 @@ use crate::{
 mod attr;
 mod borrow;
 mod ctype;
-mod erased;
 mod item;
 mod niche;
 

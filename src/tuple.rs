@@ -67,7 +67,6 @@ use disjoint_impls::disjoint_impls;
 use crate::{
     CFnArg, Decode, Encode, ExternC, RobustReprC, Store,
     borrow::{Borrow, BorrowCast, BorrowCastMut, ToOwned},
-    handle::Erase,
     ir::{ReprFamily, ReprRust},
     niche::{Niche, NicheFamily, WithNiche, WithoutNiche},
     size::SizeFamily,
@@ -266,15 +265,6 @@ macro_rules! impl_tuple {
             }
         }
 
-        unsafe impl<$($head: RobustReprC,)* $last: RobustReprC + ?Sized> RobustReprC for $ffi_ty<$($head,)* $last> {}
-
-        unsafe impl<$($head: Erase<Erased: Sized>,)* $last: Erase + ?Sized> Erase for ($($head,)* $last,) {
-            type Erased = $ffi_ty<$($head::Erased,)* $last::Erased>;
-        }
-        unsafe impl<$($head: Erase<Erased: Sized>,)* $last: Erase + ?Sized> Erase for $ffi_ty<$($head,)* $last> {
-            type Erased = $ffi_ty<$($head::Erased,)* $last::Erased>;
-        }
-
         unsafe impl<$($head: BorrowCast<AsConst: Sized>,)* $last: BorrowCast + ?Sized> BorrowCast for $ffi_ty<$($head,)* $last> {
             type AsConst = $ffi_ty<$($head::AsConst,)* $last::AsConst>;
         }
@@ -283,8 +273,10 @@ macro_rules! impl_tuple {
             type AsMut = $ffi_ty<$($head::AsMut,)* $last::AsMut>;
         }
 
-        unsafe impl<$($head: crate::out_ptr::Zst,)* $last: crate::out_ptr::Zst + ?Sized> crate::out_ptr::Zst for ($($head,)* $last,) {}
-        unsafe impl<$($head: crate::out_ptr::Zst,)* $last: crate::out_ptr::Zst + ?Sized> crate::out_ptr::Zst for $ffi_ty<$($head,)* $last> {}
+        unsafe impl<$($head: RobustReprC,)* $last: RobustReprC + ?Sized> RobustReprC for $ffi_ty<$($head,)* $last> {}
+
+        unsafe impl<$($head: crate::stored::EmptyStore,)* $last: crate::stored::EmptyStore> crate::stored::EmptyStore for ($($head,)* $last,) {}
+        unsafe impl<$($head: crate::stored::EmptyStore,)* $last: crate::stored::EmptyStore> crate::stored::EmptyStore for $ffi_ty<$($head,)* $last> {}
     };
 
     (@split [$($head:ident,)*] $next:ident, $($tail:ident),+ -> $ffi_ty:ident) => {

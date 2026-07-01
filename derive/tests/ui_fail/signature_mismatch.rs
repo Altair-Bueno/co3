@@ -2,7 +2,7 @@ use co3::{export_C, extern_C, handles};
 
 trait Kita {
     type MySelf;
-    fn kita(&self) -> Self::MySelf;
+    fn kita(&self) -> Box<Self::MySelf>;
     fn kita2(a: &u32);
 }
 
@@ -14,7 +14,7 @@ handles! {
 impl Kita for u32 {
     type MySelf = Box<Self>;
 
-    fn kita(&self) -> Self::MySelf {
+    fn kita(&self) -> Box<Self::MySelf> {
         unimplemented!()
     }
 
@@ -57,7 +57,7 @@ extern_C! {
     impl<dyn(u32) T: ToOwned> Kita for T {
         type MySelf = <T as ToOwned>::Owned;
 
-        fn kita(self_id: <dyn Self>::ID, self: &Self) -> <Self as Kita>::MySelf;
+        fn kita(self_id: <dyn Self>::ID, self: &Self) -> Box<<Self as Kita>::MySelf>;
         fn kita2(a: &u32, self_id: <dyn T>::ID);
     }
 }

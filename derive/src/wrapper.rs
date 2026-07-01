@@ -43,7 +43,7 @@ pub fn wrap_fn_definition(
     let mut wrapper_sig = item.sig.clone();
     strip_internal_arg_attrs(&mut wrapper_sig);
 
-    let wrapper_body = gen_wrapper_body::<false>(None, &item.sig);
+    let wrapper_body = gen_wrapper_body::<false>(None, None, &item.sig);
     ffi_fn::normalize_fn_signature(&mut item.sig, None);
     let decl = ffi_fn::gen_extern_fn_signature(item.sig);
     let extern_fn_decl = gen_extern_decl(abi, block_attrs, &item.attrs, decl);
@@ -106,7 +106,7 @@ pub fn wrap_impl_definition<const DISPATCHED: bool>(impl_: &ItemImpl) -> ItemImp
             })
             .collect::<Vec<_>>();
 
-        let wrapper_body = gen_wrapper_body::<DISPATCHED>(Some(self_ty), &sig);
+        let wrapper_body = gen_wrapper_body::<DISPATCHED>(Some(self_ty), Some(generics), &sig);
 
         sig.inputs = sig
             .inputs
@@ -163,11 +163,13 @@ pub(crate) fn gen_extern_decl(
 
 fn gen_wrapper_body<const DISPATCHED: bool>(
     self_ty: Option<&syn::Type>,
+    dispatch_generics: Option<&syn::Generics>,
     sig: &syn::Signature,
 ) -> TokenStream {
     let handle_erase_stmts = if DISPATCHED {
         self_ty
-            .map(|self_ty| gen_handle_erase_stmts(self_ty, sig))
+            .zip(dispatch_generics)
+            .map(|(self_ty, generics)| gen_handle_erase_stmts(self_ty, generics, sig))
             .unwrap_or_default()
     } else {
         Default::default()

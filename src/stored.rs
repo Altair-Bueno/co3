@@ -12,7 +12,6 @@ use crate::{
     borrow::{Borrow, BorrowCast, BorrowCastMut, ToOwned, borrow_cast},
     ir::{NonRobust, ReprC, ReprFamily, ReprRust, Robust},
     niche::{Niche, NicheFamily, WithNiche, WithoutNiche},
-    out_ptr::Zst,
     result::ReprCResult,
     size::{MetaSized, SizeFamily, SliceLike, Wide},
     slice::{CSlice, CSliceMut},
@@ -29,6 +28,16 @@ use crate::{
 pub trait Store: Sized {
     fn sync(self) -> Option<()>;
 }
+
+/// Marker for an empty conversion store.
+///
+/// # Safety
+///
+/// Type must not contain any conversion state.
+pub unsafe trait EmptyStore: Sized {}
+
+unsafe impl<T> EmptyStore for core::marker::PhantomData<T> {}
+unsafe impl<T: EmptyStore> EmptyStore for core::mem::MaybeUninit<T> {}
 
 pub(crate) trait ReprRustOrTransmutedNonRobust {}
 impl ReprRustOrTransmutedNonRobust for ReprRust {}
@@ -53,7 +62,7 @@ disjoint_impls! {
 
         fn encode_owned(self) -> Self::CType
         where
-            Self::Store: Zst,
+            Self::Store: EmptyStore,
         {
             let mut store = Default::default();
             self.soft_encode_owned(&mut store)
@@ -79,7 +88,8 @@ disjoint_impls! {
             unsafe { core::mem::transmute_copy::<*const R, *const R::CType>(&ptr) }
         }
     }
-    impl<R: ReprFamily<Kind = ReprC<K>> + SizeFamily<Kind = MetaSized<SliceLike>> + ?Sized, K> EncodeOwned for &R
+    impl<R: ReprFamily<Kind = ReprC<K>> + SizeFamily<Kind = MetaSized<SliceLike>> + ?Sized, K>
+        EncodeOwned for &R
     where
         Self: ReprFamily<Kind = ReprRust>,
         R: Wide<Data: CheckedTransmute, Metadata = usize>,
@@ -150,7 +160,8 @@ disjoint_impls! {
             unsafe { core::mem::transmute_copy::<*mut R, *mut R::CType>(&ptr) }
         }
     }
-    impl<R: ReprFamily<Kind = ReprC<Robust>> + SizeFamily<Kind = MetaSized<SliceLike>> + ?Sized> EncodeOwned for &mut R
+    impl<R: ReprFamily<Kind = ReprC<Robust>> + SizeFamily<Kind = MetaSized<SliceLike>> + ?Sized>
+        EncodeOwned for &mut R
     where
         Self: ReprFamily<Kind = ReprRust>,
         R: Wide<Data: CheckedTransmute, Metadata = usize>,
@@ -168,8 +179,8 @@ disjoint_impls! {
         }
     }
     // TODO: The following 2 impls are duplicated. This is likely a deficiency in disjoint_impls!. Fix it there
-    impl<'a, R: ReprFamily<Kind: ReprRustOrTransmutedNonRobust> + SizeFamily<Kind = crate::size::Sized>> EncodeOwned
-        for &'a mut R
+    impl<'a, R: ReprFamily<Kind: ReprRustOrTransmutedNonRobust> + SizeFamily<Kind = crate::size::Sized>>
+        EncodeOwned for &'a mut R
     where
         Self: ReprFamily<Kind = ReprC<NonRobust>> + ExternC<CType = *mut <R as ExternC>::CType>,
         R: Clone + EncodeOwned + DecodeOwned<'a>,
@@ -186,8 +197,8 @@ disjoint_impls! {
             store.ctype.insert(ctype)
         }
     }
-    impl<'a, R: ReprFamily<Kind: ReprRustOrTransmutedNonRobust> + SizeFamily<Kind = crate::size::Sized>> EncodeOwned
-        for &'a mut R
+    impl<'a, R: ReprFamily<Kind: ReprRustOrTransmutedNonRobust> + SizeFamily<Kind = crate::size::Sized>>
+        EncodeOwned for &'a mut R
     where
         Self: ReprFamily<Kind = ReprRust> + ExternC<CType = *mut <R as ExternC>::CType>,
         R: Clone + EncodeOwned + DecodeOwned<'a>,
@@ -206,11 +217,13 @@ disjoint_impls! {
     }
     // TODO: We should prevent Sized opaque types here because they can't be decoded
     #[cfg(feature = "alloc")]
-    impl<'a, R: ReprFamily<Kind: ReprRustOrTransmutedNonRobust> + SizeFamily<Kind: Dst> + ?Sized> EncodeOwned for &'a mut R
+    impl<'a, R: ReprFamily<Kind: ReprRustOrTransmutedNonRobust> + SizeFamily<Kind: Dst> + ?Sized>
+        EncodeOwned for &'a mut R
     where
         Self: ReprFamily<Kind = ReprRust>,
         Self: ExternC<CType = <<<R as StdToOwned>::Owned as ExternC>::CType as BorrowCastMut>::AsMut>,
-        R: StdToOwned<Owned: ExternC<CType: BorrowCastMut<AsMut: Copy> + Copy> + EncodeOwned + DecodeOwned<'a>>,
+        R: StdToOwned<Owned: ExternC<CType: BorrowCastMut<AsMut: Copy> + Copy> + EncodeOwned + DecodeOwned<'a>,
+        >,
     {
         type Store = RefMutDstEncodeStore<'a, R>;
 
@@ -244,19 +257,20 @@ disjoint_impls! {
                 return CBox::from_raw_parts(non_null_ptr);
             }
 
-            CBox::from_box(Some(Box::new((*self).soft_encode_owned(store))))
+            CBox::from_box(Box::new((*self).soft_encode_owned(store)))
         }
     }
     #[cfg(feature = "alloc")]
-    impl<R: ReprFamily<Kind = ReprC<K>> + SizeFamily<Kind = MetaSized<SliceLike>> + ?Sized, K> EncodeOwned for Box<R>
+    impl<R: ReprFamily<Kind = ReprC<K>> + SizeFamily<Kind = MetaSized<SliceLike>> + ?Sized, K>
+        EncodeOwned for Box<R>
     where
         Self: ReprFamily<Kind = ReprRust>,
         R: Wide<Data: CheckedTransmute + EncodeOwned, Metadata = usize>,
         <<R as Wide>::Data as ExternC>::CType: Sized,
     {
-        type Store = Box<[<R::Data as EncodeOwned>::Store]>;
+        type Store = ();
 
-        fn soft_encode_owned<'itm>(self, store: &'itm mut Self::Store) -> Self::CType
+        fn soft_encode_owned<'itm>(self, (): &mut ()) -> Self::CType
         where
             Self: 'itm,
         {
@@ -272,25 +286,25 @@ disjoint_impls! {
         }
     }
     #[cfg(feature = "alloc")]
-    impl<R: ReprFamily<Kind = ReprRust> + SizeFamily<Kind = crate::size::Sized>> EncodeOwned
-        for Box<R>
+    impl<R: ReprFamily<Kind = ReprRust> + SizeFamily<Kind = crate::size::Sized>> EncodeOwned for Box<R>
     where
         Self: ReprFamily<Kind = ReprRust>,
         R: EncodeOwned,
     {
-        type Store = R::Store;
+        type Store = Box<R::Store>;
 
         fn soft_encode_owned<'itm>(self, store: &'itm mut Self::Store) -> Self::CType
         where
             Self: 'itm,
         {
-            CBox::from_box(Some(Box::new((*self).soft_encode_owned(store))))
+            CBox::from_box(Box::new((*self).soft_encode_owned(store)))
         }
     }
     #[cfg(feature = "alloc")]
     impl<R: ReprFamily<Kind = ReprRust> + SizeFamily<Kind: Dst> + ?Sized> EncodeOwned for Box<R>
     where
-        Self: ReprFamily<Kind = ReprRust> + ExternC<CType = <<R as StdToOwned>::Owned as ExternC>::CType>,
+        Self: ReprFamily<Kind = ReprRust>,
+        Self: ExternC<CType = <<R as StdToOwned>::Owned as ExternC>::CType>,
         R: StdToOwned<Owned: EncodeOwned>,
         Self: Into<<R as StdToOwned>::Owned>,
     {
@@ -304,6 +318,44 @@ disjoint_impls! {
         }
     }
 
+    #[cfg(feature = "alloc")]
+    impl<R: ReprFamily<Kind = ReprC<K>> + CheckedTransmute<CType: Copy>, K> EncodeOwned for Vec<R> {
+        type Store = ();
+
+        fn soft_encode_owned<'itm>(self, (): &mut ()) -> Self::CType
+        where
+            Self: 'itm,
+        {
+            // TODO: Use Vec::into_non_null once available
+            let mut source = core::mem::ManuallyDrop::new(self.into_boxed_slice());
+
+            let len = source.len();
+            let data = source.as_mut_ptr().cast();
+            let data = unsafe { NonNull::new_unchecked(data) };
+
+            CBoxedSlice::from_raw_parts(data, len)
+        }
+    }
+    #[cfg(feature = "alloc")]
+    impl<R: ReprFamily<Kind = ReprRust> + EncodeOwned> EncodeOwned for Vec<R> {
+        type Store = Box<[R::Store]>;
+
+        fn soft_encode_owned<'itm>(self, store: &'itm mut Self::Store) -> Self::CType
+        where
+            Self: 'itm,
+        {
+            *store = (0..self.len()).map(|_| Default::default()).collect();
+
+            let ctypes = self
+                .into_iter()
+                .zip(store)
+                .map(|(item, store)| item.soft_encode_owned(store))
+                .collect::<Box<[_]>>();
+
+            CBoxedSlice::from_boxed_slice(ctypes)
+        }
+    }
+
     impl<R: NicheFamily<Kind = WithoutNiche> + EncodeOwned<CType: Copy>> EncodeOwned for Option<R> {
         type Store = R::Store;
 
@@ -311,8 +363,7 @@ disjoint_impls! {
         where
             Self: 'itm,
         {
-            self.map(|v| v.soft_encode_owned(store))
-                .into()
+            self.map(|v| v.soft_encode_owned(store)).into()
         }
     }
     impl<R: NicheFamily<Kind: WithNiche> + EncodeOwned<CType: Copy> + Niche> EncodeOwned for Option<R> {
@@ -334,20 +385,28 @@ disjoint_impls! {
         R: NicheFamily<Kind = WithoutNiche> + EncodeOwned<CType: Copy>,
         E: NicheFamily<Kind = WithoutNiche> + EncodeOwned<CType: Copy>,
     > EncodeOwned for Result<R, E>
-    where
-        Self: ReprFamily<Kind = ReprRust>,
     {
-        // TODO: a union would save space, this issue is even more pronounced when deriving user-defined enums
-        // Check other places, for instance Decoding
-        type Store = (R::Store, E::Store);
+        type Store = Option<Result<R::Store, E::Store>>;
 
         fn soft_encode_owned<'itm>(self, store: &'itm mut Self::Store) -> Self::CType
         where
             Self: 'itm,
         {
             match self {
-                Ok(ok) => ReprCResult::Ok(ok.soft_encode_owned(&mut store.0)),
-                Err(err) => ReprCResult::Err(err.soft_encode_owned(&mut store.1)),
+                Ok(ok) => {
+                    let Result::Ok(store) = store.insert(Ok(Default::default())) else {
+                        unreachable!()
+                    };
+
+                    ReprCResult::Ok(ok.soft_encode_owned(store))
+                }
+                Err(err) => {
+                    let Result::Err(store) = store.insert(Err(Default::default())) else {
+                        unreachable!()
+                    };
+
+                    ReprCResult::Err(err.soft_encode_owned(store))
+                }
             }
         }
     }
@@ -372,7 +431,7 @@ disjoint_impls! {
         /// - All conversions from a pointer must ensure pointer validity beforehand
         unsafe fn decode_owned(source: Self::CType) -> Option<Self>
         where
-            Self::Store: Zst + 'd,
+            Self::Store: EmptyStore + 'd,
         {
             unsafe fn extend_store_lifetime<'d, S>(store: &mut S) -> &'d mut S {
                 unsafe { core::mem::transmute::<&mut S, &'d mut S>(store) }
@@ -560,7 +619,7 @@ disjoint_impls! {
     }
 
     #[cfg(feature = "alloc")]
-    impl<'d, R: ExternC<CType: Sized>> DecodeOwned<'d> for Box<R>
+    impl<'d, R: CheckedTransmute<CType: Sized>> DecodeOwned<'d> for Box<R>
     where
         Self: ReprFamily<Kind = ReprC<NonRobust>>,
         Self: CheckedTransmute<CType = CBox<<R as ExternC>::CType>>,
@@ -572,7 +631,7 @@ disjoint_impls! {
                 return None;
             }
 
-            let ptr = CBox::into_raw(source).cast();
+            let ptr = source.data.cast();
             Some(unsafe { Box::from_raw(ptr) })
         }
     }
@@ -594,8 +653,8 @@ disjoint_impls! {
             }
 
             let len = source.len();
-            let ptr = source.into_non_null().cast();
-            Some(unsafe { R::from_non_null(ptr, len) })
+            let data = source.into_non_null().cast();
+            Some(unsafe { R::from_non_null(data, len) })
         }
     }
     #[cfg(feature = "alloc")]
@@ -605,11 +664,15 @@ disjoint_impls! {
         Self: ReprFamily<Kind = ReprRust>,
         R: DecodeOwned<'d, CType: Sized>,
     {
-        type Store = R::Store;
+        type Store = Box<R::Store>;
 
         unsafe fn soft_decode_owned<'itm: 'd>(source: Self::CType, store: &'itm mut Self::Store) -> Option<Self> {
             let source = unsafe { source.read() };
-            let value = unsafe { R::soft_decode_owned(source, store)? };
+
+            let value = unsafe {
+                R::soft_decode_owned(source, &mut **store)?
+            };
+
             Some(Box::new(value))
         }
     }
@@ -624,6 +687,46 @@ disjoint_impls! {
 
         unsafe fn soft_decode_owned<'itm: 'd>(source: Self::CType, store: &'itm mut Self::Store) -> Option<Self> {
             unsafe { R::Owned::soft_decode_owned(source, store) }.map(Into::into)
+        }
+    }
+
+    #[cfg(feature = "alloc")]
+    impl<'d, R: ReprFamily<Kind = ReprC<K>> + CheckedTransmute<CType: Copy>, K> DecodeOwned<'d> for Vec<R> {
+        type Store = ();
+
+        unsafe fn soft_decode_owned<'itm: 'd>(source: Self::CType, (): &mut ()) -> Option<Self> {
+            let source = unsafe { source.into_rust()? };
+
+            if !source.iter().all(|item| unsafe { R::is_valid(item) }) {
+                return None;
+            }
+
+            let len = source.len();
+            let data = source.into_non_null().cast();
+            // TODO: Use Box::from_non_null once available
+            Some(unsafe { Box::from_raw(core::ptr::slice_from_raw_parts_mut(data.as_ptr(), len)) }.into())
+        }
+    }
+    #[cfg(feature = "alloc")]
+    impl<'d, R: ReprFamily<Kind = ReprRust> +DecodeOwned<'d>> DecodeOwned<'d> for Vec<R> {
+        type Store = Box<[R::Store]>;
+
+        unsafe fn soft_decode_owned<'itm: 'd>(
+            source: Self::CType,
+            store: &'itm mut Self::Store,
+        ) -> Option<Self> {
+            let source = unsafe { source.into_rust()? };
+
+            *store = core::iter::repeat_with(Default::default)
+                .take(source.len())
+                .collect();
+
+            source
+                .into_vec()
+                .into_iter()
+                .zip(store)
+                .map(|(item, store)| unsafe { R::soft_decode_owned(item, store) })
+                .collect()
         }
     }
 
@@ -663,8 +766,6 @@ disjoint_impls! {
         E: NicheFamily<Kind = WithoutNiche> + DecodeOwned<'d, CType: Copy>,
     >
         DecodeOwned<'d> for Result<R, E>
-    where
-        Self: ReprFamily<Kind = ReprRust>,
     {
         type Store = Option<Result<R::Store, E::Store>>;
 
@@ -688,51 +789,16 @@ disjoint_impls! {
     // TODO: Implement for niche optimized Results
 }
 
-#[cfg(feature = "alloc")]
-impl<R: EncodeOwned> EncodeOwned for Vec<R> {
-    type Store = Box<[R::Store]>;
-
-    fn soft_encode_owned<'itm>(self, store: &'itm mut Self::Store) -> Self::CType
-    where
-        Self: 'itm,
-    {
-        *store = (0..self.len()).map(|_| Default::default()).collect();
-
-        let ctypes = self
-            .into_iter()
-            .zip(store)
-            .map(|(item, store)| item.soft_encode_owned(store))
-            .collect::<Box<[_]>>();
-
-        CBoxedSlice::from_boxed_slice(Some(ctypes))
-    }
-}
-#[cfg(feature = "alloc")]
-impl<'d, R: DecodeOwned<'d>> DecodeOwned<'d> for Vec<R> {
-    type Store = Box<[R::Store]>;
-
-    unsafe fn soft_decode_owned<'itm: 'd>(
-        source: Self::CType,
-        store: &'itm mut Self::Store,
-    ) -> Option<Self> {
-        let source = unsafe { source.into_rust()? };
-
-        *store = core::iter::repeat_with(Default::default)
-            .take(source.len())
-            .collect();
-
-        source
-            .into_vec()
-            .into_iter()
-            .zip(store)
-            .map(|(item, store)| unsafe { R::soft_decode_owned(item, store) })
-            .collect()
-    }
-}
-
 impl Store for () {
     fn sync(self) -> Option<()> {
         Some(())
+    }
+}
+
+#[cfg(feature = "alloc")]
+impl<D: Store> Store for Box<D> {
+    fn sync(self) -> Option<()> {
+        (*self).sync()
     }
 }
 
@@ -979,7 +1045,7 @@ impl<D: Store, const N: usize> Store for ArrayStore<D, N> {
     }
 }
 
-unsafe impl<D: Zst, const N: usize> Zst for ArrayStore<D, N> {}
+unsafe impl<D: EmptyStore, const N: usize> EmptyStore for ArrayStore<D, N> {}
 
 impl<T: Store> Store for Option<T> {
     fn sync(self) -> Option<()> {

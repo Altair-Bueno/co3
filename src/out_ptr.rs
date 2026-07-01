@@ -1,29 +1,4 @@
-#[cfg(feature = "alloc")]
-use alloc_crate::{boxed::Box, vec::Vec};
-
 use crate::{CFnReturn, ExternC};
-
-/// Marker for a ZST(zero-sized type)
-///
-/// # Safety
-///
-/// Type must be a ZST
-pub unsafe trait Zst {}
-
-unsafe impl Zst for () {}
-unsafe impl<T: Zst> Zst for [T] {}
-#[cfg(feature = "alloc")]
-unsafe impl<T: Zst> Zst for Vec<T> {}
-unsafe impl<T: Zst> Zst for Option<T> {}
-#[cfg(feature = "alloc")]
-unsafe impl<T: Zst + ?Sized> Zst for Box<T> {}
-unsafe impl<T: Zst, E: Zst> Zst for Result<T, E> {}
-unsafe impl<T: Zst, const N: usize> Zst for [T; N] {}
-// TODO: It's not possbile to implement for specific len yet: https://github.com/mversic/co3/issues/13
-//unsafe impl<T> Zst for [T; 0] {}
-unsafe impl<T> Zst for core::marker::PhantomData<T> {}
-unsafe impl<T: Zst> Zst for core::mem::ManuallyDrop<T> {}
-unsafe impl<T: Zst> Zst for core::cell::UnsafeCell<T> {}
 
 pub trait OutPtr: ExternC {
     type OutPtr: CFnReturn;

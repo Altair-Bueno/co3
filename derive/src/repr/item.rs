@@ -15,10 +15,8 @@ use crate::repr::{
     ctype::{
         gen_ctype_name, gen_extern_c_bounds_for_ctype, gen_item_ctype, gen_variant_struct_name,
     },
-    enum_tag_type,
-    erased::{gen_erased_field_bounds, gen_erased_item, gen_erased_name},
-    gen_size_family_impl, gen_sized_family_impl, generic_param_idents, is_exhaustive_enum,
-    is_type_parameterized, repr_type_is_signed,
+    enum_tag_type, gen_size_family_impl, gen_sized_family_impl, generic_param_idents,
+    is_exhaustive_enum, is_type_parameterized, repr_type_is_signed,
 };
 
 pub(super) fn derive_item(
@@ -31,7 +29,6 @@ pub(super) fn derive_item(
 
     let ctype_def = (!is_view).then(|| gen_item_ctype(repr, input));
     let view_def = (!is_view).then(|| gen_item_view(input, attrs, variant_attrs));
-    let erased_def = (!is_view).then(|| gen_erased_item(input));
 
     let family_impls = if is_view {
         gen_view_family_impls(&input.ident, &input.generics)
@@ -47,7 +44,6 @@ pub(super) fn derive_item(
 
     let borrow_impls = (!is_view).then(|| gen_item_borrow_impls(input));
     let codec_impls = gen_item_codec_impls(repr, input, attrs, variant_attrs);
-    let erase_impl = (!is_view).then(|| gen_erase_impl(input));
     // TODO:
     //let niche_impls = gen_struct_niche_ir_with_mode(name, generics, fields, ffi_type_kind);
 
@@ -58,7 +54,6 @@ pub(super) fn derive_item(
     quote! {
         #ctype_def
         #view_def
-        #erased_def
 
         #family_impls
         #borrow_impls
@@ -66,26 +61,6 @@ pub(super) fn derive_item(
         //#niche_impls
 
         #repr_c_impls
-        #erase_impl
-    }
-}
-
-fn gen_erase_impl(input: &syn::DeriveInput) -> TokenStream {
-    let (impl_generics, ty_generics, where_clause) = &input.generics.split_for_impl();
-    let predicates = where_clause.as_ref().map(|w| &w.predicates);
-
-    let name = &input.ident;
-    let erased_name = gen_erased_name(name);
-    let erase_bounds = gen_erased_field_bounds(input);
-
-    quote! {
-        unsafe impl #impl_generics co3::handle::Erase for #name #ty_generics
-        where
-            #(#erase_bounds,)*
-            #predicates
-        {
-            type Erased = #erased_name #ty_generics;
-        }
     }
 }
 
@@ -287,6 +262,60 @@ fn gen_struct_codec_impls(
     )
 }
 
+fn gen_transparent_enum_codec_impls(
+    is_view: bool,
+    name: &Ident,
+    generics: &syn::Generics,
+    variants: &syn::punctuated::Punctuated<syn::Variant, syn::Token![,]>,
+    variant_attrs: &[VariantReprCAttrs],
+) -> TokenStream {
+    let Some(variant) = variants.first() else {
+        return quote! {};
+    };
+
+    let variant_name = &variant.ident;
+    let field_types = variant
+        .fields
+        .iter()
+        .map(|field| &field.ty)
+        .collect::<Vec<_>>();
+    let fields_destructure = gen_fields_destructure(&variant.fields);
+    let ctype_name = if is_view {
+        gen_view_ctype_name(name)
+    } else {
+        gen_ctype_name(name)
+    };
+
+    let custom_is_valid = variant_attrs
+        .first()
+        .and_then(|attrs| attrs.is_valid.as_ref());
+    let encode_store = encode_store_type(&variant.fields);
+    let decode_store = decode_store_type(&variant.fields);
+    let (encode_body, decode_body) = gen_record_conversion(
+        None,
+        quote!(Self::#variant_name),
+        &variant.fields,
+        custom_is_valid,
+    );
+
+    gen_codec_impls::<true>(
+        is_view,
+        name,
+        generics,
+        &field_types,
+        encode_store,
+        decode_store,
+        quote! {
+            let Self::#variant_name #fields_destructure = self;
+            #ctype_name #encode_body
+        },
+        quote! {
+            let #ctype_name #fields_destructure = source;
+            #decode_body
+        },
+    )
+}
+
 fn gen_enum_codec_impls(
     is_view: bool,
     repr: Option<&ReprKind>,
@@ -296,51 +325,7 @@ fn gen_enum_codec_impls(
     variant_attrs: &[VariantReprCAttrs],
 ) -> TokenStream {
     if repr == Some(&ReprKind::Transparent) {
-        let Some(variant) = variants.first() else {
-            return quote! {};
-        };
-
-        let variant_name = &variant.ident;
-        let field_types = variant
-            .fields
-            .iter()
-            .map(|field| &field.ty)
-            .collect::<Vec<_>>();
-        let fields_destructure = gen_fields_destructure(&variant.fields);
-        let ctype_name = if is_view {
-            gen_view_ctype_name(name)
-        } else {
-            gen_ctype_name(name)
-        };
-
-        let custom_is_valid = variant_attrs
-            .first()
-            .and_then(|attrs| attrs.is_valid.as_ref());
-        let encode_store = encode_store_type(&variant.fields);
-        let decode_store = decode_store_type(&variant.fields);
-        let (encode_body, decode_body) = gen_record_conversion(
-            None,
-            quote!(Self::#variant_name),
-            &variant.fields,
-            custom_is_valid,
-        );
-
-        return gen_codec_impls::<true>(
-            is_view,
-            name,
-            generics,
-            &field_types,
-            encode_store,
-            decode_store,
-            quote! {
-                let Self::#variant_name #fields_destructure = self;
-                #ctype_name #encode_body
-            },
-            quote! {
-                let #ctype_name #fields_destructure = source;
-                #decode_body
-            },
-        );
+        return gen_transparent_enum_codec_impls(is_view, name, generics, variants, variant_attrs);
     }
 
     let tag_type = enum_tag_type(repr, variants.len());
@@ -400,10 +385,7 @@ fn gen_enum_codec_impls(
             let tag_value = proc_macro2::Literal::usize_unsuffixed(idx);
 
             let destructure_fields = gen_fields_destructure(&variant.fields);
-            // FIXME: We're unwrapping here
-            let custom_is_valid = variant_attrs
-                .get(idx)
-                .and_then(|attrs| attrs.is_valid.as_ref());
+            let custom_is_valid = variant_attrs[idx].is_valid.as_ref();
             let variant_tag = has_variant_tag.then(|| quote!(#tag_value as #tag_type));
 
             let (encode_body, decode_body) = gen_record_conversion(
@@ -593,10 +575,7 @@ fn gen_repr_c_data_enum_impls(
             },
         };
 
-        // FIXME: We're unwrapping here
-        let is_valid = variant_attrs
-            .get(variant_idx)
-            .and_then(|attrs| attrs.is_valid.as_ref());
+        let is_valid = variant_attrs[variant_idx].is_valid.as_ref();
         let is_valid_body = gen_record_is_valid(&field_names, &variant_fields, is_valid);
 
         quote! {
@@ -862,9 +841,6 @@ pub(super) fn derive_fieldless_enum(
         impl<#params> co3::Decode<'_> for #name #ty_generics #where_clause {}
 
         #checked_transmute_impl
-        unsafe impl #impl_generics co3::handle::Erase for #name #ty_generics #where_clause {
-            type Erased = Self;
-        }
     }
 }
 
@@ -1157,8 +1133,8 @@ fn gen_repr_family_impl(
 
     quote! {
         impl #impl_generics co3::ir::ReprFamily for #name #ty_generics where
-            #(#field_bounds)*
-            #(#aggregate_bounds)*
+            #(#field_bounds,)*
+            #(#aggregate_bounds,)*
             #predicates
         {
             type Kind = #repr_kind;
@@ -1187,9 +1163,8 @@ fn gen_niche_family_impl(
     // TODO: We're just using WithoutNiche for the ease of implementation. Remove it?
     let mut niche_kind = quote!(co3::niche::WithoutNiche);
     let field_bounds = parametrized_fields.iter().map(|ty| {
-        quote! { #ty: co3::size::NicheFamily }
+        quote! { #ty: co3::niche::NicheFamily }
     });
-
 
     let mut aggregate_bounds = Vec::new();
     for &field in &non_parametrized_fields {
@@ -1200,8 +1175,8 @@ fn gen_niche_family_impl(
     for &field in &parametrized_fields {
         let kind = quote! { <#field as co3::niche::NicheFamily>::Kind };
 
-        niche_kind = quote! { <#kind as core::ops::Add<#niche_kind>>::Output };
         aggregate_bounds.push(quote! { #kind: core::ops::Add<#niche_kind> });
+        niche_kind = quote! { <#kind as core::ops::Add<#niche_kind>>::Output };
     }
 
     quote! {

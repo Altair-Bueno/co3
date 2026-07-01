@@ -3,11 +3,10 @@
 use crate::{
     CFnArg, CFnReturn, Decode, Encode, ExternC, RobustReprC, assert_arr_has_non_zero_len,
     borrow::{Borrow, BorrowCast, BorrowCastMut, ToOwned},
-    handle::Erase,
     ir::{NonRobust, ReprC, ReprFamily, Robust},
     niche::{Niche, NicheFamily, WithCustomNiche, WithoutNiche},
     size::{MetaSized, SizeFamily, SliceLike},
-    stored::{ArrayStore, DecodeOwned, EncodeOwned},
+    stored::{ArrayStore, DecodeOwned, EmptyStore, EncodeOwned},
     transmute::CheckedTransmute,
 };
 
@@ -82,12 +81,9 @@ macro_rules! primitive_derive {
             }
         }
 
-        unsafe impl Erase for $primitive {
-            type Erased = Self;
-        }
-
         unsafe impl RobustReprC for $primitive {}
         unsafe impl CFnArg for $primitive {}
+
         unsafe impl BorrowCast for $primitive {
             type AsConst = Self;
         }
@@ -165,18 +161,16 @@ macro_rules! raw_pointer_derive {
             }
         }
 
-        unsafe impl<R: Erase + ?Sized> Erase for *$mutability R {
-            type Erased = *$mutability R::Erased;
-        }
-
         unsafe impl<R: RobustReprC + ?Sized> RobustReprC for *$mutability R {}
         unsafe impl<R: RobustReprC + ?Sized> CFnArg for *$mutability R {}
+
         unsafe impl<R: RobustReprC + ?Sized> BorrowCast for *$mutability R {
             type AsConst = Self;
         }
         unsafe impl<R: RobustReprC + ?Sized> BorrowCastMut for *$mutability R {
             type AsMut = Self;
         }
+
     };
 }
 
@@ -266,10 +260,6 @@ macro_rules! fieldless_enum_derive {
 
         impl Niche for $src {
             const NICHE_VALUE: Self::CType = $niche_val;
-        }
-
-        unsafe impl Erase for $src {
-            type Erased = $src;
         }
     };
 }
@@ -365,6 +355,7 @@ impl<'d, R: DecodeOwned<'d, CType: Copy>, const N: usize> DecodeOwned<'d> for [R
 }
 
 unsafe impl<R: RobustReprC, const N: usize> RobustReprC for [R; N] {}
+
 unsafe impl<R: BorrowCast<AsConst: Copy> + Copy, const N: usize> BorrowCast for [R; N] {
     type AsConst = [R::AsConst; N];
 }
@@ -372,9 +363,9 @@ unsafe impl<R: BorrowCastMut<AsMut: Copy> + Copy, const N: usize> BorrowCastMut 
     type AsMut = [R::AsMut; N];
 }
 
-unsafe impl<T: Erase<Erased: Sized>, const N: usize> Erase for [T; N] {
-    type Erased = [T::Erased; N];
-}
+unsafe impl<T: EmptyStore, const N: usize> EmptyStore for [T; N] {}
+// TODO: It's not possbile to implement for specific len yet: https://github.com/mversic/co3/issues/13
+//unsafe impl<T> EmptyStore for [T; 0] {}
 
 impl_fn_types! {
     (),

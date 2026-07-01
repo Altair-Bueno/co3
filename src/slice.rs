@@ -3,7 +3,6 @@
 use crate::{
     CFnArg, Decode, Encode, ExternC, RobustReprC,
     borrow::{Borrow, BorrowCast, BorrowCastMut, ToOwned},
-    handle::Erase,
     ir::ReprFamily,
     niche::{NicheFamily, WithoutNiche},
     size::SizeFamily,
@@ -104,15 +103,11 @@ impl<C> CSlice<C> {
     };
 
     /// Create [`Self`] from shared slice
-    pub const fn from_slice(source: Option<&[C]>) -> Self {
-        if let Some(slice) = source {
-            return Self {
-                data: slice.as_ptr(),
-                len: slice.len(),
-            };
+    pub const fn from_slice(slice: &[C]) -> Self {
+        Self {
+            data: slice.as_ptr(),
+            len: slice.len(),
         }
-
-        Self::NICHE_VALUE
     }
 
     /// Create [`Self`] from a raw data pointer and slice metadata.
@@ -130,15 +125,11 @@ impl<C> CSliceMut<C> {
     };
 
     /// Create [`Self`] from mutable slice
-    pub const fn from_slice(source: Option<&mut [C]>) -> Self {
-        if let Some(slice) = source {
-            return Self {
-                data: slice.as_mut_ptr(),
-                len: slice.len(),
-            };
+    pub const fn from_slice(slice: &mut [C]) -> Self {
+        Self {
+            data: slice.as_mut_ptr(),
+            len: slice.len(),
         }
-
-        Self::NICHE_VALUE
     }
 
     /// Create [`Self`] from a raw data pointer and slice metadata.
@@ -154,7 +145,7 @@ impl<C> CSlice<C> {
     /// # Safety
     ///
     /// Check [`core::slice::from_raw_parts`]
-    pub const unsafe fn into_rust<'slice>(self) -> Option<&'slice [C]> {
+    pub(crate) const unsafe fn into_rust<'slice>(self) -> Option<&'slice [C]> {
         if self.data.is_null() {
             return None;
         }
@@ -170,7 +161,7 @@ impl<C> CSliceMut<C> {
     /// # Safety
     ///
     /// Check [`core::slice::from_raw_parts_mut`]
-    pub const unsafe fn into_rust<'slice>(self) -> Option<&'slice mut [C]> {
+    pub(crate) const unsafe fn into_rust<'slice>(self) -> Option<&'slice mut [C]> {
         if self.data.is_null() {
             return None;
         }
@@ -257,10 +248,6 @@ macro_rules! impl_slice_carrier {
         }
         unsafe impl<C: RobustReprC> BorrowCastMut for $ty<C> {
             type AsMut = Self;
-        }
-
-        unsafe impl<C: Erase<Erased: Sized>> Erase for $ty<C> {
-            type Erased = $ty<C::Erased>;
         }
     };
 }

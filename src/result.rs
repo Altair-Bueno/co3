@@ -5,7 +5,6 @@ use core::{mem::MaybeUninit, ops::Add};
 use crate::{
     CFnArg, Decode, Encode, ExternC, FfiReturn, RobustReprC,
     borrow::{Borrow, BorrowCast, BorrowCastMut, ToOwned},
-    handle::Erase,
     ir::ReprFamily,
     niche::{NicheFamily, WithoutNiche},
     size::SizeFamily,
@@ -327,8 +326,5 @@ unsafe impl<T: BorrowCastMut<AsMut: Copy> + Copy, E: BorrowCastMut<AsMut: Copy> 
     type AsMut = ReprCResult<T::AsMut, E::AsMut>;
 }
 
-unsafe impl<T: Erase<Erased: Copy> + Copy, E: Erase<Erased: Copy> + Copy> Erase
-    for ReprCResult<T, E>
-{
-    type Erased = ReprCResult<T::Erased, E::Erased>;
-}
+// TODO: Only if one is uninhabited and the other ZST?
+//unsafe impl<T: EmptyStore, E: EmptyStore> EmptyStore for Result<T, E> {}

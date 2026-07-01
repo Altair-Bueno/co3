@@ -5,11 +5,10 @@ use core::mem::MaybeUninit;
 use crate::{
     CFnArg, Decode, Encode, ExternC, FfiReturn, RobustReprC,
     borrow::{Borrow, BorrowCast, BorrowCastMut, ToOwned},
-    handle::Erase,
     ir::ReprFamily,
     niche::{NicheFamily, WithoutNiche},
     size::SizeFamily,
-    stored::{DecodeOwned, EncodeOwned},
+    stored::{DecodeOwned, EmptyStore, EncodeOwned},
     transmute::CheckedTransmute,
 };
 
@@ -242,6 +241,5 @@ unsafe impl<T: BorrowCast<AsConst: Copy> + Copy> BorrowCast for ReprCOption<T> {
 unsafe impl<T: BorrowCastMut<AsMut: Copy> + Copy> BorrowCastMut for ReprCOption<T> {
     type AsMut = ReprCOption<T::AsMut>;
 }
-unsafe impl<T: Erase<Erased: Sized>> Erase for ReprCOption<T> {
-    type Erased = ReprCOption<T::Erased>;
-}
+
+unsafe impl<T: EmptyStore> EmptyStore for Option<T> {}

@@ -7,7 +7,6 @@ use crate::{
     CFnArg, Decode, Encode, ExternC, RobustReprC,
     alloc::{Allocator, Global},
     borrow::{Borrow, BorrowCast, BorrowCastMut, ToOwned},
-    handle::Erase,
     ir::ReprFamily,
     niche::{NicheFamily, WithoutNiche},
     size::SizeFamily,
@@ -136,19 +135,11 @@ impl<C, A: Allocator> Copy for CBoxedSlice<C, A> {}
 
 impl<C> CBox<C> {
     /// Create [`Self`] from a [`Box<C>`].
-    pub fn from_box(source: Option<Box<C>>) -> Self {
-        let Some(source) = source else {
-            return Self::NICHE_VALUE;
-        };
-
+    pub fn from_box(source: Box<C>) -> Self {
         Self {
             data: Box::into_raw(source),
             allocator: Global,
         }
-    }
-
-    pub fn into_raw(boxed: Self) -> *mut C {
-        boxed.data
     }
 
     /// Create [`Self`] from a raw data pointer
@@ -196,12 +187,8 @@ impl<C> CBox<C> {
 
 impl<C> CBoxedSlice<C> {
     /// Create [`Self`] from a [`Box<[T]>`]
-    pub fn from_boxed_slice(source: Option<Box<[C]>>) -> Self {
+    pub fn from_boxed_slice(source: Box<[C]>) -> Self {
         let mut boxed_slice = core::mem::ManuallyDrop::new(source);
-
-        let Some(boxed_slice) = boxed_slice.as_deref_mut() else {
-            return Self::NICHE_VALUE;
-        };
 
         Self {
             data: boxed_slice.as_mut_ptr(),
@@ -324,8 +311,8 @@ macro_rules! impl_boxed_carrier {
             }
         }
 
-        impl<'d, C: RobustReprC, A: Allocator> Decode<'d> for $ty<C, A> {}
         impl<C: RobustReprC, A: Allocator> Encode for $ty<C, A> {}
+        impl<'d, C: RobustReprC, A: Allocator> Decode<'d> for $ty<C, A> {}
 
         unsafe impl<C: RobustReprC, A: Allocator> CheckedTransmute for $ty<C, A> {
             #[inline(always)]
@@ -336,10 +323,6 @@ macro_rules! impl_boxed_carrier {
 
         unsafe impl<C: RobustReprC, A: Allocator> RobustReprC for $ty<C, A> {}
         unsafe impl<C: RobustReprC, A: Allocator> CFnArg for $ty<C, A> {}
-
-        unsafe impl<C: Erase<Erased: Sized>, A: Allocator> Erase for $ty<C, A> {
-            type Erased = $ty<C::Erased>;
-        }
     };
 }
 

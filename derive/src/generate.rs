@@ -610,22 +610,17 @@ fn gen_owned_repr_c_impls(ident: &syn::Ident, generics: &syn::Generics) -> Token
             }
         }
 
+        impl #impl_generics Clone for #owned_repr_c_name #ty_generics #where_clause {
+            fn clone(&self) -> Self { *self }
+        }
+        impl #impl_generics Copy for #owned_repr_c_name #ty_generics #where_clause {}
+
         #size_impl
         impl #impl_generics co3::ir::ReprFamily for #owned_repr_c_name #ty_generics #where_clause {
             type Kind = co3::ir::ReprC<co3::ir::Robust>;
         }
         impl #impl_generics co3::niche::NicheFamily for #owned_repr_c_name #ty_generics #where_clause {
             type Kind = co3::niche::WithoutNiche;
-        }
-
-        unsafe impl #impl_generics co3::RobustReprC for #owned_repr_c_name #ty_generics #where_clause {}
-        unsafe impl #impl_generics co3::CFnArg for #owned_repr_c_name #ty_generics #where_clause {}
-
-        unsafe impl #impl_generics co3::transmute::CheckedTransmute for #owned_repr_c_name #ty_generics #where_clause {
-            #[inline(always)]
-            unsafe fn is_valid(_: &Self::CType) -> bool {
-                true
-            }
         }
 
         impl #impl_generics co3::ExternC for #owned_repr_c_name #ty_generics #where_clause {
@@ -654,17 +649,22 @@ fn gen_owned_repr_c_impls(ident: &syn::Ident, generics: &syn::Generics) -> Token
         impl #impl_generics co3::Encode for #owned_repr_c_name #ty_generics #where_clause {}
         impl #impl_generics co3::Decode<'_> for #owned_repr_c_name #ty_generics #where_clause {}
 
+        unsafe impl #impl_generics co3::transmute::CheckedTransmute for #owned_repr_c_name #ty_generics #where_clause {
+            #[inline(always)]
+            unsafe fn is_valid(_: &Self::CType) -> bool {
+                true
+            }
+        }
+
+        unsafe impl #impl_generics co3::RobustReprC for #owned_repr_c_name #ty_generics #where_clause {}
+        unsafe impl #impl_generics co3::CFnArg for #owned_repr_c_name #ty_generics #where_clause {}
+
         unsafe impl #impl_generics co3::borrow::BorrowCast for #owned_repr_c_name #ty_generics #where_clause {
             type AsConst = *const #ident #ty_generics;
         }
         unsafe impl #impl_generics co3::borrow::BorrowCastMut for #owned_repr_c_name #ty_generics #where_clause {
             type AsMut = *mut #ident #ty_generics;
         }
-
-        impl #impl_generics Clone for #owned_repr_c_name #ty_generics #where_clause {
-            fn clone(&self) -> Self { *self }
-        }
-        impl #impl_generics Copy for #owned_repr_c_name #ty_generics #where_clause {}
     }
 }
 
@@ -729,10 +729,6 @@ fn gen_owned_extern_type_impls(ident: &syn::Ident, generics: &syn::Generics) -> 
         impl #impl_generics co3::Encode for #owned_ident #ty_generics #where_clause {}
         impl #impl_generics co3::Decode<'_> for #owned_ident #ty_generics #where_clause {}
 
-        unsafe impl #impl_generics co3::handle::Erase for #owned_ident #ty_generics #where_clause {
-            type Erased = *mut core::ffi::c_void;
-        }
-
         impl #impl_generics core::ops::Deref for #owned_ident #ty_generics #where_clause {
             type Target = #ident #ty_generics;
 
@@ -796,14 +792,6 @@ fn derive_opaque_item(
 
         impl #impl_generics co3::ExternC for #ident #ty_generics #where_clause {
             type CType = Self;
-        }
-
-        impl #impl_generics co3::niche::NicheFamily for #ident #ty_generics #where_clause {
-            type Kind = co3::niche::WithoutNiche;
-        }
-
-        unsafe impl #impl_generics co3::handle::Erase for #ident #ty_generics #where_clause {
-            type Erased = core::ffi::c_void;
         }
     }
 }

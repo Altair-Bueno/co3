@@ -1,7 +1,7 @@
 use alloc_crate::alloc::{self, alloc_zeroed, dealloc};
 use core::{alloc::Layout, error::Error, num::NonZeroUsize, ptr::NonNull};
 
-use crate::out_ptr::Zst;
+use crate::stored::EmptyStore;
 
 // TODO: Use allocator-api2?
 
@@ -10,8 +10,8 @@ use crate::out_ptr::Zst;
 /// # Safety
 ///
 /// Refer to [`alloc_crate::alloc::Allocator`]
-// FIXME: Don't require Allocator be Zst + Copy?
-pub unsafe trait Allocator: Zst + Copy {
+// FIXME: Don't require Allocator be EmptyStore + Copy?
+pub unsafe trait Allocator: EmptyStore + Copy {
     /// [`alloc_crate::alloc::Allocator::allocate`]
     fn allocate(&self, layout: Layout) -> Result<NonNull<[u8]>, AllocError>;
 
@@ -60,7 +60,8 @@ impl Global {
     }
 }
 
-unsafe impl Zst for Global {}
+unsafe impl EmptyStore for Global {}
+unsafe impl EmptyStore for AllocError {}
 unsafe impl Allocator for Global {
     #[inline(always)]
     fn allocate(&self, layout: Layout) -> Result<NonNull<[u8]>, AllocError> {
