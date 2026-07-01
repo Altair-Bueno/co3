@@ -798,6 +798,10 @@ fn derive_opaque_item(
             type CType = Self;
         }
 
+        impl #impl_generics co3::niche::NicheFamily for #ident #ty_generics #where_clause {
+            type Kind = co3::niche::WithoutNiche;
+        }
+
         unsafe impl #impl_generics co3::handle::Erase for #ident #ty_generics #where_clause {
             type Erased = core::ffi::c_void;
         }

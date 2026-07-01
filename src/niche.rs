@@ -113,7 +113,7 @@ pub unsafe trait StableNiche: Niche {}
 
 disjoint_impls! {
     /// Niche kind of the type in the internal representation [IR](`crate::ir::Repr`)
-    pub trait NicheFamily: Sized {
+    pub trait NicheFamily {
         /// The internal representation (i.e. type family) of the type
         ///
         /// - If `Self` doesn't have any niche value, set [`NicheFamily::Kind`] to [`WithoutNiche`].
@@ -125,6 +125,13 @@ disjoint_impls! {
         /// - Otherwise, if `Self` has at least one trap, set [`NicheFamily::Kind`] to [`WithCustomNiche`].
         ///   `Option<T>` will be serialized into a [`T::CType`] with a manually set niche value
         type Kind;
+    }
+
+    impl<R: NicheFamily<Kind = WithoutNiche>> NicheFamily for [R] {
+        type Kind = WithoutNiche;
+    }
+    impl<R: NicheFamily<Kind: WithNiche>> NicheFamily for [R] {
+        type Kind = WithCustomNiche;
     }
 
     impl<R: SizeFamily<Kind = MetaSized<K>> + ?Sized, K> NicheFamily for &R {

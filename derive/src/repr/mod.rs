@@ -18,26 +18,45 @@ mod niche;
 
 const FFI_TYPE_ATTR: &str = "reprC";
 
-fn parse_repr_c_parts(
-    attrs: &[Attribute],
-) -> syn::Result<(Option<syn::Expr>, Option<syn::ExprClosure>)> {
+#[derive(Default)]
+pub(super) struct ReprCAttrs {
+    pub(super) niche_value: Option<syn::Expr>,
+    pub(super) is_valid: Option<syn::ExprClosure>,
+    pub(super) handle_id: Option<syn::Type>,
+    pub(super) is_view: bool,
+}
+
+#[derive(Default)]
+pub(super) struct VariantReprCAttrs {
+    pub(super) is_valid: Option<syn::ExprClosure>,
+}
+
+fn parse_repr_c_attrs(attrs: &[Attribute]) -> syn::Result<ReprCAttrs> {
     let Some(attr) = find_single_attr_opt(FFI_TYPE_ATTR, attrs)? else {
-        return Ok((None, None));
+        return Ok(ReprCAttrs::default());
     };
 
-    let mut niche_value = None;
-    let mut is_valid = None;
-    let mut is_view = false;
+    let mut repr_c = ReprCAttrs::default();
 
     attr.parse_nested_meta(|meta| {
         if meta.path.is_ident("view") {
-            is_view = true;
+            repr_c.is_view = true;
+            return Ok(());
+        }
+
+        if meta.path.is_ident("id") {
+            let content;
+            syn::parenthesized!(content in meta.input);
+            let value: syn::Type = content.parse()?;
+            if repr_c.handle_id.replace(value).is_some() {
+                return Err(meta.error("Duplicate `id` within attribute"));
+            }
             return Ok(());
         }
 
         if meta.path.is_ident("NICHE_VALUE") {
             let value: syn::Expr = meta.value()?.parse()?;
-            if niche_value.replace(value).is_some() {
+            if repr_c.niche_value.replace(value).is_some() {
                 return Err(meta.error("Duplicate `NICHE_VALUE` within attribute"));
             }
             return Ok(());
@@ -45,7 +64,7 @@ fn parse_repr_c_parts(
 
         if meta.path.is_ident("is_valid") {
             let value: syn::ExprClosure = meta.value()?.parse()?;
-            if is_valid.replace(value).is_some() {
+            if repr_c.is_valid.replace(value).is_some() {
                 return Err(meta.error("Duplicate `is_valid` within attribute"));
             }
             return Ok(());
@@ -54,11 +73,15 @@ fn parse_repr_c_parts(
         Err(meta.error("unknown type kind"))
     })?;
 
-    if niche_value.is_none() && is_valid.is_none() && !is_view {
+    if repr_c.niche_value.is_none()
+        && repr_c.is_valid.is_none()
+        && repr_c.handle_id.is_none()
+        && !repr_c.is_view
+    {
         return Err(syn::Error::new_spanned(attr, "expected ffi type kind"));
     }
 
-    Ok((niche_value, is_valid))
+    Ok(repr_c)
 }
 
 fn infer_struct_is_valid_from_niche(
@@ -103,8 +126,8 @@ pub(crate) fn derive_repr_c(input: &syn::DeriveInput) -> syn::Result<TokenStream
     let mut errors = None::<syn::Error>;
 
     let repr_attr = parse_repr(&input.attrs)?;
-    let (niche_value, mut is_valid) = parse_repr_c_parts(&input.attrs)?;
-    let handle_id = parse_single_list_attr_opt::<syn::Type>("id", &input.attrs)?;
+    let mut repr_c_attrs = parse_repr_c_attrs(&input.attrs)?;
+    let mut variant_attrs = Vec::new();
 
     match &input.data {
         syn::Data::Struct(data) => {
@@ -114,15 +137,19 @@ pub(crate) fn derive_repr_c(input: &syn::DeriveInput) -> syn::Result<TokenStream
             }
 
             validate_fields_no_ffi_type_attr(&data.fields, &mut errors);
-            infer_struct_is_valid_from_niche(&data.fields, niche_value.as_ref(), &mut is_valid);
+            infer_struct_is_valid_from_niche(
+                &data.fields,
+                repr_c_attrs.niche_value.as_ref(),
+                &mut repr_c_attrs.is_valid,
+            );
         }
         syn::Data::Enum(data) => {
-            if is_valid.is_some() {
+            if repr_c_attrs.is_valid.is_some() {
                 let err_msg = "`is_valid` is only supported on structs or enum variants";
                 push_error(&mut errors, syn::Error::new_spanned(&input.ident, err_msg));
             }
 
-            if niche_value.is_some() {
+            if repr_c_attrs.niche_value.is_some() {
                 let err_msg = "`NICHE_VALUE` is only supported on structs";
                 push_error(&mut errors, syn::Error::new_spanned(&input.ident, err_msg));
             }
@@ -139,10 +166,22 @@ pub(crate) fn derive_repr_c(input: &syn::DeriveInput) -> syn::Result<TokenStream
                     push_error(&mut errors, syn::Error::new(variant.span(), err_msg));
                 }
 
-                if parse_repr_c_parts(&variant.attrs)?.0.is_some() {
+                let variant_repr_c_attrs = parse_repr_c_attrs(&variant.attrs)?;
+                if variant_repr_c_attrs.niche_value.is_some() {
                     let err_msg = "`NICHE_VALUE` is only supported on types";
                     push_error(&mut errors, syn::Error::new(variant.span(), err_msg));
                 }
+                if variant_repr_c_attrs.handle_id.is_some() {
+                    let err_msg = "`id` is only supported on types";
+                    push_error(&mut errors, syn::Error::new(variant.span(), err_msg));
+                }
+                if variant_repr_c_attrs.is_view {
+                    let err_msg = "`view` is only supported on types";
+                    push_error(&mut errors, syn::Error::new(variant.span(), err_msg));
+                }
+                variant_attrs.push(VariantReprCAttrs {
+                    is_valid: variant_repr_c_attrs.is_valid,
+                });
             }
         }
         syn::Data::Union(_) => {
@@ -157,12 +196,7 @@ pub(crate) fn derive_repr_c(input: &syn::DeriveInput) -> syn::Result<TokenStream
     let mut generics = input.generics.clone();
     generics.make_where_clause();
     let tokens = match &input.data {
-        syn::Data::Struct(_) => derive_item(
-            repr_attr.as_ref(),
-            input,
-            niche_value.as_ref(),
-            is_valid.as_ref(),
-        ),
+        syn::Data::Struct(_) => derive_item(repr_attr.as_ref(), input, &repr_c_attrs, &[]),
         syn::Data::Enum(data) if data.variants.is_empty() => {
             // TODO: Support uninhabited enums. yes, it is possible
             let err_msg = "Uninhabited enum is a never type. You can declare it as an opaque type in `export_!` or `extern_!` with `type Foo;`";
@@ -178,7 +212,7 @@ pub(crate) fn derive_repr_c(input: &syn::DeriveInput) -> syn::Result<TokenStream
             {
                 derive_fieldless_enum(repr_attr.as_ref(), &input.ident, &generics, &data.variants)
             } else {
-                derive_item(repr_attr.as_ref(), input, None, None)
+                derive_item(repr_attr.as_ref(), input, &repr_c_attrs, &variant_attrs)
             }
         }
         syn::Data::Union(_) => unreachable!(),
@@ -189,7 +223,8 @@ pub(crate) fn derive_repr_c(input: &syn::DeriveInput) -> syn::Result<TokenStream
     } else {
         let drop_impl_assert = assert_no_drop(&generics, &input.ident);
 
-        let handle_family_impl = handle_id
+        let handle_family_impl = repr_c_attrs
+            .handle_id
             .as_ref()
             .map(|id| gen_handle_family_impl(&input.ident, &generics, id));
 
@@ -199,31 +234,6 @@ pub(crate) fn derive_repr_c(input: &syn::DeriveInput) -> syn::Result<TokenStream
 
             #tokens
         })
-    }
-}
-
-/// Parses a single attribute of the form `#[attr_name(...)]`.
-///
-/// If no attribute with specified name is found, returns `Ok(None)`.
-///
-/// # Errors
-///
-/// - If multiple attributes with specified name are found
-/// - If attribute is not a list
-pub fn parse_single_list_attr_opt<Body: syn::parse::Parse>(
-    attr_name: &str,
-    attrs: &[syn::Attribute],
-) -> syn::Result<Option<Body>> {
-    let Some(attr) = find_single_attr_opt(attr_name, attrs)? else {
-        return Ok(None);
-    };
-
-    match &attr.meta {
-        syn::Meta::Path(_) | syn::Meta::NameValue(_) => Err(syn::Error::new_spanned(
-            attr,
-            format!("Expected #[{}(...)] attribute to be a list", attr_name),
-        )),
-        syn::Meta::List(list) => syn::parse2(list.tokens.clone()).map(Some),
     }
 }
 
@@ -450,23 +460,4 @@ fn generic_param_idents<'a>(
         syn::GenericParam::Type(syn::TypeParam { ident, .. }) => quote! { #ident },
         syn::GenericParam::Const(syn::ConstParam { ident, .. }) => quote! { #ident },
     })
-}
-
-fn is_view(attrs: &[syn::Attribute]) -> bool {
-    attrs
-        .iter()
-        .filter(|attr| attr.path().is_ident(FFI_TYPE_ATTR))
-        .any(|attr| {
-            let mut is_view = false;
-
-            let _ = attr.parse_nested_meta(|meta| {
-                if meta.path.is_ident("view") {
-                    is_view = true;
-                }
-
-                Ok(())
-            });
-
-            is_view
-        })
 }

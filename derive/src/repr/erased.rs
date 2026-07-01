@@ -7,12 +7,12 @@ use crate::repr::is_type_parameterized;
 pub(super) fn gen_erased_item(input: &DeriveInput) -> TokenStream {
     let mut erased_def = input.clone();
 
-    erased_def.ident = gen_erased_name(&input.ident);
-
+    erased_def.attrs.retain(|attr| !attr.path().is_ident("reprC"));
     rewrite_erased_generics(&mut erased_def);
     rewrite_erased_fields(&mut erased_def.data);
 
-    let erased_family_impls = gen_erased_family_impls(&erased_def.ident, &erased_def.generics);
+    let name = core::mem::replace(&mut erased_def.ident, gen_erased_name(&input.ident));
+    let erased_family_impls = gen_erased_family_impls(&name, &erased_def.generics);
 
     quote::quote! {
         #[doc(hidden)]
@@ -27,7 +27,46 @@ pub(super) fn gen_erased_name(name: &syn::Ident) -> syn::Ident {
 }
 
 fn rewrite_erased_generics(input: &mut DeriveInput) {
-    let field_tys: Vec<_> = match &input.data {
+    for bound in gen_erased_field_bounds(input) {
+        input
+            .generics
+            .make_where_clause()
+            .predicates
+            .push(parse_quote! { #bound });
+    }
+}
+
+pub(super) fn gen_erased_field_bounds(input: &DeriveInput) -> Vec<TokenStream> {
+    let fields = field_tys(&input.data);
+
+    let Some((last_field, fields)) = fields.split_last() else {
+        return vec![];
+    };
+
+    let mut predicates: Vec<TokenStream> = fields
+        .iter()
+        .map(|ty| {
+            let sized_bound = is_type_parameterized(ty, &input.generics).then(|| {
+                quote! { <Erased: Sized> }
+            });
+
+            quote! { #ty: co3::handle::Erase #sized_bound }
+        })
+        .collect();
+
+    if is_type_parameterized(last_field, &input.generics) {
+        let sized_bound = (!matches!(&input.data, syn::Data::Struct(_))).then(|| {
+            quote! { <Erased: Sized> }
+        });
+
+        predicates.push(quote! { #last_field: co3::handle::Erase #sized_bound });
+    }
+
+    predicates
+}
+
+fn field_tys(data: &syn::Data) -> Vec<syn::Type> {
+    match data {
         syn::Data::Struct(data) => data.fields.iter().map(|f| f.ty.clone()).collect(),
         syn::Data::Enum(data) => data
             .variants
@@ -35,20 +74,6 @@ fn rewrite_erased_generics(input: &mut DeriveInput) {
             .flat_map(|v| v.fields.iter().map(|f| f.ty.clone()))
             .collect(),
         syn::Data::Union(_) => unreachable!(),
-    };
-
-    for field_ty in field_tys {
-        let sized = if is_type_parameterized(&field_ty, &input.generics) {
-            quote!(<Erased: Sized>)
-        } else {
-            quote!()
-        };
-
-        input
-            .generics
-            .make_where_clause()
-            .predicates
-            .push(parse_quote! { #field_ty: co3::handle::Erase #sized });
     }
 }
 
@@ -74,11 +99,11 @@ fn rewrite_erased_field_tys(fields: &mut syn::Fields) {
     }
 }
 
-fn gen_erased_family_impls(name: &syn::Ident, generics: &syn::Generics) -> TokenStream {
+fn gen_erased_family_impls(owner_name: &syn::Ident, generics: &syn::Generics) -> TokenStream {
     let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
     let predicates = where_clause.as_ref().map(|w| &w.predicates);
 
-    let owner_name = gen_erased_owner_name(name);
+    let name = gen_erased_name(owner_name);
     let for_dummy = if generics.params.is_empty() {
         quote! { for<'_dummy> }
     } else {
@@ -111,13 +136,4 @@ fn gen_erased_family_impls(name: &syn::Ident, generics: &syn::Generics) -> Token
             type Kind = <#owner_name #ty_generics as co3::niche::NicheFamily>::Kind;
         }
     }
-}
-
-fn gen_erased_owner_name(erased_name: &syn::Ident) -> syn::Ident {
-    let erased_name_str = erased_name.to_string();
-    let owned_name = erased_name_str
-        .strip_suffix("Erased")
-        .expect("gen_erased_owner_name called for non-erased item");
-
-    syn::Ident::new(owned_name, erased_name.span())
 }

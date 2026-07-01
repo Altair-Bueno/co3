@@ -412,7 +412,7 @@ macro_rules! impl_tuple_families {
     };
 
     (@params $family:ident for $target:ty [$($all:ident),+] [$($params:tt)*]; $ty:ident) => {
-        impl<$($params)* $ty: $family> $family for $target {
+        impl<$($params)* $ty: $family + ?Sized> $family for $target {
             type Kind = impl_tuple_families!(@kind $family; $($all),+);
         }
     };

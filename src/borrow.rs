@@ -14,17 +14,21 @@ impl<K> NonExternTypeLike for MetaSized<K> {}
 #[cfg(feature = "alloc")]
 impl NonExternTypeLike for crate::size::Sized {}
 
-// TODO: ?Sized bound is nonsensical but required for derives to work
 /// A layout-compatible borrowed view of a robust C representation.
 ///
 /// # Safety
 ///
-/// - only owned to borrowed pointer casting is allowed
+/// - only owned to borrowed const pointer casting is allowed
 // TODO: Stupid trait with a stupid name
 pub unsafe trait BorrowCast: RobustReprC {
     type AsConst: RobustReprC + ?Sized;
 }
 
+/// A layout-compatible mutably borrowed view of a robust C representation.
+///
+/// # Safety
+///
+/// - only owned to borrowed mut pointer casting is allowed
 pub unsafe trait BorrowCastMut: RobustReprC {
     type AsMut: RobustReprC + ?Sized;
 }

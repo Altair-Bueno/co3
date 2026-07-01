@@ -594,10 +594,11 @@ fn rewrite_ctype_view_generics<'a, const ADD_COPY: bool>(
     let field_tys = rewrite_ctype_view_field_tys(fields, is_mut);
     let field_tys = field_tys.iter().collect::<Vec<_>>();
 
-    let borrow_cast_bounds = gen_ctype_borrow_cast_bounds::<ADD_COPY>(generics, &field_tys, is_mut);
-
-    let where_clause = generics.make_where_clause();
-    where_clause.predicates.extend(borrow_cast_bounds);
+    for bound in gen_ctype_borrow_cast_bounds::<ADD_COPY>(generics, &field_tys, is_mut) {
+        generics.make_where_clause().predicates.push(parse_quote! {
+            #bound
+        });
+    }
 }
 
 fn rewrite_ctype_view_field_tys<'a>(
@@ -907,7 +908,7 @@ fn gen_ctype_borrow_cast_bounds<const ADD_COPY: bool>(
     generics: &syn::Generics,
     fields: &[&syn::Type],
     is_mut: bool,
-) -> Vec<syn::WherePredicate> {
+) -> Vec<TokenStream> {
     let (borrow_cast_trait, assoc_type) = if is_mut {
         (quote! { co3::borrow::BorrowCastMut }, quote!(AsMut))
     } else {
@@ -933,13 +934,8 @@ fn gen_ctype_borrow_cast_bounds<const ADD_COPY: bool>(
         .collect::<Vec<_>>();
 
     if is_type_parameterized(last, generics) {
-        let ctype_bound = if ADD_COPY {
-            quote! { <#assoc_type: Copy> }
-        } else {
-            quote! {}
-        };
-
-        predicates.push(parse_quote! { #last: #borrow_cast_trait #ctype_bound });
+        let copy_bound = ADD_COPY.then(|| quote! { <#assoc_type: Copy> });
+        predicates.push(parse_quote! { #last: #borrow_cast_trait #copy_bound });
     }
 
     predicates

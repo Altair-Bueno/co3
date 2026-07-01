@@ -98,9 +98,9 @@ enum DropImpl {
 ///
 /// # Attributes
 ///
-/// * `#[reprC(NICHE_VALUE = <expr>)]` on a struct customizes [`co3::niche::Niche`] value
-/// * `#[reprC(is_valid = |[fieldN]| ...)]` on a struct or variant customizes validation
-/// * `#[id($type)]` defines `co3::handle::HandleFamily::Kind`
+/// * `#[reprC(NICHE_VALUE = <expr>)]` on a struct customizes [`co3::niche::Niche::NICHE_VALUE`]
+/// * `#[reprC(is_valid = |[fieldN]| ...)]` on a struct or enum variant customizes validation
+/// * `#[reprC(id($type))]` defines `co3::handle::HandleFamily::Kind`
 ///
 /// ```
 /// use co3::ReprC as ReprCAlias;
@@ -111,7 +111,7 @@ enum DropImpl {
 ///
 /// It assumes that the derive is imported and referred to by its original name.
 #[manyhow]
-#[proc_macro_derive(ReprC, attributes(reprC, id))]
+#[proc_macro_derive(ReprC, attributes(reprC))]
 pub fn repr_c_derive(item: syn::DeriveInput) -> Result<TokenStream> {
     if let Some(export_attr) = item.attrs.iter().find(|attr| {
         let last_seg = attr.path().segments.last();

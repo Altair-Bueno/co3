@@ -361,7 +361,7 @@ impl<T: ReprFamily + ?Sized> ReprFamily for UnsafeCell<T> {
 impl<T: SizeFamily + ?Sized> SizeFamily for UnsafeCell<T> {
     type Kind = T::Kind;
 }
-impl<T> NicheFamily for UnsafeCell<T> {
+impl<T: ?Sized> NicheFamily for UnsafeCell<T> {
     type Kind = WithoutNiche;
 }
 
@@ -434,7 +434,7 @@ impl<T: ReprFamily + ?Sized> ReprFamily for Cell<T> {
 impl<T: SizeFamily + ?Sized> SizeFamily for Cell<T> {
     type Kind = T::Kind;
 }
-impl<T> NicheFamily for Cell<T> {
+impl<T: ?Sized> NicheFamily for Cell<T> {
     type Kind = WithoutNiche;
 }
 
@@ -507,7 +507,7 @@ impl<T: ReprFamily + ?Sized> ReprFamily for ManuallyDrop<T> {
 impl<T: SizeFamily + ?Sized> SizeFamily for ManuallyDrop<T> {
     type Kind = T::Kind;
 }
-impl<T: NicheFamily> NicheFamily for ManuallyDrop<T> {
+impl<T: NicheFamily + ?Sized> NicheFamily for ManuallyDrop<T> {
     type Kind = T::Kind;
 }
 

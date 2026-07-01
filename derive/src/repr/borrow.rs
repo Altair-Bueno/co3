@@ -3,19 +3,23 @@ use quote::{format_ident, quote};
 use syn::{DeriveInput, Ident, parse_quote};
 
 use crate::repr::{
+    ReprCAttrs, VariantReprCAttrs,
     ctype::gen_ctype_name,
-    generic_param_idents, is_type_parameterized, is_view,
+    generic_param_idents, is_type_parameterized,
     item::{field_vars, gen_fields_destructure},
-    parse_repr_c_parts,
 };
 
-pub(super) fn gen_item_view(input: &DeriveInput) -> TokenStream {
-    if is_view(&input.attrs) {
+pub(super) fn gen_item_view(
+    input: &DeriveInput,
+    attrs: &ReprCAttrs,
+    variant_attrs: &[VariantReprCAttrs],
+) -> TokenStream {
+    if attrs.is_view {
         return quote! {};
     }
 
     let mut view_def = input.clone();
-    rewrite_view_attrs(&mut view_def);
+    rewrite_view_attrs(&mut view_def, attrs, variant_attrs);
 
     view_def.ident = gen_view_name(&input.ident);
 
@@ -290,21 +294,38 @@ fn rewrite_view_fields(data: &mut syn::Data) {
     }
 }
 
-fn rewrite_view_attrs(input: &mut DeriveInput) {
+fn rewrite_view_attrs(
+    input: &mut DeriveInput,
+    attrs: &ReprCAttrs,
+    variant_attrs: &[VariantReprCAttrs],
+) {
     match &mut input.data {
-        syn::Data::Struct(data) => rewrite_view_repr_c_attrs(&mut input.attrs, &data.fields),
+        syn::Data::Struct(data) => rewrite_view_repr_c_attrs(
+            &mut input.attrs,
+            attrs.niche_value.as_ref(),
+            attrs.is_valid.as_ref(),
+            &data.fields,
+        ),
         syn::Data::Enum(data) => {
-            for variant in &mut data.variants {
-                rewrite_view_repr_c_attrs(&mut variant.attrs, &variant.fields);
+            for (variant, attrs) in data.variants.iter_mut().zip(variant_attrs) {
+                rewrite_view_repr_c_attrs(
+                    &mut variant.attrs,
+                    None,
+                    attrs.is_valid.as_ref(),
+                    &variant.fields,
+                );
             }
         }
         _ => {}
     }
 }
 
-fn rewrite_view_repr_c_attrs(attrs: &mut Vec<syn::Attribute>, fields: &syn::Fields) {
-    let (niche_value, is_valid) = parse_repr_c_parts(attrs).unwrap();
-
+fn rewrite_view_repr_c_attrs(
+    attrs: &mut Vec<syn::Attribute>,
+    niche_value: Option<&syn::Expr>,
+    is_valid: Option<&syn::ExprClosure>,
+    fields: &syn::Fields,
+) {
     attrs.retain(|a| !a.path().is_ident("reprC"));
     if niche_value.is_none() && is_valid.is_none() {
         return;
@@ -316,7 +337,7 @@ fn rewrite_view_repr_c_attrs(attrs: &mut Vec<syn::Attribute>, fields: &syn::Fiel
     }
 
     if let Some(is_valid) = is_valid {
-        let view_is_valid = gen_view_is_valid_attr(&is_valid, fields);
+        let view_is_valid = gen_view_is_valid_attr(is_valid, fields);
         attrs.push(parse_quote! { #[reprC(is_valid = #view_is_valid)] });
     }
 }

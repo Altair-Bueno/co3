@@ -5,6 +5,7 @@ use quote::{format_ident, quote};
 use syn::{Ident, parse_quote};
 
 use crate::repr::{
+    ReprCAttrs, VariantReprCAttrs,
     attr::ReprKind,
     borrow::{
         either_variant_name, gen_borrow_cast_eq_bounds, gen_const_view_name, gen_either_name,
@@ -15,38 +16,44 @@ use crate::repr::{
         gen_ctype_name, gen_extern_c_bounds_for_ctype, gen_item_ctype, gen_variant_struct_name,
     },
     enum_tag_type,
-    erased::{gen_erased_item, gen_erased_name},
+    erased::{gen_erased_field_bounds, gen_erased_item, gen_erased_name},
     gen_size_family_impl, gen_sized_family_impl, generic_param_idents, is_exhaustive_enum,
-    is_type_parameterized, is_view, parse_repr_c_parts, repr_type_is_signed,
+    is_type_parameterized, repr_type_is_signed,
 };
 
 pub(super) fn derive_item(
     repr: Option<&ReprKind>,
     input: &syn::DeriveInput,
-    niche_value: Option<&syn::Expr>,
-    is_valid: Option<&syn::ExprClosure>,
+    attrs: &ReprCAttrs,
+    variant_attrs: &[VariantReprCAttrs],
 ) -> TokenStream {
-    let is_view = is_view(&input.attrs);
+    let is_view = attrs.is_view;
 
     let ctype_def = (!is_view).then(|| gen_item_ctype(repr, input));
-    let view_def = (!is_view).then(|| gen_item_view(input));
+    let view_def = (!is_view).then(|| gen_item_view(input, attrs, variant_attrs));
     let erased_def = (!is_view).then(|| gen_erased_item(input));
 
     let family_impls = if is_view {
         gen_view_family_impls(&input.ident, &input.generics)
     } else {
-        gen_item_family_impls(repr, input, niche_value, is_valid)
+        gen_item_family_impls(
+            repr,
+            input,
+            attrs.niche_value.as_ref(),
+            attrs.is_valid.as_ref(),
+            variant_attrs,
+        )
     };
 
     let borrow_impls = (!is_view).then(|| gen_item_borrow_impls(input));
-    let codec_impls = gen_item_codec_impls(repr, input, is_valid);
-    let erase_impl = (!is_view).then(|| gen_erase_impl(&input.ident, &input.generics));
+    let codec_impls = gen_item_codec_impls(repr, input, attrs, variant_attrs);
+    let erase_impl = (!is_view).then(|| gen_erase_impl(input));
     // TODO:
     //let niche_impls = gen_struct_niche_ir_with_mode(name, generics, fields, ffi_type_kind);
 
     let repr_c_impls = repr
         .is_some()
-        .then(|| gen_item_repr_c_impls(repr, input, is_valid));
+        .then(|| gen_item_repr_c_impls(repr, input, attrs, variant_attrs));
 
     quote! {
         #ctype_def
@@ -63,19 +70,18 @@ pub(super) fn derive_item(
     }
 }
 
-fn gen_erase_impl(name: &Ident, generics: &syn::Generics) -> TokenStream {
-    let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
+fn gen_erase_impl(input: &syn::DeriveInput) -> TokenStream {
+    let (impl_generics, ty_generics, where_clause) = &input.generics.split_for_impl();
     let predicates = where_clause.as_ref().map(|w| &w.predicates);
+
+    let name = &input.ident;
     let erased_name = gen_erased_name(name);
-    let erase_bounds = generics.type_params().map(|param| {
-        let ident = &param.ident;
-        quote! { #ident: co3::handle::Erase<Erased: Sized>, }
-    });
+    let erase_bounds = gen_erased_field_bounds(input);
 
     quote! {
         unsafe impl #impl_generics co3::handle::Erase for #name #ty_generics
         where
-            #(#erase_bounds)*
+            #(#erase_bounds,)*
             #predicates
         {
             type Erased = #erased_name #ty_generics;
@@ -88,6 +94,7 @@ fn gen_item_family_impls(
     input: &syn::DeriveInput,
     niche_value: Option<&syn::Expr>,
     is_valid: Option<&syn::ExprClosure>,
+    variant_attrs: &[VariantReprCAttrs],
 ) -> TokenStream {
     match &input.data {
         syn::Data::Struct(data) => gen_struct_family_impls(
@@ -98,9 +105,13 @@ fn gen_item_family_impls(
             is_valid.is_some(),
             niche_value.is_some(),
         ),
-        syn::Data::Enum(data) => {
-            gen_enum_family_impls(repr, &input.ident, &input.generics, &data.variants)
-        }
+        syn::Data::Enum(data) => gen_enum_family_impls(
+            repr,
+            &input.ident,
+            &input.generics,
+            &data.variants,
+            variant_attrs,
+        ),
         syn::Data::Union(_) => unreachable!(),
     }
 }
@@ -108,9 +119,10 @@ fn gen_item_family_impls(
 fn gen_item_codec_impls(
     repr: Option<&ReprKind>,
     input: &syn::DeriveInput,
-    is_valid: Option<&syn::ExprClosure>,
+    attrs: &ReprCAttrs,
+    variant_attrs: &[VariantReprCAttrs],
 ) -> TokenStream {
-    let is_view = is_view(&input.attrs);
+    let is_view = attrs.is_view;
 
     match &input.data {
         syn::Data::Struct(data) => gen_struct_codec_impls(
@@ -118,11 +130,16 @@ fn gen_item_codec_impls(
             &input.ident,
             &input.generics,
             &data.fields,
-            is_valid,
+            attrs.is_valid.as_ref(),
         ),
-        syn::Data::Enum(data) => {
-            gen_enum_codec_impls(is_view, repr, &input.ident, &input.generics, &data.variants)
-        }
+        syn::Data::Enum(data) => gen_enum_codec_impls(
+            is_view,
+            repr,
+            &input.ident,
+            &input.generics,
+            &data.variants,
+            variant_attrs,
+        ),
         syn::Data::Union(_) => unreachable!(),
     }
 }
@@ -130,9 +147,10 @@ fn gen_item_codec_impls(
 fn gen_item_repr_c_impls(
     repr: Option<&ReprKind>,
     input: &syn::DeriveInput,
-    is_valid: Option<&syn::ExprClosure>,
+    attrs: &ReprCAttrs,
+    variant_attrs: &[VariantReprCAttrs],
 ) -> TokenStream {
-    let is_view = is_view(&input.attrs);
+    let is_view = attrs.is_view;
 
     match &input.data {
         syn::Data::Struct(data) => gen_repr_c_struct_impls(
@@ -140,11 +158,16 @@ fn gen_item_repr_c_impls(
             &input.ident,
             &input.generics,
             &data.fields,
-            is_valid,
+            attrs.is_valid.as_ref(),
         ),
-        syn::Data::Enum(data) => {
-            gen_repr_c_data_enum_impls(is_view, repr, &input.ident, &input.generics, &data.variants)
-        }
+        syn::Data::Enum(data) => gen_repr_c_data_enum_impls(
+            is_view,
+            repr,
+            &input.ident,
+            &input.generics,
+            &data.variants,
+            variant_attrs,
+        ),
         syn::Data::Union(_) => unreachable!(),
     }
 }
@@ -166,7 +189,12 @@ fn gen_struct_family_impls(
     };
 
     let size_family_impl = gen_size_family_impl(name, generics, &fields);
-    let niche_family_impl = gen_niche_family_impl(name, generics, &fields, has_custom_niche);
+    let niche_family_impl = if has_custom_niche {
+        // TODO: ?Sized types shouln't allow custom niche. Add validation against it
+        gen_niche_family_impl_with_kind(name, generics, quote! {co3::niche::WithCustomNiche })
+    } else {
+        gen_niche_family_impl(name, generics, &fields)
+    };
 
     quote! {
         #repr_family_impl
@@ -180,6 +208,7 @@ fn gen_enum_family_impls(
     name: &Ident,
     generics: &syn::Generics,
     variants: &syn::punctuated::Punctuated<syn::Variant, syn::Token![,]>,
+    variant_attrs: &[VariantReprCAttrs],
 ) -> TokenStream {
     let fields = variants
         .iter()
@@ -187,7 +216,7 @@ fn gen_enum_family_impls(
         .collect::<Vec<_>>();
 
     let repr_family_impl = if repr.is_some() {
-        let has_trap_values = enum_has_trap_values(repr, variants);
+        let has_trap_values = enum_has_trap_values(repr, variants, variant_attrs);
         gen_repr_family_impl(name, generics, &fields, has_trap_values)
     } else {
         gen_rust_repr_family_impl(name, generics)
@@ -264,6 +293,7 @@ fn gen_enum_codec_impls(
     name: &Ident,
     generics: &syn::Generics,
     variants: &syn::punctuated::Punctuated<syn::Variant, syn::Token![,]>,
+    variant_attrs: &[VariantReprCAttrs],
 ) -> TokenStream {
     if repr == Some(&ReprKind::Transparent) {
         let Some(variant) = variants.first() else {
@@ -283,14 +313,16 @@ fn gen_enum_codec_impls(
             gen_ctype_name(name)
         };
 
-        let (_, custom_is_valid) = parse_repr_c_parts(&variant.attrs).unwrap();
+        let custom_is_valid = variant_attrs
+            .first()
+            .and_then(|attrs| attrs.is_valid.as_ref());
         let encode_store = encode_store_type(&variant.fields);
         let decode_store = decode_store_type(&variant.fields);
         let (encode_body, decode_body) = gen_record_conversion(
             None,
             quote!(Self::#variant_name),
             &variant.fields,
-            custom_is_valid.as_ref(),
+            custom_is_valid,
         );
 
         return gen_codec_impls::<true>(
@@ -369,14 +401,16 @@ fn gen_enum_codec_impls(
 
             let destructure_fields = gen_fields_destructure(&variant.fields);
             // FIXME: We're unwrapping here
-            let (_, custom_is_valid) = parse_repr_c_parts(&variant.attrs).unwrap();
+            let custom_is_valid = variant_attrs
+                .get(idx)
+                .and_then(|attrs| attrs.is_valid.as_ref());
             let variant_tag = has_variant_tag.then(|| quote!(#tag_value as #tag_type));
 
             let (encode_body, decode_body) = gen_record_conversion(
                 variant_tag,
                 quote!(Self::#variant_name),
                 &variant.fields,
-                custom_is_valid.as_ref(),
+                custom_is_valid,
             );
             let decode_destructure = if has_variant_tag {
                 gen_tagged_variant_destructure(variant_struct.clone(), &variant.fields)
@@ -518,6 +552,7 @@ fn gen_repr_c_data_enum_impls(
     name: &Ident,
     generics: &syn::Generics,
     variants: &syn::punctuated::Punctuated<syn::Variant, syn::Token![,]>,
+    variant_attrs: &[VariantReprCAttrs],
 ) -> TokenStream {
     let tag_type = enum_tag_type(repr, variants.len());
 
@@ -530,7 +565,7 @@ fn gen_repr_c_data_enum_impls(
     let variant_body = variants.iter().enumerate().map(|(variant_idx, variant)| {
         let variant_name = &variant.ident;
 
-        let variant_idx = proc_macro2::Literal::usize_unsuffixed(variant_idx);
+        let variant_idx_lit = proc_macro2::Literal::usize_unsuffixed(variant_idx);
         let variant_struct_name = if let Some(owner_name) = &view_owner_name {
             gen_const_view_name(&gen_variant_struct_name(owner_name, variant_name))
         } else {
@@ -559,11 +594,13 @@ fn gen_repr_c_data_enum_impls(
         };
 
         // FIXME: We're unwrapping here
-        let (_, is_valid) = parse_repr_c_parts(&variant.attrs).unwrap();
-        let is_valid_body = gen_record_is_valid(&field_names, &variant_fields, is_valid.as_ref());
+        let is_valid = variant_attrs
+            .get(variant_idx)
+            .and_then(|attrs| attrs.is_valid.as_ref());
+        let is_valid_body = gen_record_is_valid(&field_names, &variant_fields, is_valid);
 
         quote! {
-            #variant_idx => {
+            #variant_idx_lit => {
                 #destructure_target
                 #is_valid_body
             }
@@ -585,6 +622,7 @@ fn gen_repr_c_data_enum_impls(
 fn enum_has_trap_values(
     repr: Option<&ReprKind>,
     variants: &syn::punctuated::Punctuated<syn::Variant, syn::Token![,]>,
+    variant_attrs: &[VariantReprCAttrs],
 ) -> bool {
     let tag = enum_tag_type(repr, variants.len());
 
@@ -592,10 +630,8 @@ fn enum_has_trap_values(
         return false;
     }
 
-    variants.iter().any(|variant| {
-        // FIXME: We're unwrapping here
-        parse_repr_c_parts(&variant.attrs).unwrap().1.is_some()
-    })
+    variants.len() == variant_attrs.len()
+        && variant_attrs.iter().any(|attrs| attrs.is_valid.is_some())
 }
 
 fn gen_repr_c_impls<const ADD_COPY: bool>(
@@ -609,7 +645,6 @@ fn gen_repr_c_impls<const ADD_COPY: bool>(
     let predicates = where_clause.as_ref().map(|w| &w.predicates);
 
     let checked_transmute_bounds = gen_checked_transmute_bounds::<ADD_COPY>(generics, fields);
-
     let (borrow_cast_bounds, cast_eq_bounds) = if is_view {
         (
             gen_borrow_cast_view_bounds::<ADD_COPY>(generics, fields),
@@ -620,7 +655,6 @@ fn gen_repr_c_impls<const ADD_COPY: bool>(
     };
 
     quote! {
-        // TODO: This must also have ExternC<CType: Copy> bounds if it doesn't
         unsafe impl #impl_generics co3::transmute::CheckedTransmute for #name #ty_generics where
             #(for<'_išč> &'_išč #fields: co3::Decode<'_išč>,)*
             #(#checked_transmute_bounds,)*
@@ -661,12 +695,12 @@ fn gen_checked_transmute_bounds<const ADD_COPY: bool>(
         })
         .collect::<Vec<_>>();
 
-    if ADD_COPY {
-        let for_dummy = (!is_type_parameterized(last, generics)).then_some(quote!(for<'_dummy>));
-        let copy_bound = ADD_COPY.then(|| quote! { <CType: Copy> });
-        predicates
-            .push(parse_quote! { #for_dummy #last: co3::transmute::CheckedTransmute #copy_bound });
-    }
+    let for_dummy = (!is_type_parameterized(last, generics)).then_some(quote!(for<'_dummy>));
+    let copy_bound = ADD_COPY.then(|| quote! { <CType: Copy> });
+
+    predicates.push(parse_quote! {
+        #for_dummy #last: co3::transmute::CheckedTransmute #copy_bound
+    });
 
     predicates
 }
@@ -937,9 +971,11 @@ fn gen_codec_impls<const ADD_COPY: bool>(
     let predicates = where_clause.as_ref().map(|w| &w.predicates);
     let params = &generics.params;
 
-    let extern_c_bounds = (!is_view)
-        .then(|| gen_extern_c_bounds_for_ctype::<ADD_COPY>(generics, fields))
-        .unwrap_or_default();
+    let extern_c_bounds = if is_view {
+        Vec::new()
+    } else {
+        gen_extern_c_bounds_for_ctype::<ADD_COPY>(generics, fields)
+    };
 
     let encode_owned_bounds =
         gen_field_encode_bounds(generics, fields, quote! { co3::stored::EncodeOwned });
@@ -1092,10 +1128,9 @@ fn gen_repr_family_impl(
     let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
     let predicates = where_clause.as_ref().map(|w| &w.predicates);
 
-    let field_bounds = fields
+    let (parametrized_fields, non_parametrized_fields): (Vec<&syn::Type>, Vec<_>) = fields
         .iter()
-        .filter(|ty| is_type_parameterized(ty, generics))
-        .map(|ty| quote! { #ty: co3::ir::ReprFamily, });
+        .partition(|ty| is_type_parameterized(ty, generics));
 
     let init = if has_trap_values {
         quote! { co3::ir::NonRobust }
@@ -1103,30 +1138,21 @@ fn gen_repr_family_impl(
         quote! { co3::ir::Robust }
     };
 
-    let mut aggregate_bounds = Vec::new();
     let mut repr_kind = quote! { co3::ir::ReprC<#init> };
+    let field_bounds = parametrized_fields.iter().map(|ty| {
+        quote! { #ty: co3::ir::ReprFamily }
+    });
 
-    for field in fields
-        .iter()
-        .copied()
-        .filter(|field| !is_type_parameterized(field, generics))
-    {
+    let mut aggregate_bounds = Vec::new();
+    for &field in &non_parametrized_fields {
         let kind = quote! { <#field as co3::ir::ReprFamily>::Kind };
-        let trait_ = quote! { core::ops::Add<#kind> };
-
-        repr_kind = quote! { <#repr_kind as #trait_>::Output };
+        repr_kind = quote! { <#repr_kind as core::ops::Add<#kind>>::Output };
     }
 
-    for field in fields
-        .iter()
-        .copied()
-        .filter(|field| is_type_parameterized(field, generics))
-    {
+    for &field in &parametrized_fields {
         let kind = quote! { <#field as co3::ir::ReprFamily>::Kind };
-        let trait_ = quote! { core::ops::Add<#kind> };
-
-        aggregate_bounds.push(quote! { #repr_kind: #trait_, });
-        repr_kind = quote! { <#repr_kind as #trait_>::Output };
+        aggregate_bounds.push(quote! { #kind: core::ops::Add<#repr_kind> });
+        repr_kind = quote! { <#kind as core::ops::Add<#repr_kind>>::Output };
     }
 
     quote! {
@@ -1144,50 +1170,6 @@ fn gen_niche_family_impl(
     name: &Ident,
     generics: &syn::Generics,
     fields: &[&syn::Type],
-    has_custom_niche: bool,
-) -> TokenStream {
-    let (niche_kind, aggregate_bounds) = if has_custom_niche {
-        // TODO: ?Sized types shouln't allow custom niche
-        (quote! { co3::niche::WithCustomNiche }, quote! {})
-    } else {
-        let mut aggregate_bounds = Vec::new();
-        let mut niche_kind = quote! { co3::niche::WithoutNiche };
-
-        for field in fields
-            .iter()
-            .copied()
-            .filter(|field| !is_type_parameterized(field, generics))
-        {
-            let field_kind = quote! { <#field as co3::niche::NicheFamily>::Kind };
-            let trait_ = quote! { core::ops::Add<#field_kind> };
-
-            niche_kind = quote! { <#niche_kind as #trait_>::Output };
-        }
-
-        for field in fields
-            .iter()
-            .copied()
-            .filter(|field| is_type_parameterized(field, generics))
-        {
-            let field_kind = quote! { <#field as co3::niche::NicheFamily>::Kind };
-            let trait_ = quote! { core::ops::Add<#field_kind> };
-
-            aggregate_bounds.push(quote! { #niche_kind: #trait_, });
-            niche_kind = quote! { <#niche_kind as #trait_>::Output };
-        }
-
-        (niche_kind, quote! { #(#aggregate_bounds)* })
-    };
-
-    gen_niche_family_impl_with_kind(name, generics, fields, niche_kind, aggregate_bounds)
-}
-
-fn gen_niche_family_impl_with_kind(
-    item_name: &Ident,
-    generics: &syn::Generics,
-    fields: &[&syn::Type],
-    kind: TokenStream,
-    extra_bounds: TokenStream,
 ) -> TokenStream {
     let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
     let predicates = where_clause.as_ref().map(|w| &w.predicates);
@@ -1198,22 +1180,58 @@ fn gen_niche_family_impl_with_kind(
         quote!(Self: Sized,)
     };
 
-    let mut field_bounds = fields
+    let (parametrized_fields, non_parametrized_fields): (Vec<&syn::Type>, Vec<_>) = fields
         .iter()
-        .filter(|ty| is_type_parameterized(ty, generics))
-        .map(|ty| quote! { #ty: co3::niche::NicheFamily })
-        .collect::<Vec<_>>();
+        .partition(|ty| is_type_parameterized(ty, generics));
 
-    if let Some(last_field) = fields.last()
-        && !is_type_parameterized(last_field, generics)
-    {
-        field_bounds.push(quote! { for<'_dummy> #last_field: co3::niche::NicheFamily });
+    // TODO: We're just using WithoutNiche for the ease of implementation. Remove it?
+    let mut niche_kind = quote!(co3::niche::WithoutNiche);
+    let field_bounds = parametrized_fields.iter().map(|ty| {
+        quote! { #ty: co3::size::NicheFamily }
+    });
+
+
+    let mut aggregate_bounds = Vec::new();
+    for &field in &non_parametrized_fields {
+        let kind = quote! { <#field as co3::niche::NicheFamily>::Kind };
+        niche_kind = quote! { <#niche_kind as core::ops::Add<#kind>>::Output };
+    }
+
+    for &field in &parametrized_fields {
+        let kind = quote! { <#field as co3::niche::NicheFamily>::Kind };
+
+        niche_kind = quote! { <#kind as core::ops::Add<#niche_kind>>::Output };
+        aggregate_bounds.push(quote! { #kind: core::ops::Add<#niche_kind> });
     }
 
     quote! {
-        impl #impl_generics co3::niche::NicheFamily for #item_name #ty_generics where
+        impl #impl_generics co3::niche::NicheFamily for #name #ty_generics where
             #(#field_bounds,)*
-            #extra_bounds
+            #(#aggregate_bounds,)*
+            #sized_bound
+            #predicates
+        {
+            type Kind = #niche_kind;
+        }
+    }
+}
+
+fn gen_niche_family_impl_with_kind(
+    item_name: &Ident,
+    generics: &syn::Generics,
+    kind: TokenStream,
+) -> TokenStream {
+    let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
+    let predicates = where_clause.as_ref().map(|w| &w.predicates);
+
+    let sized_bound = if generics.params.is_empty() {
+        quote!(for<'_dummy> Self: Sized,)
+    } else {
+        quote!(Self: Sized,)
+    };
+
+    quote! {
+        impl #impl_generics co3::niche::NicheFamily for #item_name #ty_generics where
             #sized_bound
             #predicates
         {
@@ -1228,10 +1246,6 @@ fn gen_enum_niche_family_impl(
     generics: &syn::Generics,
     variants: &syn::punctuated::Punctuated<syn::Variant, syn::Token![,]>,
 ) -> TokenStream {
-    let fields = variants
-        .iter()
-        .flat_map(|variant| variant.fields.iter().map(|field| &field.ty))
-        .collect::<Vec<_>>();
     let is_exhaustive = enum_tag_type(repr, variants.len())
         .is_none_or(|tag| is_exhaustive_enum(variants.len(), &tag));
 
@@ -1241,30 +1255,30 @@ fn gen_enum_niche_family_impl(
         quote! { co3::niche::WithCustomNiche }
     };
 
-    gen_niche_family_impl_with_kind(name, generics, &fields, niche_kind, quote! {})
+    gen_niche_family_impl_with_kind(name, generics, niche_kind)
 }
 
 fn gen_borrow_cast_view_bounds<const ADD_COPY: bool>(
     generics: &syn::Generics,
     fields: &[&syn::Type],
-) -> Vec<syn::WherePredicate> {
+) -> Vec<TokenStream> {
     let Some((last, fields)) = fields.split_last() else {
         return vec![];
     };
 
     fn borrow_ty(field_ty: &syn::Type) -> &syn::Type {
         match field_ty {
-        syn::Type::Path(syn::TypePath {
-            qself: Some(syn::QSelf { ty, .. }),
-            ..
-        }) => &ty,
-        _ => unreachable!(),
+            syn::Type::Path(syn::TypePath {
+                qself: Some(syn::QSelf { ty, .. }),
+                ..
+            }) => ty,
+            _ => unreachable!(),
         }
     }
 
     let mut predicates = fields
         .iter()
-        .map(|field_ty| borrow_ty(field_ty))
+        .map(|ty| borrow_ty(ty))
         .filter(|ty| is_type_parameterized(ty, generics))
         .map(|ty| {
             let ctype_bound = if ADD_COPY {
@@ -1273,21 +1287,14 @@ fn gen_borrow_cast_view_bounds<const ADD_COPY: bool>(
                 quote! { <AsConst: Sized> }
             };
 
-            parse_quote! { #ty: co3::ExternC<CType: co3::borrow::BorrowCast #ctype_bound + Copy> }
+            quote! { #ty: co3::ExternC<CType: co3::borrow::BorrowCast #ctype_bound> }
         })
         .collect::<Vec<_>>();
 
     let last = borrow_ty(last);
     if is_type_parameterized(last, generics) {
-        let ctype_bound = if ADD_COPY {
-            quote! { <AsConst: Copy> + Copy }
-        } else {
-            quote! {}
-        };
-
-        predicates.push(parse_quote! {
-            #last: co3::ExternC<CType: co3::borrow::BorrowCast #ctype_bound>
-        });
+        let ctype_bound = ADD_COPY.then(|| quote! { <AsConst: Copy> + Copy });
+        predicates.push(quote!(#last: co3::ExternC<CType: co3::borrow::BorrowCast #ctype_bound>));
     }
 
     predicates
