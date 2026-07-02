@@ -342,20 +342,12 @@ fn rewrite_view_repr_c_attrs(
     }
 }
 
-fn gen_view_is_valid_attr(_is_valid: &syn::ExprClosure, fields: &syn::Fields) -> TokenStream {
+fn gen_view_is_valid_attr(is_valid: &syn::ExprClosure, fields: &syn::Fields) -> TokenStream {
     let field_vars = field_vars(fields);
 
     quote! {
-        is_valid = |#(#field_vars),*| {
-            // TODO: This should do what exactly? I think it takes a kind of double reference.
-            // More precisely it takes &CTypeConstView and then wants to get &CType which is
-            // likely just not possible at least not atm, we'll need a new trait for this that
-            // is opposite of BorrowCast
-            //
-            // I know, we can just cast a pointer. This would have to mean that BorrowCast
-            // is correctly implemented. If there aren't there already we should add bounds on
-            // CheckedTransmute implementation that would make this upcast to owned view SAFE
-            unimplemented!()
+        |#(#field_vars),*| {
+            (#is_valid)(#(#field_vars),*)
         }
     }
 }

@@ -1,12 +1,12 @@
-error[E0277]: the trait bound `RefSizedDecodeStore<(u8,), ((),)>: Zst` is not satisfied
+error[E0277]: the trait bound `RefSizedDecodeStore<(u8,), ((),)>: co3::stored::EmptyStore` is not satisfied
   --> tests/ui_fail/soft_refs_are_denied.rs:12:5
    |
 12 | /     export_C! {
 13 | |         pub fn by_val_is_denied(arg1: &(u8,), #[soft] move arg2: Vec<(u8,)>) -> u8;
 14 | |     }
-   | |_____^ the trait `Zst` is not implemented for `RefSizedDecodeStore<(u8,), ((),)>`
+   | |_____^ the trait `co3::stored::EmptyStore` is not implemented for `RefSizedDecodeStore<(u8,), ((),)>`
    |
-   = help: the following other types implement trait `Zst`:
+   = help: the following other types implement trait `co3::stored::EmptyStore`:
              ()
              (A, B)
              (A, B, C)
@@ -22,8 +22,8 @@ note: required by a bound in `decode`
    |         unsafe fn decode(source: Self::CType) -> Option<Self>
    |                   ------ required by a bound in this associated function
    |         where
-   |             Self::Store: Zst + 'd,
-   |                          ^^^ required by this bound in `Decode::decode`
+   |             Self::Store: EmptyStore + 'd,
+   |                          ^^^^^^^^^^ required by this bound in `Decode::decode`
    = note: this error originates in the macro `export_C` (in Nightly builds, run with -Z macro-backtrace for more info)
 
 error[E0271]: type mismatch resolving `<[(u8,)] as ReprFamily>::Kind == ReprC<_>`
@@ -42,17 +42,17 @@ error[E0271]: type mismatch resolving `<[(u8,)] as ReprFamily>::Kind == ReprC<_>
    = note: required for `Vec<(u8,)>` to implement `Decode<'_>`
    = note: this error originates in the macro `export_C` (in Nightly builds, run with -Z macro-backtrace for more info)
 
-error[E0277]: the trait bound `RefSizedEncodeStore<(u8,)>: Zst` is not satisfied
+error[E0277]: the trait bound `RefSizedEncodeStore<(u8,)>: co3::stored::EmptyStore` is not satisfied
   --> tests/ui_fail/soft_refs_are_denied.rs:24:40
    |
 22 | / extern_C! {
 23 | |     pub extern "C" fn by_ref_is_allowed(#[soft] arg1: &(u8,), #[soft] arg2: Vec<(u8,)>) -> u8;
 24 | |     pub extern "C" fn by_val_is_denied(arg1: &(u8,), #[soft] move arg2: Vec<(u8,)>) -> u8;
-   | |                                        ^^^^ the trait `Zst` is not implemented for `RefSizedEncodeStore<(u8,)>`
+   | |                                        ^^^^ the trait `co3::stored::EmptyStore` is not implemented for `RefSizedEncodeStore<(u8,)>`
 25 | | }
    | |_- required by a bound introduced by this call
    |
-   = help: the following other types implement trait `Zst`:
+   = help: the following other types implement trait `co3::stored::EmptyStore`:
              ()
              (A, B)
              (A, B, C)
@@ -68,8 +68,8 @@ note: required by a bound in `encode`
    |         fn encode(self) -> Self::CType
    |            ------ required by a bound in this associated function
    |         where
-   |             Self::Store: Zst,
-   |                          ^^^ required by this bound in `Encode::encode`
+   |             Self::Store: EmptyStore,
+   |                          ^^^^^^^^^^ required by this bound in `Encode::encode`
 
 error[E0271]: type mismatch resolving `<[(u8,)] as ReprFamily>::Kind == ReprC<_>`
   --> tests/ui_fail/soft_refs_are_denied.rs:24:67

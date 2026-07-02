@@ -11,10 +11,9 @@ use crate::{
     DynImpl,
     ffi_fn::{
         emit_extern_definition, gen_definition_body, gen_extern_fn_signature,
-        gen_input_decode_stmts, gen_store_sync_stmts, merge_generics, normalize_fn_signature,
-        ownership_mode_for_arg,
+        gen_input_decode_stmts, gen_store_sync_stmts, item_fn_input_arg_type, merge_generics,
+        normalize_fn_signature,
     },
-    generate::OwnershipMode,
     utils::{DispatchMonomorphizer, is_drop_impl, is_type_erased, unwrap_result_type},
 };
 
@@ -371,11 +370,9 @@ pub(crate) fn erase_handle_types(
         match input {
             syn::FnArg::Receiver(rec) => {
                 *rec.ty = erased_params.replace((*rec.ty).clone());
-                rec.attrs.push(parse_quote!(#[by_val]));
             }
-            syn::FnArg::Typed(syn::PatType { attrs, ty, .. }) => {
+            syn::FnArg::Typed(syn::PatType { ty, .. }) => {
                 **ty = erased_params.replace((**ty).clone());
-                attrs.push(parse_quote!(#[by_val]));
             }
         }
     }
@@ -430,7 +427,8 @@ fn gen_handle_retype_stmts(
             syn::FnArg::Typed(syn::PatType { attrs, pat, ty, .. }) => (attrs, quote!(#pat), &**ty),
         };
 
-        let c_ty = borrowed_input_ty(attrs, ty);
+        let c_ty = item_fn_input_arg_type(attrs, ty);
+        let c_ty: syn::Type = parse_quote! { #c_ty };
         let erased_ty = erased_params.replace(c_ty.clone());
 
         let retype = match direction {
@@ -462,15 +460,6 @@ fn gen_handle_retype_stmts(
 
     stmts.push(quote! { let __co3_out_ptr = #retype_out_ptr; });
     stmts
-}
-
-fn borrowed_input_ty(attrs: &[syn::Attribute], ty: &syn::Type) -> syn::Type {
-    let c_ty = quote! { <#ty as co3::ExternC>::CType };
-
-    match ownership_mode_for_arg(attrs) {
-        OwnershipMode::Borrow => parse_quote! { <#c_ty as co3::borrow::BorrowCast>::AsConst },
-        OwnershipMode::ByValue => parse_quote! { #c_ty },
-    }
 }
 
 fn erased_output_ty(generics: &syn::Generics, ty: &syn::Type) -> syn::Type {

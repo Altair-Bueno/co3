@@ -14,6 +14,7 @@ mod borrow;
 mod ctype;
 mod item;
 mod niche;
+mod wide;
 
 const FFI_TYPE_ATTR: &str = "reprC";
 
@@ -31,53 +32,70 @@ pub(super) struct VariantReprCAttrs {
 }
 
 fn parse_repr_c_attrs(attrs: &[Attribute]) -> syn::Result<ReprCAttrs> {
-    let Some(attr) = find_single_attr_opt(FFI_TYPE_ATTR, attrs)? else {
-        return Ok(ReprCAttrs::default());
-    };
-
     let mut repr_c = ReprCAttrs::default();
+    let mut found_attr = false;
 
-    attr.parse_nested_meta(|meta| {
-        if meta.path.is_ident("view") {
-            repr_c.is_view = true;
-            return Ok(());
-        }
+    for attr in attrs
+        .iter()
+        .filter(|attr| attr.path().is_ident(FFI_TYPE_ATTR))
+    {
+        found_attr = true;
 
-        if meta.path.is_ident("id") {
-            let content;
-            syn::parenthesized!(content in meta.input);
-            let value: syn::Type = content.parse()?;
-            if repr_c.handle_id.replace(value).is_some() {
-                return Err(meta.error("Duplicate `id` within attribute"));
+        attr.parse_nested_meta(|meta| {
+            if meta.path.is_ident("view") {
+                if repr_c.is_view {
+                    return Err(meta.error("Duplicate `view` within attribute"));
+                }
+                repr_c.is_view = true;
+                return Ok(());
             }
-            return Ok(());
-        }
 
-        if meta.path.is_ident("NICHE_VALUE") {
-            let value: syn::Expr = meta.value()?.parse()?;
-            if repr_c.niche_value.replace(value).is_some() {
-                return Err(meta.error("Duplicate `NICHE_VALUE` within attribute"));
+            if meta.path.is_ident("id") {
+                let content;
+                syn::parenthesized!(content in meta.input);
+                let value: syn::Type = content.parse()?;
+                if repr_c.handle_id.replace(value).is_some() {
+                    return Err(meta.error("Duplicate `id` within attribute"));
+                }
+                return Ok(());
             }
-            return Ok(());
-        }
 
-        if meta.path.is_ident("is_valid") {
-            let value: syn::ExprClosure = meta.value()?.parse()?;
-            if repr_c.is_valid.replace(value).is_some() {
-                return Err(meta.error("Duplicate `is_valid` within attribute"));
+            if meta.path.is_ident("NICHE_VALUE") {
+                let value: syn::Expr = meta.value()?.parse()?;
+                if repr_c.niche_value.replace(value).is_some() {
+                    return Err(meta.error("Duplicate `NICHE_VALUE` within attribute"));
+                }
+                return Ok(());
             }
-            return Ok(());
-        }
 
-        Err(meta.error("unknown type kind"))
-    })?;
+            if meta.path.is_ident("is_valid") {
+                let value: syn::ExprClosure = meta.value()?.parse()?;
+                if repr_c.is_valid.replace(value).is_some() {
+                    return Err(meta.error("Duplicate `is_valid` within attribute"));
+                }
+                return Ok(());
+            }
+
+            Err(meta.error("unknown type kind"))
+        })?;
+    }
+
+    if !found_attr {
+        return Ok(ReprCAttrs::default());
+    }
 
     if repr_c.niche_value.is_none()
         && repr_c.is_valid.is_none()
         && repr_c.handle_id.is_none()
         && !repr_c.is_view
     {
-        return Err(syn::Error::new_spanned(attr, "expected ffi type kind"));
+        return Err(syn::Error::new_spanned(
+            attrs
+                .iter()
+                .find(|attr| attr.path().is_ident(FFI_TYPE_ATTR))
+                .expect("reprC attr was found"),
+            "expected ffi type kind",
+        ));
     }
 
     Ok(repr_c)
@@ -97,6 +115,7 @@ fn infer_struct_is_valid_from_niche(
     }
 
     let field_vars = field_vars(fields);
+    let field_tys = fields.iter().map(|field| &field.ty).collect::<Vec<_>>();
     let niche_fields = match fields {
         syn::Fields::Unnamed(_) => (0..fields.iter().count())
             .map(|i| {
@@ -114,11 +133,44 @@ fn infer_struct_is_valid_from_niche(
     };
 
     *is_valid = Some(syn::parse_quote! {
-        |#(#field_vars),*| {
+        |#(#field_vars: &#field_tys),*| {
             let __co3_niche_value = #niche_value;
             #(*#field_vars != #niche_fields)||*
         }
     });
+}
+
+fn type_is_valid_closure(
+    fields: &syn::Fields,
+    is_valid: &mut Option<syn::ExprClosure>,
+) -> syn::Result<()> {
+    let Some(is_valid) = is_valid else {
+        return Ok(());
+    };
+
+    if fields.len() != is_valid.inputs.len() {
+        return Err(syn::Error::new_spanned(
+            &is_valid.inputs,
+            "`is_valid` closure must have exactly one argument per field",
+        ));
+    }
+
+    for (input, field) in is_valid.inputs.iter_mut().zip(fields) {
+        if matches!(input, syn::Pat::Type(_)) {
+            continue;
+        }
+
+        let ty = &field.ty;
+        let pat = input.clone();
+        *input = syn::Pat::Type(syn::PatType {
+            attrs: Vec::new(),
+            pat: Box::new(pat),
+            colon_token: Default::default(),
+            ty: Box::new(syn::parse_quote!(&#ty)),
+        });
+    }
+
+    Ok(())
 }
 
 pub(crate) fn derive_repr_c(input: &syn::DeriveInput) -> syn::Result<TokenStream> {
@@ -141,6 +193,9 @@ pub(crate) fn derive_repr_c(input: &syn::DeriveInput) -> syn::Result<TokenStream
                 repr_c_attrs.niche_value.as_ref(),
                 &mut repr_c_attrs.is_valid,
             );
+            if let Err(err) = type_is_valid_closure(&data.fields, &mut repr_c_attrs.is_valid) {
+                push_error(&mut errors, err);
+            }
         }
         syn::Data::Enum(data) => {
             if repr_c_attrs.is_valid.is_some() {
@@ -165,7 +220,12 @@ pub(crate) fn derive_repr_c(input: &syn::DeriveInput) -> syn::Result<TokenStream
                     push_error(&mut errors, syn::Error::new(variant.span(), err_msg));
                 }
 
-                let variant_repr_c_attrs = parse_repr_c_attrs(&variant.attrs)?;
+                let mut variant_repr_c_attrs = parse_repr_c_attrs(&variant.attrs)?;
+                if let Err(err) =
+                    type_is_valid_closure(&variant.fields, &mut variant_repr_c_attrs.is_valid)
+                {
+                    push_error(&mut errors, err);
+                }
                 if variant_repr_c_attrs.niche_value.is_some() {
                     let err_msg = "`NICHE_VALUE` is only supported on types";
                     push_error(&mut errors, syn::Error::new(variant.span(), err_msg));

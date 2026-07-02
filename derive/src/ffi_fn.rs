@@ -391,7 +391,9 @@ fn lower_signature_output(sig: &mut syn::Signature) {
         .make_where_clause()
         .predicates
         // TODO: Should look for &mut instead of raw ptr?
-        .push(parse_quote!(*mut #output_ty: co3::CFnReturn));
+        .push(parse_quote!(*mut #output_ty: co3::CFnArg));
+    // TODO: CFnReturn should be used here if we allow
+    // custom return types and not just co3::FfiReturn
 
     sig.inputs
         .push(parse_quote! { __co3_out_ptr: *mut #output_ty });
@@ -551,7 +553,7 @@ fn synthesize_lifetime_bounds(sig: &mut syn::Signature) {
     }
 }
 
-fn item_fn_input_arg_type(attrs: &[syn::Attribute], arg_ty: &Type) -> TokenStream {
+pub(crate) fn item_fn_input_arg_type(attrs: &[syn::Attribute], arg_ty: &Type) -> TokenStream {
     let c_type = quote! { <#arg_ty as co3::ExternC>::CType };
 
     match ownership_mode_for_arg(attrs) {

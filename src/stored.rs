@@ -34,6 +34,7 @@ pub trait Store: Sized {
 /// # Safety
 ///
 /// Type must not contain any conversion state.
+#[doc(hidden)]
 pub unsafe trait EmptyStore: Sized {}
 
 unsafe impl<T> EmptyStore for core::marker::PhantomData<T> {}

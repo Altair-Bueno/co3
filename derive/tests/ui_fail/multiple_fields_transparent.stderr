@@ -1,0 +1,196 @@
+error[E0731]: transparent enum needs exactly one variant, but has 2
+ --> tests/ui_fail/multiple_fields_transparent.rs:5:1
+  |
+5 | enum MultiVariantEnum<T> {
+  | ^^^^^^^^^^^^^^^^^^^^^^^^ needs exactly one variant, but has 2
+6 |     A { itm: T },
+  |     - variant here
+7 |     B,
+  |     - too many variants in `MultiVariantEnum`
+
+error[E0731]: transparent enum needs exactly one variant, but has 2
+ --> tests/ui_fail/multiple_fields_transparent.rs:5:1
+  |
+5 | / enum MultiVariantEnum<T> {
+6 | |     A { itm: T },
+  | |     - variant here
+7 | |     B,
+  | |     - too many variants in `MultiVariantEnumView`
+8 | | }
+  | |_^ needs exactly one variant, but has 2
+
+error[E0277]: the trait bound `MultiVariantEnumView<'_dšč, T>: co3::ExternC` is not satisfied
+ --> tests/ui_fail/multiple_fields_transparent.rs:3:10
+  |
+3 | #[derive(ReprC)]
+  |          ^^^^^ unsatisfied trait bound
+  |
+help: the trait `co3::ExternC` is not implemented for `MultiVariantEnumView<'_dšč, T>`
+ --> tests/ui_fail/multiple_fields_transparent.rs:5:1
+  |
+5 | / enum MultiVariantEnum<T> {
+6 | |     A { itm: T },
+7 | |     B,
+8 | | }
+  | |_^
+  = help: the following other types implement trait `co3::ExternC`:
+            &'_lšč0 _TŠČ0
+            &'_lšč0 mut _TŠČ0
+            ()
+            (A, B)
+            (A, B, C)
+            (A, B, C, D)
+            (A, B, C, D, E)
+            (A, B, C, D, E, F)
+          and $N others
+  = note: this error originates in the derive macro `co3::ReprC` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error[E0277]: the trait bound `MultiVariantEnumView<'_dšč, T>: co3::ExternC` is not satisfied
+ --> tests/ui_fail/multiple_fields_transparent.rs:3:10
+  |
+3 | #[derive(ReprC)]
+  |          ^^^^^ unsatisfied trait bound
+  |
+help: the trait `co3::ExternC` is not implemented for `MultiVariantEnumView<'_dšč, T>`
+ --> tests/ui_fail/multiple_fields_transparent.rs:5:1
+  |
+5 | / enum MultiVariantEnum<T> {
+6 | |     A { itm: T },
+7 | |     B,
+8 | | }
+  | |_^
+  = help: the following other types implement trait `co3::ExternC`:
+            &'_lšč0 _TŠČ0
+            &'_lšč0 mut _TŠČ0
+            ()
+            (A, B)
+            (A, B, C)
+            (A, B, C, D)
+            (A, B, C, D, E)
+            (A, B, C, D, E, F)
+          and $N others
+note: required by a bound in `CheckedTransmute`
+ --> $WORKSPACE/src/transmute.rs
+  |
+  | pub unsafe trait CheckedTransmute: ExternC {
+  |                                    ^^^^^^^ required by this bound in `CheckedTransmute`
+  = note: this error originates in the derive macro `ReprC` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error[E0277]: the trait bound `MultiVariantEnum<T>: co3::ExternC` is not satisfied
+ --> tests/ui_fail/multiple_fields_transparent.rs:3:10
+  |
+3 | #[derive(ReprC)]
+  |          ^^^^^ unsatisfied trait bound
+  |
+help: the trait `co3::ExternC` is not implemented for `MultiVariantEnum<T>`
+ --> tests/ui_fail/multiple_fields_transparent.rs:5:1
+  |
+5 | enum MultiVariantEnum<T> {
+  | ^^^^^^^^^^^^^^^^^^^^^^^^
+  = help: the following other types implement trait `co3::ExternC`:
+            &'_lšč0 _TŠČ0
+            &'_lšč0 mut _TŠČ0
+            ()
+            (A, B)
+            (A, B, C)
+            (A, B, C, D)
+            (A, B, C, D, E)
+            (A, B, C, D, E, F)
+          and $N others
+  = note: this error originates in the derive macro `ReprC` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error[E0277]: the trait bound `MultiVariantEnum<T>: co3::ExternC` is not satisfied
+ --> tests/ui_fail/multiple_fields_transparent.rs:5:6
+  |
+5 | enum MultiVariantEnum<T> {
+  |      ^^^^^^^^^^^^^^^^^^^ unsatisfied trait bound
+  |
+help: the trait `co3::ExternC` is not implemented for `MultiVariantEnum<T>`
+ --> tests/ui_fail/multiple_fields_transparent.rs:5:1
+  |
+5 | enum MultiVariantEnum<T> {
+  | ^^^^^^^^^^^^^^^^^^^^^^^^
+  = help: the following other types implement trait `co3::ExternC`:
+            &'_lšč0 _TŠČ0
+            &'_lšč0 mut _TŠČ0
+            ()
+            (A, B)
+            (A, B, C)
+            (A, B, C, D)
+            (A, B, C, D, E)
+            (A, B, C, D, E, F)
+          and $N others
+note: required by a bound in `CheckedTransmute`
+ --> $WORKSPACE/src/transmute.rs
+  |
+  | pub unsafe trait CheckedTransmute: ExternC {
+  |                                    ^^^^^^^ required by this bound in `CheckedTransmute`
+
+error[E0690]: the variant of a transparent enum needs at most one field with non-trivial size or alignment, but has 2
+  --> tests/ui_fail/multiple_fields_transparent.rs:12:1
+   |
+12 | enum MultiFieldEnum<T> {
+   | ^^^^^^^^^^^^^^^^^^^^^^ needs at most one field with non-trivial size or alignment, but has 2
+13 |     A(T, T)
+   |       -  - this field has non-zero size or requires alignment
+   |       |
+   |       this field has non-zero size or requires alignment
+
+error[E0690]: transparent struct needs at most one field with non-trivial size or alignment, but has 2
+  --> tests/ui_fail/multiple_fields_transparent.rs:10:10
+   |
+10 | #[derive(ReprC)]
+   |          ^^^^^
+   |          |
+   |          needs at most one field with non-trivial size or alignment, but has 2
+   |          this field has non-zero size or requires alignment
+   |          this field has non-zero size or requires alignment
+   |
+   = note: this error originates in the derive macro `ReprC` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error[E0690]: the variant of a transparent enum needs at most one field with non-trivial size or alignment, but has 2
+  --> tests/ui_fail/multiple_fields_transparent.rs:12:1
+   |
+10 |   #[derive(ReprC)]
+   |            -----
+   |            |
+   |            this field has non-zero size or requires alignment
+   |            this field has non-zero size or requires alignment
+11 |   #[repr(transparent)]
+12 | / enum MultiFieldEnum<T> {
+13 | |     A(T, T)
+14 | | }
+   | |_^ needs at most one field with non-trivial size or alignment, but has 2
+
+error[E0690]: transparent struct needs at most one field with non-trivial size or alignment, but has 2
+  --> tests/ui_fail/multiple_fields_transparent.rs:18:1
+   |
+18 | struct MultiFieldStruct<T>(T, T);
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^ -  - this field has non-zero size or requires alignment
+   | |                          |
+   | |                          this field has non-zero size or requires alignment
+   | needs at most one field with non-trivial size or alignment, but has 2
+
+error[E0690]: transparent struct needs at most one field with non-trivial size or alignment, but has 2
+  --> tests/ui_fail/multiple_fields_transparent.rs:16:10
+   |
+16 | #[derive(ReprC)]
+   |          ^^^^^
+   |          |
+   |          needs at most one field with non-trivial size or alignment, but has 2
+   |          this field has non-zero size or requires alignment
+   |          this field has non-zero size or requires alignment
+   |
+   = note: this error originates in the derive macro `ReprC` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error[E0690]: transparent struct needs at most one field with non-trivial size or alignment, but has 2
+  --> tests/ui_fail/multiple_fields_transparent.rs:18:1
+   |
+16 | #[derive(ReprC)]
+   |          -----
+   |          |
+   |          this field has non-zero size or requires alignment
+   |          this field has non-zero size or requires alignment
+17 | #[repr(transparent)]
+18 | struct MultiFieldStruct<T>(T, T);
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ needs at most one field with non-trivial size or alignment, but has 2
