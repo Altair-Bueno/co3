@@ -1,17 +1,17 @@
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 use syn::{Error, Result, Type, visit::Visit};
 
 use crate::{
     dispatch::HandleId,
-    find_dispatch_attr, has_unsafe_export_name,
+    find_dispatch_attr, has_unsafe_export_name, is_unsafe_lifetimes_attr,
     parse::ParsedForeignItem,
     trait_object_single_trait_bound,
     utils::{has_non_lifetime_generics, is_drop_impl, is_type_erased, push_error},
 };
 
+const DYN_LIFETIME_ERR: &str = "`dyn` dispatch type parameters support at most one lifetime bound";
 const GENERICS_ERR: &str = "Type and const generics on impls are not supported. Use `#[dispatch]`";
-const ALLOWED_REPRS: [&str; 8] = ["u8", "i8", "u16", "i16", "u32", "i32", "u64", "i64"];
 
 fn unsupported_attr(attr: &syn::Attribute) -> Error {
     Error::new_spanned(attr, "Attribute not supported in this position")
@@ -37,7 +37,10 @@ fn handle_id<'a>(ty: &'a syn::Type, self_ty: &syn::Type) -> Option<HandleId<'a>>
 
 fn validate_export_fn_attrs(attrs: &[syn::Attribute]) -> Result<()> {
     for attr in attrs {
-        if crate::generate::is_unsafe_no_mangle(attr) || has_unsafe_export_name(attr) {
+        if crate::generate::is_unsafe_no_mangle(attr)
+            || is_unsafe_lifetimes_attr(attr)
+            || has_unsafe_export_name(attr)
+        {
             continue;
         }
 
@@ -45,6 +48,31 @@ fn validate_export_fn_attrs(attrs: &[syn::Attribute]) -> Result<()> {
     }
 
     Ok(())
+}
+
+fn has_unsafe_lifetimes_attr(attrs: &[syn::Attribute]) -> bool {
+    attrs.iter().any(is_unsafe_lifetimes_attr)
+}
+
+fn validate_lifetime_opt_in(attrs: &[syn::Attribute], generics: &syn::Generics) -> Result<()> {
+    fn param_has_explicit_lifetime(param: &syn::GenericParam) -> bool {
+        let syn::GenericParam::Lifetime(param) = param else {
+            return false;
+        };
+
+        param.lifetime.ident != "_"
+    }
+
+    if !generics.params.iter().any(param_has_explicit_lifetime) {
+        return Ok(());
+    }
+
+    if has_unsafe_lifetimes_attr(attrs) {
+        return Ok(());
+    }
+
+    let err_msg = "Explicit lifetimes found but no `#[unsafe(lifetimes)]`";
+    Err(Error::new_spanned(generics, err_msg))
 }
 
 fn validate_no_dispatch_attrs(attrs: &[syn::Attribute], errors: &mut Option<Error>) {
@@ -57,14 +85,23 @@ fn validate_no_dispatch_attrs(attrs: &[syn::Attribute], errors: &mut Option<Erro
 }
 
 fn ensure_no_handle_arg_attrs(sig: &syn::Signature) -> Result<()> {
-    let mut errors = None;
+    fn validate_no_lifetimes_attrs(attrs: &[syn::Attribute], errors: &mut Option<Error>) {
+        for attr in attrs {
+            if is_unsafe_lifetimes_attr(attr) {
+                push_error(errors, unsupported_attr(attr));
+            }
+        }
+    }
 
+    let mut errors = None;
     for input in &sig.inputs {
         match input {
             syn::FnArg::Receiver(receiver) => {
+                validate_no_lifetimes_attrs(&receiver.attrs, &mut errors);
                 validate_no_dispatch_attrs(&receiver.attrs, &mut errors);
             }
             syn::FnArg::Typed(arg) => {
+                validate_no_lifetimes_attrs(&arg.attrs, &mut errors);
                 validate_no_dispatch_attrs(&arg.attrs, &mut errors);
             }
         }
@@ -171,6 +208,9 @@ fn validate_shared(decls: &[ParsedForeignItem]) -> Result<()> {
         match decl {
             ParsedForeignItem::Type(decl) => {
                 for attr in &decl.ty.attrs {
+                    if is_unsafe_lifetimes_attr(attr) {
+                        push_error(&mut errors, unsupported_attr(attr));
+                    }
                     if attr.path().is_ident("dispatch") {
                         push_error(&mut errors, unsupported_attr(attr));
                     }
@@ -180,7 +220,10 @@ fn validate_shared(decls: &[ParsedForeignItem]) -> Result<()> {
                 if let Err(err) = ensure_no_handle_arg_attrs(&decl_fn.sig) {
                     push_error(&mut errors, err);
                 }
-                if let Err(err) = validate_signature_shape(&decl_fn.sig, None) {
+                if let Err(err) = validate_signature_shape(None, &decl_fn.sig) {
+                    push_error(&mut errors, err);
+                }
+                if let Err(err) = validate_lifetime_opt_in(&decl_fn.attrs, &decl_fn.sig.generics) {
                     push_error(&mut errors, err);
                 }
 
@@ -190,11 +233,12 @@ fn validate_shared(decls: &[ParsedForeignItem]) -> Result<()> {
                 let is_dispatch_impl = find_dispatch_attr(&impl_.attrs).is_some();
 
                 for attr in &impl_.attrs {
-                    if !attr.path().is_ident("dispatch") {
+                    if !attr.path().is_ident("dispatch") && !is_unsafe_lifetimes_attr(attr) {
                         push_error(&mut errors, unsupported_attr(attr));
                     }
                 }
 
+                let mut param_bounds = BTreeMap::new();
                 if has_non_lifetime_generics(&impl_.generics) && !is_dispatch_impl {
                     push_error(
                         &mut errors,
@@ -202,37 +246,49 @@ fn validate_shared(decls: &[ParsedForeignItem]) -> Result<()> {
                     );
                 }
 
-                if is_dispatch_impl
-                    && let Err(err) = validate_dispatch_impl_generics(&impl_.generics)
-                {
-                    push_error(&mut errors, err);
-                }
+                if is_dispatch_impl {
+                    if let Err(err) = validate_no_duplicate_lifetime_bound(
+                        impl_.generics.type_params(),
+                        &mut param_bounds,
+                        &impl_.generics,
+                    ) {
+                        push_error(&mut errors, err);
+                    }
 
-                if is_dispatch_impl
-                    && let Err(err) =
+                    if let Err(err) =
                         validate_dispatch_impl_targets(&impl_.generics, &impl_.self_ty)
-                {
-                    push_error(&mut errors, err);
+                    {
+                        push_error(&mut errors, err);
+                    }
+                    if let Err(err) = validate_dispatched_self_ty(&impl_.generics, &impl_.self_ty) {
+                        push_error(&mut errors, err);
+                    }
                 }
 
-                if is_dispatch_impl
-                    && let Err(err) = validate_dispatched_self_ty(&impl_.generics, &impl_.self_ty)
-                {
+                if let Err(err) = validate_lifetime_opt_in(&impl_.attrs, &impl_.generics) {
                     push_error(&mut errors, err);
                 }
-
                 for item in &impl_.items {
-                    if let syn::ImplItem::Fn(method) = item {
-                        if let Err(err) = ensure_no_handle_arg_attrs(&method.sig) {
-                            push_error(&mut errors, err);
-                        }
-                        if let Err(err) =
-                            validate_signature_shape(&method.sig, Some(&impl_.self_ty))
-                        {
+                    if let syn::ImplItem::Fn(syn::ImplItemFn { attrs, sig, .. }) = item {
+                        if let Err(err) = validate_no_duplicate_lifetime_bound(
+                            impl_.generics.type_params(),
+                            &mut param_bounds.clone(),
+                            &sig.generics,
+                        ) {
                             push_error(&mut errors, err);
                         }
 
-                        validate_no_dispatch_attrs(&method.attrs, &mut errors);
+                        if let Err(err) = ensure_no_handle_arg_attrs(sig) {
+                            push_error(&mut errors, err);
+                        }
+                        if let Err(err) = validate_signature_shape(Some(&impl_.self_ty), sig) {
+                            push_error(&mut errors, err);
+                        }
+                        if let Err(err) = validate_lifetime_opt_in(attrs, &sig.generics) {
+                            push_error(&mut errors, err);
+                        }
+
+                        validate_no_dispatch_attrs(attrs, &mut errors);
                     }
                 }
 
@@ -252,32 +308,54 @@ fn validate_shared(decls: &[ParsedForeignItem]) -> Result<()> {
     Ok(())
 }
 
-fn validate_dispatch_impl_generics(generics: &syn::Generics) -> Result<()> {
+fn validate_no_duplicate_lifetime_bound<'a>(
+    params: impl IntoIterator<Item = &'a syn::TypeParam>,
+    param_bounds: &mut BTreeMap<&'a syn::Ident, syn::Ident>,
+    generics: &syn::Generics,
+) -> Result<()> {
+    fn dispatch_lifetime_bounds<'a>(
+        generics: &'a syn::Generics,
+        param: &syn::Ident,
+    ) -> Vec<&'a syn::Lifetime> {
+        generics
+            .where_clause
+            .iter()
+            .flat_map(|where_clause| &where_clause.predicates)
+            .filter_map(|predicate| {
+                let syn::WherePredicate::Type(predicate) = predicate else {
+                    return None;
+                };
+                let syn::Type::Path(syn::TypePath { qself: None, path }) = &predicate.bounded_ty
+                else {
+                    return None;
+                };
+
+                path.is_ident(param).then_some(&predicate.bounds)
+            })
+            .flat_map(|bounds| bounds.iter())
+            .filter_map(|bound| match bound {
+                syn::TypeParamBound::Lifetime(lifetime) => Some(lifetime),
+                _ => None,
+            })
+            .collect()
+    }
+
     let mut errors = None;
-
-    for param in &generics.params {
-        let syn::GenericParam::Type(param) = param else {
+    for param in params.into_iter() {
+        if dyn_dispatch_attr(param).is_none() {
             continue;
         };
 
-        let Some(attr) = dyn_dispatch_attr(param) else {
-            continue;
-        };
+        for lifetime in dispatch_lifetime_bounds(generics, &param.ident) {
+            if let Some(bound) = param_bounds.get(&param.ident) {
+                if *bound == lifetime.ident {
+                    continue;
+                }
+                push_error(&mut errors, Error::new_spanned(lifetime, DYN_LIFETIME_ERR));
+                continue;
+            }
 
-        if matches!(attr.meta, syn::Meta::Path(_)) {
-            continue;
-        }
-
-        let Ok(repr) = attr.parse_args() else {
-            continue;
-        };
-
-        if !is_allowed_dyn_dispatch_repr(&repr) {
-            let err_msg = format!(
-                "`dyn(repr)` repr must be one of {}",
-                ALLOWED_REPRS.join(", ")
-            );
-            push_error(&mut errors, Error::new_spanned(&repr, err_msg));
+            param_bounds.insert(&param.ident, lifetime.ident.clone());
         }
     }
 
@@ -434,7 +512,7 @@ fn validate_drop_impl(impl_: &syn::ItemImpl) -> Result<()> {
     Ok(())
 }
 
-fn validate_signature_shape(sig: &syn::Signature, self_ty: Option<&syn::Type>) -> Result<()> {
+fn validate_signature_shape(self_ty: Option<&syn::Type>, sig: &syn::Signature) -> Result<()> {
     if has_non_lifetime_generics(&sig.generics) {
         return Err(Error::new_spanned(&sig.generics, GENERICS_ERR));
     }
@@ -523,18 +601,6 @@ fn validate_handle_id_pos(ty: &Type, self_ty: &syn::Type) -> Result<()> {
 
 fn dyn_dispatch_attr(param: &syn::TypeParam) -> Option<&syn::Attribute> {
     param.attrs.iter().find(|attr| is_type_erased(attr))
-}
-
-fn is_allowed_dyn_dispatch_repr(ty: &Type) -> bool {
-    let Type::Path(type_path) = ty else {
-        return false;
-    };
-    if type_path.qself.is_some() {
-        return false;
-    }
-
-    let last_seg = type_path.path.segments.last();
-    last_seg.is_some_and(|s| ALLOWED_REPRS.contains(&s.ident.to_string().as_str()))
 }
 
 fn validate_dispatched_self_ty(generics: &syn::Generics, self_ty: &syn::Type) -> Result<()> {

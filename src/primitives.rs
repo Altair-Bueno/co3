@@ -48,25 +48,22 @@ macro_rules! primitive_derive {
         impl ExternC for $primitive {
             type CType = Self;
         }
-        impl EncodeOwned for $primitive {
+        unsafe impl EncodeOwned for $primitive {
             type Store = ();
 
             #[inline(always)]
-            fn soft_encode_owned<'itm>(self, (): &mut ()) -> Self::CType
+            fn soft_encode<'itm>(self, (): &mut ()) -> Self::CType
             where
                 Self: 'itm,
             {
                 self
             }
         }
-        impl<'d> DecodeOwned<'d> for $primitive {
+        unsafe impl<'d> DecodeOwned<'d> for $primitive {
             type Store = ();
 
             #[inline(always)]
-            unsafe fn soft_decode_owned<'itm: 'd>(
-                source: Self::CType,
-                (): &mut (),
-            ) -> Option<Self> {
+            unsafe fn soft_decode<'itm: 'd>(source: Self::CType, (): &mut ()) -> Option<Self> {
                 Some(source)
             }
         }
@@ -131,22 +128,22 @@ macro_rules! raw_pointer_derive {
         impl<R: RobustReprC + ?Sized> ExternC for *$mutability R {
             type CType = Self;
         }
-        impl<R: RobustReprC + ?Sized> EncodeOwned for *$mutability R {
+        unsafe impl<R: RobustReprC + ?Sized> EncodeOwned for *$mutability R {
             type Store = ();
 
             #[inline(always)]
-            fn soft_encode_owned<'itm>(self, (): &mut ()) -> Self::CType
+            fn soft_encode<'itm>(self, (): &mut ()) -> Self::CType
             where
                 Self: 'itm,
             {
                 self
             }
         }
-        impl<'d, R: RobustReprC + ?Sized> DecodeOwned<'d> for *$mutability R {
+        unsafe impl<'d, R: RobustReprC + ?Sized> DecodeOwned<'d> for *$mutability R {
             type Store = ();
 
             #[inline(always)]
-            unsafe fn soft_decode_owned<'itm: 'd>(source: Self::CType, (): &mut ()) -> Option<Self> {
+            unsafe fn soft_decode<'itm: 'd>(source: Self::CType, (): &mut ()) -> Option<Self> {
                 Some(source)
             }
         }
@@ -230,26 +227,23 @@ macro_rules! fieldless_enum_derive {
         impl ExternC for $src {
             type CType = $dst;
         }
-        impl EncodeOwned for $src {
+        unsafe impl EncodeOwned for $src {
             type Store = ();
 
             #[inline(always)]
-            fn soft_encode_owned<'itm>(self, (): &mut ()) -> Self::CType
+            fn soft_encode<'itm>(self, (): &mut ()) -> Self::CType
             where
                 Self: 'itm,
             {
                 self as $dst
             }
         }
-        impl<'d> DecodeOwned<'d> for $src {
+        unsafe impl<'d> DecodeOwned<'d> for $src {
             type Store = ();
 
             #[inline(always)]
-            unsafe fn soft_decode_owned<'itm: 'd>(
-                source: Self::CType,
-                (): &mut (),
-            ) -> Option<Self> {
-                unsafe { <$dst as DecodeOwned>::decode_owned(source)? }
+            unsafe fn soft_decode<'itm: 'd>(source: Self::CType, (): &mut ()) -> Option<Self> {
+                unsafe { crate::stored::decode_owned::<$dst>(source)? }
                     .try_into()
                     .ok()
             }
@@ -291,8 +285,8 @@ impl<R> SizeFamily for [R] {
 
 unsafe impl<R: RobustReprC> RobustReprC for [R] {}
 
-impl<R: RobustReprC> ExternC for [R] {
-    type CType = Self;
+impl<R: ExternC<CType: Sized>> ExternC for [R] {
+    type CType = [R::CType];
 }
 unsafe impl<R: BorrowCast<AsConst: Copy>> BorrowCast for [R] {
     type AsConst = [R::AsConst];
@@ -311,10 +305,10 @@ impl<T, const N: usize> SizeFamily for [T; N] {
 impl<R: ExternC<CType: Sized>, const N: usize> ExternC for [R; N] {
     type CType = [R::CType; N];
 }
-impl<R: EncodeOwned<CType: Copy>, const N: usize> EncodeOwned for [R; N] {
+unsafe impl<R: EncodeOwned<CType: Copy>, const N: usize> EncodeOwned for [R; N] {
     type Store = ArrayStore<R::Store, N>;
 
-    fn soft_encode_owned<'itm>(self, store: &'itm mut Self::Store) -> Self::CType
+    fn soft_encode<'itm>(self, store: &'itm mut Self::Store) -> Self::CType
     where
         Self: 'itm,
     {
@@ -329,22 +323,21 @@ impl<R: EncodeOwned<CType: Copy>, const N: usize> EncodeOwned for [R; N] {
             let item = items.next().unwrap();
             let store = stores.next().unwrap();
 
-            item.soft_encode_owned(store)
+            item.soft_encode(store)
         })
     }
 }
-impl<'d, R: DecodeOwned<'d, CType: Copy>, const N: usize> DecodeOwned<'d> for [R; N] {
+unsafe impl<'d, R: DecodeOwned<'d, CType: Copy>, const N: usize> DecodeOwned<'d> for [R; N] {
     type Store = ArrayStore<R::Store, N>;
 
-    unsafe fn soft_decode_owned<'itm: 'd>(
+    unsafe fn soft_decode<'itm: 'd>(
         source: Self::CType,
         store: &'itm mut Self::Store,
     ) -> Option<Self> {
         assert_arr_has_non_zero_len::<N>();
 
         let mut stores = store.0.iter_mut();
-        let decoded =
-            source.map(|item| unsafe { R::soft_decode_owned(item, stores.next().unwrap()) });
+        let decoded = source.map(|item| unsafe { R::soft_decode(item, stores.next().unwrap()) });
 
         if decoded.iter().any(Option::is_none) {
             return None;

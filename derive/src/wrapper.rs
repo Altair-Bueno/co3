@@ -4,7 +4,7 @@ use syn::{FnArg, ItemImpl, punctuated::Punctuated, visit_mut::VisitMut};
 
 use crate::{
     dispatch::{HandleId, gen_handle_erase_stmts, handle_id, is_handle_id_arg},
-    ffi_fn::{self, item_fn_input_ident, ownership_mode_for_arg},
+    ffi_fn::{self, is_spread_arg, item_fn_input_ident, ownership_mode_for_arg, spread_arg_names},
     generate::OwnershipMode,
     is_link_name_attr,
     utils::{gen_normalization_stmts, gen_store_name, soft_for_arg, unwrap_result_type},
@@ -15,13 +15,19 @@ fn strip_internal_arg_attrs(signature: &mut syn::Signature) {
 
     impl VisitMut for InternalAttrStripper {
         fn visit_receiver_mut(&mut self, node: &mut syn::Receiver) {
-            node.attrs
-                .retain(|attr| !attr.path().is_ident("by_val") && !attr.path().is_ident("soft"));
+            node.attrs.retain(|attr| {
+                !attr.path().is_ident("by_val")
+                    && !attr.path().is_ident("soft")
+                    && !attr.path().is_ident("spread")
+            });
         }
 
         fn visit_pat_type_mut(&mut self, node: &mut syn::PatType) {
-            node.attrs
-                .retain(|attr| !attr.path().is_ident("by_val") && !attr.path().is_ident("soft"));
+            node.attrs.retain(|attr| {
+                !attr.path().is_ident("by_val")
+                    && !attr.path().is_ident("soft")
+                    && !attr.path().is_ident("spread")
+            });
         }
     }
 
@@ -217,7 +223,7 @@ fn gen_wrapper_body<const DISPATCHED: bool>(
             let __co3_sync_errors = #store_sync_stmts;
 
             let __co3_out = unsafe { core::mem::MaybeUninit::assume_init(__co3_out) };
-            let __co3_out: Option<#decode_ty> = unsafe { co3::Decode::decode(__co3_out) };
+            let __co3_out: Option<#decode_ty> = unsafe { co3::decode(__co3_out) };
 
             let mut __co3_sync_errors_iter = core::iter::IntoIterator::into_iter(__co3_sync_errors);
             if core::iter::Iterator::any(&mut __co3_sync_errors_iter, core::convert::identity)
@@ -323,13 +329,21 @@ fn gen_input_conversion_stmts(inputs: &Punctuated<FnArg, syn::Token![,]>) -> Tok
             quote! {
                 let mut #store_name = Default::default();
 
-                let #arg_name = co3::Encode::soft_encode(
+                let #arg_name = co3::soft_encode(
                     #arg_name, &mut #store_name
                 );
             }
         } else {
-            quote! { let #arg_name = co3::Encode::encode(#arg_name); }
+            quote! { let #arg_name = co3::encode(#arg_name); }
         });
+
+        if is_spread_arg(attrs) {
+            let (data_name, metadata_name) = spread_arg_names(&arg_name);
+
+            stmts.extend(quote! {
+                let (#data_name, #metadata_name) = co3::size::Spread::into_parts(#arg_name);
+            });
+        }
     }
 
     stmts
@@ -354,12 +368,19 @@ fn gen_ffi_fn_call_stmt(sig: &syn::Signature) -> TokenStream {
 
     let fn_name = &sig.ident;
     for input in &sig.inputs {
-        arg_names.push(if let FnArg::Typed(syn::PatType { pat, .. }) = input {
-            let arg_name = item_fn_input_ident(pat);
-            quote!(#arg_name)
+        let (attrs, arg_name) = match input {
+            FnArg::Receiver(receiver) => (&receiver.attrs, format_ident!("__co3_self")),
+            FnArg::Typed(syn::PatType { attrs, pat, .. }) => {
+                (attrs, item_fn_input_ident(pat).clone())
+            }
+        };
+
+        if is_spread_arg(attrs) {
+            let (data_name, metadata_name) = spread_arg_names(&arg_name);
+            arg_names.extend([quote!(#data_name), quote!(#metadata_name)]);
         } else {
-            quote!(__co3_self)
-        });
+            arg_names.push(quote!(#arg_name));
+        }
     }
 
     if matches!(sig.output, syn::ReturnType::Type(_, _)) {

@@ -98,6 +98,26 @@ pub(crate) fn item_fn_input_ident(input: &syn::Pat) -> &Ident {
     ident
 }
 
+pub(crate) fn is_spread_arg(attrs: &[syn::Attribute]) -> bool {
+    attrs.iter().any(|attr| attr.path().is_ident("spread"))
+}
+
+fn borrowed_arg_ty(attrs: &[syn::Attribute], arg_ty: &Type) -> TokenStream {
+    match ownership_mode_for_arg(attrs) {
+        OwnershipMode::ByValue => quote!(#arg_ty),
+        OwnershipMode::Borrow => quote! {
+            <#arg_ty as co3::borrow::Borrow>::Borrowed<'_>
+        },
+    }
+}
+
+pub(crate) fn spread_arg_names(arg_name: &Ident) -> (Ident, Ident) {
+    (
+        format_ident!("__co3_{arg_name}_data"),
+        format_ident!("__co3_{arg_name}_metadata"),
+    )
+}
+
 pub(crate) fn gen_input_decode_stmts<'a>(
     inputs: impl IntoIterator<Item = &'a syn::FnArg>,
 ) -> TokenStream {
@@ -134,17 +154,24 @@ pub(crate) fn gen_input_decode_stmts<'a>(
             }
         };
 
-        let decode_ty = match ownership_mode_for_arg(attrs) {
-            OwnershipMode::ByValue => quote!(#arg_ty),
-            OwnershipMode::Borrow => quote! {
-                <#arg_ty as co3::borrow::Borrow>::Borrowed<'_>
-            },
+        let decode_ty = borrowed_arg_ty(attrs, &arg_ty);
+        let decode_arg = if is_spread_arg(attrs) {
+            let (data_name, metadata_name) = spread_arg_names(&arg_name);
+            let decode_c_ty = quote!(<#decode_ty as co3::ExternC>::CType);
+
+            quote! {{
+                <#decode_c_ty as co3::size::Spread>::from_parts(
+                    #data_name, #metadata_name
+                )
+            }}
+        } else {
+            quote! { #arg_name }
         };
 
         let decode_call = if soft_for_arg(attrs) {
-            quote! { co3::Decode::soft_decode(#arg_name, &mut __co3_input_stores.#idx) }
+            quote! { co3::soft_decode(#decode_arg, &mut __co3_input_stores.#idx) }
         } else {
-            quote! { co3::Decode::decode(#arg_name) }
+            quote! { co3::decode(#decode_arg) }
         };
 
         let to_owned = match ownership_mode_for_arg(attrs) {
@@ -330,6 +357,7 @@ pub fn gen_fn_definition(abi: &syn::Abi, mut item: syn::ItemFn) -> TokenStream {
 
 pub(crate) fn gen_extern_fn_signature(mut sig: syn::Signature) -> TokenStream {
     explicitize_signature_lifetimes(&mut sig);
+    // FIXME: This feels like a BIG hack
     synthesize_lifetime_bounds(&mut sig);
 
     lower_signature_inputs(&mut sig);
@@ -351,21 +379,43 @@ pub(crate) fn gen_extern_fn_signature(mut sig: syn::Signature) -> TokenStream {
 fn lower_signature_inputs(sig: &mut syn::Signature) {
     sig.inputs = core::mem::take(&mut sig.inputs)
         .into_iter()
-        .map(|input| lower_signature_input(&mut sig.generics, input))
+        .flat_map(|input| lower_signature_input(&mut sig.generics, input))
         .collect();
 }
 
-fn lower_signature_input(generics: &mut syn::Generics, input: syn::FnArg) -> syn::FnArg {
+fn lower_signature_input(generics: &mut syn::Generics, input: syn::FnArg) -> Vec<syn::FnArg> {
     let (pat, attrs, arg_ty) = match input {
         syn::FnArg::Receiver(receiver) => {
             let arg_ty = *receiver.ty;
-            (quote!(__co3_self), receiver.attrs, arg_ty)
+            (parse_quote!(__co3_self), receiver.attrs, arg_ty)
         }
         syn::FnArg::Typed(arg) => {
             let syn::PatType { attrs, pat, ty, .. } = arg;
-            (quote!(#pat), attrs, *ty)
+            (parse_quote!(#pat), attrs, *ty)
         }
     };
+
+    if is_spread_arg(&attrs) {
+        let arg_name = item_fn_input_ident(&pat);
+        let (data_name, metadata_name) = spread_arg_names(arg_name);
+        let spread_ty = item_fn_input_arg_type(&attrs, &arg_ty);
+        let part1_ty = quote! { <#spread_ty as co3::size::Spread>::Part1 };
+        let part2_ty = quote! { <#spread_ty as co3::size::Spread>::Part2 };
+
+        generics
+            .make_where_clause()
+            .predicates
+            .push(parse_quote!(#part1_ty: co3::CFnArg));
+        generics
+            .make_where_clause()
+            .predicates
+            .push(parse_quote!(#part2_ty: co3::CFnArg));
+
+        return vec![
+            parse_quote!(#data_name: #part1_ty),
+            parse_quote!(#metadata_name: #part2_ty),
+        ];
+    }
 
     let ffi_ty = item_fn_input_arg_type(&attrs, &arg_ty);
 
@@ -374,7 +424,7 @@ fn lower_signature_input(generics: &mut syn::Generics, input: syn::FnArg) -> syn
         .predicates
         .push(parse_quote!(#ffi_ty: co3::CFnArg));
 
-    parse_quote!(#pat: #ffi_ty)
+    vec![parse_quote!(#pat: #ffi_ty)]
 }
 
 fn lower_signature_output(sig: &mut syn::Signature) {
@@ -419,24 +469,31 @@ fn explicitize_signature_lifetimes(sig: &mut syn::Signature) {
             }
         }
 
-        fn explicitize_lifetime(&mut self, lifetime: &mut Option<syn::Lifetime>) -> syn::Lifetime {
-            if let Some(lifetime) = lifetime
-                && lifetime.ident != "_"
-            {
-                return lifetime.clone();
+        fn push_lifetime_param(&mut self, lifetime: syn::Lifetime) {
+            if self.generics.lt_token.is_none() {
+                self.generics.lt_token = Some(Default::default());
+                self.generics.gt_token = Some(Default::default());
             }
-
-            let new_lifetime =
-                syn::Lifetime::new(&format!("'__co3_{}", self.next_idx), Span::call_site());
 
             self.generics
                 .params
                 .push(syn::GenericParam::Lifetime(syn::LifetimeParam::new(
-                    new_lifetime.clone(),
+                    lifetime,
                 )));
+        }
 
+        fn explicitize_lifetime(&mut self, lifetime: &mut syn::Lifetime) -> syn::Lifetime {
+            if lifetime.ident != "_" {
+                return lifetime.clone();
+            }
+
+            let new_lifetime = format!("'__co3_{}", self.next_idx);
+            let new_lifetime = syn::Lifetime::new(&new_lifetime, Span::call_site());
+
+            self.push_lifetime_param(new_lifetime.clone());
             self.next_idx += 1;
-            lifetime.insert(new_lifetime).clone()
+            *lifetime = new_lifetime.clone();
+            new_lifetime
         }
 
         fn record_lifetime<const IS_SELF: bool>(&mut self, lifetime: syn::Lifetime) {
@@ -458,21 +515,38 @@ fn explicitize_signature_lifetimes(sig: &mut syn::Signature) {
 
     impl VisitMut for InputLifetimeCollector<'_> {
         fn visit_receiver_mut(&mut self, node: &mut syn::Receiver) {
-            syn::visit_mut::visit_receiver_mut(self, node);
-
             if let Some((_, lifetime)) = &mut node.reference {
-                let l = self.explicitize_lifetime(lifetime);
+                let l = self.explicitize_lifetime(
+                    lifetime.get_or_insert_with(|| syn::Lifetime::new("'_", Span::call_site())),
+                );
+
+                if let syn::Type::Reference(ty) = &mut *node.ty {
+                    ty.lifetime = Some(l.clone());
+                }
 
                 self.record_lifetime::<true>(l);
+            } else {
+                self.visit_type_mut(&mut node.ty);
             }
         }
 
         fn visit_type_reference_mut(&mut self, node: &mut syn::TypeReference) {
-            syn::visit_mut::visit_type_reference_mut(self, node);
-            let l = self.explicitize_lifetime(&mut node.lifetime);
+            let l = self.explicitize_lifetime(
+                node.lifetime
+                    .get_or_insert_with(|| syn::Lifetime::new("'_", Span::call_site())),
+            );
+
+            self.record_lifetime::<false>(l);
+            self.visit_type_mut(&mut node.elem);
+        }
+
+        fn visit_lifetime_mut(&mut self, node: &mut syn::Lifetime) {
+            let l = self.explicitize_lifetime(node);
 
             self.record_lifetime::<false>(l);
         }
+
+        fn visit_type_bare_fn_mut(&mut self, _: &mut syn::TypeBareFn) {}
     }
 
     struct OutputLifetimeExplicator<'a> {
@@ -481,11 +555,21 @@ fn explicitize_signature_lifetimes(sig: &mut syn::Signature) {
 
     impl VisitMut for OutputLifetimeExplicator<'_> {
         fn visit_type_reference_mut(&mut self, node: &mut syn::TypeReference) {
-            syn::visit_mut::visit_type_reference_mut(self, node);
-
             if node.lifetime.is_none() || matches!(&node.lifetime, Some(l) if l.ident == "_") {
                 node.lifetime = Some(self.lifetime.clone());
             }
+
+            self.visit_type_mut(&mut node.elem);
+        }
+
+        fn visit_lifetime_mut(&mut self, node: &mut syn::Lifetime) {
+            if node.ident == "_" {
+                *node = self.lifetime.clone();
+            }
+        }
+
+        fn visit_type_bare_fn_mut(&mut self, _: &mut syn::TypeBareFn) {
+            // Bare function pointer elision is scoped to the function pointer type.
         }
     }
 
@@ -627,5 +711,78 @@ impl VisitMut for SelfConcretizer<'_> {
 
         rest.segments.extend(path.segments.iter().skip(1).cloned());
         *node = qualify_self_path(self.self_ty, &rest);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn explicitized(mut sig: syn::Signature) -> syn::Signature {
+        explicitize_signature_lifetimes(&mut sig);
+        sig
+    }
+
+    #[test]
+    fn explicitizes_single_elided_reference_input_and_output() {
+        let sig = explicitized(parse_quote!(fn f(x: &u8) -> &u8));
+        let expected: syn::Signature =
+            parse_quote!(fn f<'__co3_0>(x: &'__co3_0 u8) -> &'__co3_0 u8);
+
+        assert_eq!(sig, expected);
+    }
+
+    #[test]
+    fn leaves_output_elided_for_multiple_input_lifetime_positions() {
+        let sig = explicitized(parse_quote!(fn f(x: &u8, y: &u8) -> &u8));
+        let expected: syn::Signature =
+            parse_quote!(fn f<'__co3_0, '__co3_1>(x: &'__co3_0 u8, y: &'__co3_1 u8) -> &u8);
+
+        assert_eq!(sig, expected);
+    }
+
+    #[test]
+    fn assigns_receiver_lifetime_to_output_when_other_inputs_have_lifetimes() {
+        let sig = explicitized(parse_quote!(fn f(&self, x: &u8) -> &u8));
+        let expected: syn::Signature = parse_quote!(
+            fn f<'__co3_0, '__co3_1>(&'__co3_0 self, x: &'__co3_1 u8) -> &'__co3_0 u8
+        );
+
+        assert_eq!(sig, expected);
+    }
+
+    #[test]
+    fn counts_generic_lifetime_arguments_as_input_lifetime_positions() {
+        let sig = explicitized(parse_quote!(fn f(x: Foo<'_>) -> Foo<'_>));
+        let expected: syn::Signature =
+            parse_quote!(fn f<'__co3_0>(x: Foo<'__co3_0>) -> Foo<'__co3_0>);
+
+        assert_eq!(sig, expected);
+    }
+
+    #[test]
+    fn nested_references_are_distinct_input_lifetime_positions() {
+        let sig = explicitized(parse_quote!(fn f(x: &&u8) -> &u8));
+        let expected: syn::Signature =
+            parse_quote!(fn f<'__co3_0, '__co3_1>(x: &'__co3_0 &'__co3_1 u8) -> &u8);
+
+        assert_eq!(sig, expected);
+    }
+
+    #[test]
+    fn ignores_lifetimes_scoped_to_bare_function_pointer_inputs() {
+        let sig = explicitized(parse_quote!(fn f(x: fn(&u8)) -> &u8));
+        let expected: syn::Signature = parse_quote!(fn f(x: fn(&u8)) -> &u8);
+
+        assert_eq!(sig, expected);
+    }
+
+    #[test]
+    fn does_not_rewrite_bare_function_pointer_output_lifetimes() {
+        let sig = explicitized(parse_quote!(fn f(x: &u8) -> fn(&u8) -> &u8));
+        let expected: syn::Signature =
+            parse_quote!(fn f<'__co3_0>(x: &'__co3_0 u8) -> fn(&u8) -> &u8);
+
+        assert_eq!(sig, expected);
     }
 }

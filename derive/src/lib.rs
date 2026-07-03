@@ -255,8 +255,23 @@ pub fn export(attr: TokenStream, item: TokenStream) -> Result<TokenStream> {
                 syn::FnArg::Typed(node) => &mut node.attrs,
             };
 
-            attrs.retain(|a| !a.path().is_ident("by_val") && !a.path().is_ident("soft"));
+            attrs.retain(|a| {
+                !a.path().is_ident("by_val")
+                    && !a.path().is_ident("soft")
+                    && !a.path().is_ident("spread")
+            });
         }
+    }
+
+    fn reject_lifetimes_attr(attrs: &[Attribute]) -> Result<()> {
+        if let Some(attr) = attrs.iter().find(|attr| is_unsafe_lifetimes_attr(attr)) {
+            return Err(syn::Error::new_spanned(
+                attr,
+                "`#[unsafe(lifetimes)]` is only supported inside `export_!`/`extern_!` macros",
+            ));
+        }
+
+        Ok(())
     }
 
     let generics_err = "generic types are not supported by `#[export]`; use `export_!`/`export_C!`";
@@ -304,6 +319,7 @@ pub fn export(attr: TokenStream, item: TokenStream) -> Result<TokenStream> {
             quote! { #item_id #vis type #ident #generics; }
         }
         syn::Item::Fn(item) => {
+            reject_lifetimes_attr(&item.attrs)?;
             let attrs = take_forwarded_export_fn_attrs(&mut item.attrs);
 
             let vis = &item.vis;
@@ -332,20 +348,29 @@ pub fn export(attr: TokenStream, item: TokenStream) -> Result<TokenStream> {
             let trait_ = impl_.trait_.as_ref().map(|(_, path, _)| quote!(#path for));
             let self_ty = &impl_.self_ty;
 
-            let items = impl_.items.iter_mut().filter_map(|item| {
-                let syn::ImplItem::Fn(method) = item else {
-                    return None;
-                };
+            reject_lifetimes_attr(&impl_.attrs)?;
+            let items = impl_
+                .items
+                .iter_mut()
+                .filter_map(|item| {
+                    let syn::ImplItem::Fn(method) = item else {
+                        return None;
+                    };
 
-                let attrs = take_forwarded_export_fn_attrs(&mut method.attrs);
-                let (defaultness, vis) = (&method.defaultness, &method.vis);
+                    if let Err(err) = reject_lifetimes_attr(&method.attrs) {
+                        return Some(Err(err));
+                    }
 
-                let mut sig = method.sig.clone();
-                ensure_export_arg_names(&mut sig);
-                strip_fn_arg_attrs(&mut method.sig);
+                    let attrs = take_forwarded_export_fn_attrs(&mut method.attrs);
+                    let (defaultness, vis) = (&method.defaultness, &method.vis);
 
-                Some(quote! { #(#attrs)* #vis #defaultness #sig; })
-            });
+                    let mut sig = method.sig.clone();
+                    ensure_export_arg_names(&mut sig);
+                    strip_fn_arg_attrs(&mut method.sig);
+
+                    Some(Ok(quote! { #(#attrs)* #vis #defaultness #sig; }))
+                })
+                .collect::<Result<Vec<_>>>()?;
 
             let item_impl = quote! {
                 #(#attrs)*
@@ -447,11 +472,31 @@ impl<T: InputKind> Input<T> {
                         };
 
                         impl_.attrs.retain(|a| !a.path().is_ident("dispatch"));
+                        strip_unsafe_lifetimes_attrs(&mut impl_.attrs);
+                        for item in &mut impl_.items {
+                            let syn::ImplItem::Fn(method) = item else {
+                                continue;
+                            };
+                            strip_unsafe_lifetimes_attrs(&mut method.attrs);
+                        }
                         ForeignItem::DynImpl(DynImpl { impl_, args })
                     }
                     ParsedForeignItem::Type(item) => ForeignItem::Type(item),
-                    ParsedForeignItem::Impl(impl_) => ForeignItem::Impl(impl_),
-                    ParsedForeignItem::Fn(item) => ForeignItem::Fn(item),
+                    ParsedForeignItem::Impl(mut impl_) => {
+                        strip_unsafe_lifetimes_attrs(&mut impl_.attrs);
+                        for item in &mut impl_.items {
+                            let syn::ImplItem::Fn(method) = item else {
+                                continue;
+                            };
+                            strip_unsafe_lifetimes_attrs(&mut method.attrs);
+                        }
+
+                        ForeignItem::Impl(impl_)
+                    }
+                    ParsedForeignItem::Fn(mut item) => {
+                        strip_unsafe_lifetimes_attrs(&mut item.attrs);
+                        ForeignItem::Fn(item)
+                    }
                 })
             })
             .collect::<Result<Vec<_>>>()?;
@@ -803,6 +848,63 @@ fn parse_export_attr(attr: TokenStream) -> Result<ExportAttrArgs> {
     }
 
     syn::parse2::<ExportAttrArgs>(attr)
+}
+
+pub(crate) fn is_unsafe_lifetimes_attr(attr: &Attribute) -> bool {
+    if !attr.path().is_ident("unsafe") {
+        return false;
+    }
+
+    let syn::Meta::List(meta_list) = &attr.meta else {
+        return false;
+    };
+
+    let metas = meta_list
+        .parse_args_with(syn::punctuated::Punctuated::<syn::Meta, syn::Token![,]>::parse_terminated)
+        .ok();
+    let Some(metas) = metas else {
+        return false;
+    };
+
+    metas
+        .into_iter()
+        .any(|meta| matches!(meta, syn::Meta::Path(path) if path.is_ident("lifetimes")))
+}
+
+pub(crate) fn strip_unsafe_lifetimes_attrs(attrs: &mut Vec<Attribute>) {
+    let mut kept = Vec::with_capacity(attrs.len());
+
+    for attr in attrs.drain(..) {
+        if !attr.path().is_ident("unsafe") {
+            kept.push(attr);
+            continue;
+        }
+
+        let syn::Meta::List(meta_list) = &attr.meta else {
+            kept.push(attr);
+            continue;
+        };
+
+        let Ok(metas) = meta_list.parse_args_with(
+            syn::punctuated::Punctuated::<syn::Meta, syn::Token![,]>::parse_terminated,
+        ) else {
+            kept.push(attr);
+            continue;
+        };
+
+        let kept_metas = metas
+            .into_iter()
+            .filter(|meta| !matches!(meta, syn::Meta::Path(path) if path.is_ident("lifetimes")))
+            .collect::<syn::punctuated::Punctuated<syn::Meta, syn::Token![,]>>();
+
+        if kept_metas.is_empty() {
+            continue;
+        }
+
+        kept.push(parse_quote!(#[unsafe(#kept_metas)]));
+    }
+
+    *attrs = kept;
 }
 
 fn has_unsafe_export_name(attr: &Attribute) -> bool {

@@ -194,9 +194,20 @@ impl PreprocessedArg {
             }
         }
 
-        let mut arg = input.parse::<PatType>()?;
-        merged_attrs.append(&mut arg.attrs);
-        arg.attrs = merged_attrs;
+        let pat = syn::Pat::parse_single(input)?;
+        let colon_token = input.parse::<syn::Token![:]>()?;
+        let spread = input.peek(syn::Token![..]);
+        if spread {
+            input.parse::<syn::Token![..]>()?;
+            merged_attrs.push(parse_quote!(#[spread]));
+        }
+        let ty = input.parse::<Type>()?;
+        let arg = PatType {
+            attrs: merged_attrs,
+            pat: Box::new(pat),
+            colon_token,
+            ty: Box::new(ty),
+        };
         Ok(Self {
             tokens: quote!(#arg),
         })
@@ -510,10 +521,12 @@ fn restore_synthetic_receiver(signature: &mut syn::Signature) {
                 Type::Path(ty_path) if ty_path.qself.is_none() && ty_path.path.is_ident("Self")
             ) =>
         {
+            let lifetime = &ty.lifetime;
+
             if ty.mutability.is_some() {
-                parse_quote_spanned!(receiver_span=> &mut self)
+                parse_quote_spanned!(receiver_span=> &#lifetime mut self)
             } else {
-                parse_quote_spanned!(receiver_span=> &self)
+                parse_quote_spanned!(receiver_span=> &#lifetime self)
             }
         }
         ty => {

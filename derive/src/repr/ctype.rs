@@ -6,7 +6,7 @@ use syn::{parse_quote, visit::Visit};
 
 use crate::repr::{
     attr::ReprKind, enum_tag_type, gen_size_family_impl, gen_sized_family_impl,
-    is_type_parameterized,
+    is_type_parameterized, wide::gen_transparent_wide_impl,
 };
 
 fn lowered_field_ty(field_ty: &syn::Type) -> TokenStream {
@@ -314,6 +314,7 @@ fn gen_struct_ctype_impls<const ADD_COPY: bool>(ctype: &syn::ItemStruct) -> Toke
     let default_impl = gen_default_impl::<ADD_COPY>(&ctype.ident, &ctype.generics, &fields);
     let robust_impls = gen_robust_impls::<ADD_COPY>(&ctype.ident, &ctype.generics, &fields);
     let size_family_impl = gen_size_family_impl(&ctype.ident, &ctype.generics, &fields);
+    let wide_impl = gen_transparent_wide_impl(&ctype.ident, &ctype.generics, &ctype.fields);
 
     let const_view = gen_ctype_struct_view::<ADD_COPY>(ctype.clone(), false);
     let mut_view = gen_ctype_struct_view::<ADD_COPY>(ctype.clone(), true);
@@ -325,6 +326,7 @@ fn gen_struct_ctype_impls<const ADD_COPY: bool>(ctype: &syn::ItemStruct) -> Toke
         #default_impl
         #robust_impls
         #size_family_impl
+        #wide_impl
 
         #const_view
         #mut_view
@@ -424,7 +426,7 @@ fn gen_identity_codec_impls<const ADD_COPY: bool>(
         {
             type CType = Self;
         }
-        impl #impl_generics co3::stored::EncodeOwned for #ident #ty_generics
+        unsafe impl #impl_generics co3::stored::EncodeOwned for #ident #ty_generics
         where
             #(#copy_bounds,)*
             #predicates
@@ -432,14 +434,14 @@ fn gen_identity_codec_impls<const ADD_COPY: bool>(
             type Store = ();
 
             #[inline(always)]
-            fn soft_encode_owned<'itm>(self, (): &mut ()) -> Self::CType
+            fn soft_encode<'itm>(self, (): &mut ()) -> Self::CType
             where
                 Self: 'itm,
             {
                 self
             }
         }
-        impl<'d, #params> co3::stored::DecodeOwned<'d> for #ident #ty_generics
+        unsafe impl<'d, #params> co3::stored::DecodeOwned<'d> for #ident #ty_generics
         where
             #(#copy_bounds,)*
             #predicates
@@ -447,7 +449,7 @@ fn gen_identity_codec_impls<const ADD_COPY: bool>(
             type Store = ();
 
             #[inline(always)]
-            unsafe fn soft_decode_owned<'itm: 'd>(source: Self::CType, (): &mut ()) -> Option<Self> {
+            unsafe fn soft_decode<'itm: 'd>(source: Self::CType, (): &mut ()) -> Option<Self> {
                 Some(source)
             }
         }

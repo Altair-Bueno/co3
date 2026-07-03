@@ -47,15 +47,15 @@
 //! let mut store3 = Default::default();
 //!
 //! assert_eq!(
-//!     none_value_1.soft_encode_owned(&mut store1),
+//!     none_value_1.soft_encode(&mut store1),
 //!     ReprCTuple3(0, 2, core::ptr::null())
 //! );
 //! assert_eq!(
-//!     none_value_2.soft_encode_owned(&mut store2),
+//!     none_value_2.soft_encode(&mut store2),
 //!     ReprCTuple3(0, core::ptr::null(), 0)
 //! );
 //! assert_eq!(
-//!     none_value_3.soft_encode_owned(&mut store3),
+//!     none_value_3.soft_encode(&mut store3),
 //!     ReprCOption::None()
 //! );
 //! ```
@@ -95,16 +95,16 @@ macro_rules! impl_tuple {
 
             #[inline(always)]
             #[expect(non_snake_case)]
-            fn borrow<'itm>(self, store: &'itm mut Self::Owner) -> Self::Borrowed<'itm>
+            fn borrow<'itm>(self, owner: &'itm mut Self::Owner) -> Self::Borrowed<'itm>
             where
                 Self: 'itm,
             {
                 impl_tuple! {@decl_priv_store $($ty),+}
 
                 let ($($ty,)+) = self;
-                let store: private_store::Store<$($ty::Owner),+> = store.into();
+                let owner: private_store::Store<$($ty::Owner),+> = owner.into();
 
-                ($( $ty.borrow(store.$ty), )+)
+                ($( $ty.borrow(owner.$ty), )+)
             }
         }
         impl<$($ty: Borrow),*> Borrow for $ffi_ty<$($ty),*> {
@@ -117,16 +117,16 @@ macro_rules! impl_tuple {
 
             #[inline(always)]
             #[expect(non_snake_case)]
-            fn borrow<'itm>(self, store: &'itm mut Self::Owner) -> Self::Borrowed<'itm>
+            fn borrow<'itm>(self, owner: &'itm mut Self::Owner) -> Self::Borrowed<'itm>
             where
                 Self: 'itm,
             {
                 impl_tuple! {@decl_priv_store $($ty),+}
 
                 let $ffi_ty($($ty),*) = self;
-                let store: private_store::Store<$($ty::Owner),+> = store.into();
+                let owner: private_store::Store<$($ty::Owner),+> = owner.into();
 
-                $ffi_ty($( $ty.borrow(store.$ty) ),+)
+                $ffi_ty($( $ty.borrow(owner.$ty) ),+)
             }
         }
         impl<'itm, $($ty: ToOwned<'itm>),+> ToOwned<'itm> for ($($ty,)+) {
@@ -146,12 +146,12 @@ macro_rules! impl_tuple {
             }
         }
 
-        impl<$($ty: EncodeOwned<CType: Copy>),*> EncodeOwned for ($($ty,)*) {
+        unsafe impl<$($ty: EncodeOwned<CType: Copy>),*> EncodeOwned for ($($ty,)*) {
             type Store = ($( $ty::Store, )*);
 
             #[inline(always)]
             #[expect(non_snake_case)]
-            fn soft_encode_owned<'itm>(self, store: &mut Self::Store) -> Self::CType
+            fn soft_encode<'itm>(self, store: &mut Self::Store) -> Self::CType
             where
                 Self: 'itm
             {
@@ -159,15 +159,15 @@ macro_rules! impl_tuple {
 
                 let ($($ty,)*) = self;
                 let store: private_store::Store<$($ty::Store,)*> = store.into();
-                $ffi_ty($( $ty.soft_encode_owned(store.$ty) ),*)
+                $ffi_ty($( $ty.soft_encode(store.$ty) ),*)
             }
         }
-        impl<$($ty: EncodeOwned<CType: Copy>),*> EncodeOwned for $ffi_ty<$($ty),*> {
+        unsafe impl<$($ty: EncodeOwned<CType: Copy>),*> EncodeOwned for $ffi_ty<$($ty),*> {
             type Store = ($( $ty::Store, )*);
 
             #[inline(always)]
             #[expect(non_snake_case)]
-            fn soft_encode_owned<'itm>(self, store: &'itm mut Self::Store) -> Self::CType
+            fn soft_encode<'itm>(self, store: &'itm mut Self::Store) -> Self::CType
             where
                 Self: 'itm,
             {
@@ -175,34 +175,34 @@ macro_rules! impl_tuple {
 
                 let $ffi_ty($($ty),*) = self;
                 let store: private_store::Store<$($ty::Store,)*> = store.into();
-                $ffi_ty($( $ty.soft_encode_owned(store.$ty) ),*)
+                $ffi_ty($( $ty.soft_encode(store.$ty) ),*)
             }
         }
 
-        impl<'d, $($ty: DecodeOwned<'d, CType: Copy>),*> DecodeOwned<'d> for ($($ty,)*) {
+        unsafe impl<'d, $($ty: DecodeOwned<'d, CType: Copy>),*> DecodeOwned<'d> for ($($ty,)*) {
             type Store = ($( $ty::Store, )*);
 
             #[inline(always)]
             #[expect(non_snake_case)]
-            unsafe fn soft_decode_owned<'itm: 'd>(source: Self::CType, store: &'itm mut Self::Store) -> Option<Self> {
+            unsafe fn soft_decode<'itm: 'd>(source: Self::CType, store: &'itm mut Self::Store) -> Option<Self> {
                 impl_tuple! {@decl_priv_store $($ty),*}
 
                 let $ffi_ty($($ty),*) = source;
                 let store: private_store::Store<$($ty::Store),*> = store.into();
-                Some(unsafe { ($( $ty::soft_decode_owned($ty, store.$ty)?, )*) })
+                Some(unsafe { ($( $ty::soft_decode($ty, store.$ty)?, )*) })
             }
         }
-        impl<'d, $($ty: DecodeOwned<'d, CType: Copy>),*> DecodeOwned<'d> for $ffi_ty<$($ty),*> {
+        unsafe impl<'d, $($ty: DecodeOwned<'d, CType: Copy>),*> DecodeOwned<'d> for $ffi_ty<$($ty),*> {
             type Store = ($( $ty::Store, )*);
 
             #[inline(always)]
             #[expect(non_snake_case)]
-            unsafe fn soft_decode_owned<'itm: 'd>(source: Self::CType, store: &'itm mut Self::Store) -> Option<Self> {
+            unsafe fn soft_decode<'itm: 'd>(source: Self::CType, store: &'itm mut Self::Store) -> Option<Self> {
                 impl_tuple! {@decl_priv_store $($ty),*}
 
                 let $ffi_ty($($ty),*) = source;
                 let store: private_store::Store<$($ty::Store,)*> = store.into();
-                Some(unsafe { $ffi_ty($( $ty::soft_decode_owned($ty, store.$ty)? ),*) })
+                Some(unsafe { $ffi_ty($( $ty::soft_decode($ty, store.$ty)? ),*) })
             }
         }
 

@@ -5,7 +5,7 @@ use crate::{
     borrow::{Borrow, BorrowCast, BorrowCastMut, ToOwned},
     ir::ReprFamily,
     niche::{NicheFamily, WithoutNiche},
-    size::SizeFamily,
+    size::{SizeFamily, Spread},
     stored::{DecodeOwned, EncodeOwned},
     transmute::CheckedTransmute,
 };
@@ -114,6 +114,18 @@ impl<C> CSlice<C> {
     pub(crate) const fn from_raw_parts(data: *const C, len: usize) -> Self {
         Self { data, len }
     }
+
+    pub(crate) const fn data(&self) -> *const C {
+        self.data
+    }
+
+    pub(crate) const fn len(&self) -> usize {
+        self.len
+    }
+
+    pub(crate) const fn is_niche(&self) -> bool {
+        self.data.is_null()
+    }
 }
 
 impl<C> CSliceMut<C> {
@@ -136,37 +148,17 @@ impl<C> CSliceMut<C> {
     pub(crate) const fn from_raw_parts_mut(data: *mut C, len: usize) -> Self {
         Self { data, len }
     }
-}
 
-impl<C> CSlice<C> {
-    /// Convert [`Self`] into a shared slice. Return `None` if data pointer is null.
-    /// Unlike [`core::slice::from_raw_parts`], data pointer is allowed to be null.
-    ///
-    /// # Safety
-    ///
-    /// Check [`core::slice::from_raw_parts`]
-    pub(crate) const unsafe fn into_rust<'slice>(self) -> Option<&'slice [C]> {
-        if self.data.is_null() {
-            return None;
-        }
-
-        Some(unsafe { core::slice::from_raw_parts(self.data, self.len) })
+    pub(crate) const fn data(&self) -> *mut C {
+        self.data
     }
-}
 
-impl<C> CSliceMut<C> {
-    /// Convert [`Self`] into a mutable slice. Return `None` if data pointer is null.
-    /// Unlike [`core::slice::from_raw_parts_mut`], data pointer is allowed to be null.
-    ///
-    /// # Safety
-    ///
-    /// Check [`core::slice::from_raw_parts_mut`]
-    pub(crate) const unsafe fn into_rust<'slice>(self) -> Option<&'slice mut [C]> {
-        if self.data.is_null() {
-            return None;
-        }
+    pub(crate) const fn len(&self) -> usize {
+        self.len
+    }
 
-        Some(unsafe { core::slice::from_raw_parts_mut(self.data, self.len) })
+    pub(crate) const fn is_niche(&self) -> bool {
+        self.data.is_null()
     }
 }
 
@@ -208,25 +200,22 @@ macro_rules! impl_slice_carrier {
         impl<C: RobustReprC> ExternC for $ty<C> {
             type CType = Self;
         }
-        impl<C: RobustReprC> EncodeOwned for $ty<C> {
+        unsafe impl<C: RobustReprC> EncodeOwned for $ty<C> {
             type Store = ();
 
             #[inline(always)]
-            fn soft_encode_owned<'itm>(self, (): &mut ()) -> Self::CType
+            fn soft_encode<'itm>(self, (): &mut ()) -> Self::CType
             where
                 Self: 'itm,
             {
                 self
             }
         }
-        impl<'d, C: RobustReprC> DecodeOwned<'d> for $ty<C> {
+        unsafe impl<'d, C: RobustReprC> DecodeOwned<'d> for $ty<C> {
             type Store = ();
 
             #[inline(always)]
-            unsafe fn soft_decode_owned<'itm: 'd>(
-                source: Self::CType,
-                (): &mut (),
-            ) -> Option<Self> {
+            unsafe fn soft_decode<'itm: 'd>(source: Self::CType, (): &mut ()) -> Option<Self> {
                 Some(source)
             }
         }
@@ -254,3 +243,50 @@ macro_rules! impl_slice_carrier {
 
 impl_slice_carrier! { CSlice }
 impl_slice_carrier! { CSliceMut }
+
+impl<C: RobustReprC> Spread for CSlice<C> {
+    type Part1 = *const C;
+    type Part2 = usize;
+
+    #[inline(always)]
+    fn into_parts(self) -> (Self::Part1, Self::Part2) {
+        (self.data, self.len)
+    }
+
+    #[inline(always)]
+    fn from_parts(data: Self::Part1, len: Self::Part2) -> Self {
+        Self { data, len }
+    }
+}
+
+impl<C: RobustReprC> Spread for CSliceMut<C> {
+    type Part1 = *mut C;
+    type Part2 = usize;
+
+    #[inline(always)]
+    fn into_parts(self) -> (Self::Part1, Self::Part2) {
+        (self.data, self.len)
+    }
+
+    #[inline(always)]
+    fn from_parts(data: Self::Part1, len: Self::Part2) -> Self {
+        Self { data, len }
+    }
+}
+
+#[cfg(test)]
+impl<C> CSliceMut<C> {
+    /// Convert [`Self`] into a mutable slice. Return `None` if data pointer is null.
+    /// Unlike [`core::slice::from_raw_parts_mut`], data pointer is allowed to be null.
+    ///
+    /// # Safety
+    ///
+    /// Check [`core::slice::from_raw_parts_mut`]
+    pub(crate) const unsafe fn into_rust<'slice>(self) -> Option<&'slice mut [C]> {
+        if self.data.is_null() {
+            return None;
+        }
+
+        Some(unsafe { core::slice::from_raw_parts_mut(self.data, self.len) })
+    }
+}

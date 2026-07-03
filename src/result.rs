@@ -229,13 +229,13 @@ where
 impl<T: ExternC<CType: Copy> + Copy, E: ExternC<CType: Copy> + Copy> ExternC for ReprCResult<T, E> {
     type CType = ReprCResult<T::CType, E::CType>;
 }
-impl<T: EncodeOwned<CType: Copy> + Copy, E: EncodeOwned<CType: Copy> + Copy> EncodeOwned
+unsafe impl<T: EncodeOwned<CType: Copy> + Copy, E: EncodeOwned<CType: Copy> + Copy> EncodeOwned
     for ReprCResult<T, E>
 {
     type Store = Option<Result<T::Store, E::Store>>;
 
     #[inline(always)]
-    fn soft_encode_owned<'itm>(self, store: &'itm mut Self::Store) -> Self::CType
+    fn soft_encode<'itm>(self, store: &'itm mut Self::Store) -> Self::CType
     where
         Self: 'itm,
     {
@@ -245,26 +245,26 @@ impl<T: EncodeOwned<CType: Copy> + Copy, E: EncodeOwned<CType: Copy> + Copy> Enc
                     unreachable!()
                 };
 
-                ReprCResult::Ok(unsafe { self.ok.1.assume_init() }.soft_encode_owned(store))
+                ReprCResult::Ok(unsafe { self.ok.1.assume_init() }.soft_encode(store))
             }
             1 => {
                 let Result::Err(store) = store.insert(Result::Err(Default::default())) else {
                     unreachable!()
                 };
 
-                ReprCResult::Err(unsafe { self.err.1.assume_init() }.soft_encode_owned(store))
+                ReprCResult::Err(unsafe { self.err.1.assume_init() }.soft_encode(store))
             }
             _ => self.forward_payload(),
         }
     }
 }
-impl<'d, T: DecodeOwned<'d, CType: Copy> + Copy, E: DecodeOwned<'d, CType: Copy> + Copy>
+unsafe impl<'d, T: DecodeOwned<'d, CType: Copy> + Copy, E: DecodeOwned<'d, CType: Copy> + Copy>
     DecodeOwned<'d> for ReprCResult<T, E>
 {
     type Store = Option<Result<T::Store, E::Store>>;
 
     #[inline(always)]
-    unsafe fn soft_decode_owned<'itm: 'd>(
+    unsafe fn soft_decode<'itm: 'd>(
         source: Self::CType,
         store: &'itm mut Self::Store,
     ) -> Option<Self> {
@@ -275,7 +275,7 @@ impl<'d, T: DecodeOwned<'d, CType: Copy> + Copy, E: DecodeOwned<'d, CType: Copy>
                 };
 
                 Some(Self::Ok(unsafe {
-                    T::soft_decode_owned(source.ok.1.assume_init(), store)?
+                    T::soft_decode(source.ok.1.assume_init(), store)?
                 }))
             }
             1 => {
@@ -284,7 +284,7 @@ impl<'d, T: DecodeOwned<'d, CType: Copy> + Copy, E: DecodeOwned<'d, CType: Copy>
                 };
 
                 Some(Self::Err(unsafe {
-                    E::soft_decode_owned(source.err.1.assume_init(), store)?
+                    E::soft_decode(source.err.1.assume_init(), store)?
                 }))
             }
             _ => Some(source.forward_payload()),

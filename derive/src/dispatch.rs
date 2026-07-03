@@ -110,15 +110,60 @@ pub(crate) fn parse_dispatch_attr(
         return Err(syn::Error::new_spanned(attr, err_msg));
     }
 
-    for entry in &generic_args {
-        for arg in &entry.args {
-            if matches!(arg, GenericArgument::Lifetime(_)) {
-                let err_msg = "lifetime arguments not required in dispatch";
-                return Err(syn::Error::new_spanned(arg, err_msg));
+    struct LifetimeArgValidator {
+        errors: Option<syn::Error>,
+    }
+
+    impl LifetimeArgValidator {
+        fn push(&mut self, err: syn::Error) {
+            if let Some(errors) = &mut self.errors {
+                errors.combine(err);
+            } else {
+                self.errors = Some(err);
+            }
+        }
+    }
+
+    impl Visit<'_> for LifetimeArgValidator {
+        fn visit_generic_argument(&mut self, node: &syn::GenericArgument) {
+            if matches!(node, syn::GenericArgument::Lifetime(_)) {
+                let err_msg = "lifetime arguments not required in #[dispatch]";
+                self.push(syn::Error::new_spanned(node, err_msg));
+            } else {
+                syn::visit::visit_generic_argument(self, node);
             }
         }
 
-        if entry.args.len() != params.len() {
+        fn visit_lifetime(&mut self, node: &syn::Lifetime) {
+            if node.ident == "_" {
+                return;
+            }
+
+            let err_msg = "undeclared lifetime; consider using '_";
+            self.push(syn::Error::new_spanned(node, err_msg));
+        }
+    }
+
+    let mut lifetime_validator = LifetimeArgValidator { errors: None };
+
+    for entry in &generic_args {
+        for arg in &entry.args {
+            lifetime_validator.visit_generic_argument(arg);
+        }
+    }
+
+    if let Some(errors) = lifetime_validator.errors {
+        return Err(errors);
+    }
+
+    for entry in &generic_args {
+        let args_len = entry
+            .args
+            .iter()
+            .filter(|arg| !matches!(arg, GenericArgument::Lifetime(_)))
+            .count();
+
+        if args_len != params.len() {
             return Err(syn::Error::new_spanned(entry, err_msg));
         }
     }
@@ -127,7 +172,12 @@ pub(crate) fn parse_dispatch_attr(
     for entry in &mut generic_args {
         let err_msg = "argument kind must match declared parameter kind";
 
-        for (param, arg) in params.iter().zip(&mut entry.args) {
+        for (param, arg) in params.iter().zip(
+            entry
+                .args
+                .iter_mut()
+                .filter(|arg| !matches!(arg, GenericArgument::Lifetime(_))),
+        ) {
             if let (GenericParam::Const(_), GenericArgument::Type(ty)) = (param, &arg)
                 && matches!(ty, syn::Type::Path(_))
             {
@@ -135,7 +185,12 @@ pub(crate) fn parse_dispatch_attr(
             }
         }
 
-        for (param, arg) in params.iter().zip(&entry.args) {
+        for (param, arg) in params.iter().zip(
+            entry
+                .args
+                .iter()
+                .filter(|arg| !matches!(arg, GenericArgument::Lifetime(_))),
+        ) {
             let mismatch = match param {
                 GenericParam::Lifetime(_) => false,
                 GenericParam::Type(_) => !matches!(arg, GenericArgument::Type(_)),
@@ -171,6 +226,7 @@ pub(crate) fn gen_dispatch_export(
     let trait_ = impl_.trait_.as_ref().map(|(_, path, _)| path);
     let self_ty = &impl_.self_ty;
     let generics = &impl_.generics;
+    let dispatch_id_checks = gen_dispatch_id_uniqueness_checks(generics, &args);
 
     let drop_impl = is_drop_impl(&impl_);
     let items = impl_.items.into_iter().filter_map(|item| {
@@ -241,7 +297,53 @@ pub(crate) fn gen_dispatch_export(
         emit_extern_definition(abi, &item.attrs, sig, fn_body)
     });
 
-    quote! { #(#definitions)* }
+    quote! {
+        #dispatch_id_checks
+        #(#definitions)*
+    }
+}
+
+pub(crate) fn gen_dispatch_id_uniqueness_checks(
+    generics: &syn::Generics,
+    args: &Punctuated<syn::AngleBracketedGenericArguments, syn::Token![,]>,
+) -> TokenStream {
+    let checks = generics.type_params().filter_map(|param| {
+        let repr = param
+            .attrs
+            .iter()
+            .find(|attr| is_type_erased(attr))
+            .and_then(|attr| attr.parse_args::<syn::Type>().ok())?;
+
+        let enum_ident = format_ident!("DispatchIdCheck{}", param.ident);
+        let variants = args.iter().enumerate().filter_map(|(entry_idx, entry)| {
+            let variant = format_ident!("DispatchId{entry_idx}");
+
+            let arg = generics
+                .params
+                .iter()
+                .filter(|param| !matches!(param, GenericParam::Lifetime(_)))
+                .zip(&entry.args)
+                .find_map(|(generic_param, arg)| match generic_param {
+                    GenericParam::Type(generic_param) if generic_param.ident == param.ident => {
+                        Some(arg)
+                    }
+                    _ => None,
+                })?;
+
+            Some(quote! { #variant = <#arg as co3::handle::Handle>::ID })
+        });
+
+        Some(quote! {
+            const _: () = {
+                #[repr(#repr)]
+                enum #enum_ident {
+                    #(#variants,)*
+                }
+            };
+        })
+    });
+
+    quote! { #(#checks)* }
 }
 
 fn synthesize_dispatch_handle_ids(self_id: Option<&syn::Type>, sig: &mut syn::Signature) {

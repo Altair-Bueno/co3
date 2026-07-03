@@ -5,33 +5,49 @@ extern_C! {
 
     pub type Opaque<'a>;
 
+    #[unsafe(lifetimes)]
     impl<'a> Default for OwnedOpaque<'a> {
         #[link_name = "kita__Default__Box_Opaque__default"]
         fn default() -> Self;
     }
 
-    impl<'a> Opaque<'a> {
+    impl Opaque<'_> {
         fn ping(&self);
     }
 }
 
 mod provider {
-    use co3::export;
+    use co3::{export, export_C};
 
     #[export("C", crate = "kita")]
     struct Opaque<'a>(&'a u8);
 
-    #[export("C", crate = "kita")]
-    impl<'a> Default for Box<Opaque<'a>> {
-        #[unsafe(export_name = "kita__Default__Box_Opaque__default")]
+    impl Default for Box<Opaque<'_>> {
         fn default() -> Self {
             Box::new(Opaque(&0))
         }
     }
 
-    #[export("C", crate = "kita")]
-    impl<'a> Opaque<'a> {
+    impl Opaque<'_> {
         fn ping(&self) {}
+    }
+
+    export_C! {
+        #![export(crate = "kita")]
+
+        // TODO: This should be allowed with '_ but it's not.
+        // This is a special case where reference is materialized
+        #[unsafe(lifetimes)]
+        impl<'a> Default for Box<Opaque<'a>> {
+            #[unsafe(export_name = "kita__Default__Box_Opaque__default")]
+            fn default() -> Self;
+        }
+
+        // FIXME: This MUST NOT require lifetimes
+        #[unsafe(lifetimes)]
+        impl<'a> Opaque<'a> {
+            fn ping(&self);
+        }
     }
 }
 

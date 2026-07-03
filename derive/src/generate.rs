@@ -4,7 +4,7 @@ use syn::{FnArg, ImplItem, ImplItemFn, ItemImpl, punctuated::Punctuated, visit_m
 
 use crate::{
     DropImpl, DynImpl, ForeignItem, ForeignItemType,
-    dispatch::{erase_handle_types, gen_dispatch_export},
+    dispatch::{erase_handle_types, gen_dispatch_export, gen_dispatch_id_uniqueness_checks},
     ffi_fn::{
         self, emit_extern_definition, gen_extern_fn_signature, merge_generics,
         normalize_fn_signature,
@@ -32,12 +32,7 @@ pub(crate) fn emit_decl_exports(abi: syn::Abi, decls: Vec<ForeignItem>) -> Token
             drop,
         }) => {
             let (impl_generics, ty_generics, where_clause) = ty.generics.split_for_impl();
-
             let params = &ty.generics.params;
-            let predicates = ty.generics
-                .where_clause
-                .as_ref()
-                .map(|w| &w.predicates);
 
             let ident = &ty.ident;
             let dispatch = dyn_self_impls
@@ -67,25 +62,22 @@ pub(crate) fn emit_decl_exports(abi: syn::Abi, decls: Vec<ForeignItem>) -> Token
                 #size_impl
                 #drop_check
 
-                impl #impl_generics co3::stored::EncodeOwned for #ident #ty_generics #where_clause {
+                unsafe impl #impl_generics co3::stored::EncodeOwned for #ident #ty_generics #where_clause {
                     type Store = ();
 
                     #[inline(always)]
-                    fn soft_encode_owned<'itm>(self, (): &mut ()) -> Self::CType
+                    fn soft_encode<'itm>(self, (): &mut ()) -> Self::CType
                     where
                         Self: 'itm
                     {
                         self
                     }
                 }
-                impl<'_dšč, #params> co3::stored::DecodeOwned<'_dšč> for #ident #ty_generics where
-                    Self: '_dšč,
-                    #predicates
-                {
+                unsafe impl<'_dšč, #params> co3::stored::DecodeOwned<'_dšč> for #ident #ty_generics #where_clause {
                     type Store = ();
 
                     #[inline(always)]
-                    unsafe fn soft_decode_owned<'_išč: '_dšč>(source: Self::CType, (): &mut ()) -> Option<Self> {
+                    unsafe fn soft_decode<'_išč: '_dšč>(source: Self::CType, (): &mut ()) -> Option<Self> {
                         Some(source)
                     }
                 }
@@ -124,7 +116,11 @@ pub(crate) fn expand_extern_import_decls(
         args.iter()
             .map(|entry| {
                 let mut monomorphized = impl_.clone();
-                monomorphized.generics.params.clear();
+
+                monomorphized.generics.params = core::mem::take(&mut monomorphized.generics.params)
+                    .into_iter()
+                    .filter(|param| matches!(param, syn::GenericParam::Lifetime(_)))
+                    .collect();
 
                 DispatchMonomorphizer::new(&impl_.generics, entry)
                     .visit_item_impl_mut(&mut monomorphized);
@@ -283,6 +279,7 @@ fn gen_dispatch_helper(
                 __Co3DispatchParams(core::marker::PhantomData);
         }
     });
+    let dispatch_id_checks = gen_dispatch_id_uniqueness_checks(generics, args);
 
     Some(quote! {
         // NOTE: Verifies `?Sized` bounds on erased params
@@ -291,6 +288,7 @@ fn gen_dispatch_helper(
         );
 
         #(#dispatch_checks)*
+        #dispatch_id_checks
     })
 }
 
@@ -303,7 +301,7 @@ fn gen_drop_impl_definition(abi: &syn::Abi, mut impl_: ItemImpl) -> TokenStream 
 
     let ffi_fn_body = quote! {{
         let __co3_self: &mut #self_ty = unsafe {
-            co3::Decode::decode(__co3_self)
+            co3::decode(__co3_self)
         }.ok_or(co3::FfiReturn::TrapRepresentation)?;
 
         unsafe { core::ptr::drop_in_place(__co3_self as *mut _) };
@@ -626,22 +624,22 @@ fn gen_owned_repr_c_impls(ident: &syn::Ident, generics: &syn::Generics) -> Token
         impl #impl_generics co3::ExternC for #owned_repr_c_name #ty_generics #where_clause {
             type CType = Self;
         }
-        impl #impl_generics co3::stored::EncodeOwned for #owned_repr_c_name #ty_generics #where_clause {
+        unsafe impl #impl_generics co3::stored::EncodeOwned for #owned_repr_c_name #ty_generics #where_clause {
             type Store = ();
 
             #[inline(always)]
-            fn soft_encode_owned<'itm>(self, (): &mut ()) -> Self::CType
+            fn soft_encode<'itm>(self, (): &mut ()) -> Self::CType
             where
                 Self: 'itm,
             {
                 self
             }
         }
-        impl<'d, #params> co3::stored::DecodeOwned<'d> for #owned_repr_c_name #ty_generics #where_clause {
+        unsafe impl<'d, #params> co3::stored::DecodeOwned<'d> for #owned_repr_c_name #ty_generics #where_clause {
             type Store = ();
 
             #[inline(always)]
-            unsafe fn soft_decode_owned<'itm: 'd>(source: Self::CType, (): &mut ()) -> Option<Self> {
+            unsafe fn soft_decode<'itm: 'd>(source: Self::CType, (): &mut ()) -> Option<Self> {
                 Some(source)
             }
         }
@@ -706,22 +704,22 @@ fn gen_owned_extern_type_impls(ident: &syn::Ident, generics: &syn::Generics) -> 
 
         unsafe impl #impl_generics co3::niche::StableNiche for #owned_ident #ty_generics #where_clause {}
 
-        impl #impl_generics co3::stored::EncodeOwned for #owned_ident #ty_generics #where_clause {
+        unsafe impl #impl_generics co3::stored::EncodeOwned for #owned_ident #ty_generics #where_clause {
             type Store = ();
 
             #[inline(always)]
-            fn soft_encode_owned<'itm>(self, (): &mut ()) -> Self::CType
+            fn soft_encode<'itm>(self, (): &mut ()) -> Self::CType
             where
                 Self: 'itm,
             {
                 #owned_repr_c_name(core::mem::ManuallyDrop::new(self).0)
             }
         }
-        impl<'d, #params> co3::stored::DecodeOwned<'d> for #owned_ident #ty_generics #where_clause {
+        unsafe impl<'d, #params> co3::stored::DecodeOwned<'d> for #owned_ident #ty_generics #where_clause {
             type Store = ();
 
             #[inline(always)]
-            unsafe fn soft_decode_owned<'itm: 'd>(source: Self::CType, (): &mut ()) -> Option<Self> {
+            unsafe fn soft_decode<'itm: 'd>(source: Self::CType, (): &mut ()) -> Option<Self> {
                 unsafe { <Self as co3::transmute::CheckedTransmute>::is_valid(&source) }.then_some(Self(source.0))
             }
         }

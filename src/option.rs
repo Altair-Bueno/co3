@@ -184,34 +184,34 @@ impl<'itm, T: ToOwned<'itm>> ToOwned<'itm> for ReprCOption<T> {
 impl<T: ExternC<CType: Sized>> ExternC for ReprCOption<T> {
     type CType = ReprCOption<T::CType>;
 }
-impl<T: EncodeOwned<CType: Copy>> EncodeOwned for ReprCOption<T> {
+unsafe impl<T: EncodeOwned<CType: Copy>> EncodeOwned for ReprCOption<T> {
     type Store = T::Store;
 
     #[inline(always)]
-    fn soft_encode_owned<'itm>(self, store: &'itm mut Self::Store) -> Self::CType
+    fn soft_encode<'itm>(self, store: &'itm mut Self::Store) -> Self::CType
     where
         Self: 'itm,
     {
         match self.tag {
             1 => {
                 let payload = unsafe { self.payload.assume_init() };
-                ReprCOption::Some(payload.soft_encode_owned(store))
+                ReprCOption::Some(payload.soft_encode(store))
             }
             _ => self.forward_payload(),
         }
     }
 }
-impl<'d, T: DecodeOwned<'d, CType: Copy>> DecodeOwned<'d> for ReprCOption<T> {
+unsafe impl<'d, T: DecodeOwned<'d, CType: Copy>> DecodeOwned<'d> for ReprCOption<T> {
     type Store = T::Store;
 
     #[inline(always)]
-    unsafe fn soft_decode_owned<'itm: 'd>(
+    unsafe fn soft_decode<'itm: 'd>(
         source: Self::CType,
         store: &'itm mut Self::Store,
     ) -> Option<Self> {
         match source.tag {
             1 => {
-                let payload = unsafe { T::soft_decode_owned(source.payload.assume_init(), store)? };
+                let payload = unsafe { T::soft_decode(source.payload.assume_init(), store)? };
                 Some(Self::Some(payload))
             }
             _ => Some(source.forward_payload()),

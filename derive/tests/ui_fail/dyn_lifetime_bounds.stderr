@@ -1,0 +1,47 @@
+error: `dyn` dispatch type parameters support at most one lifetime bound
+  --> tests/ui_fail/dyn_lifetime_bounds.rs:20:20
+   |
+20 |                 T: 'b;
+   |                    ^^
+
+error: `dyn` dispatch type parameters support at most one lifetime bound
+  --> tests/ui_fail/dyn_lifetime_bounds.rs:27:21
+   |
+27 |             T: 'a + 'b,
+   |                     ^^
+
+error: `dyn` dispatch type parameters support at most one lifetime bound
+  --> tests/ui_fail/dyn_lifetime_bounds.rs:35:38
+   |
+35 |         impl<'a, 'b, dyn(u8) T: 'a + 'b> Kita for (u8, T) {
+   |                                      ^^
+
+error: `dyn` dispatch type parameters support at most one lifetime bound
+  --> tests/ui_fail/dyn_lifetime_bounds.rs:46:25
+   |
+46 |                 T: 'a + 'b;
+   |                         ^^
+
+error: `dyn` dispatch type parameters support at most one lifetime bound
+  --> tests/ui_fail/dyn_lifetime_bounds.rs:73:16
+   |
+73 |             T: 'b;
+   |                ^^
+
+error: `dyn` dispatch type parameters support at most one lifetime bound
+  --> tests/ui_fail/dyn_lifetime_bounds.rs:80:17
+   |
+80 |         T: 'a + 'b,
+   |                 ^^
+
+error: `dyn` dispatch type parameters support at most one lifetime bound
+  --> tests/ui_fail/dyn_lifetime_bounds.rs:88:34
+   |
+88 |     impl<'a, 'b, dyn(u8) T: 'a + 'b> Kita for (u8, T) {
+   |                                  ^^
+
+error: `dyn` dispatch type parameters support at most one lifetime bound
+  --> tests/ui_fail/dyn_lifetime_bounds.rs:99:21
+   |
+99 |             T: 'a + 'b;
+   |                     ^^

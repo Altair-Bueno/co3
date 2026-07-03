@@ -1,11 +1,13 @@
-error[E0277]: the trait bound `Box<[((),)]>: co3::stored::EmptyStore` is not satisfied
-  --> tests/ui_fail/non_local_out_ptr.rs:12:1
+error[E0277]: the trait bound `RefSizedDecodeStore<ReprRustStruct, ((),)>: co3::stored::EmptyStore` is not satisfied
+  --> tests/ui_fail/non_local_out_ptr.rs:45:1
    |
-12 | / extern_C! {
-13 | |     pub fn return_no_repr_struct() -> Vec<ReprRustStruct>;
-14 | |     pub extern "C" fn return_no_repr_enum() -> Vec<ReprRustEnum>;
-15 | | }
-   | |_^ the trait `co3::stored::EmptyStore` is not implemented for `Box<[((),)]>`
+45 | / extern_C! {
+46 | |     #![link(crate = "kita")]
+47 | |
+48 | |     impl CustomTrait for i32 {
+...  |
+55 | | }
+   | |_^ the trait `co3::stored::EmptyStore` is not implemented for `RefSizedDecodeStore<ReprRustStruct, ((),)>`
    |
    = help: the following other types implement trait `co3::stored::EmptyStore`:
              ()
@@ -20,20 +22,47 @@ error[E0277]: the trait bound `Box<[((),)]>: co3::stored::EmptyStore` is not sat
 note: required by a bound in `decode`
   --> $WORKSPACE/src/lib.rs
    |
-   |         unsafe fn decode(source: Self::CType) -> Option<Self>
-   |                   ------ required by a bound in this associated function
-   |         where
-   |             Self::Store: EmptyStore + 'd,
-   |                          ^^^^^^^^^^ required by this bound in `Decode::decode`
+   | pub unsafe fn decode<'d, T: Decode<'d, Store: EmptyStore> + 'd>(source: T::CType) -> Option<T> {
+   |                                               ^^^^^^^^^^ required by this bound in `decode`
+   = note: this error originates in the macro `extern_C` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error[E0277]: the trait bound `RefSizedDecodeStore<ReprRustEnum, ((),)>: co3::stored::EmptyStore` is not satisfied
+  --> tests/ui_fail/non_local_out_ptr.rs:45:1
+   |
+45 | / extern_C! {
+46 | |     #![link(crate = "kita")]
+47 | |
+48 | |     impl CustomTrait for i32 {
+...  |
+55 | | }
+   | |_^ the trait `co3::stored::EmptyStore` is not implemented for `RefSizedDecodeStore<ReprRustEnum, ((),)>`
+   |
+   = help: the following other types implement trait `co3::stored::EmptyStore`:
+             ()
+             (A, B)
+             (A, B, C)
+             (A, B, C, D)
+             (A, B, C, D, E)
+             (A, B, C, D, E, F)
+             (A, B, C, D, E, F, G)
+             (A, B, C, D, E, F, G, H)
+           and $N others
+note: required by a bound in `decode`
+  --> $WORKSPACE/src/lib.rs
+   |
+   | pub unsafe fn decode<'d, T: Decode<'d, Store: EmptyStore> + 'd>(source: T::CType) -> Option<T> {
+   |                                               ^^^^^^^^^^ required by this bound in `decode`
    = note: this error originates in the macro `extern_C` (in Nightly builds, run with -Z macro-backtrace for more info)
 
 error[E0271]: type mismatch resolving `<[ReprRustStruct] as ReprFamily>::Kind == ReprC<_>`
-  --> tests/ui_fail/non_local_out_ptr.rs:12:1
+  --> tests/ui_fail/non_local_out_ptr.rs:45:1
    |
-12 | / extern_C! {
-13 | |     pub fn return_no_repr_struct() -> Vec<ReprRustStruct>;
-14 | |     pub extern "C" fn return_no_repr_enum() -> Vec<ReprRustEnum>;
-15 | | }
+45 | / extern_C! {
+46 | |     #![link(crate = "kita")]
+47 | |
+48 | |     impl CustomTrait for i32 {
+...  |
+55 | | }
    | |_^ expected `ReprC<_>`, found `ReprRust`
    |
    = note: expected struct `ReprC<_>`
@@ -42,15 +71,22 @@ error[E0271]: type mismatch resolving `<[ReprRustStruct] as ReprFamily>::Kind ==
    = note: required for `Box<[ReprRustStruct]>` to implement `Decode<'_>`
    = note: 1 redundant requirement hidden
    = note: required for `Vec<ReprRustStruct>` to implement `Decode<'_>`
+note: required by a bound in `decode`
+  --> $WORKSPACE/src/lib.rs
+   |
+   | pub unsafe fn decode<'d, T: Decode<'d, Store: EmptyStore> + 'd>(source: T::CType) -> Option<T> {
+   |                             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ required by this bound in `decode`
    = note: this error originates in the macro `extern_C` (in Nightly builds, run with -Z macro-backtrace for more info)
 
 error[E0271]: type mismatch resolving `<[ReprRustEnum] as ReprFamily>::Kind == ReprC<_>`
-  --> tests/ui_fail/non_local_out_ptr.rs:12:1
+  --> tests/ui_fail/non_local_out_ptr.rs:45:1
    |
-12 | / extern_C! {
-13 | |     pub fn return_no_repr_struct() -> Vec<ReprRustStruct>;
-14 | |     pub extern "C" fn return_no_repr_enum() -> Vec<ReprRustEnum>;
-15 | | }
+45 | / extern_C! {
+46 | |     #![link(crate = "kita")]
+47 | |
+48 | |     impl CustomTrait for i32 {
+...  |
+55 | | }
    | |_^ expected `ReprC<_>`, found `ReprRust`
    |
    = note: expected struct `ReprC<_>`
@@ -59,4 +95,9 @@ error[E0271]: type mismatch resolving `<[ReprRustEnum] as ReprFamily>::Kind == R
    = note: required for `Box<[ReprRustEnum]>` to implement `Decode<'_>`
    = note: 1 redundant requirement hidden
    = note: required for `Vec<ReprRustEnum>` to implement `Decode<'_>`
+note: required by a bound in `decode`
+  --> $WORKSPACE/src/lib.rs
+   |
+   | pub unsafe fn decode<'d, T: Decode<'d, Store: EmptyStore> + 'd>(source: T::CType) -> Option<T> {
+   |                             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ required by this bound in `decode`
    = note: this error originates in the macro `extern_C` (in Nightly builds, run with -Z macro-backtrace for more info)

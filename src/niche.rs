@@ -351,33 +351,39 @@ mod tests {
 
     #[test]
     fn niche_values() {
-        assert_eq!(core::ptr::null::<u8>(), None::<&bool>.encode());
+        assert_eq!(core::ptr::null::<u8>(), crate::encode(None::<&bool>));
         assert_eq!(
             core::ptr::null::<u8>(),
-            None::<&mut bool>.soft_encode(&mut Default::default())
+            co3::soft_encode(None::<&mut bool>, &mut Default::default())
         );
-
-        #[cfg(feature = "alloc")]
-        assert_eq!(CBoxedSlice::<u8>::NICHE_VALUE, None::<String>.encode());
-        #[cfg(feature = "alloc")]
-        assert_eq!(CBoxedSlice::<u8>::NICHE_VALUE, None::<Box<str>>.encode());
-
-        assert_eq!(CSlice::<u8>::NICHE_VALUE, None::<&str>.encode());
-
-        #[cfg(feature = "alloc")]
-        assert_eq!(
-            co3::slice::CSliceMut::<u8>::NICHE_VALUE,
-            None::<&mut str>.soft_encode(&mut Default::default())
-        );
-
-        assert_eq!(core::ptr::null_mut(), None::<NonNull<u32>>.encode());
 
         #[cfg(feature = "alloc")]
         assert_eq!(
             CBoxedSlice::<u8>::NICHE_VALUE,
-            None::<ManuallyDrop<String>>.encode()
+            crate::encode(None::<String>)
+        );
+        #[cfg(feature = "alloc")]
+        assert_eq!(
+            CBoxedSlice::<u8>::NICHE_VALUE,
+            crate::encode(None::<Box<str>>)
         );
 
-        assert_eq!(2_u8, None::<ManuallyDrop<bool>>.encode());
+        assert_eq!(CSlice::<u8>::NICHE_VALUE, crate::encode(None::<&str>));
+
+        #[cfg(feature = "alloc")]
+        assert_eq!(
+            co3::slice::CSliceMut::<u8>::NICHE_VALUE,
+            crate::soft_encode(None::<&mut str>, &mut Default::default())
+        );
+
+        assert_eq!(core::ptr::null_mut(), crate::encode(None::<NonNull<u32>>));
+
+        #[cfg(feature = "alloc")]
+        assert_eq!(
+            CBoxedSlice::<u8>::NICHE_VALUE,
+            crate::encode(None::<ManuallyDrop<String>>)
+        );
+
+        assert_eq!(2_u8, crate::encode(None::<ManuallyDrop<bool>>));
     }
 }

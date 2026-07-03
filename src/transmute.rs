@@ -36,6 +36,10 @@ where
     }
 }
 
+// FIXME: Should it be implemented for non-robust R?
+// at we say yes, this is transmutable but don't misuse it.
+// Either require ReprC<Robust> or write this in the documentation
+// If Repr<Robust> then also consider how it affects Box<&mut R>
 unsafe impl<R: CheckedTransmute + ?Sized> CheckedTransmute for &mut R
 where
     Self: ExternC<CType = *mut R::CType>,
@@ -77,6 +81,26 @@ unsafe impl<R: CheckedTransmute<CType: Copy>, const N: usize> CheckedTransmute f
         }
 
         true
+    }
+}
+
+unsafe impl<R: CheckedTransmute<CType: Sized>> CheckedTransmute for [R] {
+    #[inline(always)]
+    unsafe fn is_valid(target: &Self::CType) -> bool {
+        for item in target {
+            if unsafe { !R::is_valid(item) } {
+                return false;
+            }
+        }
+
+        true
+    }
+}
+
+unsafe impl CheckedTransmute for str {
+    #[inline(always)]
+    unsafe fn is_valid(target: &Self::CType) -> bool {
+        core::str::from_utf8(target).is_ok()
     }
 }
 

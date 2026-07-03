@@ -1,5 +1,13 @@
 use co3::{ReprC, extern_C};
 
+trait CustomTrait {
+    fn return_no_repr_struct_ref(&self) -> &ReprRustStruct;
+    extern "C" fn return_no_repr_enum_ref(&self) -> &ReprRustEnum;
+
+    fn return_no_repr_struct() -> Vec<ReprRustStruct>;
+    extern "C" fn return_no_repr_enum() -> Vec<ReprRustEnum>;
+}
+
 #[derive(Clone, ReprC)]
 pub struct ReprRustStruct(String);
 
@@ -9,24 +17,40 @@ pub enum ReprRustEnum {
     A(String),
 }
 
-extern_C! {
-    pub fn return_no_repr_struct() -> Vec<ReprRustStruct>;
-    pub extern "C" fn return_no_repr_enum() -> Vec<ReprRustEnum>;
-}
-
 mod provider {
     use co3::export;
 
     use super::*;
 
     #[export("C")]
-    pub fn return_no_repr_struct() -> Vec<ReprRustStruct> {
-        unimplemented!()
-    }
+    impl CustomTrait for u32 {
+        fn return_no_repr_struct_ref(&self) -> &ReprRustStruct {
+            unimplemented!()
+        }
 
-    #[export("C")]
-    pub extern "C" fn return_no_repr_enum() -> Vec<ReprRustEnum> {
-        unimplemented!()
+        extern "C" fn return_no_repr_enum_ref(&self) -> &ReprRustEnum {
+            unimplemented!()
+        }
+
+        fn return_no_repr_struct() -> Vec<ReprRustStruct> {
+            unimplemented!()
+        }
+
+        extern "C" fn return_no_repr_enum() -> Vec<ReprRustEnum> {
+            unimplemented!()
+        }
+    }
+}
+
+extern_C! {
+    #![link(crate = "kita")]
+
+    impl CustomTrait for i32 {
+        fn return_no_repr_struct_ref(&self) -> &ReprRustStruct;
+        extern "C" fn return_no_repr_enum_ref(&self) -> &ReprRustEnum;
+
+        fn return_no_repr_struct() -> Vec<ReprRustStruct>;
+        extern "C" fn return_no_repr_enum() -> Vec<ReprRustEnum>;
     }
 }
 

@@ -25,7 +25,7 @@ where
 {
     unsafe fn write_out(self, out_ptr: *mut Self::OutPtr) {
         let mut store = Default::default();
-        let encoded = crate::stored::EncodeOwned::soft_encode_owned(self, &mut store);
+        let encoded = crate::stored::EncodeOwned::soft_encode(self, &mut store);
 
         unsafe { out_ptr.write(encoded) };
     }
@@ -220,7 +220,7 @@ where
 //    //{
 //    //    unsafe fn write_out(self, out_ptr: *mut Self::OutPtr) {
 //    //        let mut store = Default::default();
-//    //        let _ = self.soft_encode_owned(&mut store);
+//    //        let _ = self.soft_encode(&mut store);
 //    //        let output = store.ctype.unwrap();
 //
 //    //        unsafe {
@@ -237,7 +237,7 @@ where
 //    //    unsafe fn write_out(self, _out_ptr: *mut Self::OutPtr) {
 //    //        unimplemented!()
 //    //        //let mut store = Default::default();
-//    //        //let _ = self.soft_encode_owned(&mut store);
+//    //        //let _ = self.soft_encode(&mut store);
 //    //        //let output = store.ctype.unwrap();
 //
 //    //        //unsafe {
@@ -251,7 +251,7 @@ where
 //    //    Self: ReprFamily<Kind = &'a Robust>,
 //    //{
 //    //    unsafe fn write_out(self, out_ptr: *mut Self::OutPtr) {
-//    //        let ctypes = self.soft_encode_owned(&mut ());
+//    //        let ctypes = self.soft_encode(&mut ());
 //
 //    //        unsafe {
 //    //            out_ptr.write(ctypes);
@@ -264,7 +264,7 @@ where
 //    //{
 //    //    unsafe fn write_out(self, out_ptr: *mut Self::OutPtr) {
 //    //        let mut store = Default::default();
-//    //        let _ = self.soft_encode_owned(&mut store);
+//    //        let _ = self.soft_encode(&mut store);
 //
 //    //        let output = CBoxedSlice::from_boxed_slice(store.0);
 //
@@ -293,7 +293,7 @@ where
 //    //{
 //    //    unsafe fn write_out(self, out_ptr: *mut Self::OutPtr) {
 //    //        let mut store = Default::default();
-//    //        let _ = self.soft_encode_owned(&mut store);
+//    //        let _ = self.soft_encode(&mut store);
 //
 //    //        let output = CBoxedSlice::from_boxed_slice(store.ctypes);
 //
@@ -323,7 +323,7 @@ where
 //    //    Self: ReprFamily<Kind = ReprRust>,
 //    //{
 //    //    unsafe fn write_out(self, out_ptr: *mut Self::OutPtr) {
-//    //        let output = self.soft_encode_owned(&mut ());
+//    //        let output = self.soft_encode(&mut ());
 //
 //    //        unsafe {
 //    //            out_ptr.write(output);
@@ -336,7 +336,7 @@ where
 //    //    Self: ReprFamily<Kind = Opaque>,
 //    //{
 //    //    unsafe fn write_out(self, out_ptr: *mut Self::OutPtr) {
-//    //        let output = self.soft_encode_owned(&mut ());
+//    //        let output = self.soft_encode(&mut ());
 //
 //    //        unsafe {
 //    //            out_ptr.write(output);
@@ -365,7 +365,7 @@ where
 //    //    unsafe fn write_out(self, _out_ptr: *mut Self::OutPtr) {
 //    //        unimplemented!()
 //    //        //let mut store = Default::default();
-//    //        //let _ = self.soft_encode_owned(&mut store);
+//    //        //let _ = self.soft_encode(&mut store);
 //
 //    //        //let output = CBoxedSlice::from_boxed_slice(store.ctypes);
 //
@@ -394,7 +394,7 @@ where
 //    //        assert_arr_has_non_zero_len::<N>();
 //
 //    //        let mut store = Default::default();
-//    //        let item = self.soft_encode_owned(&mut store);
+//    //        let item = self.soft_encode(&mut store);
 //
 //    //        unsafe {
 //    //            out_ptr.write(item);

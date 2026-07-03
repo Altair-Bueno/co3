@@ -52,7 +52,7 @@ pub trait Borrow: Sized {
         Self: 'itm;
 
     type Owner: Default;
-    fn borrow<'itm>(self, store: &'itm mut Self::Owner) -> Self::Borrowed<'itm>
+    fn borrow<'itm>(self, owner: &'itm mut Self::Owner) -> Self::Borrowed<'itm>
     where
         Self: 'itm;
 }
@@ -70,11 +70,11 @@ impl<R: Borrow> Borrow for Option<R> {
     type Owner = R::Owner;
 
     #[inline(always)]
-    fn borrow<'itm>(self, store: &'itm mut Self::Owner) -> Self::Borrowed<'itm>
+    fn borrow<'itm>(self, owner: &'itm mut Self::Owner) -> Self::Borrowed<'itm>
     where
         Self: 'itm,
     {
-        self.map(|value| value.borrow(store))
+        self.map(|value| value.borrow(owner))
     }
 }
 impl<'itm, R: ToOwned<'itm>> ToOwned<'itm> for Option<R> {
@@ -93,18 +93,18 @@ impl<T: Borrow, E: Borrow> Borrow for Result<T, E> {
     type Owner = Option<Result<T::Owner, E::Owner>>;
 
     #[inline(always)]
-    fn borrow<'itm>(self, store: &'itm mut Self::Owner) -> Self::Borrowed<'itm>
+    fn borrow<'itm>(self, owner: &'itm mut Self::Owner) -> Self::Borrowed<'itm>
     where
         Self: 'itm,
     {
         match self {
             Ok(value) => {
-                let ok_store = store.insert(Ok(Default::default())).as_mut();
-                Ok(value.borrow(unsafe { ok_store.unwrap_unchecked() }))
+                let ok_owner = owner.insert(Ok(Default::default())).as_mut();
+                Ok(value.borrow(unsafe { ok_owner.unwrap_unchecked() }))
             }
             Err(err) => {
-                let err_store = store.insert(Err(Default::default())).as_mut();
-                Err(err.borrow(unsafe { err_store.unwrap_err_unchecked() }))
+                let err_owner = owner.insert(Err(Default::default())).as_mut();
+                Err(err.borrow(unsafe { err_owner.unwrap_err_unchecked() }))
             }
         }
     }
@@ -178,11 +178,11 @@ impl<R: SizeFamily<Kind: NonExternTypeLike> + ?Sized> Borrow for Box<R> {
     type Owner = Option<Self>;
 
     #[inline(always)]
-    fn borrow<'itm>(self, store: &'itm mut Self::Owner) -> Self::Borrowed<'itm>
+    fn borrow<'itm>(self, owner: &'itm mut Self::Owner) -> Self::Borrowed<'itm>
     where
         Self: 'itm,
     {
-        store.insert(self)
+        owner.insert(self)
     }
 }
 #[cfg(feature = "alloc")]
@@ -206,12 +206,12 @@ impl<R> Borrow for Vec<R> {
     type Owner = Self;
 
     #[inline(always)]
-    fn borrow<'itm>(self, store: &'itm mut Self::Owner) -> Self::Borrowed<'itm>
+    fn borrow<'itm>(self, owner: &'itm mut Self::Owner) -> Self::Borrowed<'itm>
     where
         Self: 'itm,
     {
-        *store = self;
-        store
+        *owner = self;
+        owner
     }
 }
 #[cfg(feature = "alloc")]
@@ -231,13 +231,13 @@ impl<R: Borrow, const N: usize> Borrow for [R; N] {
     type Owner = ArrayStore<R::Owner, N>;
 
     #[inline(always)]
-    fn borrow<'itm>(self, store: &'itm mut Self::Owner) -> Self::Borrowed<'itm>
+    fn borrow<'itm>(self, owner: &'itm mut Self::Owner) -> Self::Borrowed<'itm>
     where
         Self: 'itm,
     {
         let mut borrowed: [_; N] = [const { core::mem::MaybeUninit::uninit() }; N];
 
-        for ((elem, substore), borrow) in self.into_iter().zip(&mut store.0).zip(&mut borrowed) {
+        for ((elem, substore), borrow) in self.into_iter().zip(&mut owner.0).zip(&mut borrowed) {
             borrow.write(elem.borrow(substore));
         }
 

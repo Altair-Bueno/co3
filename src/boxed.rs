@@ -9,7 +9,7 @@ use crate::{
     borrow::{Borrow, BorrowCast, BorrowCastMut, ToOwned},
     ir::ReprFamily,
     niche::{NicheFamily, WithoutNiche},
-    size::SizeFamily,
+    size::{SizeFamily, Spread},
     slice::{CSlice, CSliceMut},
     stored::{DecodeOwned, EncodeOwned},
     transmute::CheckedTransmute,
@@ -176,7 +176,7 @@ impl<C> CBox<C> {
     /// # Safety
     ///
     /// Check [`Box::from_raw`].
-    pub unsafe fn into_rust(self) -> Option<Box<C>> {
+    unsafe fn into_rust(self) -> Option<Box<C>> {
         if self.data.is_null() {
             return None;
         }
@@ -205,6 +205,19 @@ impl<C> CBoxedSlice<C> {
             allocator: Global,
         }
     }
+
+    /// Convert [`Self`] into [`Box<[C]>`]. Returns `None` if pointer is null.
+    ///
+    /// # Safety
+    ///
+    /// Check [`Box::from_raw`].
+    pub(crate) unsafe fn into_rust(self) -> Option<Box<[C]>> {
+        if self.data.is_null() {
+            return None;
+        }
+
+        Some(unsafe { Box::from_raw(core::ptr::slice_from_raw_parts_mut(self.data, self.len)) })
+    }
 }
 
 impl<C, A: Allocator> CBoxedSlice<C, A> {
@@ -232,21 +245,17 @@ impl<C, A: Allocator> CBoxedSlice<C, A> {
 
         false
     }
-}
 
-impl<C> CBoxedSlice<C> {
-    /// Convert [`Self`] into a boxed slice. Return `None` if data pointer is null.
-    /// Unlike [`Box::from_raw`], data pointer is allowed to be null.
-    ///
-    /// # Safety
-    ///
-    /// Check [`Box::from_raw`]
-    pub unsafe fn into_rust(self) -> Option<Box<[C]>> {
-        if self.data.is_null() {
-            return None;
-        }
+    pub(crate) const fn is_niche(&self) -> bool {
+        self.data.is_null()
+    }
 
-        Some(unsafe { Box::from_raw(core::ptr::slice_from_raw_parts_mut(self.data, self.len)) })
+    pub(crate) const fn data(&self) -> *mut C {
+        self.data
+    }
+
+    pub(crate) const fn len(&self) -> usize {
+        self.len
     }
 }
 
@@ -288,25 +297,22 @@ macro_rules! impl_boxed_carrier {
         impl<C: RobustReprC, A: Allocator> ExternC for $ty<C, A> {
             type CType = Self;
         }
-        impl<C: RobustReprC, A: Allocator> EncodeOwned for $ty<C, A> {
+        unsafe impl<C: RobustReprC, A: Allocator> EncodeOwned for $ty<C, A> {
             type Store = ();
 
             #[inline(always)]
-            fn soft_encode_owned<'itm>(self, (): &mut ()) -> Self::CType
+            fn soft_encode<'itm>(self, (): &mut ()) -> Self::CType
             where
                 Self: 'itm,
             {
                 self
             }
         }
-        impl<'d, C: RobustReprC, A: Allocator> DecodeOwned<'d> for $ty<C, A> {
+        unsafe impl<'d, C: RobustReprC, A: Allocator> DecodeOwned<'d> for $ty<C, A> {
             type Store = ();
 
             #[inline(always)]
-            unsafe fn soft_decode_owned<'itm: 'd>(
-                source: Self::CType,
-                (): &mut (),
-            ) -> Option<Self> {
+            unsafe fn soft_decode<'itm: 'd>(source: Self::CType, (): &mut ()) -> Option<Self> {
                 Some(source)
             }
         }
@@ -341,4 +347,25 @@ unsafe impl<C: RobustReprC, A: Allocator> BorrowCast for CBoxedSlice<C, A> {
 }
 unsafe impl<C: RobustReprC, A: Allocator> BorrowCastMut for CBoxedSlice<C, A> {
     type AsMut = CSliceMut<C>;
+}
+
+impl<C: RobustReprC, A: Allocator> Spread for CBoxedSlice<C, A> {
+    type Part1 = *mut C;
+    type Part2 = usize;
+
+    #[inline(always)]
+    fn into_parts(self) -> (Self::Part1, Self::Part2) {
+        (self.data, self.len)
+    }
+
+    #[inline(always)]
+    fn from_parts(data: Self::Part1, len: Self::Part2) -> Self {
+        Self {
+            data,
+            len,
+            // SAFETY: this matches the existing niche construction. The allocator is only
+            // meaningful for carriers that came from co3-owned allocations.
+            allocator: unsafe { core::mem::zeroed() },
+        }
+    }
 }

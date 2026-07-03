@@ -1,32 +1,20 @@
 use proc_macro2::TokenStream;
 use quote::quote;
 
-use crate::repr::attr::ReprKind;
-
-pub(super) fn gen_item_wide_impl(repr: Option<&ReprKind>, input: &syn::DeriveInput) -> TokenStream {
-    if repr != Some(&ReprKind::Transparent) {
-        return quote! {};
-    }
-
-    // NOTE: Enums can't be ?Sized even if transparent
-    let syn::Data::Struct(data) = &input.data else {
-        return quote! {};
-    };
-
-    let Some(field) = data.fields.iter().next() else {
-        return quote! {};
-    };
-
-    gen_transparent_wide_impl(&input.ident, &input.generics, field)
-}
-
-fn gen_transparent_wide_impl(
+pub(super) fn gen_transparent_wide_impl(
     name: &syn::Ident,
     generics: &syn::Generics,
-    field: &syn::Field,
+    fields: &syn::Fields,
 ) -> TokenStream {
     let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
     let predicates = where_clause.as_ref().map(|w| &w.predicates);
+
+    if fields.len() != 1 {
+        return quote! {};
+    }
+    let Some(field) = fields.iter().next() else {
+        return quote! {};
+    };
 
     let field_ty = &field.ty;
     let field_ref = field.ident.as_ref().map_or_else(
@@ -71,19 +59,19 @@ fn gen_transparent_wide_impl(
             }
 
             #[inline(always)]
-            unsafe fn from_raw_parts<'a>(
+            unsafe fn from_raw_parts<'__co3>(
                 data: *const Self::Data,
                 metadata: Self::Metadata,
-            ) -> &'a Self {
+            ) -> &'__co3 Self {
                 let field = unsafe { <#field_ty as co3::size::Wide>::from_raw_parts(data, metadata) };
                 unsafe { &*(field as *const #field_ty as *const Self) }
             }
 
             #[inline(always)]
-            unsafe fn from_raw_parts_mut<'a>(
+            unsafe fn from_raw_parts_mut<'__co3>(
                 data: *mut Self::Data,
                 metadata: Self::Metadata,
-            ) -> &'a mut Self {
+            ) -> &'__co3 mut Self {
                 let field = unsafe { <#field_ty as co3::size::Wide>::from_raw_parts_mut(data, metadata) };
                 unsafe { &mut *(field as *mut #field_ty as *mut Self) }
             }

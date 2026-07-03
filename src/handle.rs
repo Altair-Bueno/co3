@@ -72,28 +72,28 @@ macro_rules! handles {
         $crate::handles! { @next $next; $($rest)* }
     };
 
-    ( @next $next:expr; for<$($lt:lifetime),+> $ty:ty = $id:expr, $($rest:tt)* ) => {
-        unsafe impl<$($lt),+> $crate::handle::Handle for $ty {
+    ( @next $next:expr; $ty:ty = $id:expr, $($rest:tt)* ) => {
+        unsafe impl $crate::handle::Handle for $ty {
             const ID: Self::Kind = $id;
         }
 
         $crate::handles! { @next ($id) + 1; $($rest)* }
     };
-    ( @next $next:expr; for<$($lt:lifetime),+> $ty:ty = $id:expr $(,)? ) => {
-        unsafe impl<$($lt),+> $crate::handle::Handle for $ty {
+    ( @next $next:expr; $ty:ty = $id:expr $(,)? ) => {
+        unsafe impl $crate::handle::Handle for $ty {
             const ID: Self::Kind = $id;
         }
     };
 
-    ( @next $next:expr; for<$($lt:lifetime),+> $ty:ty, $($rest:tt)* ) => {
-        unsafe impl<$($lt),+> $crate::handle::Handle for $ty {
+    ( @next $next:expr; $ty:ty, $($rest:tt)* ) => {
+        unsafe impl $crate::handle::Handle for $ty {
             const ID: Self::Kind = $next;
         }
 
         $crate::handles! { @next ($next) + 1; $($rest)* }
     };
-    ( @next $next:expr; for<$($lt:lifetime),+> $ty:ty $(,)? ) => {
-        unsafe impl<$($lt),+> $crate::handle::Handle for $ty {
+    ( @next $next:expr; $ty:ty $(,)? ) => {
+        unsafe impl $crate::handle::Handle for $ty {
             const ID: Self::Kind = $next;
         }
     };

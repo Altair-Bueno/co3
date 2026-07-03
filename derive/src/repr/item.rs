@@ -17,7 +17,7 @@ use crate::repr::{
     },
     enum_tag_type, gen_size_family_impl, gen_sized_family_impl, generic_param_idents,
     is_exhaustive_enum, is_type_parameterized, repr_type_is_signed,
-    wide::gen_item_wide_impl,
+    wide::gen_transparent_wide_impl,
 };
 
 pub(super) fn derive_item(
@@ -43,8 +43,13 @@ pub(super) fn derive_item(
         )
     };
 
+    let wide_impl = if !is_view && let syn::Data::Struct(data) = &input.data {
+        gen_transparent_wide_impl(&input.ident, &input.generics, &data.fields)
+    } else {
+        quote! {}
+    };
+
     let borrow_impls = (!is_view).then(|| gen_item_borrow_impls(input));
-    let wide_impl = (!is_view).then(|| gen_item_wide_impl(repr, input));
     let codec_impls = gen_item_codec_impls(repr, input, attrs, variant_attrs);
     // TODO:
     //let niche_impls = gen_struct_niche_ir_with_mode(name, generics, fields, ffi_type_kind);
@@ -900,10 +905,10 @@ pub(super) fn derive_fieldless_enum(
         impl #impl_generics co3::ExternC for #name #ty_generics #where_clause {
             type CType = #ctype;
         }
-        impl #impl_generics co3::stored::EncodeOwned for #name #ty_generics #where_clause {
+        unsafe impl #impl_generics co3::stored::EncodeOwned for #name #ty_generics #where_clause {
             type Store = ();
 
-            fn soft_encode_owned<'_išč>(self, (): &mut ()) -> Self::CType
+            fn soft_encode<'_išč>(self, (): &mut ()) -> Self::CType
             where
                 Self: '_išč,
             {
@@ -911,10 +916,10 @@ pub(super) fn derive_fieldless_enum(
             }
         }
 
-        impl<'_dšč, #params> co3::stored::DecodeOwned<'_dšč> for #name #ty_generics #where_clause {
+        unsafe impl<'_dšč, #params> co3::stored::DecodeOwned<'_dšč> for #name #ty_generics #where_clause {
             type Store = ();
 
-            unsafe fn soft_decode_owned<'_išč: '_dšč>(source: Self::CType, (): &mut ()) -> Option<Self> {
+            unsafe fn soft_decode<'_išč: '_dšč>(source: Self::CType, (): &mut ()) -> Option<Self> {
                 #decode_impl
             }
         }
@@ -980,12 +985,12 @@ fn gen_record_conversion(
             quote! {
                 {
                     #tag_field
-                    #(#field_vars: co3::stored::EncodeOwned::soft_encode_owned(#field_vars, #store_vars)),*
+                    #(#field_vars: co3::stored::EncodeOwned::soft_encode(#field_vars, #store_vars)),*
                 }
             },
             quote! { #(
                 let #field_vars = unsafe {
-                    co3::stored::DecodeOwned::soft_decode_owned(#field_vars, #store_vars)?
+                    co3::stored::DecodeOwned::soft_decode(#field_vars, #store_vars)?
                 }; )*
 
                 #custom_validation
@@ -998,12 +1003,12 @@ fn gen_record_conversion(
             quote! {
                 (
                     #tag_element
-                    #(co3::stored::EncodeOwned::soft_encode_owned(#field_vars, #store_vars)),*
+                    #(co3::stored::EncodeOwned::soft_encode(#field_vars, #store_vars)),*
                 )
             },
             quote! { #(
                 let #field_vars = unsafe {
-                    co3::stored::DecodeOwned::soft_decode_owned(#field_vars, #store_vars)?
+                    co3::stored::DecodeOwned::soft_decode(#field_vars, #store_vars)?
                 }; )*
 
                 #custom_validation
@@ -1083,7 +1088,7 @@ fn gen_codec_impls<const ADD_COPY: bool>(
             type CType = #ctype_name #ctype_ty_generics;
         }
 
-        impl #impl_generics co3::stored::EncodeOwned for #name #ty_generics
+        unsafe impl #impl_generics co3::stored::EncodeOwned for #name #ty_generics
         where
             #sized_bound
             #(#borrow_cast_bounds,)*
@@ -1093,11 +1098,11 @@ fn gen_codec_impls<const ADD_COPY: bool>(
         {
             type Store = #encode_store;
 
-            fn soft_encode_owned<'_išč>(self, store: &'_išč mut Self::Store) -> Self::CType where Self: '_išč {
+            fn soft_encode<'_išč>(self, store: &'_išč mut Self::Store) -> Self::CType where Self: '_išč {
                 #encode_impl
             }
         }
-        impl<#decode_lifetime #params> co3::stored::DecodeOwned<'_dšč> for #name #ty_generics
+        unsafe impl<#decode_lifetime #params> co3::stored::DecodeOwned<'_dšč> for #name #ty_generics
         where
             #sized_bound
             #(#borrow_cast_bounds,)*
@@ -1107,7 +1112,7 @@ fn gen_codec_impls<const ADD_COPY: bool>(
         {
             type Store = #decode_store;
 
-            unsafe fn soft_decode_owned<'_išč: '_dšč>(source: Self::CType, store: &'_išč mut Self::Store) -> Option<Self> {
+            unsafe fn soft_decode<'_išč: '_dšč>(source: Self::CType, store: &'_išč mut Self::Store) -> Option<Self> {
                 #decode_impl
             }
         }

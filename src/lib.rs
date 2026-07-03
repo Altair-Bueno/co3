@@ -197,6 +197,7 @@ disjoint_impls! {
     }
 
     impl<
+        // TODO: Something breaks in disjoint_impls if I use ExternC<CType: Copy>
         R: NicheFamily<Kind = WithoutNiche> + ExternC,
         E: NicheFamily<Kind = WithoutNiche> + ExternC,
     >
@@ -213,21 +214,7 @@ disjoint_impls! {
 
 disjoint_impls! {
     /// Facilitates conversion from a Rust type into a corresponding C-compatible representation.
-    pub trait Encode: EncodeOwned {
-        fn soft_encode<'itm>(self, store: &'itm mut Self::Store) -> Self::CType
-        where
-            Self: 'itm,
-        {
-            self.soft_encode_owned(store)
-        }
-
-        fn encode(self) -> Self::CType
-        where
-            Self::Store: EmptyStore,
-        {
-            self.encode_owned()
-        }
-    }
+    pub trait Encode: EncodeOwned {}
 
     #[cfg(feature = "alloc")]
     impl<R: ?Sized, K> Encode for Box<R>
@@ -243,26 +230,7 @@ disjoint_impls! {
 
 disjoint_impls! {
     /// Facilitates conversion into a Rust type from a corresponding C-compatible representation.
-    pub trait Decode<'d>: DecodeOwned<'d> {
-        unsafe fn soft_decode<'itm: 'd>(
-            source: Self::CType,
-            store: &'itm mut Self::Store,
-        ) -> Option<Self> {
-            unsafe { DecodeOwned::soft_decode_owned(source, store) }
-        }
-
-        /// Perform the conversion from [`Self::CType`] into [`Self`] without external storage.
-        ///
-        /// # Safety
-        ///
-        /// - All conversions from a pointer must ensure pointer validity beforehand
-        unsafe fn decode(source: Self::CType) -> Option<Self>
-        where
-            Self::Store: EmptyStore + 'd,
-        {
-            unsafe { DecodeOwned::decode_owned(source) }
-        }
-    }
+    pub trait Decode<'d>: DecodeOwned<'d> {}
 
     #[cfg(feature = "alloc")]
     impl<'d, R: ?Sized, K> Decode<'d> for Box<R>
@@ -287,6 +255,41 @@ impl<'d, R: Decode<'d>, const N: usize> Decode<'d> for [R; N] where Self: Decode
 
 impl<R: Encode> Encode for Option<R> where Self: EncodeOwned {}
 impl<'d, R: Decode<'d>> Decode<'d> for Option<R> where Self: DecodeOwned<'d> {}
+
+/// Perform the conversion from `T` into [`T::CType`] using external storage.
+///
+/// Prefer using [`encode`] whenever possible
+pub fn soft_encode<T: Encode>(item: T, store: &mut T::Store) -> T::CType {
+    item.soft_encode(store)
+}
+
+/// Perform the conversion from `T` into [`T::CType`].
+pub fn encode<T: Encode<Store: EmptyStore>>(item: T) -> T::CType {
+    stored::encode_owned(item)
+}
+
+/// Perform the conversion from [`T::CType`](crate::ExternC::CType) into `T` using external storage.
+///
+/// Prefer using [`decode`] whenever possible
+///
+/// # Safety
+///
+/// - All conversions from a pointer must ensure pointer validity beforehand
+pub unsafe fn soft_decode<'d, T: Decode<'d>>(
+    source: T::CType,
+    store: &'d mut T::Store,
+) -> Option<T> {
+    unsafe { T::soft_decode(source, store) }
+}
+
+/// Perform the conversion from [`T::CType`](crate::ExternC::CType) into `T`.
+///
+/// # Safety
+///
+/// - All conversions from a pointer must ensure pointer validity beforehand
+pub unsafe fn decode<'d, T: Decode<'d, Store: EmptyStore> + 'd>(source: T::CType) -> Option<T> {
+    unsafe { stored::decode_owned(source) }
+}
 
 impl<R: Encode, E: Encode> Encode for Result<R, E> where Self: EncodeOwned {}
 impl<'d, R: Decode<'d>, E: Decode<'d>> Decode<'d> for Result<R, E> where Self: DecodeOwned<'d> {}
@@ -329,7 +332,7 @@ mod tests {
         let value_mut_ref: &mut Option<u8> = &mut value;
         {
             let mut store = Box::default();
-            let encoded = value_mut_ref.soft_encode(&mut *store);
+            let encoded = crate::soft_encode(value_mut_ref, &mut *store);
             unsafe {
                 *encoded = ReprCOption::Some(other);
             }
@@ -341,7 +344,7 @@ mod tests {
         let ref_mut: &mut [_] = &mut slice;
         {
             let mut store = Box::default();
-            let encoded = ref_mut.soft_encode(&mut *store);
+            let encoded = crate::soft_encode(ref_mut, &mut *store);
             let c_slice = unsafe { encoded.into_rust().unwrap() };
             c_slice[0] = ReprCOption::Some(other);
             store.sync().unwrap();
@@ -356,7 +359,7 @@ mod tests {
         let new_val: u8 = 42;
         {
             let mut store = Box::default();
-            let decoded = unsafe { <&mut _>::soft_decode(c_ptr, &mut *store) }.unwrap();
+            let decoded = unsafe { crate::soft_decode::<&mut _>(c_ptr, &mut *store) }.unwrap();
 
             *decoded = Some(new_val);
             store.sync().unwrap();
@@ -368,7 +371,7 @@ mod tests {
         let x: u8 = 10;
         {
             let mut store = Box::default();
-            let decoded = unsafe { <&mut [_]>::soft_decode(c_slice, &mut *store) }.unwrap();
+            let decoded = unsafe { crate::soft_decode::<&mut [_]>(c_slice, &mut *store) }.unwrap();
 
             decoded[0] = Some(x);
             store.sync().unwrap();
@@ -387,7 +390,7 @@ mod tests {
         {
             let mut store = Box::default();
 
-            let encoded = slice_ref.soft_encode(&mut store);
+            let encoded = crate::soft_encode(slice_ref, &mut store);
             let c_slice = unsafe { encoded.into_rust().unwrap() };
 
             c_slice[0] = ReprCTuple1(100);
@@ -395,6 +398,33 @@ mod tests {
         }
 
         assert_eq!(tuples[0].0, 100);
+    }
+
+    #[test]
+    #[cfg(feature = "alloc")]
+    // FIXME: This test demonstrates that ownership of &mut Box<(u32,)> is leaked
+    // from one side to the other: https://github.com/mversic/co3/issues/182
+    fn encode_stored_mut_box_allows_pointer_replacement() {
+        use crate::{boxed::CBox, tuple::ReprCTuple1};
+
+        let mut value = Box::new((1_u32,));
+
+        {
+            let mut store = Box::default();
+            let encoded = crate::soft_encode(&mut value, &mut *store);
+            let original_data = unsafe { (*encoded).data };
+            let replacement = CBox::from_box(Box::new(ReprCTuple1(100)));
+            let replacement_data = replacement.data;
+
+            unsafe {
+                *encoded = replacement;
+            }
+
+            assert_ne!(original_data, replacement_data);
+            store.sync().unwrap();
+        }
+
+        assert_eq!(*value, (100,));
     }
 
     #[test]
@@ -407,7 +437,8 @@ mod tests {
 
         {
             let mut store = Box::default();
-            let decoded = unsafe { <&mut [(_,)]>::soft_decode(c_slice, &mut store) }.unwrap();
+            let decoded =
+                unsafe { crate::soft_decode::<&mut [(_,)]>(c_slice, &mut store) }.unwrap();
 
             decoded[0].0 = 100;
             store.sync().unwrap();

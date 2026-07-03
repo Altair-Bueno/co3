@@ -4,6 +4,8 @@ use core::convert::Infallible;
 #[cfg(feature = "alloc")]
 use core::ptr::NonNull;
 
+use crate::RobustReprC;
+
 /// Marker for types with a size that can be determined from pointer metadata.
 ///
 /// Type parameter can be set to either [`SliceLike`] or [`DynTraitLike`] only.
@@ -53,9 +55,15 @@ pub trait SizeFamily {
     type Kind;
 }
 
-// TODO: Option<Uninhabited> is ZST
-impl<T> SizeFamily for Option<T> {
-    type Kind = Sized;
+pub trait Spread: RobustReprC + core::marker::Sized {
+    type Part1: RobustReprC;
+    type Part2: RobustReprC;
+
+    /// Consumes the spreadable type, returning its constituents.
+    fn into_parts(self) -> (Self::Part1, Self::Part2);
+
+    /// Forms the spreadable type from its constituents.
+    fn from_parts(part1: Self::Part1, part2: Self::Part2) -> Self;
 }
 
 // TODO: Implement for Result
@@ -129,6 +137,10 @@ impl<T> SizeFamily for Vec<T> {
     type Kind = Sized;
 }
 
+// TODO: Option<Uninhabited> is ZST
+impl<T> SizeFamily for Option<T> {
+    type Kind = Sized;
+}
 impl<R> Wide for [R] {
     type Data = R;
     type Metadata = usize;
