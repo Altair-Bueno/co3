@@ -1,0 +1,89 @@
+use std::ops::Deref;
+
+use co3::{ReprC, export, export_C, extern_C, handles};
+
+trait ExternImplTrait {
+    fn method(arg: &u32);
+}
+
+trait ExportDispatchTrait {
+    fn dispatch(&self, arg: &u32);
+}
+
+trait ExternDispatchTrait {
+    fn dispatch(&self, arg: &u32);
+}
+
+struct ExportImpl;
+struct ExternImpl;
+
+#[derive(ReprC)]
+#[reprC(id(u8))]
+#[repr(transparent)]
+struct DriftHandle(u32);
+
+#[export("C")]
+fn export_fn(_: &u32) {}
+
+impl ExportImpl {
+    fn method(_: &u32) {}
+}
+
+impl Deref for DriftHandle {
+    type Target = u32;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl ExportDispatchTrait for DriftHandle {
+    fn dispatch(&self, _: &u32) {}
+}
+
+handles! {
+    DriftHandle,
+}
+
+export_C! {
+    fn export_fn(arg: &Box<u32>);
+}
+
+extern_C! {
+    #![link(crate = "signature_drift")]
+
+    #[link_name = "extern_fn"]
+    fn extern_fn(arg: &Box<u32>);
+}
+
+export_C! {
+    impl ExportImpl {
+        fn method(arg: &Box<u32>);
+    }
+}
+
+extern_C! {
+    #![link(crate = "signature_drift")]
+
+    impl ExternImplTrait for ExternImpl {
+        fn method(arg: &Box<u32>);
+    }
+}
+
+export_C! {
+    #[dispatch(<DriftHandle>)]
+    impl<dyn(u8) T = DriftHandle> ExportDispatchTrait for T {
+        fn dispatch(&self, arg: &T);
+    }
+}
+
+extern_C! {
+    #![link(crate = "signature_drift")]
+
+    #[dispatch(<DriftHandle>)]
+    impl<dyn(u8) T = DriftHandle> ExternDispatchTrait for T {
+        fn dispatch(self_id: <dyn Self>::ID, &self, arg: &T);
+    }
+}
+
+fn main() {}

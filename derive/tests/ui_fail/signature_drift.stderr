@@ -1,0 +1,83 @@
+error[E0053]: method `method` has an incompatible type for trait
+  --> tests/ui_fail/signature_drift.rs:69:24
+   |
+69 |         fn method(arg: &Box<u32>);
+   |                        ^^^^^^^^^ expected `u32`, found `Box<u32>`
+   |
+note: type in trait
+  --> tests/ui_fail/signature_drift.rs:6:20
+   |
+ 6 |     fn method(arg: &u32);
+   |                    ^^^^
+   = note: expected signature `fn(&u32)`
+              found signature `fn(&Box<u32>)`
+help: change the parameter type to match the trait
+   |
+69 -         fn method(arg: &Box<u32>);
+69 +         fn method(arg: &u32);
+   |
+
+error[E0053]: method `dispatch` has an incompatible type for trait
+  --> tests/ui_fail/signature_drift.rs:83:17
+   |
+83 |       #[dispatch(<DriftHandle>)]
+   |  _________________^
+84 | |     impl<dyn(u8) T = DriftHandle> ExternDispatchTrait for T {
+85 | |         fn dispatch(self_id: <dyn Self>::ID, &self, arg: &T);
+   | |__________________________________________________________^ expected `u32`, found `DriftHandle`
+   |
+note: type in trait
+  --> tests/ui_fail/signature_drift.rs:14:29
+   |
+14 |     fn dispatch(&self, arg: &u32);
+   |                             ^^^^
+   = note: expected signature `fn(&DriftHandle, &u32)`
+              found signature `fn(&DriftHandle, &DriftHandle)`
+help: change the parameter type to match the trait
+   |
+83 -     #[dispatch(<DriftHandle>)]
+84 -     impl<dyn(u8) T = DriftHandle> ExternDispatchTrait for T {
+85 -         fn dispatch(self_id: <dyn Self>::ID, &self, arg: &T);
+83 +     #[dispatch(<&u32T);
+   |
+
+error[E0308]: mismatched types
+  --> tests/ui_fail/signature_drift.rs:48:1
+   |
+48 | / export_C! {
+49 | |     fn export_fn(arg: &Box<u32>);
+50 | | }
+   | |_^ expected fn pointer, found fn item
+   |
+   = note: expected fn pointer `for<'a> fn(&'a Box<u32>)`
+                 found fn item `for<'a> fn(&'a u32) {export_fn}`
+   = note: this error originates in the macro `export_C` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error[E0308]: mismatched types
+  --> tests/ui_fail/signature_drift.rs:59:1
+   |
+59 | / export_C! {
+60 | |     impl ExportImpl {
+61 | |         fn method(arg: &Box<u32>);
+62 | |     }
+63 | | }
+   | |_^ expected fn pointer, found fn item
+   |
+   = note: expected fn pointer `for<'a> fn(&'a Box<u32>)`
+                 found fn item `for<'a> fn(&'a u32) {ExportImpl::method}`
+   = note: this error originates in the macro `export_C` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error[E0308]: mismatched types
+  --> tests/ui_fail/signature_drift.rs:73:1
+   |
+73 | / export_C! {
+74 | |     #[dispatch(<DriftHandle>)]
+75 | |     impl<dyn(u8) T = DriftHandle> ExportDispatchTrait for T {
+76 | |         fn dispatch(&self, arg: &T);
+77 | |     }
+78 | | }
+   | |_^ expected fn pointer, found fn item
+   |
+   = note: expected fn pointer `for<'a, 'b> fn(&'a DriftHandle, &'b DriftHandle)`
+                 found fn item `for<'a, 'b> fn(&'a DriftHandle, &'b u32) {<DriftHandle as ExportDispatchTrait>::dispatch}`
+   = note: this error originates in the macro `export_C` (in Nightly builds, run with -Z macro-backtrace for more info)

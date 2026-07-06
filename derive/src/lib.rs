@@ -16,7 +16,7 @@ use crate::{
     repr::derive_repr_c,
     utils::{
         has_non_lifetime_generics, is_drop_impl, is_type_erased, path_symbol_name, push_error,
-        type_symbol_name,
+        strip_internal_generic_param, type_symbol_name,
     },
     validate::{validate_dispatch_self_id, validate_export_decls, validate_extern_decls},
 };
@@ -331,8 +331,6 @@ pub fn export(attr: TokenStream, item: TokenStream) -> Result<TokenStream> {
             quote! { #(#attrs)* #vis #sig; }
         }
         syn::Item::Impl(impl_) => {
-            let (impl_generics, _, where_clause) = impl_.generics.split_for_impl();
-
             let mut attrs = Vec::new();
             impl_.attrs.retain(|attr| {
                 if attr.path().is_ident("dispatch") {
@@ -345,6 +343,9 @@ pub fn export(attr: TokenStream, item: TokenStream) -> Result<TokenStream> {
 
             let defaultness = &impl_.defaultness;
             let unsafety = &impl_.unsafety;
+            let mut impl_generics = impl_.generics.clone();
+            impl_generics.where_clause = None;
+            let where_clause = &impl_.generics.where_clause;
             let trait_ = impl_.trait_.as_ref().map(|(_, path, _)| quote!(#path for));
             let self_ty = &impl_.self_ty;
 
@@ -384,7 +385,7 @@ pub fn export(attr: TokenStream, item: TokenStream) -> Result<TokenStream> {
                     continue;
                 };
 
-                param.attrs.retain(|attr| !is_type_erased(attr));
+                strip_internal_generic_param(param);
             }
 
             item_impl

@@ -1,20 +1,24 @@
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 use proc_macro2::TokenStream;
 use quote::{format_ident, quote};
 use syn::{
     GenericArgument, GenericParam, Result, parse::Parser, parse_quote, punctuated::Punctuated,
-    visit::Visit, visit_mut::VisitMut,
+    spanned::Spanned, visit::Visit, visit_mut::VisitMut,
 };
 
 use crate::{
     DynImpl,
     ffi_fn::{
         emit_extern_definition, gen_definition_body, gen_extern_fn_signature,
-        gen_input_decode_stmts, gen_store_sync_stmts, item_fn_input_arg_type, merge_generics,
-        normalize_fn_signature,
+        gen_fn_signature_check, gen_input_decode_stmts, gen_store_sync_stmts, is_spread_arg,
+        item_fn_input_arg_type, merge_generics, normalize_fn_signature, output_abi_ty,
+        strip_erased_type_params,
     },
-    utils::{DispatchMonomorphizer, is_drop_impl, is_type_erased, unwrap_result_type},
+    utils::{
+        DispatchMonomorphizer, ParamUseDetector, erased_abi_repr, erased_id_repr, is_drop_impl,
+        is_type_erased, unwrap_result_type,
+    },
 };
 
 #[derive(Clone, Copy)]
@@ -30,7 +34,7 @@ pub(crate) enum HandleId<'a> {
 }
 
 struct ErasedParamReplacer {
-    erased_params: BTreeSet<syn::Ident>,
+    erased_params: BTreeMap<syn::Ident, syn::Type>,
 }
 
 impl ErasedParamReplacer {
@@ -39,7 +43,7 @@ impl ErasedParamReplacer {
             erased_params: generics
                 .type_params()
                 .filter(|p| p.attrs.iter().any(is_type_erased))
-                .map(|p| p.ident.clone())
+                .map(|p| (p.ident.clone(), erased_abi_repr(p)))
                 .collect(),
         }
     }
@@ -52,19 +56,13 @@ impl ErasedParamReplacer {
 
 impl VisitMut for ErasedParamReplacer {
     fn visit_type_mut(&mut self, node: &mut syn::Type) {
-        if let syn::Type::Path(path_ty) = node {
-            let qself_ty = path_ty.qself.as_ref().map(|qself| &*qself.ty);
-
-            let first_seg = path_ty.path.segments.first();
-            if first_seg.is_some_and(|seg| self.erased_params.contains(&seg.ident)) {
-                *node = parse_quote!(core::ffi::c_void);
-            } else if let Some(syn::Type::Path(path_ty)) = qself_ty {
-                let first_seg = path_ty.path.segments.first();
-
-                if first_seg.is_some_and(|seg| self.erased_params.contains(&seg.ident)) {
-                    *node = parse_quote!(core::ffi::c_void);
-                }
-            }
+        if let syn::Type::Path(syn::TypePath {
+            qself: None, path, ..
+        }) = node
+            && let Some(repr) = path.get_ident().and_then(|i| self.erased_params.get(i))
+        {
+            *node = repr.clone();
+            return;
         }
 
         syn::visit_mut::visit_type_mut(self, node);
@@ -125,15 +123,6 @@ pub(crate) fn parse_dispatch_attr(
     }
 
     impl Visit<'_> for LifetimeArgValidator {
-        fn visit_generic_argument(&mut self, node: &syn::GenericArgument) {
-            if matches!(node, syn::GenericArgument::Lifetime(_)) {
-                let err_msg = "lifetime arguments not required in #[dispatch]";
-                self.push(syn::Error::new_spanned(node, err_msg));
-            } else {
-                syn::visit::visit_generic_argument(self, node);
-            }
-        }
-
         fn visit_lifetime(&mut self, node: &syn::Lifetime) {
             if node.ident == "_" {
                 return;
@@ -148,6 +137,11 @@ pub(crate) fn parse_dispatch_attr(
 
     for entry in &generic_args {
         for arg in &entry.args {
+            if matches!(arg, syn::GenericArgument::Lifetime(_)) {
+                let err_msg = "lifetime arguments not required in #[dispatch]";
+                lifetime_validator.push(syn::Error::new_spanned(arg, err_msg));
+                continue;
+            }
             lifetime_validator.visit_generic_argument(arg);
         }
     }
@@ -239,10 +233,11 @@ pub(crate) fn gen_dispatch_export(
 
     let definitions = items.map(|mut item| {
         merge_generics(impl_.generics.clone(), &mut item.sig.generics);
-
         normalize_fn_signature(&mut item.sig, Some(self_ty));
+        let erased_layout_checks = gen_dispatch_erased_layout_checks(generics, &item.sig, &args);
         synthesize_dispatch_handle_ids(self_id, &mut item.sig);
         monomorphize_predicates(&mut item.sig.generics, &args);
+        strip_erased_type_params(&mut item.sig.generics);
 
         let (id_arg_names, handle_ids): (Vec<_>, Vec<_>) = item
             .sig
@@ -257,11 +252,8 @@ pub(crate) fn gen_dispatch_export(
                     HandleId::DynSelf => self_id.cloned(),
                     HandleId::DynType(ident) => generics
                         .type_params()
-                        .find(|param| param.ident == *ident)?
-                        .attrs
-                        .iter()
-                        .find(|attr| is_type_erased(attr))
-                        .and_then(|attr| attr.parse_args().ok()),
+                        .find(|param| param.ident == *ident)
+                        .and_then(erased_id_repr),
                 };
 
                 Some((pat, parse_quote!(#pat: #handle_id)))
@@ -294,7 +286,12 @@ pub(crate) fn gen_dispatch_export(
 
         erase_handle_types(generics, self_id, &mut item.sig, &args);
         let sig = gen_extern_fn_signature(item.sig);
-        emit_extern_definition(abi, &item.attrs, sig, fn_body)
+        let definition = emit_extern_definition(abi, &item.attrs, sig, fn_body);
+
+        quote! {
+            #erased_layout_checks
+            #definition
+        }
     });
 
     quote! {
@@ -308,27 +305,24 @@ pub(crate) fn gen_dispatch_id_uniqueness_checks(
     args: &Punctuated<syn::AngleBracketedGenericArguments, syn::Token![,]>,
 ) -> TokenStream {
     let checks = generics.type_params().filter_map(|param| {
-        let repr = param
-            .attrs
-            .iter()
-            .find(|attr| is_type_erased(attr))
-            .and_then(|attr| attr.parse_args::<syn::Type>().ok())?;
+        let repr = erased_id_repr(param)?;
 
         let enum_ident = format_ident!("DispatchIdCheck{}", param.ident);
         let variants = args.iter().enumerate().filter_map(|(entry_idx, entry)| {
             let variant = format_ident!("DispatchId{entry_idx}");
 
-            let arg = generics
+            let mut arg = generics
                 .params
                 .iter()
                 .filter(|param| !matches!(param, GenericParam::Lifetime(_)))
                 .zip(&entry.args)
                 .find_map(|(generic_param, arg)| match generic_param {
                     GenericParam::Type(generic_param) if generic_param.ident == param.ident => {
-                        Some(arg)
+                        Some(arg.clone())
                     }
                     _ => None,
                 })?;
+            StaticLifetimeNormalizer.visit_generic_argument_mut(&mut arg);
 
             Some(quote! { #variant = <#arg as co3::handle::Handle>::ID })
         });
@@ -344,6 +338,142 @@ pub(crate) fn gen_dispatch_id_uniqueness_checks(
     });
 
     quote! { #(#checks)* }
+}
+
+pub(crate) fn gen_dispatch_erased_layout_checks(
+    generics: &syn::Generics,
+    sig: &syn::Signature,
+    args: &Punctuated<syn::AngleBracketedGenericArguments, syn::Token![,]>,
+) -> TokenStream {
+    let param_detector = ParamUseDetector::new(
+        generics
+            .type_params()
+            .filter(|p| p.attrs.iter().any(is_type_erased))
+            .map(|p| &p.ident),
+    );
+
+    let checks = args.iter().flat_map(|entry| {
+        let mut checks = Vec::new();
+
+        for input in &sig.inputs {
+            let (attrs, ty) = match input {
+                syn::FnArg::Receiver(receiver) => (&receiver.attrs[..], &*receiver.ty),
+                syn::FnArg::Typed(syn::PatType { attrs, ty, .. }) => (&attrs[..], &**ty),
+            };
+
+            if handle_id(ty).is_some() || !param_detector.type_mentions_param(ty) {
+                continue;
+            }
+
+            let concrete_tys = dispatch_input_abi_tys(generics, entry, attrs, ty);
+            let erased_tys = erased_input_abi_tys(generics, attrs, ty);
+
+            checks.extend(dispatch_layout_checks(
+                concrete_tys.into_iter().zip(erased_tys),
+            ));
+        }
+
+        let syn::ReturnType::Type(_, output_ty) = &sig.output else {
+            return checks;
+        };
+
+        let output_ty = unwrap_result_type(output_ty)
+            .map(|(ok, _)| ok)
+            .unwrap_or(output_ty);
+
+        if param_detector.type_mentions_param(output_ty) {
+            let concrete_ty = dispatch_output_abi_ty(generics, entry, output_ty);
+            let erased_ty = erased_output_abi_ty(generics, output_ty);
+
+            checks.extend(dispatch_layout_checks([(concrete_ty, erased_ty)]));
+        }
+
+        checks
+    });
+
+    quote! { #(#checks)* }
+}
+
+fn dispatch_layout_checks(
+    pairs: impl IntoIterator<Item = (syn::Type, syn::Type)>,
+) -> Vec<TokenStream> {
+    pairs
+        .into_iter()
+        .map(|(mut concrete_ty, mut erased_ty)| {
+            StaticLifetimeNormalizer.visit_type_mut(&mut concrete_ty);
+            StaticLifetimeNormalizer.visit_type_mut(&mut erased_ty);
+
+            quote! {
+                const {
+                    assert!(
+                        core::mem::size_of::<#concrete_ty>()
+                            == core::mem::size_of::<#erased_ty>(),
+                        "erased argument size mismatch",
+                    );
+                    assert!(
+                        core::mem::align_of::<#concrete_ty>()
+                            == core::mem::align_of::<#erased_ty>(),
+                        "erased argument alignment mismatch",
+                    );
+                }
+            }
+        })
+        .collect()
+}
+
+pub(crate) struct StaticLifetimeNormalizer;
+impl VisitMut for StaticLifetimeNormalizer {
+    fn visit_lifetime_mut(&mut self, node: &mut syn::Lifetime) {
+        *node = syn::Lifetime::new("'static", node.span());
+    }
+}
+
+fn dispatch_input_abi_tys(
+    generics: &syn::Generics,
+    entry: &syn::AngleBracketedGenericArguments,
+    attrs: &[syn::Attribute],
+    ty: &syn::Type,
+) -> Vec<syn::Type> {
+    let mut ty = ty.clone();
+    DispatchMonomorphizer::new(generics, entry).visit_type_mut(&mut ty);
+    input_abi_tys(attrs, &ty)
+}
+
+fn dispatch_output_abi_ty(
+    generics: &syn::Generics,
+    entry: &syn::AngleBracketedGenericArguments,
+    ty: &syn::Type,
+) -> syn::Type {
+    let mut ty = ty.clone();
+    DispatchMonomorphizer::new(generics, entry).visit_type_mut(&mut ty);
+    output_abi_ty(&ty)
+}
+
+fn erased_input_abi_tys(
+    generics: &syn::Generics,
+    attrs: &[syn::Attribute],
+    ty: &syn::Type,
+) -> Vec<syn::Type> {
+    let ty = ErasedParamReplacer::new(generics).replace(ty.clone());
+    input_abi_tys(attrs, &ty)
+}
+
+fn erased_output_abi_ty(generics: &syn::Generics, ty: &syn::Type) -> syn::Type {
+    let ty = ErasedParamReplacer::new(generics).replace(ty.clone());
+    output_abi_ty(&ty)
+}
+
+fn input_abi_tys(attrs: &[syn::Attribute], ty: &syn::Type) -> Vec<syn::Type> {
+    let abi_ty = item_fn_input_arg_type(attrs, ty);
+
+    if is_spread_arg(attrs) {
+        return vec![
+            parse_quote!(<#abi_ty as co3::size::Spread>::Part1),
+            parse_quote!(<#abi_ty as co3::size::Spread>::Part2),
+        ];
+    }
+
+    vec![parse_quote!(#abi_ty)]
 }
 
 fn synthesize_dispatch_handle_ids(self_id: Option<&syn::Type>, sig: &mut syn::Signature) {
@@ -374,7 +504,7 @@ fn gen_dispatch_arms(
     trait_: Option<&syn::Path>,
     self_ty: &syn::Type,
     sig: &syn::Signature,
-    drop_impl: bool,
+    is_drop_impl: bool,
     args: &Punctuated<syn::AngleBracketedGenericArguments, syn::Token![,]>,
 ) -> impl Iterator<Item = TokenStream> {
     let derase_handle_stmts = gen_handle_retype_stmts(RetypeDirection::Derase, generics, sig);
@@ -396,8 +526,10 @@ fn gen_dispatch_arms(
 
         let mut arm_sig = sig.clone();
         let fn_name = &arm_sig.ident;
-        let callee = if drop_impl {
-            quote!(|__co3_self: &mut #self_ty| unsafe { core::ptr::drop_in_place(__co3_self as *mut _) })
+        let callee = if is_drop_impl {
+            quote!((|__co3_self: &mut #self_ty| unsafe {
+                core::ptr::drop_in_place(__co3_self as *mut _) }
+            ))
         } else if let Some(trait_) = trait_ {
             quote!(<#self_ty as #trait_>::#fn_name)
         } else {
@@ -422,15 +554,34 @@ fn gen_dispatch_arms(
             .filter(|input| !is_handle_id_arg(input))
             .collect();
 
+        let mut check_sig = arm_sig.clone();
+        monomorphizer.visit_signature_mut(&mut check_sig);
+
+        let mut check_callee: syn::Expr = if is_drop_impl {
+            parse_quote!((|__co3_self: &mut #self_ty| unsafe {
+                core::ptr::drop_in_place(__co3_self as *mut _) }
+            ))
+        } else if let Some(trait_) = trait_ {
+            parse_quote!(<#self_ty as #trait_>::#fn_name)
+        } else {
+            parse_quote!(<#self_ty>::#fn_name)
+        };
+        monomorphizer.visit_expr_mut(&mut check_callee);
+        let signature_check = gen_fn_signature_check(check_sig, check_callee);
         let arm_body = gen_definition_body(arm_sig, callee);
+
         let mut arm_body: syn::Block = parse_quote! {{
             (|| -> Result<(), co3::FfiReturn> {
                 #(#derase_handle_stmts)*
+                #signature_check
                 #arm_body
             })()
         }};
 
-        patterns.iter_mut().for_each(|pat| monomorphizer.visit_expr_mut(pat));
+        patterns
+            .iter_mut()
+            .for_each(|pat| monomorphizer.visit_expr_mut(pat));
+
         monomorphizer.visit_block_mut(&mut arm_body);
         quote! { (#(#patterns,)*) => { #arm_body }}
     })
@@ -457,11 +608,8 @@ pub(crate) fn erase_handle_types(
                 HandleId::DynSelf => self_id.cloned()?,
                 HandleId::DynType(ident) => generics
                     .type_params()
-                    .find(|p| p.ident == *ident)?
-                    .attrs
-                    .iter()
-                    .find(|attr| is_type_erased(attr))
-                    .and_then(|attr| attr.parse_args().ok())?,
+                    .find(|p| p.ident == *ident)
+                    .and_then(erased_id_repr)?,
             };
 
             Some((idx, handle_ty))
@@ -480,7 +628,7 @@ pub(crate) fn erase_handle_types(
     }
 
     if let syn::ReturnType::Type(_, ty) = &mut sig.output {
-        **ty = erased_output_ty(generics, ty);
+        **ty = erased_params.replace((**ty).clone());
     }
 
     for (idx, lowered_ty) in handle_ids {
@@ -550,7 +698,7 @@ fn gen_handle_retype_stmts(
         .unwrap_or(output_ty);
 
     let out_name = quote!(__co3_out_ptr);
-    let out_ptr_ty: syn::Type = parse_quote! { <#output_ty as co3::out_ptr::OutPtr>::OutPtr };
+    let out_ptr_ty = output_abi_ty(output_ty);
     let erased_out_ptr_ty = erased_params.replace(out_ptr_ty.clone());
     let out_ptr_arg_ty: syn::Type = parse_quote! { *mut #out_ptr_ty };
     let erased_out_ptr_arg_ty: syn::Type = parse_quote! { *mut #erased_out_ptr_ty };
@@ -562,19 +710,6 @@ fn gen_handle_retype_stmts(
 
     stmts.push(quote! { let __co3_out_ptr = #retype_out_ptr; });
     stmts
-}
-
-fn erased_output_ty(generics: &syn::Generics, ty: &syn::Type) -> syn::Type {
-    let output_ty = unwrap_result_type(ty).map(|(ok, _)| ok).unwrap_or(ty);
-    replace_erased_params(
-        generics,
-        parse_quote!(<#output_ty as co3::out_ptr::OutPtr>::OutPtr),
-    )
-}
-
-fn replace_erased_params(generics: &syn::Generics, mut ty: syn::Type) -> syn::Type {
-    ErasedParamReplacer::new(generics).visit_type_mut(&mut ty);
-    ty
 }
 
 pub(crate) fn parse_handle_id_attr(attrs: &mut Vec<syn::Attribute>) -> Result<Option<syn::Type>> {
@@ -664,68 +799,285 @@ fn monomorphize_predicates(
     generics: &mut syn::Generics,
     args: &Punctuated<syn::AngleBracketedGenericArguments, syn::Token![,]>,
 ) {
-    struct ParamUseDetector<'a> {
-        params: BTreeSet<&'a syn::Ident>,
-        found: bool,
+    let params = generics
+        .params
+        .iter()
+        .filter_map(|param| {
+            if let syn::GenericParam::Type(param) = param {
+                return Some(param.ident.clone());
+            }
+
+            None
+        })
+        .collect::<Vec<_>>();
+
+    let mut monomorphized_predicates = Punctuated::new();
+    let param_detector = ParamUseDetector::new(&params);
+
+    let old_predicates = generics
+        .where_clause
+        .as_mut()
+        .map(|w| core::mem::take(&mut w.predicates))
+        .unwrap_or_default();
+
+    for generic_predicate in old_predicates {
+        if !param_detector.predicate_mentions_param(&generic_predicate) {
+            monomorphized_predicates.push(generic_predicate);
+            continue;
+        }
+
+        for entry in args {
+            let mut concrete_predicate = generic_predicate.clone();
+
+            let entry = inject_predicate_unnamed_lifetimes(
+                &mut generics.params,
+                &mut concrete_predicate,
+                entry.clone(),
+            );
+
+            let mut monomorphizer = DispatchMonomorphizer::new(generics, &entry);
+            monomorphizer.visit_where_predicate_mut(&mut concrete_predicate);
+            monomorphized_predicates.push(concrete_predicate);
+        }
     }
 
-    impl<'a> ParamUseDetector<'a> {
-        fn new(params: impl IntoIterator<Item = &'a syn::GenericParam>) -> Self {
-            Self {
-                params: params
-                    .into_iter()
-                    .filter_map(|param| {
-                        if let syn::GenericParam::Type(param) = param {
-                            return Some(&param.ident);
-                        }
+    generics.make_where_clause().predicates = monomorphized_predicates;
+}
 
-                        None
-                    })
-                    .collect(),
-                found: false,
+struct NamedLifetime {
+    lifetime: syn::Lifetime,
+    universal: bool,
+}
+
+struct NamedDispatchEntry {
+    entry: syn::AngleBracketedGenericArguments,
+    concrete_lifetimes: Vec<syn::Lifetime>,
+    universal_lifetimes: Vec<syn::Lifetime>,
+}
+
+struct EntryLifetimeNamer {
+    prefix: String,
+    span: proc_macro2::Span,
+    next_lifetime: usize,
+    universal_depth: usize,
+    lifetimes: Vec<NamedLifetime>,
+}
+
+impl EntryLifetimeNamer {
+    fn next_lifetime(&mut self) -> syn::Lifetime {
+        let lifetime = syn::Lifetime::new(
+            &format!("'{}_{}", self.prefix, self.next_lifetime),
+            self.span,
+        );
+        self.next_lifetime += 1;
+        lifetime
+    }
+
+    fn bind_lifetime(&mut self) -> syn::Lifetime {
+        let lifetime = self.next_lifetime();
+        self.lifetimes.push(NamedLifetime {
+            lifetime: lifetime.clone(),
+            universal: self.universal_depth > 0,
+        });
+        lifetime
+    }
+
+    fn visit_universal(&mut self, f: impl FnOnce(&mut Self)) {
+        self.universal_depth += 1;
+        f(self);
+        self.universal_depth -= 1;
+    }
+}
+
+impl VisitMut for EntryLifetimeNamer {
+    fn visit_type_path_mut(&mut self, node: &mut syn::TypePath) {
+        if let Some(qself) = &mut node.qself {
+            self.visit_type_mut(&mut qself.ty);
+            self.visit_universal(|this| {
+                for segment in &mut node.path.segments {
+                    this.visit_path_arguments_mut(&mut segment.arguments);
+                }
+            });
+            return;
+        }
+
+        syn::visit_mut::visit_type_path_mut(self, node);
+    }
+
+    fn visit_type_reference_mut(&mut self, node: &mut syn::TypeReference) {
+        if node.lifetime.as_ref().is_none_or(|l| l.ident == "_") {
+            node.lifetime = Some(self.bind_lifetime());
+        }
+
+        syn::visit_mut::visit_type_reference_mut(self, node);
+    }
+
+    fn visit_lifetime_mut(&mut self, node: &mut syn::Lifetime) {
+        if node.ident == "_" {
+            *node = self.bind_lifetime();
+        }
+    }
+
+    fn visit_type_bare_fn_mut(&mut self, _: &mut syn::TypeBareFn) {}
+}
+
+fn name_unnamed_lifetimes(
+    generics: &Punctuated<GenericParam, syn::Token![,]>,
+    mut entry: syn::AngleBracketedGenericArguments,
+    mut include_param: impl FnMut(&syn::TypeParam) -> bool,
+) -> NamedDispatchEntry {
+    let mut concrete_lifetimes = Vec::new();
+    let mut universal_lifetimes = Vec::new();
+
+    for (param_idx, (param, arg)) in generics
+        .iter()
+        .filter(|param| !matches!(param, syn::GenericParam::Lifetime(_)))
+        .zip(&mut entry.args)
+        .enumerate()
+    {
+        let syn::GenericParam::Type(param) = param else {
+            continue;
+        };
+
+        if !include_param(param) {
+            continue;
+        }
+
+        let mut namer = EntryLifetimeNamer {
+            prefix: format!("__co3_dispatch_{param_idx}"),
+            span: param.ident.span(),
+            next_lifetime: 0,
+            universal_depth: 0,
+            lifetimes: Vec::new(),
+        };
+        namer.visit_generic_argument_mut(arg);
+
+        for named in namer.lifetimes {
+            if named.universal {
+                universal_lifetimes.push(named.lifetime);
+            } else {
+                concrete_lifetimes.push(named.lifetime);
             }
         }
     }
 
-    impl Visit<'_> for ParamUseDetector<'_> {
-        fn visit_path(&mut self, node: &syn::Path) {
-            if node.leading_colon.is_none()
-                && let Some(first) = node.segments.first()
-                && self.params.contains(&first.ident)
-            {
-                self.found = true;
-                return;
-            }
+    NamedDispatchEntry {
+        entry,
+        concrete_lifetimes,
+        universal_lifetimes,
+    }
+}
 
-            syn::visit::visit_path(self, node);
+fn push_lifetime_param(
+    generics: &mut Punctuated<GenericParam, syn::Token![,]>,
+    lifetime: &syn::Lifetime,
+) {
+    if generics.iter().any(
+        |param| matches!(param, syn::GenericParam::Lifetime(param) if param.lifetime == *lifetime),
+    ) {
+        return;
+    }
+
+    generics.push(parse_quote!(#lifetime));
+}
+
+fn push_lifetime_params(
+    generics: &mut Punctuated<GenericParam, syn::Token![,]>,
+    lifetimes: &[syn::Lifetime],
+) {
+    for lifetime in lifetimes {
+        push_lifetime_param(generics, lifetime);
+    }
+}
+
+pub(crate) fn inject_unnamed_lifetimes(
+    generics: &mut Punctuated<GenericParam, syn::Token![,]>,
+    entry: syn::AngleBracketedGenericArguments,
+) -> syn::AngleBracketedGenericArguments {
+    let named = name_unnamed_lifetimes(generics, entry, |_| true);
+    push_lifetime_params(generics, &named.concrete_lifetimes);
+    named.entry
+}
+
+fn inject_predicate_unnamed_lifetimes(
+    generics: &mut Punctuated<GenericParam, syn::Token![,]>,
+    predicate: &mut syn::WherePredicate,
+    entry: syn::AngleBracketedGenericArguments,
+) -> syn::AngleBracketedGenericArguments {
+    struct PredicateLifetimeNamer {
+        next_lifetime: usize,
+        lifetimes: Vec<syn::Lifetime>,
+    }
+
+    impl PredicateLifetimeNamer {
+        fn bind_lifetime(&mut self, span: proc_macro2::Span) -> syn::Lifetime {
+            let lifetime = syn::Lifetime::new(
+                &format!("'__co3_dispatch_predicate_{}", self.next_lifetime),
+                span,
+            );
+            self.next_lifetime += 1;
+            self.lifetimes.push(lifetime.clone());
+            lifetime
         }
     }
 
-    let mut predicates = Punctuated::<_, syn::Token![,]>::new();
-    let (erased_params, params): (Vec<_>, _) = core::mem::take(&mut generics.params)
-        .into_iter()
-        .partition(|param| matches!(param, syn::GenericParam::Type(_)));
+    impl VisitMut for PredicateLifetimeNamer {
+        fn visit_type_reference_mut(&mut self, node: &mut syn::TypeReference) {
+            if node.lifetime.as_ref().is_none_or(|l| l.ident == "_") {
+                node.lifetime = Some(self.bind_lifetime(node.span()));
+            }
 
-    generics.params = params.into_iter().collect();
-    if let Some(where_clause) = &mut generics.where_clause {
-        let mut detector = ParamUseDetector::new(&erased_params);
+            syn::visit_mut::visit_type_reference_mut(self, node);
+        }
 
-        for predicate in core::mem::take(&mut where_clause.predicates) {
-            detector.visit_where_predicate(&predicate);
+        fn visit_lifetime_mut(&mut self, node: &mut syn::Lifetime) {
+            if node.ident == "_" {
+                *node = self.bind_lifetime(node.span());
+            }
+        }
 
-            if !detector.found {
-                predicates.push(predicate);
+        fn visit_type_bare_fn_mut(&mut self, _: &mut syn::TypeBareFn) {}
+    }
+
+    fn push_universal_lifetimes(
+        predicate: &mut syn::WherePredicate,
+        lifetimes: impl IntoIterator<Item = syn::Lifetime>,
+    ) {
+        let syn::WherePredicate::Type(predicate) = predicate else {
+            return;
+        };
+
+        let bound_lifetimes = &mut predicate
+            .lifetimes
+            .get_or_insert_with(|| parse_quote!(for<>))
+            .lifetimes;
+
+        for lifetime in lifetimes {
+            if bound_lifetimes.iter().any(|param| {
+                matches!(param, syn::GenericParam::Lifetime(param) if param.lifetime == lifetime)
+            }) {
                 continue;
             }
 
-            for entry in args {
-                let mut monomorphizer = DispatchMonomorphizer::new(generics, entry);
-                let mut predicate = predicate.clone();
-                monomorphizer.visit_where_predicate_mut(&mut predicate);
-                predicates.push(predicate);
-            }
+            bound_lifetimes.push(syn::GenericParam::Lifetime(parse_quote!(#lifetime)));
         }
     }
 
-    generics.make_where_clause().predicates = predicates;
+    let mut named = name_unnamed_lifetimes(generics, entry, |param| {
+        ParamUseDetector::new([&param.ident]).predicate_mentions_param(predicate)
+    });
+    push_lifetime_params(generics, &named.concrete_lifetimes);
+
+    let mut predicate_lifetime_namer = PredicateLifetimeNamer {
+        next_lifetime: 0,
+        lifetimes: Vec::new(),
+    };
+    predicate_lifetime_namer.visit_where_predicate_mut(predicate);
+
+    named
+        .universal_lifetimes
+        .extend(predicate_lifetime_namer.lifetimes);
+    push_universal_lifetimes(predicate, named.universal_lifetimes);
+
+    named.entry
 }

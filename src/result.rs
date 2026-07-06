@@ -92,7 +92,7 @@ impl<T: PartialOrd + Copy, E: PartialOrd + Copy> PartialOrd for ReprCResult<T, E
 
 impl<T: Copy, E: Copy> ReprCResult<T, E> {
     pub(crate) const NICHE_VALUE: Self = Self {
-        ok: ReprCResultOk(2, MaybeUninit::uninit()),
+        ok: ReprCResultOk(2, MaybeUninit::zeroed()),
     };
 
     /// Construct the success value
@@ -119,7 +119,7 @@ impl<T: Copy, E: Copy> ReprCResult<T, E> {
 
     #[inline(always)]
     fn forward_payload<U: Copy, V: Copy>(self) -> ReprCResult<U, V> {
-        let mut output = MaybeUninit::<ReprCResult<U, V>>::uninit();
+        let mut output = MaybeUninit::<ReprCResult<U, V>>::zeroed();
 
         unsafe {
             core::ptr::copy_nonoverlapping(

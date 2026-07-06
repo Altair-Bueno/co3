@@ -1,68 +1,83 @@
 error[E0277]: the trait bound `u32: Spread` is not satisfied
- --> tests/ui_fail/spread_type_requires_wide.rs:3:1
-  |
-3 | / export_C! {
-4 | |     fn bad(value: ..u32);
-5 | | }
-  | |_^ the trait `Spread` is not implemented for `u32`
-  |
+  --> tests/ui_fail/spread_type_requires_wide.rs:11:1
+   |
+11 | / export_C! {
+12 | |     fn bad(value: ..u32);
+13 | | }
+   | |_^ the trait `Spread` is not implemented for `u32`
+   |
 help: the following other types implement trait `Spread`
- --> $WORKSPACE/src/slice.rs
-  |
-  | impl<C: RobustReprC> Spread for CSlice<C> {
-  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `CSlice<C>`
+  --> $WORKSPACE/src/tuple.rs
+   |
+   | impl<A: RobustReprC, B: RobustReprC> Spread for ReprCTuple2<A, B> {
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `ReprCTuple2<A, B>`
+   |
+  ::: $WORKSPACE/src/slice.rs
+   |
+   | impl<C: RobustReprC> Spread for CSlice<C> {
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `CSlice<C>`
 ...
-  | impl<C: RobustReprC> Spread for CSliceMut<C> {
-  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `CSliceMut<C>`
-  |
- ::: $WORKSPACE/src/boxed.rs
-  |
-  | impl<C: RobustReprC, A: Allocator> Spread for CBoxedSlice<C, A> {
-  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `CBoxedSlice<C, A>`
-  = note: this error originates in the macro `export_C` (in Nightly builds, run with -Z macro-backtrace for more info)
+   | impl<C: RobustReprC> Spread for CSliceMut<C> {
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `CSliceMut<C>`
+   |
+  ::: $WORKSPACE/src/boxed.rs
+   |
+   | impl<C: RobustReprC, A: Allocator> Spread for CBoxedSlice<C, A> {
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `CBoxedSlice<C, A>`
+   = note: this error originates in the macro `export_C` (in Nightly builds, run with -Z macro-backtrace for more info)
 
 error[E0277]: the trait bound `u32: Spread` is not satisfied
- --> tests/ui_fail/spread_type_requires_wide.rs:7:1
-  |
-7 | / extern_C! {
-8 | |     fn bad(value: ..u32);
-9 | | }
-  | |_^ the trait `Spread` is not implemented for `u32`
-  |
+  --> tests/ui_fail/spread_type_requires_wide.rs:15:1
+   |
+15 | / extern_C! {
+16 | |     fn bad(value: ..u32);
+17 | | }
+   | |_^ the trait `Spread` is not implemented for `u32`
+   |
 help: the following other types implement trait `Spread`
- --> $WORKSPACE/src/slice.rs
-  |
-  | impl<C: RobustReprC> Spread for CSlice<C> {
-  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `CSlice<C>`
+  --> $WORKSPACE/src/tuple.rs
+   |
+   | impl<A: RobustReprC, B: RobustReprC> Spread for ReprCTuple2<A, B> {
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `ReprCTuple2<A, B>`
+   |
+  ::: $WORKSPACE/src/slice.rs
+   |
+   | impl<C: RobustReprC> Spread for CSlice<C> {
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `CSlice<C>`
 ...
-  | impl<C: RobustReprC> Spread for CSliceMut<C> {
-  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `CSliceMut<C>`
-  |
- ::: $WORKSPACE/src/boxed.rs
-  |
-  | impl<C: RobustReprC, A: Allocator> Spread for CBoxedSlice<C, A> {
-  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `CBoxedSlice<C, A>`
-  = note: this error originates in the macro `extern_C` (in Nightly builds, run with -Z macro-backtrace for more info)
+   | impl<C: RobustReprC> Spread for CSliceMut<C> {
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `CSliceMut<C>`
+   |
+  ::: $WORKSPACE/src/boxed.rs
+   |
+   | impl<C: RobustReprC, A: Allocator> Spread for CBoxedSlice<C, A> {
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `CBoxedSlice<C, A>`
+   = note: this error originates in the macro `extern_C` (in Nightly builds, run with -Z macro-backtrace for more info)
 
 error[E0277]: the trait bound `u32: Spread` is not satisfied
- --> tests/ui_fail/spread_type_requires_wide.rs:8:12
-  |
-7 | / extern_C! {
-8 | |     fn bad(value: ..u32);
-  | |            ^^^^^ the trait `Spread` is not implemented for `u32`
-9 | | }
-  | |_- required by a bound introduced by this call
-  |
+  --> tests/ui_fail/spread_type_requires_wide.rs:16:12
+   |
+15 | / extern_C! {
+16 | |     fn bad(value: ..u32);
+   | |            ^^^^^ the trait `Spread` is not implemented for `u32`
+17 | | }
+   | |_- required by a bound introduced by this call
+   |
 help: the following other types implement trait `Spread`
- --> $WORKSPACE/src/slice.rs
-  |
-  | impl<C: RobustReprC> Spread for CSlice<C> {
-  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `CSlice<C>`
+  --> $WORKSPACE/src/tuple.rs
+   |
+   | impl<A: RobustReprC, B: RobustReprC> Spread for ReprCTuple2<A, B> {
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `ReprCTuple2<A, B>`
+   |
+  ::: $WORKSPACE/src/slice.rs
+   |
+   | impl<C: RobustReprC> Spread for CSlice<C> {
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `CSlice<C>`
 ...
-  | impl<C: RobustReprC> Spread for CSliceMut<C> {
-  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `CSliceMut<C>`
-  |
- ::: $WORKSPACE/src/boxed.rs
-  |
-  | impl<C: RobustReprC, A: Allocator> Spread for CBoxedSlice<C, A> {
-  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `CBoxedSlice<C, A>`
+   | impl<C: RobustReprC> Spread for CSliceMut<C> {
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `CSliceMut<C>`
+   |
+  ::: $WORKSPACE/src/boxed.rs
+   |
+   | impl<C: RobustReprC, A: Allocator> Spread for CBoxedSlice<C, A> {
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `CBoxedSlice<C, A>`

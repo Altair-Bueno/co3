@@ -105,7 +105,6 @@ unsafe impl<T: CFnArg> CStatic for T {}
 unsafe impl<T: CFnArg, const N: usize> CStatic for [T; N] {}
 
 unsafe impl<T: CFnArg> CFnReturn for T {}
-unsafe impl CFnReturn for () {}
 
 disjoint_impls! {
     /// A Rust type that has an `extern "C"` ABI

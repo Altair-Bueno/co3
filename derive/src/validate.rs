@@ -1,4 +1,4 @@
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeSet;
 
 use syn::{Error, Result, Type, visit::Visit};
 
@@ -10,7 +10,6 @@ use crate::{
     utils::{has_non_lifetime_generics, is_drop_impl, is_type_erased, push_error},
 };
 
-const DYN_LIFETIME_ERR: &str = "`dyn` dispatch type parameters support at most one lifetime bound";
 const GENERICS_ERR: &str = "Type and const generics on impls are not supported. Use `#[dispatch]`";
 
 fn unsupported_attr(attr: &syn::Attribute) -> Error {
@@ -238,7 +237,6 @@ fn validate_shared(decls: &[ParsedForeignItem]) -> Result<()> {
                     }
                 }
 
-                let mut param_bounds = BTreeMap::new();
                 if has_non_lifetime_generics(&impl_.generics) && !is_dispatch_impl {
                     push_error(
                         &mut errors,
@@ -247,14 +245,6 @@ fn validate_shared(decls: &[ParsedForeignItem]) -> Result<()> {
                 }
 
                 if is_dispatch_impl {
-                    if let Err(err) = validate_no_duplicate_lifetime_bound(
-                        impl_.generics.type_params(),
-                        &mut param_bounds,
-                        &impl_.generics,
-                    ) {
-                        push_error(&mut errors, err);
-                    }
-
                     if let Err(err) =
                         validate_dispatch_impl_targets(&impl_.generics, &impl_.self_ty)
                     {
@@ -270,14 +260,6 @@ fn validate_shared(decls: &[ParsedForeignItem]) -> Result<()> {
                 }
                 for item in &impl_.items {
                     if let syn::ImplItem::Fn(syn::ImplItemFn { attrs, sig, .. }) = item {
-                        if let Err(err) = validate_no_duplicate_lifetime_bound(
-                            impl_.generics.type_params(),
-                            &mut param_bounds.clone(),
-                            &sig.generics,
-                        ) {
-                            push_error(&mut errors, err);
-                        }
-
                         if let Err(err) = ensure_no_handle_arg_attrs(sig) {
                             push_error(&mut errors, err);
                         }
@@ -298,64 +280,6 @@ fn validate_shared(decls: &[ParsedForeignItem]) -> Result<()> {
                     push_error(&mut errors, err);
                 }
             }
-        }
-    }
-
-    if let Some(errors) = errors {
-        return Err(errors);
-    }
-
-    Ok(())
-}
-
-fn validate_no_duplicate_lifetime_bound<'a>(
-    params: impl IntoIterator<Item = &'a syn::TypeParam>,
-    param_bounds: &mut BTreeMap<&'a syn::Ident, syn::Ident>,
-    generics: &syn::Generics,
-) -> Result<()> {
-    fn dispatch_lifetime_bounds<'a>(
-        generics: &'a syn::Generics,
-        param: &syn::Ident,
-    ) -> Vec<&'a syn::Lifetime> {
-        generics
-            .where_clause
-            .iter()
-            .flat_map(|where_clause| &where_clause.predicates)
-            .filter_map(|predicate| {
-                let syn::WherePredicate::Type(predicate) = predicate else {
-                    return None;
-                };
-                let syn::Type::Path(syn::TypePath { qself: None, path }) = &predicate.bounded_ty
-                else {
-                    return None;
-                };
-
-                path.is_ident(param).then_some(&predicate.bounds)
-            })
-            .flat_map(|bounds| bounds.iter())
-            .filter_map(|bound| match bound {
-                syn::TypeParamBound::Lifetime(lifetime) => Some(lifetime),
-                _ => None,
-            })
-            .collect()
-    }
-
-    let mut errors = None;
-    for param in params.into_iter() {
-        if dyn_dispatch_attr(param).is_none() {
-            continue;
-        };
-
-        for lifetime in dispatch_lifetime_bounds(generics, &param.ident) {
-            if let Some(bound) = param_bounds.get(&param.ident) {
-                if *bound == lifetime.ident {
-                    continue;
-                }
-                push_error(&mut errors, Error::new_spanned(lifetime, DYN_LIFETIME_ERR));
-                continue;
-            }
-
-            param_bounds.insert(&param.ident, lifetime.ident.clone());
         }
     }
 
@@ -597,10 +521,6 @@ fn validate_handle_id_pos(ty: &Type, self_ty: &syn::Type) -> Result<()> {
     }
 
     Ok(())
-}
-
-fn dyn_dispatch_attr(param: &syn::TypeParam) -> Option<&syn::Attribute> {
-    param.attrs.iter().find(|attr| is_type_erased(attr))
 }
 
 fn validate_dispatched_self_ty(generics: &syn::Generics, self_ty: &syn::Type) -> Result<()> {

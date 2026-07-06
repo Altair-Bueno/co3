@@ -1,9 +1,25 @@
-use co3::{export_C, extern_C, handles};
+use co3::{ReprC, export_C, extern_C, handles};
 
 trait Kita {
     type MySelf;
     fn kita(&self) -> Vec<Self::MySelf>;
     fn kita2(a: &u32);
+}
+
+#[derive(ReprC)]
+#[repr(transparent)]
+struct CVoid(core::ffi::c_void);
+
+impl Kita for CVoid {
+    type MySelf = usize;
+
+    fn kita(&self) -> Vec<Self::MySelf> {
+        unreachable!()
+    }
+
+    fn kita2(_: &u32) {
+        unreachable!()
+    }
 }
 
 handles! {
@@ -54,7 +70,7 @@ extern_C! {
     }
 
     #[dispatch(<Opaque1>, <Opaque2>)]
-    impl<dyn(u32) T: ToOwned> Kita for T {
+    impl<dyn(u32) T: ToOwned = CVoid> Kita for T {
         type MySelf = <T as ToOwned>::Owned;
 
         fn kita(self_id: <dyn Self>::ID, self: &Self) -> Vec<<Self as Kita>::MySelf>;

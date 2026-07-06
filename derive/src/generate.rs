@@ -1,19 +1,24 @@
+use std::collections::BTreeSet;
+
 use proc_macro2::TokenStream;
 use quote::{format_ident, quote};
 use syn::{FnArg, ImplItem, ImplItemFn, ItemImpl, punctuated::Punctuated, visit_mut::VisitMut};
 
 use crate::{
     DropImpl, DynImpl, ForeignItem, ForeignItemType,
-    dispatch::{erase_handle_types, gen_dispatch_export, gen_dispatch_id_uniqueness_checks},
+    dispatch::{
+        StaticLifetimeNormalizer, erase_handle_types, gen_dispatch_erased_layout_checks,
+        gen_dispatch_export, gen_dispatch_id_uniqueness_checks, inject_unnamed_lifetimes,
+    },
     ffi_fn::{
         self, emit_extern_definition, gen_extern_fn_signature, merge_generics,
-        normalize_fn_signature,
+        normalize_fn_signature, strip_erased_type_params,
     },
     repr::gen_sized_family_impl,
-    utils::{DispatchMonomorphizer, is_type_erased},
-    wrapper::{
-        gen_extern_decl, strip_internal_generic_attrs, wrap_fn_definition, wrap_impl_definition,
+    utils::{
+        DispatchMonomorphizer, ParamUseDetector, is_type_erased, strip_internal_generic_param,
     },
+    wrapper::{gen_extern_decl, wrap_fn_definition, wrap_impl_definition},
 };
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -82,6 +87,9 @@ pub(crate) fn emit_decl_exports(abi: syn::Abi, decls: Vec<ForeignItem>) -> Token
                     }
                 }
 
+                impl #impl_generics co3::Encode for #ident #ty_generics #where_clause {}
+                impl #impl_generics co3::Decode<'_> for #ident #ty_generics #where_clause {}
+
                 unsafe impl #impl_generics co3::borrow::BorrowCast for #ident #ty_generics #where_clause {
                     type AsConst = Self;
                 }
@@ -148,12 +156,23 @@ pub(crate) fn expand_extern_import_decls(
                 normalize_fn_signature(&mut item.sig, Some(&impl_.self_ty));
                 merge_generics(impl_.generics.clone(), &mut item.sig.generics);
 
+                let erased_layout_checks = args.map(|args| {
+                    gen_dispatch_erased_layout_checks(&impl_.generics, &item.sig, args)
+                });
+
                 if let Some(args) = args {
+                    strip_erased_param_predicates(&impl_.generics, &mut item.sig.generics);
                     erase_handle_types(&impl_.generics, self_id, &mut item.sig, args);
+                    strip_erased_type_params(&mut item.sig.generics);
                 }
 
                 let decl = gen_extern_fn_signature(item.sig);
-                Some(gen_extern_decl(abi, attrs, &item.attrs, decl))
+                let extern_decl = gen_extern_decl(abi, attrs, &item.attrs, decl);
+
+                Some(quote! {
+                    #erased_layout_checks
+                    #extern_decl
+                })
             })
             .collect()
     }
@@ -180,10 +199,17 @@ pub(crate) fn expand_extern_import_decls(
         self_id: Option<&syn::Type>,
         dispatch: DynImpl,
     ) -> TokenStream {
-        let DynImpl { impl_, args, .. } = dispatch;
-        let dispatch_helper = gen_dispatch_helper(&impl_.generics, &args);
+        let DynImpl {
+            mut impl_, args, ..
+        } = dispatch;
+
+        let args = args
+            .into_iter()
+            .map(|entry| inject_unnamed_lifetimes(&mut impl_.generics.params, entry))
+            .collect::<Punctuated<_, syn::Token![,]>>();
 
         let wrapped = wrap_impl_definition::<true>(&impl_);
+        let dispatch_helper = gen_dispatch_helper(&impl_.generics, &args);
         let imports = expand_extern_dispatch_impl(&wrapped, &args);
         let extern_decl = gen_impl_extern_fn_decls(abi, attrs, impl_, self_id, Some(&args));
 
@@ -257,7 +283,7 @@ fn gen_dispatch_helper(
     let erased_tys = erased_params.iter().map(|p| &p.ident);
     let erased_generics = erased_params.iter().map(|param| {
         let mut param = (*param).clone();
-        param.attrs.retain(|attr| !is_type_erased(attr));
+        strip_internal_generic_param(&mut param);
         quote!(#param)
     });
 
@@ -269,6 +295,8 @@ fn gen_dispatch_helper(
             .zip(&entry.args)
             .filter_map(|(param, arg)| match param {
                 syn::GenericParam::Type(param) if param.attrs.iter().any(is_type_erased) => {
+                    let mut arg = arg.clone();
+                    StaticLifetimeNormalizer.visit_generic_argument_mut(&mut arg);
                     Some(quote!(#arg))
                 }
                 _ => None,
@@ -426,11 +454,13 @@ pub(crate) fn is_unsafe_no_mangle(attr: &syn::Attribute) -> bool {
 }
 
 fn gen_drop_impl_check(item: &syn::ForeignItemType, impl_: &ItemImpl) -> TokenStream {
-    let mut impl_generics = impl_.generics.clone();
-    strip_internal_generic_attrs(&mut impl_generics);
-
     let ident = &item.ident;
     let self_ty = &impl_.self_ty;
+
+    let mut impl_generics = impl_.generics.clone();
+    impl_generics.type_params_mut().for_each(|param| {
+        strip_internal_generic_param(param);
+    });
 
     let item_attrs = impl_
         .attrs
@@ -792,4 +822,28 @@ fn derive_opaque_item(
             type CType = Self;
         }
     }
+}
+
+fn strip_erased_param_predicates(impl_generics: &syn::Generics, sig_generics: &mut syn::Generics) {
+    let erased_params = impl_generics
+        .type_params()
+        .filter(|param| param.attrs.iter().any(is_type_erased))
+        .map(|param| &param.ident)
+        .collect::<BTreeSet<_>>();
+
+    let Some(where_clause) = &mut sig_generics.where_clause else {
+        return;
+    };
+
+    let old_predicates = core::mem::take(&mut where_clause.predicates);
+    let detector = ParamUseDetector::new(erased_params.iter().copied());
+    let mut new_predicates = Punctuated::new();
+
+    for predicate in old_predicates {
+        if !detector.predicate_mentions_param(&predicate) {
+            new_predicates.push(predicate);
+        }
+    }
+
+    where_clause.predicates = new_predicates;
 }

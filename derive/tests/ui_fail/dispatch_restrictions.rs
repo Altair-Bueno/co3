@@ -1,7 +1,5 @@
 use co3::{export_C, extern_C, handles, handle::Handle};
 
-pub trait Unimplemented {}
-
 trait Kita {
     fn kita(self) -> u32;
 }
@@ -34,18 +32,6 @@ impl RefKita for Exported1 {
     }
 }
 
-struct Exported2<T>(T);
-impl Kita for Exported2<u32> {
-    fn kita(self) -> u32 {
-        unimplemented!()
-    }
-}
-impl RefKita for Exported2<u32> {
-    fn kita(&self) -> u32 {
-        unimplemented!()
-    }
-}
-
 unsafe impl Handle for Exported0 {
     const ID: char = 0 as char;
 }
@@ -57,8 +43,6 @@ unsafe impl Handle for Externed0 {
 handles! {
     Exported1,
     Externed1,
-    Exported2<u32>,
-    Externed2<u32>
 }
 
 export_C! {
@@ -250,38 +234,6 @@ extern_C! {
     impl<dyn(u32) T> RefKita for T {
         #[link_name = "kita"]
         fn kita(self_id: <dyn T>::ID, &self) -> u32;
-    }
-}
-
-export_C! {
-    #[id(u8)]
-    type Exported2<T>;
-
-    #[dispatch(<u32>)]
-    impl<T> Drop for dyn Exported2<T> {
-        fn drop(&mut self);
-    }
-
-    #[dispatch(<Exported2<u32>>)]
-    impl<dyn(u8) T: Unimplemented> RefKita for T where i32: Unimplemented {
-        fn kita(&self) -> u32;
-    }
-}
-
-extern_C! {
-    #[id(u64)]
-    type Externed2<T>;
-
-    #[dispatch]
-    impl<T> Drop for dyn Externed2<T> {
-        #[link_name = "drop"]
-        fn drop(&mut self, self_id: <dyn Externed2<T>>::ID);
-    }
-
-    #[dispatch(<Externed2<u32>>)]
-    impl<dyn(u64) T: Unimplemented> RefKita for T where i32: Unimplemented {
-        #[link_name = "kita"]
-        fn kita(&self, self_id: <dyn Self>::ID) -> u32;
     }
 }
 

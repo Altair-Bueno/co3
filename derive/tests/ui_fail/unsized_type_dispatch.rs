@@ -1,4 +1,4 @@
-use core::borrow::Borrow;
+use core::{borrow::Borrow, ffi::c_void};
 
 use co3::{ReprC, extern_C, handles};
 
@@ -16,7 +16,7 @@ handles! {
 }
 
 impl From<Box<Unsized<str>>> for Unsized<String> {
-    fn from(value: Box<Unsized<str>>) -> Self {
+    fn from(_value: Box<Unsized<str>>) -> Self {
         unimplemented!()
     }
 }
@@ -60,7 +60,7 @@ mod provider {
 
     export_C! {
         #[dispatch(<Unsized<str>>)]
-        impl<dyn(u8) T> Wrapper<T> {
+        impl<dyn(u8) T = [c_void]> Wrapper<T> {
             fn take_export(self) -> usize;
         }
     }
@@ -70,7 +70,7 @@ extern_C! {
     #![link(crate = "kita")]
 
     #[dispatch(<Unsized<str>>)]
-    impl<dyn(u8) T> Wrapper<T> {
+    impl<dyn(u8) T = [c_void]> Wrapper<T> {
         fn take(self, handle_id: <dyn T>::ID) -> usize;
     }
 }

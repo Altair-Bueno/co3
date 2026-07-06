@@ -2,7 +2,7 @@ use co3::{ReprC, export, extern_C, handles};
 
 #[derive(Clone, Debug, PartialEq, Eq, ReprC)]
 #[repr(transparent)]
-struct Value<T: ?Sized>(Box<T>);
+struct Value<T: ToOwned + ?Sized>(T::Owned);
 
 #[derive(ReprC)]
 #[repr(transparent)]
@@ -12,24 +12,22 @@ handles! {
     Opaque,
 }
 
+#[derive(Debug, Clone, Copy, ReprC)]
+#[reprC(id(u8))]
+#[repr(C)]
+struct Opaque(u8);
+
+impl Default for Opaque {
+    fn default() -> Self {
+        Self(3)
+    }
+}
+
 extern_C! {
     #![link(crate = "kita")]
 
-    #[id(u8)]
-    pub type Opaque;
-
-    impl Default for OwnedOpaque {
-        fn default() -> Self;
-    }
-
-    impl ToOwned for Opaque {
-        type Owned = OwnedOpaque;
-
-        fn to_owned(&self) -> <Self as ToOwned>::Owned;
-    }
-
     #[dispatch(<Opaque>)]
-    impl<dyn(u8) T: ToOwned + ?Sized> Value<T> {
+    impl<dyn(u8) T: ToOwned + ?Sized = u8> Value<T> {
         fn new(t_id: <dyn T>::ID) -> Self;
 
         #[link_name = "ping"]
@@ -52,7 +50,7 @@ mod provider {
 
     // TODO: Should it be reported that `crate` is not supported on types?
     #[export("C", crate = "kita")]
-    #[derive(Debug, Clone)]
+    #[derive(Debug, Clone, Copy)]
     #[id(u8)]
     pub struct Opaque(u8);
 
@@ -82,34 +80,34 @@ mod provider {
 
     #[export("C", crate = "kita")]
     #[dispatch(<Opaque>)]
-    impl<#[erased(u8)] T: Add<Output = u8> + ToOwned<Owned = T>> Value<T>
+    impl<#[erased(u8)] T: Add<Output = u8> + ToOwned<Owned = T> = u8> Value<T>
     where
         Box<T>: Default,
     {
         fn new() -> Self {
-            Self(Box::default())
+            Self((*Box::<T>::default()).to_owned())
         }
 
         #[unsafe(export_name = "ping")]
         fn ping(#[by_val] self, #[soft] inc: &TransparentCTuple1<T>) -> u8 {
-            *self.0 + inc.0.to_owned()
+            self.0 + inc.0.to_owned()
         }
     }
 
     // TODO: Support separate #[export(crate = "kita")]?
     #[export("C", crate = "kita")]
     fn combine(#[by_val] lhs: Value<u32>, #[soft] rhs: &(u8,)) -> u8 {
-        (*lhs.0 as u8) + rhs.0
+        lhs.0 as u8 + rhs.0
     }
 }
 
 fn main() {
-    let lhs = Value(Box::new(4_u32));
+    let lhs = Value(4_u32);
     let rhs = (3u8,);
     assert_eq!(combine(lhs.clone(), &rhs), 7);
 
     let value = Value::new();
-    let inc = OwnedOpaque::default();
+    let inc = Opaque::default();
     let inc: &Opaque = &inc;
     let inc = unsafe { &*(core::ptr::from_ref(inc).cast()) };
     assert_eq!(value.ping2(inc), 6);

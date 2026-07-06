@@ -69,7 +69,7 @@ impl<T: PartialOrd> PartialOrd for ReprCOption<T> {
 impl<T> ReprCOption<T> {
     pub(crate) const NICHE_VALUE: Self = Self {
         tag: 2,
-        payload: MaybeUninit::uninit(),
+        payload: MaybeUninit::zeroed(),
     };
 
     /// Construct no value
@@ -77,7 +77,7 @@ impl<T> ReprCOption<T> {
     pub const fn None() -> Self {
         Self {
             tag: 0,
-            payload: MaybeUninit::uninit(),
+            payload: MaybeUninit::zeroed(),
         }
     }
 
@@ -91,7 +91,7 @@ impl<T> ReprCOption<T> {
     }
 
     fn forward_payload<U>(self) -> ReprCOption<U> {
-        let mut output = MaybeUninit::<ReprCOption<U>>::uninit();
+        let mut output = MaybeUninit::<ReprCOption<U>>::zeroed();
 
         unsafe {
             let output_ptr = output.as_mut_ptr();

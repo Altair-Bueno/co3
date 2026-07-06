@@ -1,8 +1,9 @@
+use std::collections::{BTreeMap, BTreeSet};
+
 use proc_macro2::{Literal, TokenStream};
 use quote::{ToTokens, format_ident, quote};
 use syn::{
-    Attribute, GenericArgument, Lifetime, Type, TypePath, parse_quote, visit::Visit,
-    visit_mut::VisitMut,
+    Attribute, GenericArgument, Type, TypePath, parse_quote, visit::Visit, visit_mut::VisitMut,
 };
 
 const MAX_TUPLE_ARITY: usize = 12;
@@ -38,6 +39,68 @@ pub(crate) fn soft_for_arg(attrs: &[syn::Attribute]) -> bool {
 
 pub(crate) fn is_type_erased(attr: &Attribute) -> bool {
     attr.path().is_ident("erased")
+}
+
+pub(crate) fn strip_internal_generic_param(param: &mut syn::TypeParam) {
+    let is_erased = param.attrs.iter().any(is_type_erased);
+    param.attrs.retain(|attr| !is_type_erased(attr));
+
+    if is_erased {
+        param.eq_token = None;
+        param.default = None;
+    }
+}
+
+pub(crate) fn erased_id_repr(param: &syn::TypeParam) -> Option<syn::Type> {
+    let attr = param.attrs.iter().find(|attr| is_type_erased(attr))?;
+    attr.parse_args().ok()
+}
+
+pub(crate) fn erased_abi_repr(param: &syn::TypeParam) -> syn::Type {
+    param
+        .default
+        .clone()
+        .unwrap_or_else(|| syn::parse_quote!(core::ffi::c_void))
+}
+
+pub(crate) struct ParamUseDetector<'a> {
+    params: BTreeSet<&'a syn::Ident>,
+    found: bool,
+}
+
+impl Visit<'_> for ParamUseDetector<'_> {
+    fn visit_path(&mut self, node: &syn::Path) {
+        if node.leading_colon.is_none()
+            && let Some(first) = node.segments.first()
+            && self.params.contains(&first.ident)
+        {
+            self.found = true;
+            return;
+        }
+
+        syn::visit::visit_path(self, node);
+    }
+}
+
+impl<'a> ParamUseDetector<'a> {
+    pub fn new(params: impl IntoIterator<Item = &'a syn::Ident>) -> Self {
+        Self {
+            params: params.into_iter().collect(),
+            found: false,
+        }
+    }
+
+    pub fn type_mentions_param(&self, ty: &syn::Type) -> bool {
+        let mut detector = Self::new(self.params.clone());
+        detector.visit_type(ty);
+        detector.found
+    }
+
+    pub fn predicate_mentions_param(&self, predicate: &syn::WherePredicate) -> bool {
+        let mut detector = Self::new(self.params.clone());
+        detector.visit_where_predicate(predicate);
+        detector.found
+    }
 }
 
 pub(crate) fn gen_store_name(arg_name: &syn::Ident) -> syn::Ident {
@@ -554,26 +617,12 @@ pub(crate) fn resolve_impl_trait(impl_trait: &syn::TypeImplTrait) -> Option<Impl
 }
 
 pub(crate) struct DispatchMonomorphizer<'a> {
-    impl_generics: &'a syn::Generics,
-    entry: &'a syn::AngleBracketedGenericArguments,
-    subst: std::collections::BTreeMap<&'a syn::Ident, GenericArgument>,
+    subst: BTreeMap<&'a syn::Ident, &'a GenericArgument>,
 }
 
 impl<'a> DispatchMonomorphizer<'a> {
     pub(crate) fn new(
         impl_generics: &'a syn::Generics,
-        entry: &'a syn::AngleBracketedGenericArguments,
-    ) -> Self {
-        Self::in_scope(impl_generics, None, entry)
-    }
-
-    fn scoped(&self, scope_generics: &syn::Generics) -> Self {
-        Self::in_scope(self.impl_generics, Some(scope_generics), self.entry)
-    }
-
-    fn in_scope(
-        impl_generics: &'a syn::Generics,
-        scope_generics: Option<&syn::Generics>,
         entry: &'a syn::AngleBracketedGenericArguments,
     ) -> Self {
         let subst = impl_generics
@@ -582,51 +631,19 @@ impl<'a> DispatchMonomorphizer<'a> {
             .filter(|param| !matches!(param, syn::GenericParam::Lifetime(_)))
             .zip(&entry.args)
             .filter_map(|(param, arg)| match param {
-                syn::GenericParam::Type(param) => {
-                    let lifetime = scope_generics
-                        .and_then(|scope_generics| {
-                            dispatch_lifetime_bound(scope_generics, &param.ident)
-                        })
-                        .or_else(|| dispatch_lifetime_bound(impl_generics, &param.ident));
-
-                    Some((&param.ident, bind_dispatch_lifetime(arg.clone(), lifetime)))
-                }
-                syn::GenericParam::Const(param) => Some((&param.ident, arg.clone())),
+                syn::GenericParam::Type(param) => Some((&param.ident, arg)),
+                syn::GenericParam::Const(param) => Some((&param.ident, arg)),
                 syn::GenericParam::Lifetime(_) => None,
             })
             .collect();
 
-        Self {
-            impl_generics,
-            entry,
-            subst,
-        }
+        Self { subst }
     }
 }
 
 impl VisitMut for DispatchMonomorphizer<'_> {
-    fn visit_signature_mut(&mut self, node: &mut syn::Signature) {
-        let mut scoped = self.scoped(&node.generics);
-        syn::visit_mut::visit_signature_mut(&mut scoped, node);
-    }
-
-    fn visit_path_mut(&mut self, node: &mut syn::Path) {
-        syn::visit_mut::visit_path_mut(self, node);
-
-        let Some(first) = node.segments.first() else {
-            return;
-        };
-        let Some(GenericArgument::Type(Type::Path(TypePath {
-            qself: None,
-            path: replacement,
-        }))) = self.subst.get(&first.ident)
-        else {
-            return;
-        };
-
-        if node.segments.len() == 1 {
-            *node = replacement.clone();
-        }
+    fn visit_item_impl_mut(&mut self, node: &mut syn::ItemImpl) {
+        syn::visit_mut::visit_item_impl_mut(self, node);
     }
 
     fn visit_type_mut(&mut self, node: &mut Type) {
@@ -634,10 +651,10 @@ impl VisitMut for DispatchMonomorphizer<'_> {
 
         if let Type::Path(TypePath { qself: None, path }) = node
             && let Some(first) = path.segments.first()
-            && let Some(replacement) = self.subst.get(&first.ident)
+            && let Some(subst) = self.subst.get(&first.ident).cloned()
         {
             if path.segments.len() == 1 {
-                *node = parse_quote!(#replacement);
+                *node = parse_quote!(#subst);
                 return;
             }
 
@@ -650,76 +667,9 @@ impl VisitMut for DispatchMonomorphizer<'_> {
                 rest.segments.push(segment.clone());
             }
 
-            *node = parse_quote!(<#replacement>::#rest);
+            *node = parse_quote!(<#subst>::#rest);
         }
     }
-
-    fn visit_expr_mut(&mut self, node: &mut syn::Expr) {
-        syn::visit_mut::visit_expr_mut(self, node);
-
-        if let syn::Expr::Path(syn::ExprPath { path, .. }) = node
-            && let Some(ident) = path.get_ident()
-            && let Some(GenericArgument::Const(replacement)) = self.subst.get(ident)
-        {
-            *node = replacement.clone();
-        }
-    }
-}
-
-fn dispatch_lifetime_bound<'a>(
-    generics: &'a syn::Generics,
-    param: &syn::Ident,
-) -> Option<&'a Lifetime> {
-    let where_clause = generics.where_clause.as_ref()?;
-
-    where_clause.predicates.iter().find_map(|predicate| {
-        let syn::WherePredicate::Type(predicate) = predicate else {
-            return None;
-        };
-        let Type::Path(TypePath { qself: None, path }) = &predicate.bounded_ty else {
-            return None;
-        };
-        if !path.is_ident(param) {
-            return None;
-        }
-
-        predicate.bounds.iter().find_map(|bound| match bound {
-            syn::TypeParamBound::Lifetime(lifetime) => Some(lifetime),
-            _ => None,
-        })
-    })
-}
-
-fn bind_dispatch_lifetime(
-    mut arg: GenericArgument,
-    lifetime: Option<&Lifetime>,
-) -> GenericArgument {
-    let Some(lifetime) = lifetime else {
-        return arg;
-    };
-
-    struct LifetimeBinder<'a> {
-        lifetime: &'a Lifetime,
-    }
-
-    impl VisitMut for LifetimeBinder<'_> {
-        fn visit_type_reference_mut(&mut self, node: &mut syn::TypeReference) {
-            if node.lifetime.as_ref().is_none_or(|l| l.ident == "_") {
-                node.lifetime = Some(self.lifetime.clone());
-            }
-
-            syn::visit_mut::visit_type_reference_mut(self, node);
-        }
-
-        fn visit_lifetime_mut(&mut self, node: &mut Lifetime) {
-            if node.ident == "_" {
-                *node = self.lifetime.clone();
-            }
-        }
-    }
-
-    LifetimeBinder { lifetime }.visit_generic_argument_mut(&mut arg);
-    arg
 }
 
 pub(crate) fn is_drop_impl(impl_: &syn::ItemImpl) -> bool {
@@ -761,7 +711,7 @@ pub(crate) fn type_symbol_name(ty: &Type, generics: &syn::Generics) -> String {
 #[derive(Default)]
 struct SymbolNameBuilder {
     out: String,
-    generic_params: std::collections::BTreeMap<String, String>,
+    generic_params: BTreeMap<String, String>,
 }
 
 impl SymbolNameBuilder {

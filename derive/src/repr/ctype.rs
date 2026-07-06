@@ -53,15 +53,8 @@ fn derive_ctype_struct<const ADD_COPY: bool>(
     let ctype_def = gen_ctype_struct_item::<ADD_COPY>(repr, vis, name, generics, fields);
 
     let ctype_impls = gen_struct_ctype_impls::<ADD_COPY>(&ctype_def);
-    let ctype_last_field_assert = assert_ctype_last_field_copy_or_unsized(
-        &ctype_def.ident,
-        &ctype_def.generics,
-        &ctype_def.fields,
-    );
 
     quote! {
-        #ctype_last_field_assert
-
         #ctype_def
         #ctype_impls
     }
@@ -643,35 +636,6 @@ fn gen_copy_impls<const ADD_COPY: bool>(
             #(#copy_bounds,)*
             #predicates
         {}
-    }
-}
-
-fn assert_ctype_last_field_copy_or_unsized(
-    ident: &syn::Ident,
-    generics: &syn::Generics,
-    fields: &syn::Fields,
-) -> TokenStream {
-    let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
-
-    let Some(last) = fields.iter().last().map(|f| &f.ty) else {
-        return quote!();
-    };
-
-    quote! {
-        const _: () = {
-            #[expect(dead_code)]
-            trait AssertCTypeLastField {
-                fn assert_ctype_last_field();
-            }
-
-            impl #impl_generics AssertCTypeLastField for #ident #ty_generics #where_clause {
-                fn assert_ctype_last_field() {
-                    const {
-                        assert!(co3::impls!(#last: Copy | !Sized));
-                    }
-                }
-            }
-        };
     }
 }
 

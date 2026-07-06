@@ -18,18 +18,10 @@ note: required because it appears within the type `Unsized<str>`
 note: required by an implicit `Sized` bound in `__Co3DispatchParams`
   --> tests/ui_fail/unsized_type_dispatch.rs:73:18
    |
-73 |     impl<dyn(u8) T> Wrapper<T> {
+73 |     impl<dyn(u8) T = [c_void]> Wrapper<T> {
    |                  ^ required by the implicit `Sized` requirement on this type parameter in `__Co3DispatchParams`
    = note: this error originates in the macro `extern_C` (in Nightly builds, run with -Z macro-backtrace for more info)
 help: consider relaxing the implicit `Sized` restriction
    |
-73 |     impl<dyn(u8) T: ?Sized> Wrapper<T> {
+73 |     impl<dyn(u8) T: ?Sized = [c_void]> Wrapper<T> {
    |                   ++++++++
-
-warning: unused variable: `value`
-  --> tests/ui_fail/unsized_type_dispatch.rs:19:13
-   |
-19 |     fn from(value: Box<Unsized<str>>) -> Self {
-   |             ^^^^^ help: if this is intentional, prefix it with an underscore: `_value`
-   |
-   = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default

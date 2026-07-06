@@ -9,7 +9,7 @@ use syn::{
 };
 
 use crate::{
-    dispatch::handle_id,
+    dispatch::{StaticLifetimeNormalizer, handle_id},
     generate::OwnershipMode,
     utils::{TypeImplTraitResolver, gen_normalization_stmts, soft_for_arg, unwrap_result_type},
 };
@@ -45,8 +45,6 @@ pub(crate) fn emit_extern_definition(
 }
 
 pub(crate) fn gen_definition_body(sig: syn::Signature, callee: TokenStream) -> TokenStream {
-    let fn_ty = signature_fn_pointer_type(&sig);
-
     let inputs = &sig.inputs;
     let output = &sig.output;
 
@@ -63,14 +61,10 @@ pub(crate) fn gen_definition_body(sig: syn::Signature, callee: TokenStream) -> T
         .collect::<Vec<_>>();
 
     quote! {{
-        #decode_input_stmts
-
         let mut __co3_call_error = false;
 
-        // NOTE: Avoids signature drift
-        let __co3_fn: #fn_ty = #callee;
-
-        let __co3_output = __co3_fn(
+        #decode_input_stmts
+        let __co3_output = #callee(
             #(#arg_names),*
         );
 
@@ -217,21 +211,30 @@ pub(crate) fn gen_input_decode_stmts<'a>(
     }
 }
 
-fn signature_fn_pointer_type(sig: &syn::Signature) -> TokenStream {
+pub(crate) fn gen_fn_signature_check(
+    mut sig: syn::Signature,
+    mut callee: syn::Expr,
+) -> TokenStream {
+    StaticLifetimeNormalizer.visit_signature_mut(&mut sig);
+    StaticLifetimeNormalizer.visit_expr_mut(&mut callee);
+
     let syn::Signature {
         unsafety,
         abi,
         output,
         inputs,
         ..
-    } = sig;
+    } = &sig;
 
     let arg_tys = inputs.iter().map(|input| match input {
         syn::FnArg::Receiver(syn::Receiver { ty, .. }) => ty,
         syn::FnArg::Typed(syn::PatType { ty, .. }) => ty,
     });
 
-    quote! { #unsafety #abi fn(#(#arg_tys),*) #output }
+    let fn_ty = quote! { #unsafety #abi fn(#(#arg_tys),*) #output };
+
+    // NOTE: Avoids signature drift
+    quote! { let __co3_fn: #fn_ty = #callee; }
 }
 
 fn gen_output_encode_stmt(ret_ty: &syn::ReturnType) -> TokenStream {
@@ -293,7 +296,15 @@ pub(crate) fn gen_store_sync_stmts(len: usize) -> TokenStream {
 
 fn gen_fn_definition_body(item: &syn::ItemFn) -> TokenStream {
     let fn_name = &item.sig.ident;
-    gen_definition_body(item.sig.clone(), quote! { self::#fn_name })
+    let callee = quote! { self::#fn_name };
+    let check_callee = parse_quote! { self::#fn_name };
+    let signature_check = gen_fn_signature_check(item.sig.clone(), check_callee);
+    let body = gen_definition_body(item.sig.clone(), callee);
+
+    quote! {{
+        #signature_check
+        #body
+    }}
 }
 
 pub fn gen_impl_definition(abi: &syn::Abi, mut impl_: syn::ItemImpl) -> TokenStream {
@@ -321,7 +332,17 @@ pub fn gen_impl_definition(abi: &syn::Abi, mut impl_: syn::ItemImpl) -> TokenStr
         };
 
         merge_generics(impl_.generics.clone(), &mut item.sig.generics);
-        let ffi_fn_body = gen_definition_body(item.sig.clone(), callee);
+        let check_callee = if let Some(trait_) = trait_ {
+            parse_quote!(<#self_ty as #trait_>::#fn_name)
+        } else {
+            parse_quote!(<#self_ty>::#fn_name)
+        };
+        let signature_check = gen_fn_signature_check(item.sig.clone(), check_callee);
+        let body = gen_definition_body(item.sig.clone(), callee);
+        let ffi_fn_body = quote! {{
+            #signature_check
+            #body
+        }};
         let fn_signature = gen_extern_fn_signature(item.sig.clone());
 
         Some(emit_extern_definition(
@@ -346,6 +367,19 @@ pub(crate) fn merge_generics(impl_generics: syn::Generics, fn_generics: &mut syn
     }
 }
 
+pub(crate) fn strip_erased_type_params(generics: &mut syn::Generics) {
+    generics.params = core::mem::take(&mut generics.params)
+        .into_iter()
+        .filter(|param| {
+            !matches!(
+                param,
+                syn::GenericParam::Type(param)
+                    if param.attrs.iter().any(crate::utils::is_type_erased)
+            )
+        })
+        .collect();
+}
+
 pub fn gen_fn_definition(abi: &syn::Abi, mut item: syn::ItemFn) -> TokenStream {
     normalize_fn_signature(&mut item.sig, None);
 
@@ -357,16 +391,11 @@ pub fn gen_fn_definition(abi: &syn::Abi, mut item: syn::ItemFn) -> TokenStream {
 
 pub(crate) fn gen_extern_fn_signature(mut sig: syn::Signature) -> TokenStream {
     explicitize_signature_lifetimes(&mut sig);
-    // FIXME: This feels like a BIG hack
+    // FIXME: This feels like a HACK
     synthesize_lifetime_bounds(&mut sig);
 
     lower_signature_inputs(&mut sig);
     lower_signature_output(&mut sig);
-
-    sig.generics.params = core::mem::take(&mut sig.generics.params)
-        .into_iter()
-        .filter(|p| matches!(p, syn::GenericParam::Lifetime(_)))
-        .collect();
 
     sig.constness = None;
     sig.asyncness = None;
@@ -435,7 +464,7 @@ fn lower_signature_output(sig: &mut syn::Signature) {
     };
 
     let ret_ty = unwrap_result_type(&return_type).map_or(&*return_type, |(ok, _)| ok);
-    let output_ty = quote! { <#ret_ty as co3::out_ptr::OutPtr>::OutPtr };
+    let output_ty = output_abi_ty(ret_ty);
 
     sig.generics
         .make_where_clause()
@@ -597,6 +626,8 @@ fn synthesize_lifetime_bounds(sig: &mut syn::Signature) {
     }
 
     impl<'a> syn::visit::Visit<'a> for LifetimeUseCollector<'a> {
+        fn visit_bare_fn_arg(&mut self, _: &'a syn::BareFnArg) {}
+
         fn visit_type_reference(&mut self, node: &'a syn::TypeReference) {
             if let Some(lifetime) = &node.lifetime {
                 let parents = &self.parent_lifetimes;
@@ -610,6 +641,14 @@ fn synthesize_lifetime_bounds(sig: &mut syn::Signature) {
             }
         }
 
+        fn visit_type_path(&mut self, node: &'a syn::TypePath) {
+            if node.qself.is_some() {
+                return;
+            }
+
+            syn::visit::visit_type_path(self, node);
+        }
+
         fn visit_lifetime(&mut self, node: &'a syn::Lifetime) {
             let parents = &self.parent_lifetimes;
             self.bounds.entry(node).or_default().extend(parents);
@@ -617,7 +656,15 @@ fn synthesize_lifetime_bounds(sig: &mut syn::Signature) {
     }
 
     let mut lifetime_collector = LifetimeUseCollector::default();
-    lifetime_collector.visit_signature(sig);
+    for input in &sig.inputs {
+        match input {
+            syn::FnArg::Receiver(receiver) => lifetime_collector.visit_type(&receiver.ty),
+            syn::FnArg::Typed(arg) => lifetime_collector.visit_type(&arg.ty),
+        }
+    }
+    if let syn::ReturnType::Type(_, ty) = &sig.output {
+        lifetime_collector.visit_type(ty);
+    }
 
     let bounds = lifetime_collector
         .bounds
@@ -646,6 +693,10 @@ pub(crate) fn item_fn_input_arg_type(attrs: &[syn::Attribute], arg_ty: &Type) ->
             <#c_type as co3::borrow::BorrowCast>::AsConst
         },
     }
+}
+
+pub(super) fn output_abi_ty(ty: &syn::Type) -> syn::Type {
+    parse_quote!(<#ty as co3::out_ptr::OutPtr>::OutPtr)
 }
 
 pub(crate) fn normalize_fn_signature(sig: &mut syn::Signature, self_ty: Option<&Type>) {
@@ -723,6 +774,11 @@ mod tests {
         sig
     }
 
+    fn with_synthesized_lifetime_bounds(mut sig: syn::Signature) -> syn::Signature {
+        synthesize_lifetime_bounds(&mut sig);
+        sig
+    }
+
     #[test]
     fn explicitizes_single_elided_reference_input_and_output() {
         let sig = explicitized(parse_quote!(fn f(x: &u8) -> &u8));
@@ -782,6 +838,34 @@ mod tests {
         let sig = explicitized(parse_quote!(fn f(x: &u8) -> fn(&u8) -> &u8));
         let expected: syn::Signature =
             parse_quote!(fn f<'__co3_0>(x: &'__co3_0 u8) -> fn(&u8) -> &u8);
+
+        assert_eq!(sig, expected);
+    }
+
+    #[test]
+    fn does_not_synthesize_bounds_from_bare_function_pointer_args() {
+        let sig = with_synthesized_lifetime_bounds(parse_quote!(
+            fn f<'a, 'b>(x: fn(&'a &'b u8))
+        ));
+        let expected: syn::Signature = parse_quote!(
+            fn f<'a, 'b>(x: fn(&'a &'b u8))
+        );
+
+        assert_eq!(sig, expected);
+    }
+
+    #[test]
+    fn does_not_synthesize_bounds_from_projections() {
+        let sig = with_synthesized_lifetime_bounds(parse_quote!(
+            fn f<'a, 'b>(
+                x: <&'a <Foo as ExternC>::CType<'b> as BorrowCast>::AsConst
+            )
+        ));
+        let expected: syn::Signature = parse_quote!(
+            fn f<'a, 'b>(
+                x: <&'a <Foo as ExternC>::CType<'b> as BorrowCast>::AsConst
+            )
+        );
 
         assert_eq!(sig, expected);
     }

@@ -7,7 +7,10 @@ use crate::{
     ffi_fn::{self, is_spread_arg, item_fn_input_ident, ownership_mode_for_arg, spread_arg_names},
     generate::OwnershipMode,
     is_link_name_attr,
-    utils::{gen_normalization_stmts, gen_store_name, soft_for_arg, unwrap_result_type},
+    utils::{
+        gen_normalization_stmts, gen_store_name, soft_for_arg, strip_internal_generic_param,
+        unwrap_result_type,
+    },
 };
 
 fn strip_internal_arg_attrs(signature: &mut syn::Signature) {
@@ -114,11 +117,14 @@ pub fn wrap_impl_definition<const DISPATCHED: bool>(impl_: &ItemImpl) -> ItemImp
 
         let wrapper_body = gen_wrapper_body::<DISPATCHED>(Some(self_ty), Some(generics), &sig);
 
-        sig.inputs = sig
-            .inputs
-            .into_iter()
-            .filter_map(|input| (!is_handle_id_arg(&input)).then_some(input))
-            .collect();
+        sig.inputs = if DISPATCHED {
+            sig.inputs
+                .into_iter()
+                .filter(|i| !is_handle_id_arg(i))
+                .collect()
+        } else {
+            core::mem::take(&mut sig.inputs)
+        };
 
         strip_internal_arg_attrs(&mut sig);
 
@@ -132,8 +138,18 @@ pub fn wrap_impl_definition<const DISPATCHED: bool>(impl_: &ItemImpl) -> ItemImp
         }
     });
 
-    let mut generics = generics.clone();
-    strip_internal_generic_attrs(&mut generics);
+    let generics = if DISPATCHED {
+        let mut generics = generics.clone();
+
+        generics.type_params_mut().for_each(|param| {
+            strip_internal_generic_param(param);
+        });
+
+        generics
+    } else {
+        generics.clone()
+    };
+
     let (impl_generics, _, where_clause) = generics.split_for_impl();
     let impl_head = if let Some(trait_) = &trait_ {
         quote!(#trait_ for)
@@ -358,7 +374,7 @@ fn gen_output_init_stmt(output: &syn::ReturnType) -> TokenStream {
     let output_ty = quote!(core::mem::MaybeUninit<<#output as co3::ExternC>::CType>);
 
     quote! {
-        let mut __co3_out: #output_ty = core::mem::MaybeUninit::uninit();
+        let mut __co3_out: #output_ty = core::mem::MaybeUninit::zeroed();
         let __co3_out_ptr = core::mem::MaybeUninit::as_mut_ptr(&mut __co3_out);
     }
 }
@@ -409,16 +425,6 @@ fn gen_ffi_fn_call_stmt(sig: &syn::Signature) -> TokenStream {
             co3::FfiReturn::Ok => {},
             #execution_fail_arm
             _ => panic!(concat!(stringify!(#fn_name), " returned {}"), __co3_return)
-        }
-    }
-}
-
-pub(crate) fn strip_internal_generic_attrs(generics: &mut syn::Generics) {
-    for param in &mut generics.params {
-        if let syn::GenericParam::Type(param) = param {
-            param
-                .attrs
-                .retain(|attr| !crate::utils::is_type_erased(attr));
         }
     }
 }

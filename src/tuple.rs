@@ -69,7 +69,7 @@ use crate::{
     borrow::{Borrow, BorrowCast, BorrowCastMut, ToOwned},
     ir::{ReprFamily, ReprRust},
     niche::{Niche, NicheFamily, WithNiche, WithoutNiche},
-    size::SizeFamily,
+    size::{SizeFamily, Spread},
     stored::{DecodeOwned, EncodeOwned},
     transmute::CheckedTransmute,
 };
@@ -297,21 +297,6 @@ macro_rules! impl_tuple {
             }
         }
     };
-
-    // NOTE: This is a trick to index tuples
-    ( @decl_priv_out_ptr $( $ty:ident ),+ $(,)? ) => {
-        mod private_out_ptr {
-            pub struct OutPtr<'itm, $($ty),+> {
-                $(pub $ty: &'itm mut core::mem::MaybeUninit::<$ty>),+
-            }
-
-            impl<'itm, $($ty),+> From<&'itm mut ($(core::mem::MaybeUninit::<$ty>,)+)> for OutPtr<'itm, $($ty),+> {
-                fn from(($($ty,)+): &'itm mut ($(core::mem::MaybeUninit::<$ty>,)+)) -> Self {
-                    Self {$($ty,)+}
-                }
-            }
-        }
-    };
 }
 
 impl_tuple! {(A) -> ReprCTuple1}
@@ -326,6 +311,21 @@ impl_tuple! {(A, B, C, D, E, F, G, H, I) -> ReprCTuple9}
 impl_tuple! {(A, B, C, D, E, F, G, H, I, J) -> ReprCTuple10}
 impl_tuple! {(A, B, C, D, E, F, G, H, I, J, K) -> ReprCTuple11}
 impl_tuple! {(A, B, C, D, E, F, G, H, I, J, K, L) -> ReprCTuple12}
+
+impl<A: RobustReprC, B: RobustReprC> Spread for ReprCTuple2<A, B> {
+    type Part1 = A;
+    type Part2 = B;
+
+    #[inline(always)]
+    fn into_parts(self) -> (Self::Part1, Self::Part2) {
+        (self.0, self.1)
+    }
+
+    #[inline(always)]
+    fn from_parts(part1: Self::Part1, part2: Self::Part2) -> Self {
+        Self(part1, part2)
+    }
+}
 
 impl<A: Niche> Niche for (A,) {
     const NICHE_VALUE: Self::CType = ReprCTuple1(A::NICHE_VALUE);

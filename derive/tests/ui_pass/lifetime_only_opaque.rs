@@ -43,9 +43,7 @@ mod provider {
             fn default() -> Self;
         }
 
-        // FIXME: This MUST NOT require lifetimes
-        #[unsafe(lifetimes)]
-        impl<'a> Opaque<'a> {
+        impl Opaque<'_> {
             fn ping(&self);
         }
     }

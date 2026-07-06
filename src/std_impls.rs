@@ -118,6 +118,12 @@ impl ExternC for c_void {
     type CType = Self;
 }
 unsafe impl RobustReprC for c_void {}
+unsafe impl BorrowCast for c_void {
+    type AsConst = Self;
+}
+unsafe impl BorrowCastMut for c_void {
+    type AsMut = Self;
+}
 
 // TODO: To support ZST types properly we should introduce better SizeFamily disambiguation
 // then we can implement for any ZST type including PhantomData
