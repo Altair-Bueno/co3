@@ -17,6 +17,17 @@ extern_! {
     #![abi = "C"]
 }
 
+extern_! {
+    #![abi = "C"]
+    #![feature(generic_const_exprs)]
+}
+
+extern_! {
+    #![abi = "C"]
+    #![feature(extern_types)]
+    #![feature(extern_types)]
+}
+
 extern_C! {
     trait Kita {
         fn kita(self);

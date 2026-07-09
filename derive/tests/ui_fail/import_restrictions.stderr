@@ -18,74 +18,86 @@ error: Duplicate `#![abi = "..."]`
 17 |     #![abi = "C"]
    |     ^^^^^^^^^^^^^
 
-error: item not supported
-  --> tests/ui_fail/import_restrictions.rs:21:5
+error: Only `extern_types` and `allocator_api` are supported
+  --> tests/ui_fail/import_restrictions.rs:22:16
    |
-21 |     trait Kita {
+22 |     #![feature(generic_const_exprs)]
+   |                ^^^^^^^^^^^^^^^^^^^
+
+error: Duplicate `extern_types` feature
+  --> tests/ui_fail/import_restrictions.rs:28:16
+   |
+28 |     #![feature(extern_types)]
+   |                ^^^^^^^^^^^^
+
+error: item not supported
+  --> tests/ui_fail/import_restrictions.rs:32:5
+   |
+32 |     trait Kita {
    |     ^^^^^
 
 error: item not supported
-  --> tests/ui_fail/import_restrictions.rs:27:5
+  --> tests/ui_fail/import_restrictions.rs:38:5
    |
-27 |     enum Kita {}
+38 |     enum Kita {}
    |     ^^^^
 
 error: item not supported
-  --> tests/ui_fail/import_restrictions.rs:31:5
+  --> tests/ui_fail/import_restrictions.rs:42:5
    |
-31 |     struct Kita {}
+42 |     struct Kita {}
    |     ^^^^^^
 
 error: item not supported
-  --> tests/ui_fail/import_restrictions.rs:35:5
+  --> tests/ui_fail/import_restrictions.rs:46:5
    |
-35 |     union Kita {}
+46 |     union Kita {}
    |     ^^^^^
 
 error: Undefined link name. Use `#![link(crate = "...")]` or `#[link_name = "..."]`
-  --> tests/ui_fail/import_restrictions.rs:40:12
+  --> tests/ui_fail/import_restrictions.rs:51:12
    |
-40 |         fn kita(self);
+51 |         fn kita(self);
    |            ^^^^
 
 error: `#[dispatch]` is only supported on impl blocks`
-  --> tests/ui_fail/import_restrictions.rs:48:9
+  --> tests/ui_fail/import_restrictions.rs:59:9
    |
-48 |         #[dispatch]
+59 |         #[dispatch]
    |         ^^^^^^^^^^^
 
 error: dispatch must provide 1 generic argument
-  --> tests/ui_fail/import_restrictions.rs:56:5
+  --> tests/ui_fail/import_restrictions.rs:67:5
    |
-56 |     #[dispatch]
+67 |     #[dispatch]
    |     ^^^^^^^^^^^
 
 error: dispatch must provide 2 generic arguments
-  --> tests/ui_fail/import_restrictions.rs:65:16
+  --> tests/ui_fail/import_restrictions.rs:76:16
    |
-65 |     #[dispatch(<u32>)]
+76 |     #[dispatch(<u32>)]
    |                ^^^^^
 
 error: fn bodies are not allowed in declarations
-  --> tests/ui_fail/import_restrictions.rs:76:19
+  --> tests/ui_fail/import_restrictions.rs:87:19
    |
-76 |         fn kita() {}
+87 |         fn kita() {}
    |                   ^
 
 error: fn bodies are not allowed in declarations
-  --> tests/ui_fail/import_restrictions.rs:81:22
+  --> tests/ui_fail/import_restrictions.rs:92:22
    |
-81 |     fn kita1(a: u32) {}
+92 |     fn kita1(a: u32) {}
    |                      ^
 
 error: patterns aren't allowed in function declarations
-  --> tests/ui_fail/import_restrictions.rs:85:14
+  --> tests/ui_fail/import_restrictions.rs:96:14
    |
-85 |     fn kita1((a, b): (u32, u32));
+96 |     fn kita1((a, b): (u32, u32));
    |              ^^^^^^
 
 error: dispatch must provide 1 generic argument
-  --> tests/ui_fail/import_restrictions.rs:99:16
-   |
-99 |     #[dispatch(<u8, i8>)]
-   |                ^^^^^^^^
+   --> tests/ui_fail/import_restrictions.rs:110:16
+    |
+110 |     #[dispatch(<u8, i8>)]
+    |                ^^^^^^^^

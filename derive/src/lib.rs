@@ -44,6 +44,12 @@ trait InputKind {
     const IS_EXTERN: bool;
 }
 
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+struct MacroFeatures {
+    extern_types: bool,
+    allocator_api: bool,
+}
+
 impl InputKind for ExportBlock {
     const DROP_ATTR_KIND: DropAttrKind = DropAttrKind::ExportName;
     const MISSING_DROP_ERR: Option<&'static str> = None;
@@ -60,6 +66,7 @@ impl InputKind for ExternBlock {
 struct Input<T> {
     abi: syn::Abi,
     attrs: Vec<Attribute>,
+    features: MacroFeatures,
     items: Vec<ForeignItem>,
 
     _kind: PhantomData<T>,
@@ -162,9 +169,12 @@ fn export__(input: TokenStream) -> Result<TokenStream> {
     let input = syn::parse2::<Input<ExportBlock>>(input)?;
 
     let Input {
-        abi, items: decls, ..
+        abi,
+        features,
+        items: decls,
+        ..
     } = input;
-    Ok(emit_decl_exports(abi, decls))
+    Ok(emit_decl_exports(abi, features, decls))
 }
 
 fn extern__(input: TokenStream) -> Result<TokenStream> {
@@ -172,12 +182,13 @@ fn extern__(input: TokenStream) -> Result<TokenStream> {
 
     let Input {
         abi,
+        features,
         attrs,
-        items: decls,
+        items,
         ..
     } = input;
 
-    Ok(expand_extern_import_decls(abi, &attrs, decls))
+    Ok(expand_extern_import_decls(abi, features, &attrs, items))
 }
 
 /// Quick and dirty way to define exports. Prefer using `export_C!` for production code
@@ -416,6 +427,7 @@ impl<T: InputKind> Input<T> {
         decls: Vec<ParsedForeignItem>,
     ) -> Result<Self> {
         let abi = parse_abi_attr(&mut attrs)?;
+        let features = parse_feature_attrs::<T>(&mut attrs)?;
 
         for item in &decls {
             match item {
@@ -509,6 +521,7 @@ impl<T: InputKind> Input<T> {
         Ok(Self {
             abi,
             attrs,
+            features,
             items,
 
             _kind: PhantomData,
@@ -561,7 +574,7 @@ impl syn::parse::Parse for Input<ExportBlock> {
         let export_crate = parse_export_crate_attr(&mut attrs)?;
 
         for attr in &attrs {
-            if !attr.path().is_ident("abi") {
+            if !attr.path().is_ident("abi") && !attr.path().is_ident("feature") {
                 let err_msg = "Attribute not supported in this position";
                 return Err(syn::Error::new_spanned(attr, err_msg));
             }
@@ -798,6 +811,65 @@ fn parse_named_crate_attr(attrs: &mut Vec<Attribute>, attr_name: &str) -> Result
 
     *attrs = kept;
     Ok(crate_name)
+}
+
+fn parse_feature_attrs<T: InputKind>(attrs: &mut Vec<Attribute>) -> Result<MacroFeatures> {
+    let mut kept = Vec::with_capacity(attrs.len());
+    let mut features = MacroFeatures::default();
+
+    for attr in attrs.drain(..) {
+        if !attr.path().is_ident("feature") {
+            kept.push(attr);
+            continue;
+        }
+
+        let syn::Meta::List(list) = &attr.meta else {
+            return Err(syn::Error::new_spanned(attr, "Expected `#![feature(...)]`"));
+        };
+
+        let metas =
+            list.parse_args_with(Punctuated::<syn::Meta, syn::Token![,]>::parse_terminated)?;
+
+        for meta in metas {
+            let syn::Meta::Path(path) = &meta else {
+                let err_msg = "Expected feature name in `#![feature(...)]`";
+                return Err(syn::Error::new_spanned(meta, err_msg));
+            };
+
+            let Some(ident) = path.get_ident() else {
+                let err_msg = "Expected feature name in `#![feature(...)]`";
+                return Err(syn::Error::new_spanned(path, err_msg));
+            };
+
+            let feature = ident.to_string();
+            let already_enabled = match feature.as_str() {
+                "extern_types" if T::IS_EXTERN => &mut features.extern_types,
+                "extern_types" => {
+                    let err_msg = "`extern_types` is only supported in `extern_!`/`extern_C!`";
+                    return Err(syn::Error::new_spanned(ident, err_msg));
+                }
+                "allocator_api" => &mut features.allocator_api,
+                _ => {
+                    let err_msg = if T::IS_EXTERN {
+                        "Only `extern_types` and `allocator_api` are supported"
+                    } else {
+                        "Only `allocator_api` is supported"
+                    };
+                    return Err(syn::Error::new_spanned(ident, err_msg));
+                }
+            };
+
+            if core::mem::replace(already_enabled, true) {
+                return Err(syn::Error::new_spanned(
+                    ident,
+                    format!("Duplicate `{feature}` feature"),
+                ));
+            }
+        }
+    }
+
+    *attrs = kept;
+    Ok(features)
 }
 
 fn is_link_name_attr(attr: &Attribute) -> bool {

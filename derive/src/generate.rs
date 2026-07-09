@@ -5,7 +5,7 @@ use quote::{format_ident, quote};
 use syn::{FnArg, ImplItem, ImplItemFn, ItemImpl, punctuated::Punctuated, visit_mut::VisitMut};
 
 use crate::{
-    DropImpl, DynImpl, ForeignItem, ForeignItemType,
+    DropImpl, DynImpl, ForeignItem, ForeignItemType, MacroFeatures,
     dispatch::{
         StaticLifetimeNormalizer, erase_handle_types, gen_dispatch_erased_layout_checks,
         gen_dispatch_export, gen_dispatch_id_uniqueness_checks, inject_unnamed_lifetimes,
@@ -28,7 +28,11 @@ pub(crate) enum OwnershipMode {
     ByValue,
 }
 
-pub(crate) fn emit_decl_exports(abi: syn::Abi, decls: Vec<ForeignItem>) -> TokenStream {
+pub(crate) fn emit_decl_exports(
+    abi: syn::Abi,
+    _features: MacroFeatures,
+    decls: Vec<ForeignItem>,
+) -> TokenStream {
     let exports = decls.into_iter().map(|decl| match decl {
         ForeignItem::Type(ForeignItemType {
             ty,
@@ -110,6 +114,7 @@ pub(crate) fn emit_decl_exports(abi: syn::Abi, decls: Vec<ForeignItem>) -> Token
 
 pub(crate) fn expand_extern_import_decls(
     abi: syn::Abi,
+    features: MacroFeatures,
     attrs: &[syn::Attribute],
     decls: Vec<ForeignItem>,
 ) -> TokenStream {
@@ -230,7 +235,7 @@ pub(crate) fn expand_extern_import_decls(
             dyn_self_impls,
             drop,
         }) => {
-            let ty = wrap_extern_type_decl(&abi, attrs, id.as_deref(), ty);
+            let ty = wrap_extern_type_decl(&abi, features, attrs, id.as_deref(), ty);
 
             let dispatch = dyn_self_impls
                 .into_iter()
@@ -496,8 +501,9 @@ fn gen_drop_impl_check(item: &syn::ForeignItemType, impl_: &ItemImpl) -> TokenSt
 }
 
 fn wrap_extern_type_decl(
-    _abi: &syn::Abi,
-    _attrs: &[syn::Attribute],
+    abi: &syn::Abi,
+    features: MacroFeatures,
+    attrs: &[syn::Attribute],
     id: Option<&syn::Type>,
     mut type_: syn::ForeignItemType,
 ) -> TokenStream {
@@ -549,24 +555,31 @@ fn wrap_extern_type_decl(
         Const(_) => None,
     });
 
-    quote! {
-        #(#type_attrs)*
-        #[repr(C)]
-        #vis struct #ident #impl_generics #where_clause {
-            // FIXME: Is this the correct way to declare extern type
-            // https://doc.rust-lang.org/nomicon/ffi.html#representing-opaque-structs
-            // FIXME: How do data fields affect alignment here?
-            data: core::marker::PhantomData<(#(#phantom_data_fields),*)>,
-            __marker: core::marker::PhantomData<(*mut u8, core::marker::PhantomPinned)>,
+    let type_decl = if features.extern_types {
+        quote! {
+            unsafe #abi {
+                #(#attrs)*
+
+                #(#type_attrs)*
+                #vis type #ident #impl_generics #where_clause;
+            }
         }
+    } else {
+        quote! {
+            #(#type_attrs)*
+            #[repr(C)]
+            #vis struct #ident #impl_generics #where_clause {
+                // FIXME: Is this the correct way to declare extern type
+                // https://doc.rust-lang.org/nomicon/ffi.html#representing-opaque-structs
+                // FIXME: How do data fields affect alignment here?
+                data: core::marker::PhantomData<(#(#phantom_data_fields),*)>,
+                __marker: core::marker::PhantomData<(*mut u8, core::marker::PhantomPinned)>,
+            }
+        }
+    };
 
-        // FIXME: https://github.com/rust-lang/rust/issues/43467
-        //unsafe #abi {
-        //    #(#attrs)*
-
-        //    #(#type_attrs)*
-        //    #vis type #ident #impl_generics #where_clause;
-        //}
+    quote! {
+        #type_decl
 
         #[doc = #owned_doc]
         #[repr(transparent)]

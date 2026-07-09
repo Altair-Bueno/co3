@@ -30,6 +30,22 @@ export_! {
     #![abi = "C"]
 }
 
+export_! {
+    #![abi = "C"]
+    #![feature(generic_const_exprs)]
+}
+
+export_! {
+    #![abi = "C"]
+    #![feature(allocator_api)]
+    #![feature(allocator_api)]
+}
+
+export_! {
+    #![abi = "C"]
+    #![feature(extern_types)]
+}
+
 export_C! {
     trait Kita {
         fn kita(self);
