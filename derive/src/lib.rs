@@ -26,6 +26,7 @@ use syn::{
 };
 
 use crate::{
+    cfg_attr::{emit_macro_invocations, expand as expand_cfg_attr},
     dispatch::{find_dispatch_attr, parse_dispatch_attr, parse_handle_id_attr},
     generate::{emit_decl_exports, expand_extern_import_decls},
     parse::ParsedForeignItem,
@@ -37,6 +38,7 @@ use crate::{
     validate::{validate_dispatch_self_id, validate_export_decls, validate_extern_decls},
 };
 
+mod cfg_attr;
 mod dispatch;
 mod ffi_fn;
 mod generate;
@@ -170,6 +172,14 @@ pub fn extern_C(input: TokenStream) -> Result<TokenStream> {
 }
 
 fn export__(input: TokenStream) -> Result<TokenStream> {
+    let cfg_attr_variants = expand_cfg_attr(input.clone())?;
+    if cfg_attr_variants.len() > 1 {
+        return Ok(emit_macro_invocations(
+            quote!(co3::export_),
+            cfg_attr_variants,
+        ));
+    }
+
     let input = syn::parse2::<Input<ExportBlock>>(input)?;
 
     let Input {
@@ -182,6 +192,14 @@ fn export__(input: TokenStream) -> Result<TokenStream> {
 }
 
 fn extern__(input: TokenStream) -> Result<TokenStream> {
+    let cfg_attr_variants = expand_cfg_attr(input.clone())?;
+    if cfg_attr_variants.len() > 1 {
+        return Ok(emit_macro_invocations(
+            quote!(co3::extern_),
+            cfg_attr_variants,
+        ));
+    }
+
     let input = syn::parse2::<Input<ExternBlock>>(input)?;
 
     let Input {
