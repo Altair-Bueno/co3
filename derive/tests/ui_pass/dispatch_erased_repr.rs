@@ -81,7 +81,7 @@ mod provider {
     }
 
     export_C! {
-        #![export(crate = "kita")]
+        #![symbol_prefix = "kita"]
 
         #[dispatch(<Custom1>, <Custom2<'_>>)]
         impl<dyn(u16) T: Attribute = EnvAttr> ByteValue for T {
@@ -92,7 +92,7 @@ mod provider {
 }
 
 extern_C! {
-    #![link(crate = "kita")]
+    #![symbol_prefix = "kita"]
 
     #[dispatch(<Custom1>, <Custom2<'_>>)]
     impl<dyn(u16) T: Attribute = EnvAttr> ByteValue for T {

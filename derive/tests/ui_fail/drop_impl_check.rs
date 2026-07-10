@@ -21,7 +21,7 @@ extern_C! {
 }
 
 export_C! {
-    #![export(crate = "kita")]
+    #![symbol_prefix = "kita"]
 
     impl Drop for OpaqueType {
         fn drop(&mut self);
@@ -29,26 +29,10 @@ export_C! {
 }
 
 extern_C! {
-    #![link(crate = "kita")]
+    #![symbol_prefix = "kita"]
 
     impl Drop for ExternType {
         fn drop(&mut self);
-    }
-}
-
-extern_C! {
-    type ExternType;
-}
-
-extern_C! {
-    #![link(crate = "kita")]
-
-    #[id(u32)]
-    type Extern1;
-
-    #[dispatch(<Extern1>)]
-    impl<dyn(u32) T> Drop for T {
-        fn drop(&mut self, self_id: <dyn Self>::ID);
     }
 }
 
@@ -64,7 +48,7 @@ export_C! {
 }
 
 extern_C! {
-    #![link(crate = "kita")]
+    #![symbol_prefix = "kita"]
 
     #[id(u32)]
     type Extern2<T>;

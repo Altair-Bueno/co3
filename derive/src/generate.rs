@@ -15,6 +15,7 @@ use crate::{
         normalize_fn_signature, strip_erased_type_params,
     },
     repr::gen_sized_family_impl,
+    symbol_name_value,
     utils::{
         DispatchMonomorphizer, ParamUseDetector, is_type_erased, strip_internal_generic_param,
     },
@@ -376,10 +377,10 @@ fn expand_dispatch_drop_import(
 
     let link_name = wrapper_attrs
         .iter()
-        .find(|attr| attr.path().is_ident("link_name"));
+        .find_map(|attr| symbol_name_value(attr).map(|value| quote!(#[link_name = #value])));
     let wrapper_attrs = wrapper_attrs
         .iter()
-        .filter(|attr| !attr.path().is_ident("link_name"));
+        .filter(|attr| symbol_name_value(attr).is_none());
 
     let handle_id_conversion_stmts = sig
         .inputs
@@ -435,27 +436,6 @@ fn expand_dispatch_drop_import(
             }
         }
     }
-}
-
-pub(crate) fn is_unsafe_no_mangle(attr: &syn::Attribute) -> bool {
-    if !attr.path().is_ident("unsafe") {
-        return false;
-    }
-
-    let syn::Meta::List(meta_list) = &attr.meta else {
-        return false;
-    };
-
-    let Ok(metas) =
-        meta_list.parse_args_with(Punctuated::<syn::Meta, syn::Token![,]>::parse_terminated)
-    else {
-        return false;
-    };
-
-    metas.into_iter().any(|meta| match meta {
-        syn::Meta::Path(path) => path.is_ident("no_mangle"),
-        _ => false,
-    })
 }
 
 fn gen_drop_impl_check(item: &syn::ForeignItemType, impl_: &ItemImpl) -> TokenStream {

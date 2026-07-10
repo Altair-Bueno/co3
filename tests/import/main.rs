@@ -157,7 +157,7 @@ mod imported_abi;
 //
 //    co3::def_fns! { dealloc }
 //
-//    #[unsafe(no_mangle)]
+//    #[unsafe(export_name = "Robust__take_ref")]
 //    unsafe extern "C" fn Robust__take_ref(
 //        input: *const super::Robust,
 //        output: *mut *const super::Robust,
@@ -169,7 +169,7 @@ mod imported_abi;
 //        FfiReturn::Ok
 //    }
 //
-//    #[unsafe(no_mangle)]
+//    #[unsafe(export_name = "__freestanding_returns_non_local")]
 //    unsafe extern "C" fn __freestanding_returns_non_local(
 //        input: *const u32,
 //        output: *mut *const u32,
@@ -181,7 +181,7 @@ mod imported_abi;
 //        FfiReturn::Ok
 //    }
 //
-//    #[unsafe(no_mangle)]
+//    #[unsafe(export_name = "__freestanding_returns_local_ref")]
 //    unsafe extern "C" fn __freestanding_returns_local_ref(
 //        input: *const CTuple2<u32, u32>,
 //        output: *mut CTuple2<u32, u32>,
@@ -193,7 +193,7 @@ mod imported_abi;
 //        FfiReturn::Ok
 //    }
 //
-//    #[unsafe(no_mangle)]
+//    #[unsafe(export_name = "__freestanding_returns_local_slice")]
 //    unsafe extern "C" fn __freestanding_returns_local_slice(
 //        input: CSlice<CTuple2<u32, u32>>,
 //        output: *mut CBoxedSlice<CTuple2<u32, u32>>,
@@ -206,7 +206,7 @@ mod imported_abi;
 //        FfiReturn::Ok
 //    }
 //
-//    #[unsafe(no_mangle)]
+//    #[unsafe(export_name = "__freestanding_returns_boxed_slice")]
 //    unsafe extern "C" fn __freestanding_returns_boxed_slice(
 //        input: CSliceMut<u32>,
 //        output: *mut CBoxedSlice<u32>,
@@ -219,7 +219,7 @@ mod imported_abi;
 //        FfiReturn::Ok
 //    }
 //
-//    #[unsafe(no_mangle)]
+//    #[unsafe(export_name = "__freestanding_returns_iterator")]
 //    unsafe extern "C" fn __freestanding_returns_iterator(
 //        input: CSliceMut<u32>,
 //        output: *mut CBoxedSlice<u32>,
@@ -232,7 +232,7 @@ mod imported_abi;
 //        FfiReturn::Ok
 //    }
 //
-//    #[unsafe(no_mangle)]
+//    #[unsafe(export_name = "__freestanding_take_and_return_local_transparent_ref")]
 //    unsafe extern "C" fn __freestanding_take_and_return_local_transparent_ref(
 //        input: <&(u32, u32) as ExternC>::CType,
 //        output: *mut <&(u32, u32) as OutPtr>::OutPtr,
@@ -243,7 +243,7 @@ mod imported_abi;
 //        FfiReturn::Ok
 //    }
 //
-////    #[unsafe(no_mangle)]
+////    #[unsafe(export_name = "__freestanding_take_and_return_boxed_int")]
 ////    unsafe extern "C" fn __freestanding_take_and_return_boxed_int(
 ////        input: <Box<u8> as ExternC>::CType,
 ////        output: *mut <Box<u8> as OutPtr>::OutPtr,
@@ -255,7 +255,7 @@ mod imported_abi;
 ////        FfiReturn::Ok
 ////    }
 //
-//    #[unsafe(no_mangle)]
+//    #[unsafe(export_name = "__freestanding_take_and_return_boxed_int_ref")]
 //    unsafe extern "C" fn __freestanding_take_and_return_boxed_int_ref(
 //        input: <&Box<u8> as ExternC>::CType,
 //        output: *mut <&Box<u8> as OutPtr>::OutPtr,
@@ -267,7 +267,7 @@ mod imported_abi;
 //        FfiReturn::Ok
 //    }
 //
-//    #[unsafe(no_mangle)]
+//    #[unsafe(export_name = "__freestanding_return_empty_tuple_result")]
 //    unsafe extern "C" fn __freestanding_return_empty_tuple_result(
 //        input: <bool as ExternC>::CType,
 //    ) -> FfiReturn {

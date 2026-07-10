@@ -54,50 +54,44 @@ error: item not supported
 46 |     union Kita {}
    |     ^^^^^
 
-error: Undefined link name. Use `#![link(crate = "...")]` or `#[link_name = "..."]`
-  --> tests/ui_fail/import_restrictions.rs:51:12
-   |
-51 |         fn kita(self);
-   |            ^^^^
-
 error: `#[dispatch]` is only supported on impl blocks`
-  --> tests/ui_fail/import_restrictions.rs:59:9
+  --> tests/ui_fail/import_restrictions.rs:53:9
    |
-59 |         #[dispatch]
+53 |         #[dispatch]
    |         ^^^^^^^^^^^
 
 error: dispatch must provide 1 generic argument
-  --> tests/ui_fail/import_restrictions.rs:67:5
+  --> tests/ui_fail/import_restrictions.rs:61:5
    |
-67 |     #[dispatch]
+61 |     #[dispatch]
    |     ^^^^^^^^^^^
 
 error: dispatch must provide 2 generic arguments
-  --> tests/ui_fail/import_restrictions.rs:76:16
+  --> tests/ui_fail/import_restrictions.rs:70:16
    |
-76 |     #[dispatch(<u32>)]
+70 |     #[dispatch(<u32>)]
    |                ^^^^^
 
 error: fn bodies are not allowed in declarations
-  --> tests/ui_fail/import_restrictions.rs:87:19
+  --> tests/ui_fail/import_restrictions.rs:81:19
    |
-87 |         fn kita() {}
+81 |         fn kita() {}
    |                   ^
 
 error: fn bodies are not allowed in declarations
-  --> tests/ui_fail/import_restrictions.rs:92:22
+  --> tests/ui_fail/import_restrictions.rs:86:22
    |
-92 |     fn kita1(a: u32) {}
+86 |     fn kita1(a: u32) {}
    |                      ^
 
 error: patterns aren't allowed in function declarations
-  --> tests/ui_fail/import_restrictions.rs:96:14
+  --> tests/ui_fail/import_restrictions.rs:90:14
    |
-96 |     fn kita1((a, b): (u32, u32));
+90 |     fn kita1((a, b): (u32, u32));
    |              ^^^^^^
 
 error: dispatch must provide 1 generic argument
-   --> tests/ui_fail/import_restrictions.rs:110:16
+   --> tests/ui_fail/import_restrictions.rs:104:16
     |
-110 |     #[dispatch(<u8, i8>)]
+104 |     #[dispatch(<u8, i8>)]
     |                ^^^^^^^^

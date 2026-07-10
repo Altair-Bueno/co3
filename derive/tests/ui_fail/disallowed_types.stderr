@@ -76,7 +76,7 @@ error[E0277]: the trait bound `[u8; 2]: CFnArg` is not satisfied
    --> tests/ui_fail/disallowed_types.rs:88:1
     |
  88 | / extern_C! {
- 89 | |     #![link(crate = "kita")]
+ 89 | |     #![symbol_prefix = "kita"]
  90 | |
  91 | |     type MyType;
 ...   |
@@ -100,7 +100,7 @@ error[E0277]: the trait bound `(): CFnArg` is not satisfied
    --> tests/ui_fail/disallowed_types.rs:88:1
     |
  88 | / extern_C! {
- 89 | |     #![link(crate = "kita")]
+ 89 | |     #![symbol_prefix = "kita"]
  90 | |
  91 | |     type MyType;
 ...   |
@@ -124,7 +124,7 @@ error[E0277]: the trait bound `[u8; 2]: CFnReturn` is not satisfied
    --> tests/ui_fail/disallowed_types.rs:88:1
     |
  88 | / extern_C! {
- 89 | |     #![link(crate = "kita")]
+ 89 | |     #![symbol_prefix = "kita"]
  90 | |
  91 | |     type MyType;
 ...   |
@@ -251,7 +251,7 @@ note: required by a bound in `disallowed_types_by_ref::disallowed_types_by_ref`
    --> tests/ui_fail/disallowed_types.rs:88:1
     |
  88 | / extern_C! {
- 89 | |     #![link(crate = "kita")]
+ 89 | |     #![symbol_prefix = "kita"]
  90 | |
  91 | |     type MyType;
 ...   |
@@ -282,7 +282,7 @@ note: required by a bound in `disallowed_types_by_ref::disallowed_types_by_ref`
    --> tests/ui_fail/disallowed_types.rs:88:1
     |
  88 | / extern_C! {
- 89 | |     #![link(crate = "kita")]
+ 89 | |     #![symbol_prefix = "kita"]
  90 | |
  91 | |     type MyType;
 ...   |
@@ -313,7 +313,7 @@ note: required by a bound in `disallowed_types_by_val::disallowed_types_by_val`
    --> tests/ui_fail/disallowed_types.rs:88:1
     |
  88 | / extern_C! {
- 89 | |     #![link(crate = "kita")]
+ 89 | |     #![symbol_prefix = "kita"]
  90 | |
  91 | |     type MyType;
 ...   |
@@ -344,7 +344,7 @@ note: required by a bound in `disallowed_types_by_val::disallowed_types_by_val`
    --> tests/ui_fail/disallowed_types.rs:88:1
     |
  88 | / extern_C! {
- 89 | |     #![link(crate = "kita")]
+ 89 | |     #![symbol_prefix = "kita"]
  90 | |
  91 | |     type MyType;
 ...   |
@@ -357,7 +357,7 @@ error[E0277]: the trait bound `OwnedMyType: co3::borrow::Borrow` is not satisfie
    --> tests/ui_fail/disallowed_types.rs:102:71
     |
  88 | / extern_C! {
- 89 | |     #![link(crate = "kita")]
+ 89 | |     #![symbol_prefix = "kita"]
  90 | |
  91 | |     type MyType;
 ...   |
@@ -377,7 +377,7 @@ error[E0277]: the trait bound `OwnedMyType: co3::borrow::Borrow` is not satisfie
    --> tests/ui_fail/disallowed_types.rs:88:1
     |
  88 | / extern_C! {
- 89 | |     #![link(crate = "kita")]
+ 89 | |     #![symbol_prefix = "kita"]
  90 | |
  91 | |     type MyType;
 ...   |
@@ -389,7 +389,7 @@ help: the trait `co3::borrow::Borrow` is not implemented for `OwnedMyType`
    --> tests/ui_fail/disallowed_types.rs:88:1
     |
  88 | / extern_C! {
- 89 | |     #![link(crate = "kita")]
+ 89 | |     #![symbol_prefix = "kita"]
  90 | |
  91 | |     type MyType;
 ...   |
@@ -412,7 +412,7 @@ error[E0080]: evaluation panicked: erased argument size mismatch
    --> tests/ui_fail/disallowed_types.rs:105:1
     |
 105 | / extern_C! {
-106 | |     #![link(crate = "kita")]
+106 | |     #![symbol_prefix = "kita"]
 107 | |
 108 | |     #[dispatch(<Array>)]
 ...   |
@@ -423,7 +423,7 @@ note: erroneous constant encountered
    --> tests/ui_fail/disallowed_types.rs:105:1
     |
 105 | / extern_C! {
-106 | |     #![link(crate = "kita")]
+106 | |     #![symbol_prefix = "kita"]
 107 | |
 108 | |     #[dispatch(<Array>)]
 ...   |
@@ -436,7 +436,7 @@ error[E0080]: evaluation panicked: erased argument alignment mismatch
    --> tests/ui_fail/disallowed_types.rs:105:1
     |
 105 | / extern_C! {
-106 | |     #![link(crate = "kita")]
+106 | |     #![symbol_prefix = "kita"]
 107 | |
 108 | |     #[dispatch(<Array>)]
 ...   |

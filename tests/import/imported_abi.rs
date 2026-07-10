@@ -26,27 +26,27 @@ struct MyType<T>(T);
 
 extern_! {
     #![abi = "Rust"]
-    #![link(crate = "import")]
+    #![symbol_prefix = "import"]
 
     impl AmbiguousX<u32, 4> for MyType<u32> {
         const K: bool = true;
         type U = i8;
 
-        #[link_name = "kita"]
+        #[symbol_name = "kita"]
         fn ambiguous(a: &[<Self as AmbiguousX<u32, 4>>::U; 4]) -> Ambiguous;
     }
 
     impl MyType<u64> {
-        #[link_name = "kita1"]
+        #[symbol_name = "kita1"]
         unsafe extern "C" fn ambiguous() -> Box<Self>;
     }
 
-    #[link_name = "kita2"]
+    #[symbol_name = "kita2"]
     pub unsafe extern "C" fn ambiguous2_imported() -> Ambiguous;
 }
 
 extern_C! {
-    #![link(crate = "import")]
+    #![symbol_prefix = "import"]
 
     type MyType2;
 
@@ -66,7 +66,7 @@ extern_C! {
     }
 
     impl AmbiguousY for MyType<u64> {
-        #[link_name = "ambiguous"]
+        #[symbol_name = "ambiguous"]
         extern "C" fn ambiguous() -> Ambiguous;
     }
 
@@ -74,7 +74,7 @@ extern_C! {
         fn ambiguous() -> Self;
     }
 
-    #[link_name = "ambiguous1"]
+    #[symbol_name = "ambiguous1"]
     fn ambiguous1_imported() -> Ambiguous;
 }
 
@@ -123,7 +123,7 @@ mod provider {
         const K: bool = true;
         type U = i8;
 
-        #[unsafe(export_name = "kita")]
+        #[symbol_name = "kita"]
         fn ambiguous(_a: &[<Self as AmbiguousX<u32, 4>>::U; 4]) -> Ambiguous {
             Ambiguous::AmbiguousX
         }
@@ -131,7 +131,7 @@ mod provider {
 
     #[export("C")]
     impl AmbiguousY for MyType<u64> {
-        #[unsafe(no_mangle)]
+        #[symbol_name = "ambiguous"]
         extern "C" fn ambiguous() -> Ambiguous {
             Ambiguous::AmbiguousY
         }
@@ -139,7 +139,7 @@ mod provider {
 
     #[export("Rust")]
     impl MyType<u64> {
-        #[unsafe(export_name = "kita1")]
+        #[symbol_name = "kita1"]
         pub unsafe extern "C" fn ambiguous() -> Box<Self> {
             Box::new(Self(42))
         }
@@ -153,13 +153,13 @@ mod provider {
     }
 
     #[export("C")]
-    #[unsafe(no_mangle)]
+    #[symbol_name = "ambiguous1"]
     pub const fn ambiguous1() -> Ambiguous {
         Ambiguous::Fn
     }
 
     #[export("Rust")]
-    #[unsafe(export_name = "kita2")]
+    #[symbol_name = "kita2"]
     pub const unsafe extern "Rust" fn ambiguous2() -> Ambiguous {
         Ambiguous::Fn
     }

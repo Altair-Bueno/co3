@@ -20,7 +20,7 @@ extern_C! {
     pub type Extern;
 
     impl Drop for Extern {
-        #[link_name = "abi__Drop__Opaque__drop"]
+        #[symbol_name = "abi__Drop__Opaque__drop"]
         fn drop(&mut self);
     }
 }

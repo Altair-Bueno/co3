@@ -8,7 +8,7 @@ pub struct Hello {
 
 #[export("C")]
 impl Hello {
-    #[unsafe(export_name = "hello")]
+    #[symbol_name = "hello"]
     #[expect(improper_ctypes_definitions)]
     pub extern "C" fn hello(
         Hello { a: a1, b: b1 }: Hello,
@@ -19,9 +19,9 @@ impl Hello {
 }
 
 extern_C! {
-    #![link(crate = "kita")]
+    #![symbol_prefix = "kita"]
 
-    #[link_name = "hello"]
+    #[symbol_name = "hello"]
     #[expect(improper_ctypes_definitions)]
     pub extern "C" fn hello2(a: Hello, b: Hello) -> i32;
 }
@@ -29,7 +29,7 @@ extern_C! {
 extern_! {
     #![abi = "C"]
 
-    #[link_name = "hello"]
+    #[symbol_name = "hello"]
     #[expect(improper_ctypes_definitions)]
     pub extern "C" fn hello3(a: Hello, b: Hello) -> i32;
 }

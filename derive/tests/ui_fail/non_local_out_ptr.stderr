@@ -2,7 +2,7 @@ error[E0277]: the trait bound `RefSizedDecodeStore<ReprRustStruct, ((),)>: co3::
   --> tests/ui_fail/non_local_out_ptr.rs:45:1
    |
 45 | / extern_C! {
-46 | |     #![link(crate = "kita")]
+46 | |     #![symbol_prefix = "kita"]
 47 | |
 48 | |     impl CustomTrait for i32 {
 ...  |
@@ -30,7 +30,7 @@ error[E0277]: the trait bound `RefSizedDecodeStore<ReprRustEnum, ((),)>: co3::st
   --> tests/ui_fail/non_local_out_ptr.rs:45:1
    |
 45 | / extern_C! {
-46 | |     #![link(crate = "kita")]
+46 | |     #![symbol_prefix = "kita"]
 47 | |
 48 | |     impl CustomTrait for i32 {
 ...  |
@@ -58,7 +58,7 @@ error[E0271]: type mismatch resolving `<[ReprRustStruct] as ReprFamily>::Kind ==
   --> tests/ui_fail/non_local_out_ptr.rs:45:1
    |
 45 | / extern_C! {
-46 | |     #![link(crate = "kita")]
+46 | |     #![symbol_prefix = "kita"]
 47 | |
 48 | |     impl CustomTrait for i32 {
 ...  |
@@ -82,7 +82,7 @@ error[E0271]: type mismatch resolving `<[ReprRustEnum] as ReprFamily>::Kind == R
   --> tests/ui_fail/non_local_out_ptr.rs:45:1
    |
 45 | / extern_C! {
-46 | |     #![link(crate = "kita")]
+46 | |     #![symbol_prefix = "kita"]
 47 | |
 48 | |     impl CustomTrait for i32 {
 ...  |

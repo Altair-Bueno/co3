@@ -50,9 +50,9 @@ export_C! {
 }
 
 extern_C! {
-    #![link(crate = "signature_drift")]
+    #![symbol_prefix = "signature_drift"]
 
-    #[link_name = "extern_fn"]
+    #[symbol_name = "extern_fn"]
     fn extern_fn(arg: &Box<u32>);
 }
 
@@ -63,7 +63,7 @@ export_C! {
 }
 
 extern_C! {
-    #![link(crate = "signature_drift")]
+    #![symbol_prefix = "signature_drift"]
 
     impl ExternImplTrait for ExternImpl {
         fn method(arg: &Box<u32>);
@@ -78,7 +78,7 @@ export_C! {
 }
 
 extern_C! {
-    #![link(crate = "signature_drift")]
+    #![symbol_prefix = "signature_drift"]
 
     #[dispatch(<DriftHandle>)]
     impl<dyn(u8) T = DriftHandle> ExternDispatchTrait for T {

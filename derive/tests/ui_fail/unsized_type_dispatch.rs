@@ -67,7 +67,7 @@ mod provider {
 }
 
 extern_C! {
-    #![link(crate = "kita")]
+    #![symbol_prefix = "kita"]
 
     #[dispatch(<Unsized<str>>)]
     impl<dyn(u8) T = [c_void]> Wrapper<T> {

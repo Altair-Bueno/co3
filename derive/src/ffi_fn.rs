@@ -11,8 +11,21 @@ use syn::{
 use crate::{
     dispatch::{StaticLifetimeNormalizer, handle_id},
     generate::OwnershipMode,
+    symbol_name_value,
     utils::{TypeImplTraitResolver, gen_normalization_stmts, soft_for_arg, unwrap_result_type},
 };
+
+fn export_definition_attrs(attrs: &[syn::Attribute]) -> TokenStream {
+    let attrs = attrs.iter().map(|attr| {
+        let Some(value) = symbol_name_value(attr) else {
+            return quote!(#attr);
+        };
+
+        quote!(#[unsafe(export_name = #value)])
+    });
+
+    quote!(#(#attrs)*)
+}
 
 pub(crate) fn emit_extern_definition(
     abi: &syn::Abi,
@@ -20,8 +33,10 @@ pub(crate) fn emit_extern_definition(
     fn_signature: TokenStream,
     ffi_fn_body: TokenStream,
 ) -> TokenStream {
+    let attrs = export_definition_attrs(attrs);
+
     quote! {
-        #(#attrs)*
+        #attrs
         unsafe #abi #fn_signature {
             let fn_ = || {
                 let fn_body = || #ffi_fn_body;

@@ -46,7 +46,7 @@ mod provider {
         where
             T: Attribute + 'a + 'a
         {
-            #[unsafe(export_name = "len")]
+            #[symbol_name = "len"]
             fn len(values: &[u32], #[soft] attr: &T) -> usize;
         }
     }
@@ -56,7 +56,7 @@ extern_C! {
     #[unsafe(lifetimes)]
     #[dispatch(<&CustomAttribute>)]
     impl<'a, dyn(u8) T: Attribute + 'a> Dispatch for T {
-        #[link_name = "len"]
+        #[symbol_name = "len"]
         fn len(handle_id: <dyn T>::ID, values: &[u32], attr: &T) -> usize;
     }
 }

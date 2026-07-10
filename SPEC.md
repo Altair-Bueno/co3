@@ -69,10 +69,11 @@ The only exception is raw pointers: their referents are not required to have a C
 An `extern "ABI"` companion function is a function which has an `ABI`-compatible signature with `ABI`-compatible companion argument/return types.
 The attribute **MUST NOT** modify the signature or behavior of the item it is attached to.
 
-- By default, the attribute mangles export names as: `{crate_name}_{TraitName}_{trait_generic_args}_{SelfTy}_{self_ty_generic_args}_{method}`.
-- `#[unsafe(no_mangle)]`/`#[unsafe(export_name = "...")]` override default name mangling with their own semantics.
+- By default, the attribute mangles export names as: `{symbol_prefix}_{TraitName}_{trait_generic_args}_{SelfTy}_{self_ty_generic_args}_{method}`.
+- `symbol_prefix` defaults to `CARGO_CRATE_NAME`.
+- `#[symbol_name = "..."]` overrides default name mangling with its own semantics.
 - On an `impl` block, `#[export("ABI")]` generates a companion function for every eligible method in the block.
-- On a `fn` item, `#[export("ABI")]` generates a companion function exported as `{crate_name}_{fn_name}`.
+- On a `fn` item, `#[export("ABI")]` generates a companion function exported as `{symbol_prefix}_{fn_name}`.
 - `#[export(skip)]` on an impl method excludes that method from being processed by the attribute.
 - Although not marked as `unsafe`, a low risk of symbol collision UB still exists.
 
@@ -86,16 +87,19 @@ It can also generate `extern "ABI"` tag-based polymorphic dispatch functions whi
 - `export_C!` is a specialization of `export_!` with ABI fixed to `"C"` and is used for convenience.
 - `type Type;` declares export of an opaque type which doesn't have to have C-compatible representation
 - `#[dispatch({param} = [Type1, ..., TypeN])]` declares concrete types used for polymorphic dispatch routing.
+- `#![symbol_prefix = "..."]` overrides the `CARGO_CRATE_NAME` default symbol prefix for the inferred `symbol_name`.
+- `#[symbol_name = "..."]` overrides default name mangling with its own semantics.
 
 ### 2.4 The `extern_!` Macro
 
 `extern_!` declares extern types and `extern "ABI"` companion functions that bodies of declared Rust code call into.
 The macro **MUST NOT** modify the signatures or behavior of declared Rust items.
 
-- By default, the macro infers `link_name` as: `{crate_name}_{TraitName}_{trait_generic_args}_{SelfTy}_{self_ty_generic_args}_{method}`.
+- By default, the macro infers `symbol_name` as: `{symbol_prefix}_{TraitName}_{trait_generic_args}_{SelfTy}_{self_ty_generic_args}_{method}`.
+- `symbol_prefix` defaults to `CARGO_CRATE_NAME`.
 - `extern_!` requires `#![abi = "..."]` that it applies to generated `extern "ABI"` companion function declarations.
 - `extern_C!` is a specialization of `extern_!` with ABI fixed to `"C"` and is used for convenience.
 - `type Type;` declares an opaque type which doesn't have to have C-compatible representation
-- `#![link(crate = "...")]` defines the crate name prefix for the inferred `link_name`.
-- `#[link_name = "..."]` overrides default name mangling with its own semantics.
+- `#![symbol_prefix = "..."]` overrides the `CARGO_CRATE_NAME` default symbol prefix for the inferred `symbol_name`.
+- `#[symbol_name = "..."]` overrides default name mangling with its own semantics.
 - Although not declared `unsafe`, using extern symbols always carries a risk of UB.

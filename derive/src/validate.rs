@@ -3,8 +3,8 @@ use std::collections::BTreeSet;
 use syn::{Error, Result, Type, visit::Visit};
 
 use crate::{
-    dispatch::HandleId,
-    find_dispatch_attr, has_unsafe_export_name, is_unsafe_lifetimes_attr,
+    dispatch::{HandleId, parse_dispatch_attr},
+    find_dispatch_attr, is_symbol_name_attr, is_unsafe_lifetimes_attr,
     parse::ParsedForeignItem,
     trait_object_single_trait_bound,
     utils::{has_non_lifetime_generics, is_drop_impl, is_type_erased, push_error},
@@ -36,10 +36,7 @@ fn handle_id<'a>(ty: &'a syn::Type, self_ty: &syn::Type) -> Option<HandleId<'a>>
 
 fn validate_export_fn_attrs(attrs: &[syn::Attribute]) -> Result<()> {
     for attr in attrs {
-        if crate::generate::is_unsafe_no_mangle(attr)
-            || is_unsafe_lifetimes_attr(attr)
-            || has_unsafe_export_name(attr)
-        {
+        if is_symbol_name_attr(attr) || is_unsafe_lifetimes_attr(attr) {
             continue;
         }
 
@@ -186,10 +183,10 @@ pub(crate) fn validate_extern_decls(decls: &[ParsedForeignItem]) -> Result<()> {
 
         if is_drop_impl(impl_)
             && let Some(attr) = find_dispatch_attr(&impl_.attrs)
-            && !matches!(attr.meta, syn::Meta::Path(_))
+            && matches!(attr.meta, syn::Meta::List(_))
+            && let Err(err) = parse_dispatch_attr(impl_)
         {
-            let err_msg = "extern declared `impl Drop` only supports bare `#[dispatch]`";
-            push_error(&mut errors, Error::new_spanned(attr, err_msg));
+            push_error(&mut errors, err);
         }
     }
 

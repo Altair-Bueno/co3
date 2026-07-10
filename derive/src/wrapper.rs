@@ -6,7 +6,7 @@ use crate::{
     dispatch::{HandleId, gen_handle_erase_stmts, handle_id, is_handle_id_arg},
     ffi_fn::{self, is_spread_arg, item_fn_input_ident, ownership_mode_for_arg, spread_arg_names},
     generate::OwnershipMode,
-    is_link_name_attr,
+    is_symbol_name_attr, symbol_name_value,
     utils::{
         gen_normalization_stmts, gen_store_name, soft_for_arg, strip_internal_generic_param,
         unwrap_result_type,
@@ -44,10 +44,7 @@ pub fn wrap_fn_definition(
 ) -> TokenStream {
     let vis = &item.vis;
 
-    let wrapper_attrs = item
-        .attrs
-        .iter()
-        .filter(|attr| !attr.path().is_ident("link_name"));
+    let wrapper_attrs = item.attrs.iter().filter(|attr| !is_symbol_name_attr(attr));
 
     let mut wrapper_sig = item.sig.clone();
     strip_internal_arg_attrs(&mut wrapper_sig);
@@ -87,10 +84,7 @@ pub fn wrap_impl_definition<const DISPATCHED: bool>(impl_: &ItemImpl) -> ItemImp
         let mut sig = item.sig.clone();
         let vis = &item.vis;
 
-        let wrapper_attrs = item
-            .attrs
-            .iter()
-            .filter(|attr| !attr.path().is_ident("link_name"));
+        let wrapper_attrs = item.attrs.iter().filter(|attr| !is_symbol_name_attr(attr));
 
         let self_binding = sig
             .inputs
@@ -171,7 +165,10 @@ pub(crate) fn gen_extern_decl(
     attrs: &[syn::Attribute],
     decl: TokenStream,
 ) -> TokenStream {
-    let decl_attrs = attrs.iter().filter(|attr| is_link_name_attr(attr));
+    let decl_attrs = attrs.iter().filter_map(|attr| {
+        let value = symbol_name_value(attr)?;
+        Some(quote!(#[link_name = #value]))
+    });
 
     quote! {
         unsafe #abi {

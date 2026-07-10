@@ -83,7 +83,7 @@ export_C! {
 }
 
 extern_C! {
-    #![link(crate = "kita")]
+    #![symbol_prefix = "kita"]
 
     impl GenericHandle<'static, u32, 12> {
         #[unsafe(lifetimes)]

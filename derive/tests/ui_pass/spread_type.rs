@@ -29,31 +29,31 @@ impl ExportSpreadLen for Counter {
 }
 
 export_C! {
-    #[unsafe(export_name = "spread_len")]
+    #[symbol_name = "spread_len"]
     fn spread_len_impl(values: ..&[u32]) -> usize;
 
     impl Counter {
-        #[unsafe(export_name = "counter_inherent_spread_len")]
+        #[symbol_name = "counter_inherent_spread_len"]
         fn inherent_spread_len(&self, values: ..&[u32]) -> usize;
     }
 
     impl ExportSpreadLen for Counter {
-        #[unsafe(export_name = "counter_trait_spread_len")]
+        #[symbol_name = "counter_trait_spread_len"]
         fn export_trait_spread_len(&self, values: ..&[u32]) -> usize;
     }
 }
 
 extern_C! {
-    #[link_name = "spread_len"]
+    #[symbol_name = "spread_len"]
     fn spread_len(values: ..&[u32]) -> usize;
 
     impl Counter {
-        #[link_name = "counter_inherent_spread_len"]
+        #[symbol_name = "counter_inherent_spread_len"]
         fn imported_inherent_spread_len(&self, values: ..&[u32]) -> usize;
     }
 
     impl ImportSpreadLen for Counter {
-        #[link_name = "counter_trait_spread_len"]
+        #[symbol_name = "counter_trait_spread_len"]
         fn import_trait_spread_len(&self, values: ..&[u32]) -> usize;
     }
 }

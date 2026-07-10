@@ -158,18 +158,18 @@ mod ffi {
     co3::def_fns! { dealloc }
 
     #[derive(Debug, Clone, PartialEq, Eq)]
-    #[export("C", crate = "import")]
+    #[export("C", symbol_prefix = "import")]
     pub struct ExternValue(pub String);
 
     #[derive(Debug, PartialEq, Eq)]
-    #[export("C", crate = "import")]
+    #[export("C", symbol_prefix = "import")]
     pub struct ExternOpaqueStruct {
         pub name: Option<u8>,
         pub tokens: Vec<ExternValue>,
         pub params: BTreeMap<u8, ExternValue>,
     }
 
-    #[unsafe(no_mangle)]
+    #[unsafe(export_name = "Value__new")]
     unsafe extern "C" fn Value__new(
         input: RawSliceMut<u8>,
         output: *mut *mut ExternValue,
@@ -184,7 +184,7 @@ mod ffi {
         FfiReturn::Ok
     }
 
-    #[unsafe(no_mangle)]
+    #[unsafe(export_name = "OpaqueStruct__new")]
     unsafe extern "C" fn OpaqueStruct__new(
         name: <u8 as co3::ExternC>::CType,
         output: *mut *mut ExternOpaqueStruct,
@@ -202,7 +202,7 @@ mod ffi {
         FfiReturn::Ok
     }
 
-    #[unsafe(no_mangle)]
+    #[unsafe(export_name = "OpaqueStruct__with_params")]
     unsafe extern "C" fn OpaqueStruct__with_params(
         handle: *mut ExternOpaqueStruct,
         params: <Vec<(u8, ExternValue)> as co3::ExternC>::CType,
@@ -221,7 +221,7 @@ mod ffi {
         FfiReturn::Ok
     }
 
-    #[unsafe(no_mangle)]
+    #[unsafe(export_name = "OpaqueStruct__get_param")]
     unsafe extern "C" fn OpaqueStruct__get_param(
         handle: *const ExternOpaqueStruct,
         param_name: <&u8 as ExternC>::CType,
@@ -237,7 +237,7 @@ mod ffi {
         FfiReturn::Ok
     }
 
-    #[unsafe(no_mangle)]
+    #[unsafe(export_name = "OpaqueStruct__params")]
     unsafe extern "C" fn OpaqueStruct__params(
         handle: *const ExternOpaqueStruct,
         output: *mut <Vec<&ExternValue> as OutPtr>::OutPtr,
@@ -251,7 +251,7 @@ mod ffi {
         FfiReturn::Ok
     }
 
-    #[unsafe(no_mangle)]
+    #[unsafe(export_name = "OpaqueStruct__remove_param")]
     unsafe extern "C" fn OpaqueStruct__remove_param(
         handle: *mut ExternOpaqueStruct,
         param_name: <&u8 as ExternC>::CType,
@@ -268,7 +268,7 @@ mod ffi {
         FfiReturn::Ok
     }
 
-    #[unsafe(no_mangle)]
+    #[unsafe(export_name = "OpaqueStruct__fallible_int_output")]
     unsafe extern "C" fn OpaqueStruct__fallible_int_output(
         input: <bool as ExternC>::CType,
         output: *mut <u8 as OutPtr>::OutPtr,
@@ -284,7 +284,7 @@ mod ffi {
         FfiReturn::Ok
     }
 
-    #[unsafe(no_mangle)]
+    #[unsafe(export_name = "__freestanding_returns_opaque_item")]
     unsafe extern "C" fn __freestanding_returns_opaque_item(
         input: *const ExternOpaqueStruct,
         output: *mut *const ExternOpaqueStruct,

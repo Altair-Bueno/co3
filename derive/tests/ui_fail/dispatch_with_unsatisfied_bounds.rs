@@ -39,13 +39,13 @@ extern_C! {
 
     #[dispatch]
     impl<T> Drop for dyn Externed2<T> {
-        #[link_name = "drop"]
+        #[symbol_name = "drop"]
         fn drop(&mut self, self_id: <dyn Externed2<T>>::ID);
     }
 
     #[dispatch(<Externed2<u32>>)]
     impl<dyn(u64) T: Unimplemented> RefKita for T where i32: Unimplemented {
-        #[link_name = "kita"]
+        #[symbol_name = "kita"]
         fn kita(&self, self_id: <dyn Self>::ID) -> u32;
     }
 }

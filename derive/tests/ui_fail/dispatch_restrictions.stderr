@@ -112,7 +112,7 @@ error: missing explicit handle IDs: `<dyn T>::ID`
 186 | / extern_C! {
 187 | |     #[dispatch(<u32>)]
 188 | |     impl<dyn(u64) T> Kita for T {
-189 | |         #[link_name = "kita"]
+189 | |         #[symbol_name = "kita"]
 ...   |
 192 | | }
     | |_^
@@ -141,7 +141,7 @@ error[E0119]: conflicting implementations of trait `RefKita` for type `Externed1
    --> tests/ui_fail/dispatch_restrictions.rs:227:1
     |
 227 | // extern_C! {
-228 | ||     #![link(crate = "kita")]
+228 | ||     #![symbol_prefix = "kita"]
 229 | ||
 230 | ||     #[id(u32)]
 ...   ||
@@ -169,7 +169,7 @@ error[E0308]: mismatched types
    --> tests/ui_fail/dispatch_restrictions.rs:204:1
     |
 204 | / extern_C! {
-205 | |     #![link(crate = "kita")]
+205 | |     #![symbol_prefix = "kita"]
 206 | |
 207 | |     #[id(char)]
 ...   |
@@ -201,7 +201,7 @@ error[E0081]: discriminant value `1` assigned more than once
    --> tests/ui_fail/dispatch_restrictions.rs:227:1
     |
 227 | // extern_C! {
-228 | ||     #![link(crate = "kita")]
+228 | ||     #![symbol_prefix = "kita"]
 229 | ||
 230 | ||     #[id(u32)]
 ...   ||

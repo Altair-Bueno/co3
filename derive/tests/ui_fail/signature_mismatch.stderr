@@ -2,7 +2,7 @@ error[E0308]: mismatched types
   --> tests/ui_fail/signature_mismatch.rs:52:1
    |
 52 | / extern_C! {
-53 | |     #![link(crate = "kita")]
+53 | |     #![symbol_prefix = "kita"]
 54 | |
 55 | |     #[id(u32)]
 ...  |

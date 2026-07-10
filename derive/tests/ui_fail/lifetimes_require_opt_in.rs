@@ -40,7 +40,7 @@ mod provider {
 }
 
 extern_C! {
-    #![link(crate = "kita")]
+    #![symbol_prefix = "kita"]
 
     fn imported_named<'a>(value: &'a u8) -> &'a u8;
 

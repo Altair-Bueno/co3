@@ -43,7 +43,7 @@ mod provider {
 }
 
 extern_C! {
-    #![link(crate = "kita")]
+    #![symbol_prefix = "kita"]
 
     impl CustomTrait for i32 {
         fn return_no_repr_struct_ref(&self) -> &ReprRustStruct;

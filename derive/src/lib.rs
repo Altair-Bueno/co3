@@ -1,4 +1,20 @@
 //! Crate containing FFI related macro functionality
+//!
+//! # Example
+//!
+//! ```rust
+//! #[cfg(feature = "export")]
+//! use co3::export_C as ffi;
+//! #[cfg(feature = "extern")]
+//! use co3::extern_C as ffi;
+//!
+//! ffi! {
+//!     #![symbol_prefix = "provider"]
+//!
+//!     type Local;
+//!     fn make_local() -> Local;
+//! }
+//! ```
 use std::{collections::BTreeMap, marker::PhantomData};
 
 use manyhow::manyhow;
@@ -33,14 +49,7 @@ mod wrapper;
 enum ExportBlock {}
 enum ExternBlock {}
 
-enum DropAttrKind {
-    ExportName,
-    LinkName,
-}
-
 trait InputKind {
-    const DROP_ATTR_KIND: DropAttrKind;
-    const MISSING_DROP_ERR: Option<&'static str>;
     const IS_EXTERN: bool;
 }
 
@@ -51,15 +60,10 @@ struct MacroFeatures {
 }
 
 impl InputKind for ExportBlock {
-    const DROP_ATTR_KIND: DropAttrKind = DropAttrKind::ExportName;
-    const MISSING_DROP_ERR: Option<&'static str> = None;
     const IS_EXTERN: bool = false;
 }
 
 impl InputKind for ExternBlock {
-    const DROP_ATTR_KIND: DropAttrKind = DropAttrKind::LinkName;
-    const MISSING_DROP_ERR: Option<&'static str> =
-        Some("extern types must provide `#![link(crate = \"...\")]` or explicit `impl Drop`");
     const IS_EXTERN: bool = true;
 }
 
@@ -213,7 +217,7 @@ fn extern__(input: TokenStream) -> Result<TokenStream> {
 ///     fn foo() {}
 /// }
 ///
-/// #[export("C", crate = "this_crate")]
+/// #[export("C", symbol_prefix = "this_crate")]
 /// impl Foo {
 ///     pub fn new(id: u8) -> Self {
 ///         Self(id)
@@ -248,7 +252,7 @@ pub fn export(attr: TokenStream, item: TokenStream) -> Result<TokenStream> {
         let mut forwarded = Vec::new();
 
         attrs.retain(|attr| {
-            if generate::is_unsafe_no_mangle(attr) || has_unsafe_export_name(attr) {
+            if is_symbol_name_attr(attr) {
                 forwarded.push(attr.clone());
                 false
             } else {
@@ -286,7 +290,7 @@ pub fn export(attr: TokenStream, item: TokenStream) -> Result<TokenStream> {
     }
 
     let generics_err = "generic types are not supported by `#[export]`; use `export_!`/`export_C!`";
-    let ExportAttrArgs { abi, crate_name } = parse_export_attr(attr)?;
+    let ExportAttrArgs { abi, symbol_prefix } = parse_export_attr(attr)?;
 
     let mut item = syn::parse2::<syn::Item>(item)?;
     let result = match &mut item {
@@ -404,13 +408,13 @@ pub fn export(attr: TokenStream, item: TokenStream) -> Result<TokenStream> {
         item => return Err(syn::Error::new_spanned(&*item, "Item not supported")),
     };
 
-    let export_crate_attr = crate_name
+    let symbol_prefix_attr = symbol_prefix
         .as_ref()
-        .map(|crate_name| quote!(#![export(crate = #crate_name)]));
+        .map(|symbol_prefix| quote!(#![symbol_prefix = #symbol_prefix]));
 
     let exports = export__(quote! {
         #![abi = #abi]
-        #export_crate_attr
+        #symbol_prefix_attr
         #result
     })?;
 
@@ -423,11 +427,11 @@ pub fn export(attr: TokenStream, item: TokenStream) -> Result<TokenStream> {
 impl<T: InputKind> Input<T> {
     fn new(
         mut attrs: Vec<Attribute>,
-        crate_name: Option<LitStr>,
+        symbol_prefix: LitStr,
         decls: Vec<ParsedForeignItem>,
     ) -> Result<Self> {
         let abi = parse_abi_attr(&mut attrs)?;
-        let features = parse_feature_attrs::<T>(&mut attrs)?;
+        let features = parse_feature_attrs(&mut attrs)?;
 
         for item in &decls {
             match item {
@@ -516,7 +520,7 @@ impl<T: InputKind> Input<T> {
 
         let decls = pack_type_dispatch_impls::<T>(decls)?;
         let mut items = pack_type_drop_impls(decls)?;
-        default_init::<T>(crate_name, &mut items)?;
+        default_init(&symbol_prefix, &mut items)?;
 
         Ok(Self {
             abi,
@@ -529,12 +533,7 @@ impl<T: InputKind> Input<T> {
     }
 }
 
-fn default_init<T: InputKind>(
-    crate_name: Option<syn::LitStr>,
-    items: &mut [ForeignItem],
-) -> Result<()> {
-    let mut errors = None;
-
+fn default_init(symbol_prefix: &syn::LitStr, items: &mut [ForeignItem]) -> Result<()> {
     for item in items {
         match item {
             ForeignItem::DynImpl(_) => {}
@@ -549,20 +548,11 @@ fn default_init<T: InputKind>(
                     continue;
                 }
 
-                if let Some(crate_name) = &crate_name {
-                    let impl_ =
-                        synthesize_default_drop_impl(T::DROP_ATTR_KIND, crate_name, &item.ty);
-                    item.drop = Some(DropImpl::Impl(impl_));
-                } else if let Some(err_msg) = T::MISSING_DROP_ERR {
-                    push_error(&mut errors, syn::Error::new_spanned(&item.ty, err_msg));
-                }
+                let impl_ = synthesize_default_drop_impl(symbol_prefix, &item.ty);
+                item.drop = Some(DropImpl::Impl(impl_));
             }
             _ => {}
         }
-    }
-
-    if let Some(errors) = errors {
-        return Err(errors);
     }
 
     Ok(())
@@ -571,7 +561,8 @@ fn default_init<T: InputKind>(
 impl syn::parse::Parse for Input<ExportBlock> {
     fn parse(input: syn::parse::ParseStream) -> Result<Self> {
         let mut attrs = input.call(Attribute::parse_inner)?;
-        let export_crate = parse_export_crate_attr(&mut attrs)?;
+        let symbol_prefix =
+            parse_symbol_prefix_attr(&mut attrs)?.unwrap_or_else(default_symbol_prefix);
 
         for attr in &attrs {
             if !attr.path().is_ident("abi") && !attr.path().is_ident("feature") {
@@ -585,7 +576,7 @@ impl syn::parse::Parse for Input<ExportBlock> {
         for item in &mut decls {
             match item {
                 ParsedForeignItem::Fn(ItemFn { attrs, sig, .. }) => {
-                    ensure_export_name_on_fn(attrs, &export_crate, &sig.ident);
+                    ensure_symbol_name_on_fn(attrs, &symbol_prefix, &sig.ident);
                 }
                 ParsedForeignItem::Impl(impl_) => {
                     let trait_ = impl_.trait_.as_ref().map(|(_, path, _)| path);
@@ -596,9 +587,9 @@ impl syn::parse::Parse for Input<ExportBlock> {
                             continue;
                         };
 
-                        ensure_export_name_on_impl_fn(
+                        ensure_symbol_name_on_impl_fn(
                             attrs,
-                            &export_crate,
+                            &symbol_prefix,
                             trait_,
                             self_ty,
                             &impl_.generics,
@@ -611,7 +602,7 @@ impl syn::parse::Parse for Input<ExportBlock> {
         }
 
         validate_export_decls(&decls)?;
-        Self::new(attrs, Some(export_crate), decls)
+        Self::new(attrs, symbol_prefix, decls)
     }
 }
 
@@ -619,24 +610,22 @@ impl syn::parse::Parse for Input<ExternBlock> {
     fn parse(input: syn::parse::ParseStream) -> Result<Self> {
         let mut attrs = input.call(Attribute::parse_inner)?;
 
-        let link_crate = parse_link_crate_attr(&mut attrs)?;
+        let symbol_prefix =
+            parse_symbol_prefix_attr(&mut attrs)?.unwrap_or_else(default_symbol_prefix);
         let mut decls = ExternBlock::parse_items(input)?;
 
-        let mut errors = None::<syn::Error>;
         for decl in &mut decls {
             match decl {
                 ParsedForeignItem::Fn(ItemFn { attrs, sig, .. }) => {
                     let fn_name = &sig.ident;
 
-                    if !attrs.iter().any(is_link_name_attr)
-                        && let Some(link_crate) = &link_crate
-                    {
-                        let link_name = LitStr::new(
-                            &format!("{}__{fn_name}", link_crate.value()),
+                    if !attrs.iter().any(is_symbol_name_attr) {
+                        let symbol_name = LitStr::new(
+                            &format!("{}__{fn_name}", symbol_prefix.value()),
                             fn_name.span(),
                         );
 
-                        attrs.push(parse_quote!(#[link_name = #link_name]));
+                        attrs.push(parse_quote!(#[symbol_name = #symbol_name]));
                     }
                 }
                 ParsedForeignItem::Impl(impl_) => {
@@ -649,41 +638,24 @@ impl syn::parse::Parse for Input<ExternBlock> {
                         };
 
                         let fn_name = &sig.ident;
-                        if !attrs.iter().any(is_link_name_attr)
-                            && let Some(link_crate) = &link_crate
-                        {
-                            let link_name = if let Some(trait_) = trait_ {
+                        if !attrs.iter().any(is_symbol_name_attr) {
+                            let symbol_name = if let Some(trait_) = trait_ {
                                 let trait_ = path_symbol_name(trait_, &impl_.generics);
                                 LitStr::new(
                                     &format!(
                                         "{}__{trait_}__{self_ty}__{fn_name}",
-                                        link_crate.value()
+                                        symbol_prefix.value()
                                     ),
                                     fn_name.span(),
                                 )
                             } else {
                                 LitStr::new(
-                                    &format!("{}__{self_ty}__{fn_name}", link_crate.value()),
+                                    &format!("{}__{self_ty}__{fn_name}", symbol_prefix.value()),
                                     fn_name.span(),
                                 )
                             };
 
-                            attrs.push(parse_quote!(#[link_name = #link_name]));
-                        }
-
-                        // FIXME: Consider that extern fn item imports are never mangled by the compiler!
-                        // Therefore, we could link directly to the method name (aka sig.ident)
-                        if !attrs.iter().any(is_link_name_attr) {
-                            let err = syn::Error::new_spanned(
-                                &sig.ident,
-                                "Undefined link name. Use `#![link(crate = \"...\")]` or `#[link_name = \"...\"]`",
-                            );
-
-                            if let Some(errors) = &mut errors {
-                                errors.combine(err);
-                            } else {
-                                errors = Some(err);
-                            }
+                            attrs.push(parse_quote!(#[symbol_name = #symbol_name]));
                         }
                     }
                 }
@@ -691,12 +663,8 @@ impl syn::parse::Parse for Input<ExternBlock> {
             }
         }
 
-        if let Some(errors) = errors {
-            return Err(errors);
-        }
-
         validate_extern_decls(&decls)?;
-        Self::new(attrs, link_crate, decls)
+        Self::new(attrs, symbol_prefix, decls)
     }
 }
 
@@ -736,84 +704,49 @@ fn parse_abi_attr(attrs: &mut Vec<Attribute>) -> Result<syn::Abi> {
     ))
 }
 
-fn parse_link_crate_attr(attrs: &mut Vec<Attribute>) -> Result<Option<LitStr>> {
-    parse_named_crate_attr(attrs, "link")
+fn default_symbol_prefix() -> LitStr {
+    LitStr::new(
+        &std::env::var("CARGO_CRATE_NAME").unwrap_or_else(|_| "co3".to_owned()),
+        proc_macro2::Span::call_site(),
+    )
 }
 
-fn parse_export_crate_attr(attrs: &mut Vec<Attribute>) -> Result<LitStr> {
-    Ok(parse_named_crate_attr(attrs, "export")?.unwrap_or_else(|| {
-        LitStr::new(
-            &std::env::var("CARGO_CRATE_NAME").unwrap_or_else(|_| "co3".to_owned()),
-            proc_macro2::Span::call_site(),
-        )
-    }))
-}
-
-fn parse_named_crate_attr(attrs: &mut Vec<Attribute>, attr_name: &str) -> Result<Option<LitStr>> {
+fn parse_symbol_prefix_attr(attrs: &mut Vec<Attribute>) -> Result<Option<LitStr>> {
     let mut kept = Vec::with_capacity(attrs.len());
 
-    let mut crate_name = None;
+    let mut symbol_prefix = None;
     for attr in attrs.drain(..) {
-        if !attr.path().is_ident(attr_name) {
+        if !attr.path().is_ident("symbol_prefix") {
             kept.push(attr);
             continue;
         }
 
-        let syn::Meta::List(list) = &attr.meta else {
-            kept.push(attr);
-            continue;
+        let err_msg = "Expected `#![symbol_prefix = \"...\"]`";
+        let syn::Meta::NameValue(nv) = &attr.meta else {
+            return Err(syn::Error::new_spanned(&attr, err_msg));
         };
 
-        let Ok(metas) =
-            list.parse_args_with(Punctuated::<syn::Meta, syn::Token![,]>::parse_terminated)
+        let syn::Expr::Lit(syn::ExprLit {
+            lit: syn::Lit::Str(value),
+            ..
+        }) = &nv.value
         else {
-            kept.push(attr);
-            continue;
+            return Err(syn::Error::new_spanned(&nv.value, err_msg));
         };
 
-        let mut kept_meta = Punctuated::<syn::Meta, syn::Token![,]>::new();
-        for meta in metas {
-            let syn::Meta::NameValue(nv) = &meta else {
-                kept_meta.push(meta);
-                continue;
-            };
-            let Some(ident) = nv.path.get_ident() else {
-                kept_meta.push(meta);
-                continue;
-            };
-
-            let syn::Expr::Lit(syn::ExprLit {
-                lit: syn::Lit::Str(value),
-                ..
-            }) = &nv.value
-            else {
-                kept_meta.push(meta);
-                continue;
-            };
-
-            if ident == "crate" {
-                if crate_name.replace(value.clone()).is_some() {
-                    let msg = format!("Duplicate `#![{attr_name}(crate = \"...\")]`");
-                    return Err(syn::Error::new_spanned(attr, msg));
-                }
-            } else {
-                kept_meta.push(meta);
-            }
+        if symbol_prefix.replace(value.clone()).is_some() {
+            return Err(syn::Error::new_spanned(
+                attr,
+                "Duplicate `#![symbol_prefix = \"...\"]`",
+            ));
         }
-
-        if kept_meta.is_empty() {
-            continue;
-        }
-
-        let attr_ident = format_ident!("{attr_name}");
-        kept.push(parse_quote!(#![#attr_ident(#kept_meta)]));
     }
 
     *attrs = kept;
-    Ok(crate_name)
+    Ok(symbol_prefix)
 }
 
-fn parse_feature_attrs<T: InputKind>(attrs: &mut Vec<Attribute>) -> Result<MacroFeatures> {
+fn parse_feature_attrs(attrs: &mut Vec<Attribute>) -> Result<MacroFeatures> {
     let mut kept = Vec::with_capacity(attrs.len());
     let mut features = MacroFeatures::default();
 
@@ -843,18 +776,10 @@ fn parse_feature_attrs<T: InputKind>(attrs: &mut Vec<Attribute>) -> Result<Macro
 
             let feature = ident.to_string();
             let already_enabled = match feature.as_str() {
-                "extern_types" if T::IS_EXTERN => &mut features.extern_types,
-                "extern_types" => {
-                    let err_msg = "`extern_types` is only supported in `extern_!`/`extern_C!`";
-                    return Err(syn::Error::new_spanned(ident, err_msg));
-                }
+                "extern_types" => &mut features.extern_types,
                 "allocator_api" => &mut features.allocator_api,
                 _ => {
-                    let err_msg = if T::IS_EXTERN {
-                        "Only `extern_types` and `allocator_api` are supported"
-                    } else {
-                        "Only `allocator_api` is supported"
-                    };
+                    let err_msg = "Only `extern_types` and `allocator_api` are supported";
                     return Err(syn::Error::new_spanned(ident, err_msg));
                 }
             };
@@ -872,43 +797,58 @@ fn parse_feature_attrs<T: InputKind>(attrs: &mut Vec<Attribute>) -> Result<Macro
     Ok(features)
 }
 
-fn is_link_name_attr(attr: &Attribute) -> bool {
-    attr.path().is_ident("link_name")
+pub(crate) fn is_symbol_name_attr(attr: &Attribute) -> bool {
+    attr.path().is_ident("symbol_name")
+}
+
+pub(crate) fn symbol_name_value(attr: &Attribute) -> Option<&syn::Expr> {
+    if !is_symbol_name_attr(attr) {
+        return None;
+    }
+
+    let syn::Meta::NameValue(nv) = &attr.meta else {
+        return None;
+    };
+
+    Some(&nv.value)
 }
 
 struct ExportAttrArgs {
     abi: LitStr,
-    crate_name: Option<LitStr>,
+    symbol_prefix: Option<LitStr>,
 }
 
 impl syn::parse::Parse for ExportAttrArgs {
     fn parse(input: syn::parse::ParseStream) -> Result<Self> {
         let abi = input.parse::<LitStr>()?;
-        let mut crate_name = None;
+        let mut symbol_prefix = None;
 
         while !input.is_empty() {
             input.parse::<syn::Token![,]>()?;
-            if input.peek(syn::Token![crate]) {
-                let crate_token = input.parse::<syn::Token![crate]>()?;
+            if input.peek(syn::Ident) {
+                let ident = input.parse::<syn::Ident>()?;
+                if ident != "symbol_prefix" {
+                    return Err(syn::Error::new_spanned(
+                        ident,
+                        "Expected `symbol_prefix = \"...\"`",
+                    ));
+                }
+
                 input.parse::<syn::Token![=]>()?;
                 let value = input.parse::<LitStr>()?;
-                if crate_name.replace(value).is_some() {
+                if symbol_prefix.replace(value).is_some() {
                     return Err(syn::Error::new_spanned(
-                        crate_token,
-                        "duplicate `crate = \"...\"`",
+                        ident,
+                        "duplicate `symbol_prefix = \"...\"`",
                     ));
                 }
                 continue;
             }
 
-            let unexpected: syn::Ident = input.parse()?;
-            return Err(syn::Error::new_spanned(
-                unexpected,
-                "Unexpected characters`",
-            ));
+            return Err(input.error("Expected `symbol_prefix = \"...\"`"));
         }
 
-        Ok(Self { abi, crate_name })
+        Ok(Self { abi, symbol_prefix })
     }
 }
 
@@ -978,35 +918,6 @@ pub(crate) fn strip_unsafe_lifetimes_attrs(attrs: &mut Vec<Attribute>) {
     }
 
     *attrs = kept;
-}
-
-fn has_unsafe_export_name(attr: &Attribute) -> bool {
-    if !attr.path().is_ident("unsafe") {
-        return false;
-    }
-
-    let syn::Meta::List(meta_list) = &attr.meta else {
-        return false;
-    };
-
-    let metas = meta_list
-        .parse_args_with(syn::punctuated::Punctuated::<syn::Meta, syn::Token![,]>::parse_terminated)
-        .ok();
-    let Some(metas) = metas else {
-        return false;
-    };
-
-    for meta in metas {
-        let syn::Meta::NameValue(nv) = meta else {
-            continue;
-        };
-        if !nv.path.is_ident("export_name") {
-            continue;
-        }
-        return true;
-    }
-
-    false
 }
 
 fn pack_type_drop_impls(decls: Vec<ForeignItem>) -> Result<Vec<ForeignItem>> {
@@ -1263,32 +1174,23 @@ fn normalize_self_handle_ids(impl_: &mut syn::ItemImpl) {
     normalizer.visit_item_impl_mut(impl_);
 }
 
-fn synthesize_default_drop_impl(
-    attr_kind: DropAttrKind,
-    crate_name: &LitStr,
-    ty: &syn::ForeignItemType,
-) -> ItemImpl {
+fn synthesize_default_drop_impl(symbol_prefix: &LitStr, ty: &syn::ForeignItemType) -> ItemImpl {
     let (impl_generics, ty_generics, where_clause) = ty.generics.split_for_impl();
 
     let ident = &ty.ident;
     let symbol_name = LitStr::new(
         &format!(
             "{}__{}__{}__drop",
-            crate_name.value(),
+            symbol_prefix.value(),
             path_symbol_name(&parse_quote!(Drop), &Default::default()),
             type_symbol_name(&parse_quote!(#ident #ty_generics), &ty.generics),
         ),
         ident.span(),
     );
 
-    let name_attr: Attribute = match attr_kind {
-        DropAttrKind::ExportName => parse_quote!(#[unsafe(export_name = #symbol_name)]),
-        DropAttrKind::LinkName => parse_quote!(#[link_name = #symbol_name]),
-    };
-
     parse_quote! {
         impl #impl_generics Drop for #ident #ty_generics #where_clause {
-            #name_attr
+            #[symbol_name = #symbol_name]
             fn drop(&mut self) {}
         }
     }
@@ -1319,68 +1221,50 @@ fn ensure_single_dispatch_attr(attrs: &[Attribute]) -> Result<()> {
     Ok(())
 }
 
-fn ensure_export_name_on_fn(attrs: &mut Vec<Attribute>, crate_name: &LitStr, fn_name: &syn::Ident) {
-    let has_export_name = attrs
-        .iter()
-        .any(|attr| generate::is_unsafe_no_mangle(attr) || has_unsafe_export_name(attr));
-
-    if !has_export_name {
-        let crate_prefix = crate_name;
-        let export_name = LitStr::new(&fn_name.to_string(), fn_name.span());
+fn ensure_symbol_name_on_fn(
+    attrs: &mut Vec<Attribute>,
+    symbol_prefix: &LitStr,
+    fn_name: &syn::Ident,
+) {
+    if !attrs.iter().any(is_symbol_name_attr) {
+        let symbol_name = LitStr::new(
+            &format!("{}__{fn_name}", symbol_prefix.value()),
+            fn_name.span(),
+        );
 
         attrs.push(parse_quote! {
-            #[unsafe(export_name = concat!(#crate_prefix, "__", #export_name))]
+            #[symbol_name = #symbol_name]
         });
     }
 }
 
-fn ensure_export_name_on_impl_fn(
+fn ensure_symbol_name_on_impl_fn(
     attrs: &mut Vec<Attribute>,
-    crate_name: &LitStr,
+    symbol_prefix: &LitStr,
     trait_: Option<&Path>,
     self_ty: &Type,
     generics: &syn::Generics,
     fn_name: &syn::Ident,
 ) {
-    let mut saw_export = false;
-    let mut saw_no_mangle = false;
-
-    attrs.retain(|attr| {
-        if generate::is_unsafe_no_mangle(attr) {
-            saw_no_mangle = true;
-            return false;
-        }
-        if has_unsafe_export_name(attr) {
-            saw_export = true;
-        }
-
-        true
-    });
-
-    if !saw_export {
-        let crate_prefix = crate_name;
-        let export_name = if saw_no_mangle {
-            let literal = LitStr::new(&fn_name.to_string(), fn_name.span());
-            quote!(#literal)
-        } else {
-            let default_export_name = trait_.map_or_else(
-                || format!("{}__{}", type_symbol_name(self_ty, generics), fn_name),
-                |trait_| {
-                    format!(
-                        "{}__{}__{}",
-                        path_symbol_name(trait_, generics),
-                        type_symbol_name(self_ty, generics),
-                        fn_name
-                    )
-                },
-            );
-            let default_export_name =
-                LitStr::new(&default_export_name, proc_macro2::Span::call_site());
-            quote!(concat!(#crate_prefix, "__", #default_export_name))
-        };
+    if !attrs.iter().any(is_symbol_name_attr) {
+        let default_symbol_name = trait_.map_or_else(
+            || format!("{}__{}", type_symbol_name(self_ty, generics), fn_name),
+            |trait_| {
+                format!(
+                    "{}__{}__{}",
+                    path_symbol_name(trait_, generics),
+                    type_symbol_name(self_ty, generics),
+                    fn_name
+                )
+            },
+        );
+        let symbol_name = LitStr::new(
+            &format!("{}__{default_symbol_name}", symbol_prefix.value()),
+            proc_macro2::Span::call_site(),
+        );
 
         attrs.push(parse_quote! {
-            #[unsafe(export_name = #export_name)]
+            #[symbol_name = #symbol_name]
         });
     }
 }

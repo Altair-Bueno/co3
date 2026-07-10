@@ -19,11 +19,11 @@ mod provider {
 
     export_C! {
         impl Value {
-            #[unsafe(export_name = "transform")]
+            #[symbol_name = "transform"]
             fn transform(move self, move other: &Self) -> Self;
         }
 
-        #[unsafe(export_name = "combine")]
+        #[symbol_name = "combine"]
         fn combine(input: &Value, move rhs: Value) -> Value;
     }
 }
@@ -34,12 +34,12 @@ extern_C! {
 
     impl Value {
         /// Documentation
-        #[link_name = "transform"]
+        #[symbol_name = "transform"]
         fn transform2(move self: Self, other: &Self) -> Self;
     }
 
     /// Documentation
-    #[link_name = "combine"]
+    #[symbol_name = "combine"]
     fn combine(move input: &Value, move rhs: Value) -> Value;
 }
 

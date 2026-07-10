@@ -1,13 +1,13 @@
 use co3::extern_C;
 
 extern_C! {
-    #![link(crate = "kita")]
+    #![symbol_prefix = "kita"]
 
     pub type Opaque<'a>;
 
     #[unsafe(lifetimes)]
     impl<'a> Default for OwnedOpaque<'a> {
-        #[link_name = "kita__Default__Box_Opaque__default"]
+        #[symbol_name = "kita__Default__Box_Opaque__default"]
         fn default() -> Self;
     }
 
@@ -19,7 +19,7 @@ extern_C! {
 mod provider {
     use co3::{export, export_C};
 
-    #[export("C", crate = "kita")]
+    #[export("C", symbol_prefix = "kita")]
     struct Opaque<'a>(&'a u8);
 
     impl Default for Box<Opaque<'_>> {
@@ -33,13 +33,13 @@ mod provider {
     }
 
     export_C! {
-        #![export(crate = "kita")]
+        #![symbol_prefix = "kita"]
 
         // TODO: This should be allowed with '_ but it's not.
         // This is a special case where reference is materialized
         #[unsafe(lifetimes)]
         impl<'a> Default for Box<Opaque<'a>> {
-            #[unsafe(export_name = "kita__Default__Box_Opaque__default")]
+            #[symbol_name = "kita__Default__Box_Opaque__default"]
             fn default() -> Self;
         }
 

@@ -11,14 +11,14 @@ co3::handles! {
 }
 
 extern_C! {
-    #![link(crate = "abi")]
+    #![symbol_prefix = "abi"]
 
     #[id(u8)]
     type Opaque<T, U>;
 
     #[dispatch]
     impl<T, U> Drop for dyn Opaque<T, U> {
-        #[link_name = "drop"]
+        #[symbol_name = "drop"]
         fn drop(self_id: <dyn Self>::ID, &mut self);
     }
 
@@ -27,7 +27,7 @@ extern_C! {
         <u8, bool>
     )]
     impl<T, U> dyn Opaque<T, U> {
-        #[link_name = "handle_as_ref"]
+        #[symbol_name = "handle_as_ref"]
         fn try_as_ref(id: <dyn Self>::ID, &self) -> Result<&Self, u8>;
     }
 
@@ -44,7 +44,7 @@ extern_C! {
         <Opaque<bool, u8>>,
     )]
     impl<dyn(u8) T> Default for T {
-        #[link_name = "default"]
+        #[symbol_name = "default"]
         fn default(self_id: <dyn Self>::ID) -> Self;
     }
 
@@ -60,20 +60,20 @@ extern_C! {
         <Opaque<bool, u8>, Opaque<u8, bool>>,
     )]
     impl<dyn(u8) T, dyn(u8) U> PartialEq<U> for T {
-        #[link_name = "abi_Eq_eq_2"]
+        #[symbol_name = "abi_Eq_eq_2"]
         fn eq(self_id: <dyn Self>::ID, other_id: <dyn U>::ID, &self, other: &U) -> bool;
     }
 
     #[dispatch(<bool>)]
     impl<T> Custom for dyn Opaque<T, u8> {
-        #[link_name = "custom_inc_as_ref"]
+        #[symbol_name = "custom_inc_as_ref"]
         fn inc(self_id: <dyn Self>::ID, self, by: Vec<u32>) -> Self;
     }
 
     // TODO:
     //#[dispatch(<u8>)]
     //impl<T> Custom for dyn Opaque<T, bool> {
-    //    #[link_name = "custom_inc_move"]
+    //    #[symbol_name = "custom_inc_move"]
     //    fn inc(self_id: <dyn Self>::ID, self, move by: Vec<u32>) -> Self;
     //}
 }
@@ -125,7 +125,7 @@ mod provider {
             <u8, bool>,
         )]
         impl<T, U> Drop for dyn Opaque<T, U> {
-            #[unsafe(export_name = "drop")]
+            #[symbol_name = "drop"]
             fn drop(&mut self);
         }
 
@@ -134,7 +134,7 @@ mod provider {
             <u8, bool>
         )]
         impl<T, U> dyn Opaque<T, U> {
-            #[unsafe(export_name = "handle_as_ref")]
+            #[symbol_name = "handle_as_ref"]
             fn try_as_ref(&self) -> Result<&Self, u8>;
         }
 
@@ -151,7 +151,7 @@ mod provider {
             <u8, bool>,
         )]
         impl<T, U> Default for dyn Opaque<T, U> {
-            #[unsafe(export_name = "default")]
+            #[symbol_name = "default"]
             fn default() -> Self;
         }
 
@@ -167,13 +167,13 @@ mod provider {
             <Opaque<bool, u8>, Opaque<u8, bool>>,
         )]
         impl<dyn(u8) T, dyn(u8) TU> PartialEq<TU> for T {
-            #[unsafe(export_name = "abi_Eq_eq_2")]
+            #[symbol_name = "abi_Eq_eq_2"]
             fn eq(&self, other: &TU) -> bool;
         }
 
         #[dispatch(<bool>)]
         impl<T> Custom for dyn Opaque<T, u8> {
-            #[unsafe(export_name = "custom_inc_as_ref")]
+            #[symbol_name = "custom_inc_as_ref"]
             fn inc(self, by: Vec<u32>) -> Self;
         }
 
@@ -182,7 +182,7 @@ mod provider {
         //    <Opaque<u8, bool>>,
         //)]
         //impl<dyn(u8) T> Custom for T {
-        //    #[unsafe(export_name = "custom_inc_move")]
+        //    #[symbol_name = "custom_inc_move"]
         //    fn inc(self, move by: Vec<u32>) -> Self;
         //}
     }

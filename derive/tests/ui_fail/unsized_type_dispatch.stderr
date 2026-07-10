@@ -2,7 +2,7 @@ error[E0277]: the size for values of type `str` cannot be known at compilation t
   --> tests/ui_fail/unsized_type_dispatch.rs:69:1
    |
 69 | / extern_C! {
-70 | |     #![link(crate = "kita")]
+70 | |     #![symbol_prefix = "kita"]
 71 | |
 72 | |     #[dispatch(<Unsized<str>>)]
 ...  |

@@ -54,7 +54,7 @@ export_C! {
     type OpaqueStructBool;
     type OpaqueStructI32;
 
-    #[unsafe(no_mangle)]
+    #[symbol_name = "ambiguous1"]
     unsafe fn ambiguous1() -> Ambiguous;
 
     impl OpaqueStructU32 {
@@ -62,22 +62,22 @@ export_C! {
     }
 
     impl CustomExports for OpaqueStructU8 {
-        #[unsafe(export_name = "xor_u8")]
+        #[symbol_name = "xor_u8"]
         fn xor(&self, by: u8) -> Self;
     }
 
     impl Clone for OpaqueStructBool {
-        #[unsafe(export_name = "cclone")]
+        #[symbol_name = "cclone"]
         fn clone(&self) -> Self;
     }
 
     impl Clone for crate::exported_abi::OpaqueStructI32 {
-        #[unsafe(export_name = "lclone")]
+        #[symbol_name = "lclone"]
         fn clone(&self) -> Self;
     }
 
     impl Clone for self::NonOpaqueStruct<bool> {
-        #[unsafe(export_name = "nclone")]
+        #[symbol_name = "nclone"]
         fn clone(&self) -> Self;
     }
 
@@ -90,7 +90,7 @@ export_! {
     #![abi = "Rust"]
 
     impl Clone for OpaqueStructU8 {
-        #[unsafe(no_mangle)]
+        #[symbol_name = "clone"]
         fn clone(&self) -> Self;
     }
 
@@ -116,7 +116,7 @@ impl AmbiguousX<u64, 3> for OpaqueStructU64 {
 impl AmbiguousX<u32, 4> for OpaqueStructU32 {
     type U = i8;
 
-    #[unsafe(export_name = "kita")]
+    #[symbol_name = "kita"]
     fn ambiguous(_a: &[<Self as AmbiguousX<u32, 4>>::U; 4]) -> Ambiguous {
         Ambiguous::AmbiguousX
     }
@@ -124,7 +124,7 @@ impl AmbiguousX<u32, 4> for OpaqueStructU32 {
 
 #[export("C")]
 impl AmbiguousY for OpaqueStructU64 {
-    #[unsafe(no_mangle)]
+    #[symbol_name = "ambiguous"]
     extern "C" fn ambiguous() -> Ambiguous {
         Ambiguous::AmbiguousY
     }
@@ -144,7 +144,7 @@ impl OpaqueStructU32 {
 
 #[export("Rust")]
 impl OpaqueStructU64 {
-    #[unsafe(export_name = "kita1")]
+    #[symbol_name = "kita1"]
     pub const unsafe extern "C" fn ambiguous() -> Ambiguous {
         Ambiguous::Inherent
     }
@@ -162,7 +162,7 @@ pub const unsafe fn ambiguous1() -> Ambiguous {
 }
 
 #[export("Rust")]
-#[unsafe(export_name = "kita2")]
+#[symbol_name = "kita2"]
 pub const unsafe extern "Rust" fn ambiguous2() -> Ambiguous {
     Ambiguous::Fn
 }
@@ -177,14 +177,14 @@ fn exported_abi() {
         fn ambiguous(output: *mut u8) -> FfiReturn;
         fn ambiguous1(output: *mut u8) -> FfiReturn;
 
-        #[link_name = "cclone"]
+        #[symbol_name = "cclone"]
         fn export_opaque_clone_bool(
             handle_ptr: *const Extern,
             out_ptr: *mut NonNull<Extern>,
         ) -> FfiReturn;
-        #[link_name = "nclone"]
+        #[symbol_name = "nclone"]
         fn export_non_opaque_clone_bool(handle_ptr: *const u8, out_ptr: *mut u8) -> FfiReturn;
-        #[link_name = "xor_u8"]
+        #[symbol_name = "xor_u8"]
         fn export_opaque_xor_u8(
             handle_ptr: *const Extern,
             by: u8,
@@ -196,7 +196,7 @@ fn exported_abi() {
             output: *mut u8,
         ) -> FfiReturn;
 
-        #[link_name = "export__OpaqueStructU32__re_exported"]
+        #[symbol_name = "export__OpaqueStructU32__re_exported"]
         fn re_exported(out_ptr: *mut NonNull<Extern>) -> FfiReturn;
     }
 
@@ -205,9 +205,9 @@ fn exported_abi() {
         fn kita1(out_ptr: *mut u8) -> FfiReturn;
         fn kita2(out_ptr: *mut u8) -> FfiReturn;
 
-        #[link_name = "export__Clone__NonOpaqueStruct_u8__clone"]
+        #[symbol_name = "export__Clone__NonOpaqueStruct_u8__clone"]
         fn export_non_opaque_clone_u8(handle: *const u8, out_ptr: *mut u8) -> FfiReturn;
-        #[link_name = "clone"]
+        #[symbol_name = "clone"]
         fn export_opaque_clone_u8(
             handle: *const NonNull<Extern>,
             out_ptr: *mut NonNull<Extern>,

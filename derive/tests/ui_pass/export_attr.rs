@@ -24,13 +24,13 @@ impl Default for Opaque {
 }
 
 extern_C! {
-    #![link(crate = "kita")]
+    #![symbol_prefix = "kita"]
 
     #[dispatch(<Opaque>)]
     impl<dyn(u8) T: ToOwned + ?Sized = u8> Value<T> {
         fn new(t_id: <dyn T>::ID) -> Self;
 
-        #[link_name = "ping"]
+        #[symbol_name = "ping"]
         fn ping2(t_id: <dyn T>::ID, move self, #[soft] inc: &TransparentCTuple1<T>) -> u8;
     }
 
@@ -49,7 +49,7 @@ mod provider {
     }
 
     // TODO: Should it be reported that `crate` is not supported on types?
-    #[export("C", crate = "kita")]
+    #[export("C", symbol_prefix = "kita")]
     #[derive(Debug, Clone, Copy)]
     #[id(u8)]
     pub struct Opaque(u8);
@@ -62,23 +62,23 @@ mod provider {
         }
     }
 
-    #[export("C", crate = "kita")]
+    #[export("C", symbol_prefix = "kita")]
     impl Default for Box<Opaque> {
-        #[unsafe(export_name = "kita__Default__OwnedOpaque__default")]
+        #[symbol_name = "kita__Default__OwnedOpaque__default"]
         fn default() -> Self {
             Box::new(Opaque(3))
         }
     }
 
     export_C! {
-        #![export(crate = "kita")]
+        #![symbol_prefix = "kita"]
 
         impl ToOwned for Box<Opaque> {
             fn to_owned(&self) -> <Self as ToOwned>::Owned;
         }
     }
 
-    #[export("C", crate = "kita")]
+    #[export("C", symbol_prefix = "kita")]
     #[dispatch(<Opaque>)]
     impl<#[erased(u8)] T: Add<Output = u8> + ToOwned<Owned = T> = u8> Value<T>
     where
@@ -88,14 +88,14 @@ mod provider {
             Self((*Box::<T>::default()).to_owned())
         }
 
-        #[unsafe(export_name = "ping")]
+        #[symbol_name = "ping"]
         fn ping(#[by_val] self, #[soft] inc: &TransparentCTuple1<T>) -> u8 {
             self.0 + inc.0.to_owned()
         }
     }
 
-    // TODO: Support separate #[export(crate = "kita")]?
-    #[export("C", crate = "kita")]
+    // TODO: Support separate #[export(symbol_prefix = "kita")]?
+    #[export("C", symbol_prefix = "kita")]
     fn combine(#[by_val] lhs: Value<u32>, #[soft] rhs: &(u8,)) -> u8 {
         lhs.0 as u8 + rhs.0
     }

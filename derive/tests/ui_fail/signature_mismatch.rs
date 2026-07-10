@@ -50,7 +50,7 @@ export_C! {
 }
 
 extern_C! {
-    #![link(crate = "kita")]
+    #![symbol_prefix = "kita"]
 
     #[id(u32)]
     type Opaque1;

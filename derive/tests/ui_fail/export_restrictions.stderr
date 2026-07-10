@@ -24,7 +24,7 @@ error: Duplicate `#![abi = "..."]`
 30 |     #![abi = "C"]
    |     ^^^^^^^^^^^^^
 
-error: Only `allocator_api` is supported
+error: Only `extern_types` and `allocator_api` are supported
   --> tests/ui_fail/export_restrictions.rs:35:16
    |
 35 |     #![feature(generic_const_exprs)]
@@ -35,12 +35,6 @@ error: Duplicate `allocator_api` feature
    |
 41 |     #![feature(allocator_api)]
    |                ^^^^^^^^^^^^^
-
-error: `extern_types` is only supported in `extern_!`/`extern_C!`
-  --> tests/ui_fail/export_restrictions.rs:46:16
-   |
-46 |     #![feature(extern_types)]
-   |                ^^^^^^^^^^^^
 
 error: item not supported
   --> tests/ui_fail/export_restrictions.rs:50:5

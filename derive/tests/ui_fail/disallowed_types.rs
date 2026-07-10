@@ -61,7 +61,7 @@ mod provider {
         type MyType;
 
         impl ToOwned for Box<MyType> {
-            #[unsafe(export_name = "my_type_new")]
+            #[symbol_name = "my_type_new"]
             fn to_owned(&self) -> <Self as ToOwned>::Owned;
         }
 
@@ -86,14 +86,14 @@ mod provider {
 }
 
 extern_C! {
-    #![link(crate = "kita")]
+    #![symbol_prefix = "kita"]
 
     type MyType;
 
     impl ToOwned for MyType {
         type Owned = OwnedMyType;
 
-        #[link_name = "my_type_new"]
+        #[symbol_name = "my_type_new"]
         fn to_owned(&self) -> <Self as ToOwned>::Owned;
     }
 
@@ -103,7 +103,7 @@ extern_C! {
 }
 
 extern_C! {
-    #![link(crate = "kita")]
+    #![symbol_prefix = "kita"]
 
     #[dispatch(<Array>)]
     impl<dyn(usize) T = Handle> Dispatch for T {
