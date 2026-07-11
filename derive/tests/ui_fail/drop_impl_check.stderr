@@ -1,55 +1,59 @@
 error: generic types must provide explicit `impl Drop` declaration
-  --> tests/ui_fail/drop_impl_check.rs:15:5
+  --> tests/ui_fail/drop_impl_check.rs:17:5
    |
-15 |     type OpaqueType<T>;
+17 |     type OpaqueType<T>;
    |     ^^^^^^^^^^^^^^^^^^^
 
 error: generic types must provide explicit `impl Drop` declaration
-  --> tests/ui_fail/drop_impl_check.rs:20:5
+  --> tests/ui_fail/drop_impl_check.rs:24:5
    |
-20 |     type ExternType<T>;
+24 |     type ExternType<T>;
    |     ^^^^^^^^^^^^^^^^^^^
 
 error: explicit `impl Drop` is only allowed for declared types
-  --> tests/ui_fail/drop_impl_check.rs:26:19
+  --> tests/ui_fail/drop_impl_check.rs:32:19
    |
-26 |     impl Drop for OpaqueType {
+32 |     impl Drop for OpaqueType {
    |                   ^^^^^^^^^^
 
 error: explicit `impl Drop` is only allowed for declared types
-  --> tests/ui_fail/drop_impl_check.rs:34:19
+  --> tests/ui_fail/drop_impl_check.rs:42:19
    |
-34 |     impl Drop for ExternType {
+42 |     impl Drop for ExternType {
    |                   ^^^^^^^^^^
 
 error[E0367]: `Drop` impl requires `_::Export1<T>: Kita` but the struct it is implemented for does not
-  --> tests/ui_fail/drop_impl_check.rs:45:49
+  --> tests/ui_fail/drop_impl_check.rs:55:49
    |
-45 |     impl<T> Drop for dyn Export1<T> where Self: Kita {
+55 |     impl<T> Drop for dyn Export1<T> where Self: Kita {
    |                                                 ^^^^
    |
 note: the implementor must specify the same requirement
-  --> tests/ui_fail/drop_impl_check.rs:39:1
+  --> tests/ui_fail/drop_impl_check.rs:47:1
    |
-39 | / export_C! {
-40 | |     #[id(u32)]
-41 | |     type Export1<T>;
+47 | / ffi! {
+48 | |     #![export("C")]
+49 | |
+50 | |     #[id(u32)]
+51 | |     type Export1<T>;
    | |________________^
-   = note: this error originates in the macro `export_C` (in Nightly builds, run with -Z macro-backtrace for more info)
+   = note: this error originates in the macro `ffi` (in Nightly builds, run with -Z macro-backtrace for more info)
 
 error[E0367]: `Drop` impl requires `Extern2<T>: Kita` but the struct it is implemented for does not
-  --> tests/ui_fail/drop_impl_check.rs:57:49
+  --> tests/ui_fail/drop_impl_check.rs:69:49
    |
-57 |     impl<T> Drop for dyn Extern2<T> where Self: Kita {
+69 |     impl<T> Drop for dyn Extern2<T> where Self: Kita {
    |                                                 ^^^^
    |
 note: the implementor must specify the same requirement
-  --> tests/ui_fail/drop_impl_check.rs:50:1
+  --> tests/ui_fail/drop_impl_check.rs:60:1
    |
-50 | / extern_C! {
-51 | |     #![symbol_prefix = "kita"]
-52 | |
-53 | |     #[id(u32)]
-54 | |     type Extern2<T>;
+60 | / ffi! {
+61 | |     #![extern("C")]
+62 | |
+63 | |     #![symbol_prefix = "kita"]
+64 | |
+65 | |     #[id(u32)]
+66 | |     type Extern2<T>;
    | |________________^
-   = note: this error originates in the macro `extern_C` (in Nightly builds, run with -Z macro-backtrace for more info)
+   = note: this error originates in the macro `ffi` (in Nightly builds, run with -Z macro-backtrace for more info)

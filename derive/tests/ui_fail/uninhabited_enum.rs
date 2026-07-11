@@ -1,7 +1,4 @@
-use co3::{ReprC, export};
-
-#[export("C")]
-pub enum FfiStruct1 {}
+use co3::ReprC;
 
 #[derive(ReprC)]
 pub enum FfiStruct2 {}

@@ -1,4 +1,4 @@
-use co3::{ReprC, export_C, extern_C};
+use co3::{ReprC, ffi};
 
 trait ExportSpreadLen {
     fn export_trait_spread_len(&self, values: &[u32]) -> usize;
@@ -28,7 +28,9 @@ impl ExportSpreadLen for Counter {
     }
 }
 
-export_C! {
+ffi! {
+    #![export("C")]
+
     #[symbol_name = "spread_len"]
     fn spread_len_impl(values: ..&[u32]) -> usize;
 
@@ -43,7 +45,9 @@ export_C! {
     }
 }
 
-extern_C! {
+ffi! {
+    #![extern("C")]
+
     #[symbol_name = "spread_len"]
     fn spread_len(values: ..&[u32]) -> usize;
 

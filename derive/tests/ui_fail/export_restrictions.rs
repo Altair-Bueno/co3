@@ -1,4 +1,4 @@
-use co3::{export, export_, export_C};
+use co3::ffi;
 
 co3::handles! {
     FfiStruct,
@@ -10,8 +10,9 @@ trait Kita {
     extern "C" fn kita1(self);
 }
 
-export_C! {
-    #[export("C")]
+ffi! {
+    #![export("C")]
+
     #[derive(Clone)]
     enum FfiStruct {
         A,
@@ -19,116 +20,136 @@ export_C! {
     }
 }
 
-export_! {}
+ffi! {}
 
-export_C! {
-    #![abi = "C"]
+ffi! {
+    #![export("C")]
+    #![export("C")]
 }
 
-export_! {
-    #![abi = "Rust"]
-    #![abi = "C"]
+ffi! {
+    #![export("C")]
+    #![extern("C")]
 }
 
-export_! {
-    #![abi = "C"]
+ffi! {
+    #![export("C")]
+
     #![feature(generic_const_exprs)]
 }
 
-export_! {
-    #![abi = "C"]
-    #![feature(allocator_api)]
-    #![feature(allocator_api)]
-}
+ffi! {
+    #![export("C")]
 
-export_! {
-    #![abi = "C"]
+    #![feature(extern_types)]
     #![feature(extern_types)]
 }
 
-export_C! {
+ffi! {
+    #![export("C")]
+
     trait Kita {
         fn kita(self);
     }
 }
 
-export_C! {
+ffi! {
+    #![export("C")]
+
     enum Kita {}
 }
 
-export_C! {
+ffi! {
+    #![export("C")]
+
     struct Kita {}
 }
 
-export_C! {
+ffi! {
+    #![export("C")]
+
     union Kita {}
 }
 
-#[export]
-type NoExportType = u32;
+ffi! {
+    #![export("C")]
 
-#[export]
-trait NoExportTrait {}
-
-#[export]
-struct NoExportStruct {}
-
-#[export]
-enum NoExportEnum {}
-
-#[export]
-extern "C" fn kita3() {}
-
-#[export]
-impl FfiStruct {}
-
-#[export("C")]
-struct NoExportStruct<T>(T);
-
-export_C! {
     #[unknown_attribute]
     fn kita3(_a: u32);
 }
 
-export_C! {
+ffi! {
+    #![export("C")]
+
     #[some_attr]
     type OpaqueType;
 }
 
-export_C! {
+ffi! {
+    #![export("C")]
+
     #[some_attr]
     impl Clone for FfiStruct {
         fn clone(&self) -> Self;
     }
 }
 
-export_C! {
+ffi! {
+    #![export("C")]
+
     impl Kita for u32 {
         #[dispatch]
         fn kita(self);
     }
 }
 
-export_C! {
+ffi! {
+    #![export("C")]
+
     #[dispatch]
     type OpaqueType;
 }
 
-export_C! {
+ffi! {
+    #![export("C")]
+
     impl Kita for u32 {
         fn kita1(self) {}
     }
 }
 
-export_C! {
+ffi! {
+    #![export("C")]
+
     fn kita1(a: u32) {}
 }
 
-export_C! {
+ffi! {
+    #![export("C")]
+
     fn kita1((a, b): (u32, u32));
 }
 
-export_C! {
+ffi! {
+    #![export("C")]
+
+    #[id(u32)]
+    type OpaqueType<T>;
+
+    #[dispatch(<u32>)]
+    impl<T> Drop for dyn OpaqueType<T> {
+        fn drop(&mut self);
+    }
+
+    #[dispatch]
+    impl<dyn(u32) T> Clone for OpaqueType<T> {
+        fn clone(&self);
+    }
+}
+
+ffi! {
+    #![export("C")]
+
     #[id(u32)]
     type OpaqueType<T>;
 

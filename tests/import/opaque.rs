@@ -12,55 +12,55 @@ pub struct Value;
 // NOTE: struct's body is replaced by co3!
 pub struct OpaqueStruct;
 
-#[extern_C]
+#[ffi]
 impl Value {
     pub fn new(input: String) -> Self {
-        unreachable!("replaced by extern_C")
+        unreachable!("replaced by ffi")
     }
 }
 
-#[extern_C]
+#[ffi]
 impl OpaqueStruct {
     pub fn new(name: u8) -> Box<Self> {
-        unreachable!("replaced by extern_C")
+        unreachable!("replaced by ffi")
     }
 
     #[must_use]
     pub fn with_params(self, params: impl IntoIterator<Item = (u8, Value)>) -> OpaqueStruct {
-        unreachable!("replaced by extern_C")
+        unreachable!("replaced by ffi")
     }
 
     pub fn get_param(&self, name: &u8) -> Option<ExternRef<'_, Value>> {
-        unreachable!("replaced by extern_C")
+        unreachable!("replaced by ffi")
     }
 
     pub fn params(&self) -> impl ExactSizeIterator<Item = ExternRef<'_, Value>> {
-        unreachable!("replaced by extern_C")
+        unreachable!("replaced by ffi")
     }
 
     pub fn fallible_int_output(flag: bool) -> Result<u8, &'static str> {
-        unreachable!("replaced by extern_C")
+        unreachable!("replaced by ffi")
     }
 }
 
-#[extern_C]
+#[ffi]
 pub fn freestanding_returns_opaque_item(input: ExternRef<OpaqueStruct>) -> ExternRef<OpaqueStruct> {
-    unreachable!("replaced by extern_C")
+    unreachable!("replaced by ffi")
 }
 
-#[extern_C]
+#[ffi]
 pub fn freestanding_returns_opaque_double_ref<'a, 'b>(
     input: &'b ExternRef<'a, OpaqueStruct>,
 ) -> &'b ExternRef<'a, OpaqueStruct>
 where
     'a: 'b,
 {
-    unreachable!("replaced by extern_C")
+    unreachable!("replaced by ffi")
 }
 
-#[extern_C]
+#[ffi]
 pub fn some_fn(input: &[OpaqueStruct]) {
-    unreachable!("replaced by extern_C")
+    unreachable!("replaced by ffi")
 }
 
 fn make_new_opaque(name: u8, params: BTreeMap<u8, Value>) -> OpaqueStruct {

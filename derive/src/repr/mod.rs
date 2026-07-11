@@ -258,7 +258,7 @@ pub(crate) fn derive_repr_c(input: &syn::DeriveInput) -> syn::Result<TokenStream
         syn::Data::Struct(_) => derive_item(repr_attr.as_ref(), input, &repr_c_attrs, &[]),
         syn::Data::Enum(data) if data.variants.is_empty() => {
             // TODO: Support uninhabited enums. yes, it is possible
-            let err_msg = "Uninhabited enum is a never type. You can declare it as an opaque type in `export_!` or `extern_!` with `type Foo;`";
+            let err_msg = "Uninhabited enum is a never type. You can declare it as an opaque type in `ffi!` with `type Foo;`";
             push_error(&mut errors, syn::Error::new_spanned(&input.ident, err_msg));
 
             quote! {}

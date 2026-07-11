@@ -13,6 +13,7 @@ pub(crate) fn expand(input: TokenStream) -> syn::Result<Vec<Variant>> {
 
 pub(crate) fn emit_macro_invocations(
     macro_path: TokenStream,
+    prefix: TokenStream,
     variants: Vec<Variant>,
 ) -> TokenStream {
     let invocations = variants.into_iter().map(|variant| {
@@ -22,6 +23,7 @@ pub(crate) fn emit_macro_invocations(
         quote! {
             #(#cfgs)*
             #macro_path! {
+                #prefix
                 #tokens
             }
         }
@@ -170,40 +172,38 @@ fn quote_attr(inner: bool, attr: TokenStream) -> TokenStream {
 }
 
 fn parse_cfg_attr(input: TokenStream) -> syn::Result<Option<(TokenStream, Vec<TokenStream>)>> {
-    let syn::Meta::List(meta) = syn::parse2::<syn::Meta>(input)? else {
+    let tokens = input.into_iter().collect::<Vec<_>>();
+    let Some(TokenTree::Ident(path)) = tokens.first() else {
         return Ok(None);
     };
-    if !meta.path.is_ident("cfg_attr") {
+    if path != "cfg_attr" {
         return Ok(None);
     }
 
-    let mut parts = split_top_level_commas(meta.tokens);
+    let Some(TokenTree::Group(args)) = tokens.get(1) else {
+        return Err(syn::Error::new_spanned(path, "expected cfg_attr arguments"));
+    };
+    if args.delimiter() != Delimiter::Parenthesis || tokens.len() != 2 {
+        return Err(syn::Error::new_spanned(path, "expected cfg_attr arguments"));
+    }
+
+    let mut parts = split_top_level_commas(args.stream());
     if parts.is_empty() {
-        return Err(syn::Error::new_spanned(
-            meta.path,
-            "expected cfg_attr predicate",
-        ));
+        return Err(syn::Error::new_spanned(path, "expected cfg_attr predicate"));
     }
 
     let predicate = parts.remove(0);
     if predicate.is_empty() {
-        return Err(syn::Error::new_spanned(
-            meta.path,
-            "expected cfg_attr predicate",
-        ));
+        return Err(syn::Error::new_spanned(path, "expected cfg_attr predicate"));
     }
     if parts.is_empty() {
-        return Err(syn::Error::new_spanned(meta.path, "expected attribute"));
+        return Err(syn::Error::new_spanned(path, "expected attribute"));
     }
 
     for attr in &parts {
         if attr.is_empty() {
-            return Err(syn::Error::new_spanned(
-                meta.path.clone(),
-                "expected attribute",
-            ));
+            return Err(syn::Error::new_spanned(path, "expected attribute"));
         }
-        syn::parse2::<syn::Meta>(attr.clone())?;
     }
 
     Ok(Some((predicate, parts)))

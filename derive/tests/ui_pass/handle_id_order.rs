@@ -1,5 +1,5 @@
 use co3::{
-    extern_C,
+    ffi,
     handle::{Handle, HandleFamily},
     handles,
 };
@@ -9,7 +9,9 @@ handles! {
     Opaque2,
 }
 
-extern_C! {
+ffi! {
+    #![extern("C")]
+
     #![symbol_prefix = "this_crate"]
 
     #[id(u32)]
@@ -51,15 +53,13 @@ extern_C! {
 }
 
 mod provider {
-    use co3::{export, export_C, handles};
+    use co3::{ffi, handles};
 
     trait Custom<T> {
         fn kita1(&mut self, inc: &T) -> u8;
     }
 
-    #[export("C", symbol_prefix = "this_crate")]
     #[derive(Clone)]
-    #[id(u32)]
     pub struct Opaque1;
     #[derive(Clone)]
     pub struct Opaque2;
@@ -69,9 +69,7 @@ mod provider {
         Opaque2,
     }
 
-    #[export("C", symbol_prefix = "this_crate")]
     impl Default for Box<Opaque1> {
-        #[symbol_name = "this_crate__Default__Box_Opaque1__default"]
         fn default() -> Self {
             Box::new(Opaque1)
         }
@@ -89,11 +87,20 @@ mod provider {
         }
     }
 
-    export_C! {
+    ffi! {
+        #![export("C")]
+
         #![symbol_prefix = "this_crate"]
 
+        #[id(u32)]
+        type Opaque1;
         #[id(u8)]
         type Opaque2;
+
+        impl Default for Box<Opaque1> {
+            #[symbol_name = "this_crate__Default__Box_Opaque1__default"]
+            fn default() -> Self;
+        }
 
         impl Drop for Opaque2 {
             #[symbol_name = "this_crate__Drop__Opaque2__drop"]

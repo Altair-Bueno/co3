@@ -1,6 +1,7 @@
-use co3::extern_C;
+use co3::ffi;
 
-extern_C! {
+ffi! {
+    #![extern("C")]
     #![symbol_prefix = "kita"]
 
     pub type Opaque<'a>;
@@ -17,9 +18,8 @@ extern_C! {
 }
 
 mod provider {
-    use co3::{export, export_C};
+    use co3::ffi;
 
-    #[export("C", symbol_prefix = "kita")]
     struct Opaque<'a>(&'a u8);
 
     impl Default for Box<Opaque<'_>> {
@@ -32,8 +32,12 @@ mod provider {
         fn ping(&self) {}
     }
 
-    export_C! {
+    ffi! {
+        #![export("C")]
+
         #![symbol_prefix = "kita"]
+
+        pub type Opaque<'a>;
 
         // TODO: This should be allowed with '_ but it's not.
         // This is a special case where reference is materialized

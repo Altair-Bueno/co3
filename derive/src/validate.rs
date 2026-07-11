@@ -3,7 +3,7 @@ use std::collections::BTreeSet;
 use syn::{Error, Result, Type, visit::Visit};
 
 use crate::{
-    dispatch::{HandleId, parse_dispatch_attr},
+    dispatch::HandleId,
     find_dispatch_attr, is_symbol_name_attr, is_unsafe_lifetimes_attr,
     parse::ParsedForeignItem,
     trait_object_single_trait_bound,
@@ -118,40 +118,23 @@ pub(crate) fn validate_export_decls(decls: &[ParsedForeignItem]) -> Result<()> {
     }
 
     for decl in decls {
-        match decl {
-            ParsedForeignItem::Impl(impl_) => {
-                for item in &impl_.items {
-                    let syn::ImplItem::Fn(method) = item else {
-                        continue;
-                    };
-
-                    if let Err(err) = validate_export_fn_attrs(&method.attrs) {
-                        push_error(&mut errors, err);
-                    }
-                    if let Err(err) =
-                        validate_export_dispatch_signature(&method.sig, &impl_.self_ty)
-                    {
-                        push_error(&mut errors, err);
-                    }
-                }
-            }
-            ParsedForeignItem::Fn(decl_fn) => {
-                if let Err(err) = validate_export_fn_attrs(&decl_fn.attrs) {
-                    push_error(&mut errors, err);
-                }
-            }
-            ParsedForeignItem::Type(decl) => {
-                for attr in &decl.ty.attrs {
-                    if !attr.path().is_ident("id") {
-                        push_error(&mut errors, unsupported_attr(attr));
-                    }
-                }
-            }
+        if let Err(err) = validate_export_decl(decl) {
+            push_error(&mut errors, err);
         }
     }
 
     if let Some(errors) = errors {
         return Err(errors);
+    }
+
+    Ok(())
+}
+
+pub(crate) fn validate_export_attrs(attrs: &[syn::Attribute]) -> Result<()> {
+    for attr in attrs {
+        if !attr.path().is_ident("feature") {
+            return Err(unsupported_attr(attr));
+        }
     }
 
     Ok(())
@@ -165,26 +148,70 @@ pub(crate) fn validate_extern_decls(decls: &[ParsedForeignItem]) -> Result<()> {
     }
 
     for decl in decls {
-        let ParsedForeignItem::Impl(impl_) = decl else {
-            continue;
-        };
+        if let Err(err) = validate_extern_decl(decl) {
+            push_error(&mut errors, err);
+        }
+    }
 
-        for item in &impl_.items {
-            let syn::ImplItem::Fn(method) = item else {
-                continue;
-            };
+    if let Some(errors) = errors {
+        return Err(errors);
+    }
 
-            if let Err(err) =
-                validate_extern_dispatch_signature(&impl_.generics, &impl_.self_ty, &method.sig)
-            {
+    Ok(())
+}
+
+fn validate_export_decl(decl: &ParsedForeignItem) -> Result<()> {
+    let mut errors = None;
+
+    match decl {
+        ParsedForeignItem::Impl(impl_) => {
+            for item in &impl_.items {
+                let syn::ImplItem::Fn(method) = item else {
+                    continue;
+                };
+
+                if let Err(err) = validate_export_fn_attrs(&method.attrs) {
+                    push_error(&mut errors, err);
+                }
+                if let Err(err) = reject_explicit_dispatch_ids(&method.sig, &impl_.self_ty) {
+                    push_error(&mut errors, err);
+                }
+            }
+        }
+        ParsedForeignItem::Fn(decl_fn) => {
+            if let Err(err) = validate_export_fn_attrs(&decl_fn.attrs) {
                 push_error(&mut errors, err);
             }
         }
+        ParsedForeignItem::Type(decl) => {
+            for attr in &decl.ty.attrs {
+                if !attr.path().is_ident("id") {
+                    push_error(&mut errors, unsupported_attr(attr));
+                }
+            }
+        }
+    }
 
-        if is_drop_impl(impl_)
-            && let Some(attr) = find_dispatch_attr(&impl_.attrs)
-            && matches!(attr.meta, syn::Meta::List(_))
-            && let Err(err) = parse_dispatch_attr(impl_)
+    if let Some(errors) = errors {
+        return Err(errors);
+    }
+
+    Ok(())
+}
+
+fn validate_extern_decl(decl: &ParsedForeignItem) -> Result<()> {
+    let ParsedForeignItem::Impl(impl_) = decl else {
+        return Ok(());
+    };
+
+    let mut errors = None;
+    for item in &impl_.items {
+        let syn::ImplItem::Fn(method) = item else {
+            continue;
+        };
+
+        if let Err(err) =
+            validate_extern_dispatch_signature(&impl_.generics, &impl_.self_ty, &method.sig)
         {
             push_error(&mut errors, err);
         }
@@ -301,7 +328,7 @@ fn validate_dispatch_impl_targets(generics: &syn::Generics, self_ty: &syn::Type)
     Err(Error::new_spanned(self_ty, err_msg))
 }
 
-fn validate_export_dispatch_signature(sig: &syn::Signature, self_ty: &syn::Type) -> Result<()> {
+fn reject_explicit_dispatch_ids(sig: &syn::Signature, self_ty: &syn::Type) -> Result<()> {
     let err_msg = "explicit `<dyn Type>::ID` is only supported in extern declarations";
 
     let mut errors = None;
@@ -359,24 +386,6 @@ fn validate_extern_dispatch_signature(
             let err_msg = "duplicate `<dyn Type>::ID`";
             push_error(&mut errors, Error::new_spanned(&arg.ty, err_msg));
         }
-    }
-
-    let handle_ids = handle_ids
-        .iter()
-        .filter_map(|handle_id| match handle_id {
-            HandleId::DynType(ident) => Some(*ident),
-            HandleId::DynSelf => None,
-        })
-        .collect::<BTreeSet<_>>();
-
-    if handle_ids.len() != handle_tys.len() {
-        let missing = handle_tys
-            .difference(&handle_ids)
-            .map(|ident| format!("`<dyn {ident}>::ID`"))
-            .collect::<Vec<_>>();
-
-        let err_msg = format!("missing explicit handle IDs: {}", missing.join(", "));
-        push_error(&mut errors, Error::new_spanned(&sig.inputs, err_msg));
     }
 
     if let Some(errors) = errors {
@@ -573,47 +582,6 @@ fn validate_dispatched_self_ty(generics: &syn::Generics, self_ty: &syn::Type) ->
 
     let err_msg = "`dyn Self` is only supported on generic `Self`";
     Err(Error::new_spanned(self_ty, err_msg))
-}
-
-/// Returns error if any method is missing explicit `<dyn Self>::ID`
-pub(crate) fn validate_dispatch_self_id(impl_: &syn::ItemImpl) -> Result<()> {
-    let mut errors = None;
-
-    for item in &impl_.items {
-        let syn::ImplItem::Fn(method) = item else {
-            continue;
-        };
-
-        let explicit_ids = method
-            .sig
-            .inputs
-            .iter()
-            .filter_map(|input| {
-                let syn::FnArg::Typed(arg) = input else {
-                    return None;
-                };
-
-                crate::dispatch::handle_id(&arg.ty)
-            })
-            .collect::<Vec<_>>();
-
-        let has_self_id = explicit_ids
-            .iter()
-            .any(|id| matches!(id, HandleId::DynSelf));
-
-        if !has_self_id {
-            let err_msg = "missing explicit handle ID: `<dyn Self>::ID`";
-            let err = syn::Error::new_spanned(&method.sig.inputs, err_msg);
-
-            push_error(&mut errors, err);
-        }
-    }
-
-    if let Some(errors) = errors {
-        return Err(errors);
-    }
-
-    Ok(())
 }
 
 #[cfg(test)]

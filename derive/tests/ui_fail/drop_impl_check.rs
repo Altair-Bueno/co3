@@ -1,4 +1,4 @@
-use co3::{export_C, extern_C, handles};
+use co3::{ffi, handles};
 
 trait Kita {}
 
@@ -10,17 +10,23 @@ handles! {
     Export1<u32>,
 }
 
-export_C! {
+ffi! {
+    #![export("C")]
+
     #[id(u8)]
     type OpaqueType<T>;
 }
 
-extern_C! {
+ffi! {
+    #![extern("C")]
+
     #[id(u8)]
     type ExternType<T>;
 }
 
-export_C! {
+ffi! {
+    #![export("C")]
+
     #![symbol_prefix = "kita"]
 
     impl Drop for OpaqueType {
@@ -28,7 +34,9 @@ export_C! {
     }
 }
 
-extern_C! {
+ffi! {
+    #![extern("C")]
+
     #![symbol_prefix = "kita"]
 
     impl Drop for ExternType {
@@ -36,7 +44,9 @@ extern_C! {
     }
 }
 
-export_C! {
+ffi! {
+    #![export("C")]
+
     #[id(u32)]
     type Export1<T>;
 
@@ -47,7 +57,9 @@ export_C! {
     }
 }
 
-extern_C! {
+ffi! {
+    #![extern("C")]
+
     #![symbol_prefix = "kita"]
 
     #[id(u32)]

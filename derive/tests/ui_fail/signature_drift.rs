@@ -1,6 +1,6 @@
 use std::ops::Deref;
 
-use co3::{ReprC, export, export_C, extern_C, handles};
+use co3::{ReprC, ffi, handles};
 
 trait ExternImplTrait {
     fn method(arg: &u32);
@@ -22,7 +22,6 @@ struct ExternImpl;
 #[repr(transparent)]
 struct DriftHandle(u32);
 
-#[export("C")]
 fn export_fn(_: &u32) {}
 
 impl ExportImpl {
@@ -45,24 +44,32 @@ handles! {
     DriftHandle,
 }
 
-export_C! {
+ffi! {
+    #![export("C")]
+
     fn export_fn(arg: &Box<u32>);
 }
 
-extern_C! {
+ffi! {
+    #![extern("C")]
+
     #![symbol_prefix = "signature_drift"]
 
     #[symbol_name = "extern_fn"]
     fn extern_fn(arg: &Box<u32>);
 }
 
-export_C! {
+ffi! {
+    #![export("C")]
+
     impl ExportImpl {
         fn method(arg: &Box<u32>);
     }
 }
 
-extern_C! {
+ffi! {
+    #![extern("C")]
+
     #![symbol_prefix = "signature_drift"]
 
     impl ExternImplTrait for ExternImpl {
@@ -70,14 +77,18 @@ extern_C! {
     }
 }
 
-export_C! {
+ffi! {
+    #![export("C")]
+
     #[dispatch(<DriftHandle>)]
     impl<dyn(u8) T = DriftHandle> ExportDispatchTrait for T {
         fn dispatch(&self, arg: &T);
     }
 }
 
-extern_C! {
+ffi! {
+    #![extern("C")]
+
     #![symbol_prefix = "signature_drift"]
 
     #[dispatch(<DriftHandle>)]

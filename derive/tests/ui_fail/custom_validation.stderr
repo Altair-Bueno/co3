@@ -1,0 +1,35 @@
+error: `is_valid` is only supported on structs or enum variants
+  --> tests/ui_fail/custom_validation.rs:12:5
+   |
+12 |     #[reprC(is_valid = |a| *a != 0)]
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error: `NICHE_VALUE` is only supported on structs
+  --> tests/ui_fail/custom_validation.rs:18:10
+   |
+18 | pub enum CustomEnum1 {
+   |          ^^^^^^^^^^^
+
+error: `is_valid` is only supported on structs or enum variants
+  --> tests/ui_fail/custom_validation.rs:25:10
+   |
+25 | pub enum CustomEnum2 {
+   |          ^^^^^^^^^^^
+
+error: Unions are not supported
+  --> tests/ui_fail/custom_validation.rs:31:1
+   |
+31 | / #[reprC(is_valid = |a| *a != 0)]
+32 | | pub union CustomUnion1 {
+33 | |     a: u32
+34 | | }
+   | |_^
+
+error: Unions are not supported
+  --> tests/ui_fail/custom_validation.rs:37:1
+   |
+37 | / #[reprC(is_valid = |a| *a != 0)]
+38 | | pub union CustomUnion2 {
+39 | |     a: u32
+40 | | }
+   | |_^

@@ -1,17 +1,17 @@
 use std::collections::HashSet;
 
-use proc_macro2::TokenStream;
+use proc_macro2::{Ident, TokenStream, TokenTree};
 use quote::quote;
 use syn::{
-    FnArg, GenericArgument, GenericParam, ItemFn, ItemImpl, PatType, Result, Type, TypeParamBound,
-    TypePath,
+    Attribute, FnArg, GenericArgument, GenericParam, ItemFn, ItemImpl, LitStr, PatType, Result,
+    Type, TypeParamBound, TypePath,
     parse::{ParseStream, Parser},
     parse_quote, parse_quote_spanned,
     spanned::Spanned,
     visit_mut::VisitMut,
 };
 
-use crate::{ExportBlock, ExternBlock, parse_handle_id_attr};
+use crate::{DeclKind, dispatch::parse_handle_id_attr};
 
 const FN_BODIES_NOT_ALLOWED_MSG: &str = "fn bodies are not allowed in declarations";
 
@@ -19,6 +19,18 @@ pub(crate) enum ParsedForeignItem {
     Type(crate::ForeignItemType),
     Impl(ItemImpl),
     Fn(ItemFn),
+}
+
+pub(crate) struct FfiInput {
+    pub(crate) kind: DeclKind,
+    pub(crate) abi: syn::Abi,
+    pub(crate) attrs: Vec<Attribute>,
+    pub(crate) items: Vec<ParsedForeignItem>,
+}
+
+struct FfiBody {
+    attrs: Vec<Attribute>,
+    items: Vec<ParsedForeignItem>,
 }
 
 struct ConstGenericArgNormalizer {
@@ -43,15 +55,153 @@ impl VisitMut for ConstGenericArgNormalizer {
     }
 }
 
-impl ExportBlock {
-    pub(crate) fn parse_items(input: ParseStream) -> Result<Vec<ParsedForeignItem>> {
-        parse_items_with_kind(input)
+impl syn::parse::Parse for ParsedForeignItem {
+    fn parse(input: ParseStream) -> Result<Self> {
+        let ahead = input.fork();
+        let _ = ahead.call(syn::Attribute::parse_outer)?;
+        if ahead.peek(syn::Token![impl]) {
+            return Ok(Self::Impl(parse_impl_item(input)?));
+        }
+
+        let _ = ahead.parse::<syn::Visibility>()?;
+        if ahead.peek(syn::Token![struct]) {
+            let err_msg = "item not supported";
+            return Err(ahead.error(err_msg));
+        }
+        if ahead.peek(syn::Token![type]) {
+            let mut ty = input.parse::<syn::ForeignItemType>()?;
+            let id = parse_handle_id_attr(&mut ty.attrs)?.map(Box::new);
+
+            return Ok(Self::Type(crate::ForeignItemType {
+                ty,
+                id,
+                dyn_self_impls: Vec::new(),
+                drop: None,
+            }));
+        }
+        if is_fn_head(&ahead)? {
+            return Ok(Self::Fn(parse_fn_item(input)?));
+        }
+
+        Err(input.error("item not supported"))
     }
 }
-impl ExternBlock {
-    pub(crate) fn parse_items(input: ParseStream) -> Result<Vec<ParsedForeignItem>> {
-        parse_items_with_kind(input)
+
+fn parse_items(input: ParseStream) -> Result<Vec<ParsedForeignItem>> {
+    let mut items = Vec::new();
+
+    while !input.is_empty() {
+        items.push(input.parse()?);
     }
+
+    Ok(items)
+}
+
+pub(crate) fn parse_ffi_input(tokens: TokenStream) -> Result<FfiInput> {
+    let FfiBody { mut attrs, items } = parse_ffi_body(tokens)?;
+    let (kind, abi) = take_decl_attr(&mut attrs)?;
+
+    Ok(FfiInput {
+        kind,
+        abi,
+        attrs,
+        items,
+    })
+}
+
+fn parse_ffi_body(tokens: TokenStream) -> Result<FfiBody> {
+    let parser = |input: syn::parse::ParseStream| -> Result<FfiBody> {
+        let mut attr_tokens = TokenStream::new();
+
+        while input.peek(syn::Token![#]) {
+            let ahead = input.fork();
+            ahead.parse::<syn::Token![#]>()?;
+            if !ahead.peek(syn::Token![!]) {
+                break;
+            }
+
+            input.parse::<syn::Token![#]>()?;
+            input.parse::<syn::Token![!]>()?;
+            let content;
+            syn::bracketed!(content in input);
+            let tokens = normalize_extern_attr_tokens(content.parse::<TokenStream>()?);
+            attr_tokens.extend(quote!(#![#tokens]));
+        }
+
+        let attrs = Attribute::parse_inner.parse2(attr_tokens)?;
+        let items = parse_items(input)?;
+
+        Ok(FfiBody { attrs, items })
+    };
+
+    parser.parse2(tokens)
+}
+
+fn take_decl_attr(attrs: &mut Vec<Attribute>) -> Result<(DeclKind, syn::Abi)> {
+    let mut decl = None;
+
+    attrs.retain(|attr| {
+        let path = attr.path();
+        let kind = if path.is_ident("export") {
+            DeclKind::Export
+        } else if path.is_ident("r#extern") {
+            DeclKind::Extern
+        } else {
+            return true;
+        };
+
+        let next = parse_decl_attr(kind, attr);
+        if decl.replace(next).is_some() {
+            decl = Some(Err(syn::Error::new_spanned(
+                &attr.meta,
+                "duplicate declaration kind attribute",
+            )));
+        }
+
+        false
+    });
+
+    match decl {
+        Some(result) => result,
+        None => Err(syn::Error::new(
+            proc_macro2::Span::call_site(),
+            "missing `#![export(\"...\")]` or `#![extern(\"...\")]`",
+        )),
+    }
+}
+
+fn parse_decl_attr(kind: DeclKind, attr: &Attribute) -> Result<(DeclKind, syn::Abi)> {
+    let err_msg = match kind {
+        DeclKind::Export => "expected `#![export(\"...\")]`",
+        DeclKind::Extern => "expected `#![extern(\"...\")]`",
+    };
+
+    let syn::Meta::List(list) = &attr.meta else {
+        return Err(syn::Error::new_spanned(attr, err_msg));
+    };
+
+    let abi_lit = syn::parse2::<LitStr>(list.tokens.clone())
+        .map_err(|_| syn::Error::new_spanned(attr, err_msg))?;
+    let abi = syn::parse2(quote!(extern #abi_lit))?;
+
+    Ok((kind, abi))
+}
+
+fn normalize_extern_attr_tokens(tokens: TokenStream) -> TokenStream {
+    let mut iter = tokens.into_iter();
+    let Some(first) = iter.next() else {
+        return TokenStream::new();
+    };
+
+    let first = if first.to_string() == "extern" {
+        let mut ident = Ident::new_raw("extern", first.span());
+        ident.set_span(first.span());
+        TokenTree::Ident(ident)
+    } else {
+        first
+    };
+
+    std::iter::once(first).chain(iter).collect()
 }
 
 fn is_fn_head(input: syn::parse::ParseStream) -> syn::Result<bool> {
@@ -451,43 +601,6 @@ fn validate_dispatched_self_ty(impl_: &ItemImpl) -> syn::Result<()> {
     }
 
     Ok(())
-}
-
-fn parse_items_with_kind(input: syn::parse::ParseStream) -> syn::Result<Vec<ParsedForeignItem>> {
-    let mut items = Vec::new();
-
-    while !input.is_empty() {
-        let ahead = input.fork();
-        let _ = ahead.call(syn::Attribute::parse_outer)?;
-        let item = if ahead.peek(syn::Token![impl]) {
-            ParsedForeignItem::Impl(parse_impl_item(input)?)
-        } else {
-            let _ = ahead.parse::<syn::Visibility>()?;
-            if ahead.peek(syn::Token![struct]) {
-                let err_msg = "item not supported";
-                return Err(ahead.error(err_msg));
-            }
-            if ahead.peek(syn::Token![type]) {
-                let mut ty = input.parse::<syn::ForeignItemType>()?;
-                let id = parse_handle_id_attr(&mut ty.attrs)?.map(Box::new);
-
-                ParsedForeignItem::Type(crate::ForeignItemType {
-                    ty,
-                    id,
-                    dyn_self_impls: Vec::new(),
-                    drop: None,
-                })
-            } else if is_fn_head(&ahead)? {
-                ParsedForeignItem::Fn(parse_fn_item(input)?)
-            } else {
-                return Err(input.error("item not supported"));
-            }
-        };
-
-        items.push(item);
-    }
-
-    Ok(items)
 }
 
 fn restore_synthetic_receiver(signature: &mut syn::Signature) {

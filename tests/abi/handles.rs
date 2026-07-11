@@ -1,4 +1,4 @@
-use co3::{extern_C, external::ExternRef};
+use co3::{external::ExternRef, ffi};
 
 trait Custom {
     fn inc(self, by: Vec<u32>) -> Self;
@@ -10,8 +10,8 @@ co3::handles! {
     Opaque<u8, bool>,
 }
 
-extern_C! {
-    #![symbol_prefix = "abi"]
+ffi! {
+    #![extern("C")]
 
     #[id(u8)]
     type Opaque<T, U>;
@@ -81,7 +81,7 @@ extern_C! {
 mod provider {
     use core::marker::PhantomData;
 
-    use co3::{export_C, handles};
+    use co3::{ffi, handles};
 
     use super::Custom;
 
@@ -116,7 +116,9 @@ mod provider {
         }
     }
 
-    export_C! {
+    ffi! {
+        #![export("C")]
+
         #[id(u8)]
         pub type Opaque<T, U>;
 

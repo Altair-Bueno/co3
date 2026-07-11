@@ -1,4 +1,4 @@
-use co3::{ReprC, export, extern_, extern_C};
+use co3::{ReprC, ffi};
 
 #[derive(Clone, ReprC)]
 pub struct Hello {
@@ -6,9 +6,7 @@ pub struct Hello {
     b: i32,
 }
 
-#[export("C")]
 impl Hello {
-    #[symbol_name = "hello"]
     #[expect(improper_ctypes_definitions)]
     pub extern "C" fn hello(
         Hello { a: a1, b: b1 }: Hello,
@@ -18,19 +16,28 @@ impl Hello {
     }
 }
 
-extern_C! {
+ffi! {
+    #![export("C")]
+
+    impl Hello {
+        #[symbol_name = "hello"]
+        pub extern "C" fn hello(a: Hello, b: Hello) -> i32;
+    }
+}
+
+ffi! {
+    #![extern("C")]
+
     #![symbol_prefix = "kita"]
 
     #[symbol_name = "hello"]
-    #[expect(improper_ctypes_definitions)]
     pub extern "C" fn hello2(a: Hello, b: Hello) -> i32;
 }
 
-extern_! {
-    #![abi = "C"]
+ffi! {
+    #![extern("C")]
 
     #[symbol_name = "hello"]
-    #[expect(improper_ctypes_definitions)]
     pub extern "C" fn hello3(a: Hello, b: Hello) -> i32;
 }
 

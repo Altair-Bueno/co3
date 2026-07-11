@@ -1,6 +1,6 @@
 use std::{mem::MaybeUninit, ptr::NonNull};
 
-use co3::{Decode, EncodeWithStore, FfiReturn, ReprC, export, export_, export_C, external::Extern};
+use co3::{Decode, EncodeWithStore, FfiReturn, ReprC, export, external::Extern, ffi};
 
 trait AmbiguousX<T, const N: usize> {
     type U;
@@ -47,7 +47,9 @@ pub enum NonOpaqueStruct<T> {
     A(T),
 }
 
-export_C! {
+ffi! {
+    #![export("C")]
+
     type OpaqueStructU8;
     type OpaqueStructU32;
     type OpaqueStructU64;
@@ -86,8 +88,8 @@ export_C! {
     }
 }
 
-export_! {
-    #![abi = "Rust"]
+ffi! {
+    #![export("Rust")]
 
     impl Clone for OpaqueStructU8 {
         #[symbol_name = "clone"]

@@ -1,70 +1,10 @@
-use co3::{ReprC, export_, export_C, extern_, extern_C, handles};
+use co3::{ReprC, ffi, handles};
+
+trait Attr {}
 
 #[derive(Clone, ReprC)]
 #[repr(transparent)]
 struct Value(u8);
-
-fn value_plain(value: Value) -> u8 {
-    value.0
-}
-
-fn value_soft(value: &(u8,)) -> u8 {
-    value.0
-}
-
-export_C! {
-    #![cfg_attr(any(), symbol_prefix = "unused")]
-    #![cfg_attr(all(), symbol_prefix = "cfg_attr")]
-
-    #[cfg_attr(any(), symbol_name = "unused")]
-    #[cfg_attr(all(), symbol_name = "cfg_attr__value_plain")]
-    fn value_plain(value: Value) -> u8;
-}
-
-extern_C! {
-    #![cfg_attr(any(), symbol_prefix = "unused")]
-    #![cfg_attr(all(), symbol_prefix = "cfg_attr")]
-
-    #[cfg_attr(any(), symbol_name = "unused")]
-    #[cfg_attr(all(), symbol_name = "cfg_attr__value_plain")]
-    fn imported_value_plain(value: Value) -> u8;
-}
-
-export_! {
-    #![cfg_attr(all(), abi = "C")]
-
-    #[symbol_name = "cfg_attr__value_soft"]
-    fn value_soft(#[cfg_attr(all(), soft)] value: &(u8,)) -> u8;
-}
-
-extern_! {
-    #![cfg_attr(all(), abi = "C")]
-
-    #[symbol_name = "cfg_attr__value_soft"]
-    fn imported_value_soft(#[cfg_attr(all(), soft)] value: &(u8,)) -> u8;
-}
-
-struct ExportOpaque;
-
-export_C! {
-    #![symbol_prefix = "cfg_attr"]
-
-    #[cfg_attr(all(), id(u8))]
-    type ExportOpaque;
-}
-
-mod imported {
-    use co3::extern_C;
-
-    extern_C! {
-        #![symbol_prefix = "cfg_attr"]
-
-        #[cfg_attr(all(), id(u8))]
-        type Opaque;
-    }
-}
-
-trait Attr {}
 
 trait ByteValue {
     fn into_byte(self) -> u8;
@@ -84,8 +24,76 @@ handles! {
 
 impl Attr for Custom {}
 
+fn value_plain(value: Value) -> u8 {
+    value.0
+}
+
+fn value_soft(value: &(u8,)) -> u8 {
+    value.0
+}
+
+ffi! {
+    #![export("C")]
+
+    #![cfg_attr(any(), symbol_prefix = "unused")]
+    #![cfg_attr(all(), symbol_prefix = "cfg_attr")]
+
+    #[cfg_attr(any(), symbol_name = "unused")]
+    #[cfg_attr(all(), symbol_name = "cfg_attr__value_plain")]
+    fn value_plain(value: Value) -> u8;
+}
+
+ffi! {
+    #![extern("C")]
+
+    #![cfg_attr(any(), symbol_prefix = "unused")]
+    #![cfg_attr(all(), symbol_prefix = "cfg_attr")]
+
+    #[cfg_attr(any(), symbol_name = "unused")]
+    #[cfg_attr(all(), symbol_name = "cfg_attr__value_plain")]
+    fn imported_value_plain(value: Value) -> u8;
+}
+
+ffi! {
+    #![cfg_attr(all(), export("C"))]
+
+    #[symbol_name = "cfg_attr__value_soft"]
+    fn value_soft(#[cfg_attr(all(), soft)] value: &(u8,)) -> u8;
+}
+
+ffi! {
+    #![cfg_attr(all(), extern("C"))]
+
+    #[symbol_name = "cfg_attr__value_soft"]
+    fn imported_value_soft(#[cfg_attr(all(), soft)] value: &(u8,)) -> u8;
+}
+
+struct ExportOpaque;
+
+ffi! {
+    #![export("C")]
+
+    #![symbol_prefix = "cfg_attr"]
+
+    #[cfg_attr(all(), id(u8))]
+    type ExportOpaque;
+}
+
+mod imported {
+    use co3::ffi;
+
+    ffi! {
+        #![extern("C")]
+
+        #![symbol_prefix = "cfg_attr"]
+
+        #[cfg_attr(all(), id(u8))]
+        type Opaque;
+    }
+}
+
 mod provider {
-    use co3::{ReprC, export_C, handles};
+    use co3::{ReprC, ffi, handles};
 
     use super::{Attr, ByteValue, EnvAttr};
 
@@ -105,7 +113,9 @@ mod provider {
         }
     }
 
-    export_C! {
+    ffi! {
+        #![export("C")]
+
         #![symbol_prefix = "cfg_attr_dispatch"]
 
         #[cfg_attr(all(), dispatch(<Custom>))]
@@ -115,7 +125,9 @@ mod provider {
     }
 }
 
-extern_C! {
+ffi! {
+    #![extern("C")]
+
     #![symbol_prefix = "cfg_attr_dispatch"]
 
     #[cfg_attr(all(), dispatch(<Custom>))]

@@ -1,4 +1,4 @@
-use co3::{extern_, extern_C};
+use co3::{ffi};
 
 trait Kita {
     type U;
@@ -6,47 +6,60 @@ trait Kita {
     fn kita(self);
 }
 
-extern_! {}
+ffi! {}
 
-extern_C! {
-    #![abi = "C"]
+ffi! {
+    #![extern("C")]
+    #![export("C")]
 }
 
-extern_! {
-    #![abi = "Rust"]
-    #![abi = "C"]
+ffi! {
+    #![extern("Rust")]
+    #![export("C")]
 }
 
-extern_! {
-    #![abi = "C"]
+ffi! {
     #![feature(generic_const_exprs)]
+
+    #![extern("C")]
 }
 
-extern_! {
-    #![abi = "C"]
+ffi! {
     #![feature(extern_types)]
     #![feature(extern_types)]
+
+    #![extern("C")]
 }
 
-extern_C! {
+ffi! {
+    #![extern("C")]
+
     trait Kita {
         fn kita(self);
     }
 }
 
-extern_C! {
+ffi! {
+    #![extern("C")]
+
     enum Kita {}
 }
 
-extern_C! {
+ffi! {
+    #![extern("C")]
+
     struct Kita {}
 }
 
-extern_C! {
+ffi! {
+    #![extern("C")]
+
     union Kita {}
 }
 
-extern_C! {
+ffi! {
+    #![extern("C")]
+
     #![symbol_prefix = "kita"]
 
     impl Kita for u32 {
@@ -55,16 +68,9 @@ extern_C! {
     }
 }
 
-extern_C! {
-    #![symbol_prefix = "kita"]
+ffi! {
+    #![extern("C")]
 
-    #[dispatch]
-    impl<dyn(u32) T> Kita for Box<T> {
-        fn kita(self, id: <dyn T>::ID);
-    }
-}
-
-extern_C! {
     #![symbol_prefix = "kita"]
 
     #[dispatch(<u32>)]
@@ -73,8 +79,8 @@ extern_C! {
     }
 }
 
-extern_! {
-    #![abi = "C"]
+ffi! {
+    #![extern("C")]
 
     #[dispatch]
     impl Kita {
@@ -82,16 +88,37 @@ extern_! {
     }
 }
 
-extern_C! {
+ffi! {
+    #![extern("C")]
+
     fn kita1(a: u32) {}
 }
 
-extern_C! {
+ffi! {
+    #![extern("C")]
+
     fn kita1((a, b): (u32, u32));
 }
 
-extern_C! {
-    #![symbol_prefix = "kita"]
+ffi! {
+    #![extern("C")]
+
+    #[id(u8)]
+    type Handle<T>;
+
+    #[dispatch(<u32>)]
+    impl<T> Drop for dyn Handle<T> {
+        fn drop(self_id: <dyn Self>::ID, &mut self);
+    }
+
+    #[dispatch]
+    impl<dyn(u8) T> Clone for Handle<T> {
+        fn clone(self_id: <dyn T>::ID, &self) -> Self;
+    }
+}
+
+ffi! {
+    #![extern("C")]
 
     #[id(u8)]
     type Handle<T>;

@@ -1,4 +1,4 @@
-use co3::{ReprC, export, extern_C, handles};
+use co3::{ReprC, export, ffi, handles};
 
 #[derive(Clone, Debug, PartialEq, Eq, ReprC)]
 #[repr(transparent)]
@@ -23,7 +23,9 @@ impl Default for Opaque {
     }
 }
 
-extern_C! {
+ffi! {
+    #![extern("C")]
+
     #![symbol_prefix = "kita"]
 
     #[dispatch(<Opaque>)]
@@ -40,7 +42,7 @@ extern_C! {
 mod provider {
     use core::ops::Add;
 
-    use co3::export_C;
+    use co3::ffi;
 
     use super::*;
 
@@ -70,7 +72,9 @@ mod provider {
         }
     }
 
-    export_C! {
+    ffi! {
+        #![export("C")]
+
         #![symbol_prefix = "kita"]
 
         impl ToOwned for Box<Opaque> {

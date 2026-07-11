@@ -75,6 +75,7 @@ pub(crate) fn find_dispatch_attr(attrs: &[syn::Attribute]) -> Option<&syn::Attri
 
 pub(crate) fn parse_dispatch_attr(
     impl_: &syn::ItemImpl,
+    allow_empty: bool,
 ) -> Result<Punctuated<syn::AngleBracketedGenericArguments, syn::Token![,]>> {
     let Some(attr) = find_dispatch_attr(&impl_.attrs) else {
         return Ok(Punctuated::default());
@@ -94,7 +95,7 @@ pub(crate) fn parse_dispatch_attr(
     );
 
     let syn::Meta::List(list) = &attr.meta else {
-        if !params.is_empty() {
+        if !allow_empty && !params.is_empty() {
             return Err(syn::Error::new_spanned(attr, err_msg));
         }
 
@@ -104,7 +105,7 @@ pub(crate) fn parse_dispatch_attr(
     let mut generic_args: Punctuated<syn::AngleBracketedGenericArguments, syn::Token![,]> =
         Punctuated::parse_terminated.parse2(list.tokens.clone())?;
 
-    if generic_args.is_empty() && !params.is_empty() {
+    if generic_args.is_empty() && !allow_empty && !params.is_empty() {
         return Err(syn::Error::new_spanned(attr, err_msg));
     }
 
@@ -235,7 +236,6 @@ pub(crate) fn gen_dispatch_export(
         merge_generics(impl_.generics.clone(), &mut item.sig.generics);
         normalize_fn_signature(&mut item.sig, Some(self_ty));
         let erased_layout_checks = gen_dispatch_erased_layout_checks(generics, &item.sig, &args);
-        synthesize_dispatch_handle_ids(self_id, &mut item.sig);
         monomorphize_predicates(&mut item.sig.generics, &args);
         strip_erased_type_params(&mut item.sig.generics);
 
@@ -476,21 +476,40 @@ fn input_abi_tys(attrs: &[syn::Attribute], ty: &syn::Type) -> Vec<syn::Type> {
     vec![parse_quote!(#abi_ty)]
 }
 
-fn synthesize_dispatch_handle_ids(self_id: Option<&syn::Type>, sig: &mut syn::Signature) {
+pub(crate) fn synthesize_dispatch_handle_ids(
+    self_id: Option<&syn::Type>,
+    impl_generics: &syn::Generics,
+    sig: &mut syn::Signature,
+) {
     let mut synthesized = Punctuated::<syn::FnArg, syn::Token![,]>::new();
 
-    let erased_params = sig
-        .generics
+    let erased_params = impl_generics
         .type_params()
         .filter(|p| p.attrs.iter().any(is_type_erased))
         .map(|p| &p.ident)
         .collect::<BTreeSet<_>>();
 
-    if erased_params.is_empty() && self_id.is_some() {
+    let explicit_ids = sig
+        .inputs
+        .iter()
+        .filter_map(|input| {
+            let syn::FnArg::Typed(syn::PatType { ty, .. }) = input else {
+                return None;
+            };
+
+            handle_id(ty)
+        })
+        .collect::<BTreeSet<_>>();
+
+    if erased_params.is_empty() && self_id.is_some() && !explicit_ids.contains(&HandleId::DynSelf) {
         synthesized.push(parse_quote!(__co3_self_id: <dyn Self>::ID));
     }
 
     for ident in erased_params {
+        if explicit_ids.contains(&HandleId::DynType(ident)) {
+            continue;
+        }
+
         let pat = format_ident!("{ident}_id");
         synthesized.push(parse_quote!(#pat: <dyn #ident>::ID));
     }

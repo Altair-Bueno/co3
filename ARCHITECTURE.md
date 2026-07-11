@@ -21,21 +21,21 @@ trait ReprFamily {
 
 where `ReprFamily::Kind` is assigned one of the categories below through a marker of the same name:
 
-1. **`Robust`** (marker type)
+1. **`ReprC<Robust>`** (marker type)
 - Types with stable C layout and no trap representations (e.g. `u32`).
 - Usually map directly to themselves in ABI (no conversion necessary).
 
-2. **`Opaque`** (marker type)
-- Types passed across FFI as opaque pointers, derived from a `Box`ed value.
-- Consuming side SHOULD NOT rely on the layout of the referent or access its value.
-
-3. **`Transmuted`** (marker type)
+2. **`ReprC<NonRobust>`** (marker type)
 - Types that can be safely transmuted into a single chosen target type.
 - IR/ABI mapping and value conversion continue through the target type.
 
-4. **`Cloned`** (marker trait)
+3. **`ReprRust`** (marker trait)
 - Fallback for types that don't belong to any of the previous IR type families.
 - Conversion of references/slices piggybacks on the referent and incurs cloning.
+
+4. **`Opaque`** (marker type)
+- Types passed across FFI as opaque pointers, derived from a `Box`ed value.
+- Consuming side SHOULD NOT rely on the layout of the referent or access its value.
 
 ### 2.1 Composite Types
 
@@ -108,8 +108,8 @@ The tables below specifies how composite types derive `ReprFamily::Kind`:
 | `Cloned` | `WithoutNiche` | `Option<WithoutNiche>` |
 | `Cloned` | `WithCustomNiche` | `Option<WithCustomNiche>` |
 
-- `[1]` - Conditional on `#[unstable-refs]`
-- `[2]` - For non-robust `R`, `Encode` path of `&mut R` is conditional on `#[unstable-refs]` or `unsafe-optimizations`
+- `[1]` - Conditional on `#[soft]`
+- `[2]` - For non-robust `R`, `Encode` path of `&mut R` is conditional on `#[soft]` or `unsafe-optimizations`
 
 ## 3. Niche Family
 

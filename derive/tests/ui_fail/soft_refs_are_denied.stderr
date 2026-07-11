@@ -1,9 +1,12 @@
 error[E0277]: the trait bound `RefSizedDecodeStore<(u8,), ((),)>: co3::stored::EmptyStore` is not satisfied
-  --> tests/ui_fail/soft_refs_are_denied.rs:12:5
+  --> tests/ui_fail/soft_refs_are_denied.rs:11:5
    |
-12 | /     export_C! {
-13 | |         pub fn by_val_is_denied(arg1: &(u8,), #[soft] move arg2: Vec<(u8,)>) -> u8;
-14 | |     }
+11 | /     ffi! {
+12 | |         #![export("C")]
+13 | |
+14 | |         pub fn by_ref_is_allowed(#[soft] arg1: &(u8,), #[soft] arg2: Vec<(u8,)>) -> u8;
+15 | |         pub fn by_val_is_denied(arg1: &(u8,), #[soft] move arg2: Vec<(u8,)>) -> u8;
+16 | |     }
    | |_____^ the trait `co3::stored::EmptyStore` is not implemented for `RefSizedDecodeStore<(u8,), ((),)>`
    |
    = help: the following other types implement trait `co3::stored::EmptyStore`:
@@ -21,14 +24,17 @@ note: required by a bound in `decode`
    |
    | pub unsafe fn decode<'d, T: Decode<'d, Store: EmptyStore> + 'd>(source: T::CType) -> Option<T> {
    |                                               ^^^^^^^^^^ required by this bound in `decode`
-   = note: this error originates in the macro `export_C` (in Nightly builds, run with -Z macro-backtrace for more info)
+   = note: this error originates in the macro `ffi` (in Nightly builds, run with -Z macro-backtrace for more info)
 
 error[E0271]: type mismatch resolving `<[(u8,)] as ReprFamily>::Kind == ReprC<_>`
-  --> tests/ui_fail/soft_refs_are_denied.rs:12:5
+  --> tests/ui_fail/soft_refs_are_denied.rs:11:5
    |
-12 | /     export_C! {
-13 | |         pub fn by_val_is_denied(arg1: &(u8,), #[soft] move arg2: Vec<(u8,)>) -> u8;
-14 | |     }
+11 | /     ffi! {
+12 | |         #![export("C")]
+13 | |
+14 | |         pub fn by_ref_is_allowed(#[soft] arg1: &(u8,), #[soft] arg2: Vec<(u8,)>) -> u8;
+15 | |         pub fn by_val_is_denied(arg1: &(u8,), #[soft] move arg2: Vec<(u8,)>) -> u8;
+16 | |     }
    | |_____^ expected `ReprC<_>`, found `ReprRust`
    |
    = note: expected struct `ReprC<_>`
@@ -42,16 +48,18 @@ note: required by a bound in `co3::soft_decode`
    |
    | pub unsafe fn soft_decode<'d, T: Decode<'d>>(
    |                                  ^^^^^^^^^^ required by this bound in `soft_decode`
-   = note: this error originates in the macro `export_C` (in Nightly builds, run with -Z macro-backtrace for more info)
+   = note: this error originates in the macro `ffi` (in Nightly builds, run with -Z macro-backtrace for more info)
 
 error[E0277]: the trait bound `RefSizedEncodeStore<(u8,)>: co3::stored::EmptyStore` is not satisfied
-  --> tests/ui_fail/soft_refs_are_denied.rs:24:40
+  --> tests/ui_fail/soft_refs_are_denied.rs:28:40
    |
-22 | / extern_C! {
-23 | |     pub extern "C" fn by_ref_is_allowed(#[soft] arg1: &(u8,), #[soft] arg2: Vec<(u8,)>) -> u8;
-24 | |     pub extern "C" fn by_val_is_denied(arg1: &(u8,), #[soft] move arg2: Vec<(u8,)>) -> u8;
+24 | / ffi! {
+25 | |     #![extern("C")]
+26 | |
+27 | |     pub extern "C" fn by_ref_is_allowed(#[soft] arg1: &(u8,), #[soft] arg2: Vec<(u8,)>) -> u8;
+28 | |     pub extern "C" fn by_val_is_denied(arg1: &(u8,), #[soft] move arg2: Vec<(u8,)>) -> u8;
    | |                                        ^^^^ the trait `co3::stored::EmptyStore` is not implemented for `RefSizedEncodeStore<(u8,)>`
-25 | | }
+29 | | }
    | |_- required by a bound introduced by this call
    |
    = help: the following other types implement trait `co3::stored::EmptyStore`:
@@ -71,13 +79,15 @@ note: required by a bound in `encode`
    |                                ^^^^^^^^^^ required by this bound in `encode`
 
 error[E0271]: type mismatch resolving `<[(u8,)] as ReprFamily>::Kind == ReprC<_>`
-  --> tests/ui_fail/soft_refs_are_denied.rs:24:67
+  --> tests/ui_fail/soft_refs_are_denied.rs:28:67
    |
-22 | / extern_C! {
-23 | |     pub extern "C" fn by_ref_is_allowed(#[soft] arg1: &(u8,), #[soft] arg2: Vec<(u8,)>) -> u8;
-24 | |     pub extern "C" fn by_val_is_denied(arg1: &(u8,), #[soft] move arg2: Vec<(u8,)>) -> u8;
+24 | / ffi! {
+25 | |     #![extern("C")]
+26 | |
+27 | |     pub extern "C" fn by_ref_is_allowed(#[soft] arg1: &(u8,), #[soft] arg2: Vec<(u8,)>) -> u8;
+28 | |     pub extern "C" fn by_val_is_denied(arg1: &(u8,), #[soft] move arg2: Vec<(u8,)>) -> u8;
    | |                                                                   ^^^^ expected `ReprC<_>`, found `ReprRust`
-25 | | }
+29 | | }
    | |_- required by a bound introduced by this call
    |
    = note: expected struct `ReprC<_>`

@@ -1,6 +1,6 @@
 use core::{borrow::Borrow, ffi::c_void};
 
-use co3::{ReprC, extern_C, handles};
+use co3::{ReprC, ffi, handles};
 
 #[derive(ReprC)]
 #[reprC(id(u8))]
@@ -42,7 +42,7 @@ impl Clone for Wrapper<Unsized<str>> {
 }
 
 mod provider {
-    use co3::export_C;
+    use co3::ffi;
 
     use super::*;
 
@@ -58,7 +58,9 @@ mod provider {
         }
     }
 
-    export_C! {
+    ffi! {
+        #![export("C")]
+
         #[dispatch(<Unsized<str>>)]
         impl<dyn(u8) T = [c_void]> Wrapper<T> {
             fn take_export(self) -> usize;
@@ -66,7 +68,9 @@ mod provider {
     }
 }
 
-extern_C! {
+ffi! {
+    #![extern("C")]
+
     #![symbol_prefix = "kita"]
 
     #[dispatch(<Unsized<str>>)]

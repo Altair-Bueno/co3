@@ -1,12 +1,12 @@
 error[E0277]: the trait bound `RefSizedDecodeStore<ReprRustStruct, ((),)>: co3::stored::EmptyStore` is not satisfied
-  --> tests/ui_fail/non_local_out_ptr.rs:45:1
+  --> tests/ui_fail/non_local_out_ptr.rs:42:1
    |
-45 | / extern_C! {
-46 | |     #![symbol_prefix = "kita"]
-47 | |
-48 | |     impl CustomTrait for i32 {
+42 | / ffi! {
+43 | |     #![extern("C")]
+44 | |
+45 | |     #![symbol_prefix = "kita"]
 ...  |
-55 | | }
+54 | | }
    | |_^ the trait `co3::stored::EmptyStore` is not implemented for `RefSizedDecodeStore<ReprRustStruct, ((),)>`
    |
    = help: the following other types implement trait `co3::stored::EmptyStore`:
@@ -24,17 +24,17 @@ note: required by a bound in `decode`
    |
    | pub unsafe fn decode<'d, T: Decode<'d, Store: EmptyStore> + 'd>(source: T::CType) -> Option<T> {
    |                                               ^^^^^^^^^^ required by this bound in `decode`
-   = note: this error originates in the macro `extern_C` (in Nightly builds, run with -Z macro-backtrace for more info)
+   = note: this error originates in the macro `ffi` (in Nightly builds, run with -Z macro-backtrace for more info)
 
 error[E0277]: the trait bound `RefSizedDecodeStore<ReprRustEnum, ((),)>: co3::stored::EmptyStore` is not satisfied
-  --> tests/ui_fail/non_local_out_ptr.rs:45:1
+  --> tests/ui_fail/non_local_out_ptr.rs:42:1
    |
-45 | / extern_C! {
-46 | |     #![symbol_prefix = "kita"]
-47 | |
-48 | |     impl CustomTrait for i32 {
+42 | / ffi! {
+43 | |     #![extern("C")]
+44 | |
+45 | |     #![symbol_prefix = "kita"]
 ...  |
-55 | | }
+54 | | }
    | |_^ the trait `co3::stored::EmptyStore` is not implemented for `RefSizedDecodeStore<ReprRustEnum, ((),)>`
    |
    = help: the following other types implement trait `co3::stored::EmptyStore`:
@@ -52,17 +52,17 @@ note: required by a bound in `decode`
    |
    | pub unsafe fn decode<'d, T: Decode<'d, Store: EmptyStore> + 'd>(source: T::CType) -> Option<T> {
    |                                               ^^^^^^^^^^ required by this bound in `decode`
-   = note: this error originates in the macro `extern_C` (in Nightly builds, run with -Z macro-backtrace for more info)
+   = note: this error originates in the macro `ffi` (in Nightly builds, run with -Z macro-backtrace for more info)
 
 error[E0271]: type mismatch resolving `<[ReprRustStruct] as ReprFamily>::Kind == ReprC<_>`
-  --> tests/ui_fail/non_local_out_ptr.rs:45:1
+  --> tests/ui_fail/non_local_out_ptr.rs:42:1
    |
-45 | / extern_C! {
-46 | |     #![symbol_prefix = "kita"]
-47 | |
-48 | |     impl CustomTrait for i32 {
+42 | / ffi! {
+43 | |     #![extern("C")]
+44 | |
+45 | |     #![symbol_prefix = "kita"]
 ...  |
-55 | | }
+54 | | }
    | |_^ expected `ReprC<_>`, found `ReprRust`
    |
    = note: expected struct `ReprC<_>`
@@ -76,17 +76,17 @@ note: required by a bound in `decode`
    |
    | pub unsafe fn decode<'d, T: Decode<'d, Store: EmptyStore> + 'd>(source: T::CType) -> Option<T> {
    |                             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ required by this bound in `decode`
-   = note: this error originates in the macro `extern_C` (in Nightly builds, run with -Z macro-backtrace for more info)
+   = note: this error originates in the macro `ffi` (in Nightly builds, run with -Z macro-backtrace for more info)
 
 error[E0271]: type mismatch resolving `<[ReprRustEnum] as ReprFamily>::Kind == ReprC<_>`
-  --> tests/ui_fail/non_local_out_ptr.rs:45:1
+  --> tests/ui_fail/non_local_out_ptr.rs:42:1
    |
-45 | / extern_C! {
-46 | |     #![symbol_prefix = "kita"]
-47 | |
-48 | |     impl CustomTrait for i32 {
+42 | / ffi! {
+43 | |     #![extern("C")]
+44 | |
+45 | |     #![symbol_prefix = "kita"]
 ...  |
-55 | | }
+54 | | }
    | |_^ expected `ReprC<_>`, found `ReprRust`
    |
    = note: expected struct `ReprC<_>`
@@ -100,4 +100,4 @@ note: required by a bound in `decode`
    |
    | pub unsafe fn decode<'d, T: Decode<'d, Store: EmptyStore> + 'd>(source: T::CType) -> Option<T> {
    |                             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ required by this bound in `decode`
-   = note: this error originates in the macro `extern_C` (in Nightly builds, run with -Z macro-backtrace for more info)
+   = note: this error originates in the macro `ffi` (in Nightly builds, run with -Z macro-backtrace for more info)

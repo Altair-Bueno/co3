@@ -1,15 +1,17 @@
-use co3::extern_C;
+use co3::ffi;
 
 mod provider {
-    use co3::{export, export_C};
+    use co3::ffi;
 
-    #[export("C")]
     #[expect(unused_variables)]
-    pub fn by_ref_is_allowed(#[soft] arg1: &(u8,), #[soft] arg2: Vec<(u8,)>) -> u8 {
+    pub fn by_ref_is_allowed(arg1: &(u8,), arg2: Vec<(u8,)>) -> u8 {
         arg1.0
     }
 
-    export_C! {
+    ffi! {
+        #![export("C")]
+
+        pub fn by_ref_is_allowed(#[soft] arg1: &(u8,), #[soft] arg2: Vec<(u8,)>) -> u8;
         pub fn by_val_is_denied(arg1: &(u8,), #[soft] move arg2: Vec<(u8,)>) -> u8;
     }
 
@@ -19,7 +21,9 @@ mod provider {
     }
 }
 
-extern_C! {
+ffi! {
+    #![extern("C")]
+
     pub extern "C" fn by_ref_is_allowed(#[soft] arg1: &(u8,), #[soft] arg2: Vec<(u8,)>) -> u8;
     pub extern "C" fn by_val_is_denied(arg1: &(u8,), #[soft] move arg2: Vec<(u8,)>) -> u8;
 }

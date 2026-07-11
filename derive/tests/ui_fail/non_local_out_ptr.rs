@@ -1,4 +1,4 @@
-use co3::{ReprC, extern_C};
+use co3::{ReprC, ffi};
 
 trait CustomTrait {
     fn return_no_repr_struct_ref(&self) -> &ReprRustStruct;
@@ -18,11 +18,8 @@ pub enum ReprRustEnum {
 }
 
 mod provider {
-    use co3::export;
-
     use super::*;
 
-    #[export("C")]
     impl CustomTrait for u32 {
         fn return_no_repr_struct_ref(&self) -> &ReprRustStruct {
             unimplemented!()
@@ -42,7 +39,9 @@ mod provider {
     }
 }
 
-extern_C! {
+ffi! {
+    #![extern("C")]
+
     #![symbol_prefix = "kita"]
 
     impl CustomTrait for i32 {

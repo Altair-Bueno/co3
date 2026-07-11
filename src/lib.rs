@@ -1,6 +1,20 @@
 //! Structures and macros related to FFI and generation of FFI bindings. Any type that implements
-//! [`ExternC`] can be used in the FFI bindings generated with [`export`]/[`extern_C!`]. It
-//! is advisable to implement [`Ir`] and benefit from automatic implementation of [`ExternC`]
+//! [`ExternC`] can be used in the FFI bindings generated with [`ffi!`]. It is advisable
+//! to implement [`ReprFamily`] and benefit from automatic implementation of [`ExternC`].
+//!
+//! ```rust,ignore
+//! # use co3::{ExternC, ffi};
+//!
+//! ffi! {
+//!     #![cfg_attr(not(feature = "ffi-extern"), export("C"))]
+//!     #![cfg_attr(feature = "ffi-extern", extern("C"))]
+//!
+//!     #![symbol_prefix = "provider"]
+//!
+//!     type Local;
+//!     fn make_local() -> Local;
+//! }
+//! ```
 #![no_std]
 
 #[cfg(feature = "alloc")]

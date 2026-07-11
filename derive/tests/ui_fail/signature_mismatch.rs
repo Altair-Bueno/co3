@@ -1,4 +1,4 @@
-use co3::{ReprC, export_C, extern_C, handles};
+use co3::{ReprC, ffi, handles};
 
 trait Kita {
     type MySelf;
@@ -39,17 +39,23 @@ impl Kita for u32 {
 
 fn kita(_a: &u32) {}
 
-export_C! {
-     fn kita(a: &Box<u32>);
+ffi! {
+    #![export("C")]
+
+    fn kita(a: &Box<u32>);
 }
 
-export_C! {
+ffi! {
+    #![export("C")]
+
     impl Kita for u32 {
         fn kita2(a: &Box<u32>);
     }
 }
 
-extern_C! {
+ffi! {
+    #![extern("C")]
+
     #![symbol_prefix = "kita"]
 
     #[id(u32)]

@@ -14,10 +14,9 @@ categories = ["development-tools::ffi"]
 [features]
 default = ["alloc"]
 
-# Enable deriving `extern C` ABI. Macros made available are:
-# - `#[derive(ReprC)]`
-# - `#[export("ABI")]`
-# - `extern_C!`/`extern_!`
+# Enables:
+# - deriving C-compatible representations with `#[derive(ReprC)]`
+# - writing exports/extern FFI declarations via `ffi!`
 derive = ["co3-derive"]
 
 # Implements conversion traits for types from the `alloc` crate (e.g. `Box<T>` or `Vec<T>`).

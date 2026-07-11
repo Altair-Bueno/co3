@@ -1,4 +1,4 @@
-use co3::{ReprC, extern_C, handle::HandleFamily, handles};
+use co3::{ReprC, ffi, handle::HandleFamily, handles};
 
 trait Attribute {}
 
@@ -25,7 +25,7 @@ handles! {
 }
 
 mod provider {
-    use co3::export_C;
+    use co3::ffi;
 
     use super::*;
 
@@ -39,7 +39,9 @@ mod provider {
         }
     }
 
-    export_C! {
+    ffi! {
+        #![export("C")]
+
         #[unsafe(lifetimes)]
         #[dispatch(<&CustomAttribute>)]
         impl<'a, dyn(u8) T: 'a + 'a> Dispatch for T
@@ -52,7 +54,9 @@ mod provider {
     }
 }
 
-extern_C! {
+ffi! {
+    #![extern("C")]
+
     #[unsafe(lifetimes)]
     #[dispatch(<&CustomAttribute>)]
     impl<'a, dyn(u8) T: Attribute + 'a> Dispatch for T {

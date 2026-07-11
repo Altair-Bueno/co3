@@ -1,4 +1,4 @@
-use co3::{ReprC, export_C, extern_C};
+use co3::{ReprC, ffi};
 
 #[derive(Clone, Debug, PartialEq, Eq, ReprC)]
 #[repr(C)]
@@ -17,7 +17,9 @@ mod provider {
         Value(Box::new(*input.0 + *rhs.0))
     }
 
-    export_C! {
+    ffi! {
+        #![export("C")]
+
         impl Value {
             #[symbol_name = "transform"]
             fn transform(move self, move other: &Self) -> Self;
@@ -28,7 +30,9 @@ mod provider {
     }
 }
 
-extern_C! {
+ffi! {
+    #![extern("C")]
+
     #![expect(unused_doc_comments)]
     //! Documentation
 

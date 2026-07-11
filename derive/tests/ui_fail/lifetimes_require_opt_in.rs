@@ -1,4 +1,4 @@
-use co3::{export, export_C, extern_C};
+use co3::ffi;
 
 mod provider {
     use super::*;
@@ -13,13 +13,8 @@ mod provider {
         value
     }
 
-    #[export("C")]
-    #[unsafe(lifetimes)]
-    fn export_attr_named<'a>(value: &'a u8) -> &'a u8 {
-        value
-    }
-
-    export_C! {
+    ffi! {
+        #![export("C")]
         fn exported_named<'a>(value: &'a u8) -> &'a u8;
 
         impl<'a> Exported<'a> {
@@ -39,7 +34,9 @@ mod provider {
     }
 }
 
-extern_C! {
+ffi! {
+    #![extern("C")]
+
     #![symbol_prefix = "kita"]
 
     fn imported_named<'a>(value: &'a u8) -> &'a u8;

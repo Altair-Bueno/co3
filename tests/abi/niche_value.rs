@@ -1,6 +1,6 @@
 use core::cmp::Ordering;
 
-use co3::{EncodeWithStore, ReprC, export_C, extern_C};
+use co3::{EncodeWithStore, ReprC, ffi};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Opaque {
@@ -8,7 +8,9 @@ pub enum Opaque {
     A,
 }
 
-export_C! {
+ffi! {
+    #![export("C")]
+
     type Opaque;
 
     impl Drop for Opaque {
@@ -16,7 +18,9 @@ export_C! {
     }
 }
 
-extern_C! {
+ffi! {
+    #![extern("C")]
+
     pub type Extern;
 
     impl Drop for Extern {

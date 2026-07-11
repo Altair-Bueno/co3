@@ -5,8 +5,7 @@
 `co3` is a Rust-side framework for _safely_ exporting/importing C ABI functions by:
 
 - Mapping Rust types to C-compatible types via `ReprC` derive macro.
-- Exporting functions and impl block methods via `export("ABI")` attribute.
-- Declaring extern functions and impl block methods via `extern_!`/`extern_C!` macros.
+- Writing export/extern FFI declarations via `ffi!` fn-like macro.
 
 ### 1.1 Hard Guarantees
 
@@ -17,7 +16,7 @@ These guarantees define the contract of this library:
 - FFI boundary mechanics **SHOULD** stay encapsulated in conversion traits and generated glue.
 
 2. **Soundness-first FFI interoperability**
-- Soundness **MUST NOT** be weakened for performance in the default configuration.
+- Soundness **MUST NOT** be weakened for performance or memory footprint in the default configuration.
 - If preserving soundness requires additional validation, temporary storage, or cloning, that cost is accepted.
 
 3. **Zero-cost abstraction by default**
@@ -29,20 +28,20 @@ These guarantees define the contract of this library:
 Conversion modes define how values cross the FFI boundary, including ownership behavior, pointer-identity semantics, and validation strictness.
 Each mode makes explicit tradeoffs and is selected through compile-time configuration:
 
-1. **`owned-as-ref` (default, opt-out)**
-- Represents `Drop` types (except `Opaque` kind) as borrowed instead of transferring ownership.
-- Keeps owned backing storage alive in a type-specific store while exposing borrowed FFI views.
-- Prevents ownership transfer at the expense of performance due to cloning in decode paths.
+1. **`move` (opt-in, attribute on fn arguments)**
+- `Drop` types are borrowed instead of transferring ownership unless function argument is `move`d.
+- Owned backing storage is kept alive in a type-specific store while exposing borrowed FFI views.
+- `move` removes the cost of cloning owned types in decode paths that is incurred by default.
 
-2. **`unstable-refs` (opt-in)**
+2. **`#[soft]` (opt-in, attribute on fn arguments)**
 - Enables additional reference conversion paths that rely on cloning the referent (e.g. `&(u8,)`).
 - Uses intermediate owned/cloned values and store synchronization for mutable writeback paths.
 - Pointer identity is not preserved and pointer equality for these types **MUST NOT** be relied on.
 
-3. **`unsafe-optimizations` (opt-in)**
-- Eliminates cloning in encode paths of mutable references to transmutable `Drop` types (e.g. `&mut Box<u32>`).
-- Eliminates cloning in encode paths of transmutable mutable references to non-robust types (e.g. `&mut bool`).
-- Responsibility to maintain soundness by avoiding trap values or ownership transfer is shifted to the callee.
+3. **`#[tag_dispatch<Type1, ...>]` (opt-in, attribute on impl blocks)**
+- Enables tagged generic dispatch where type's C-compatible representation is erased into a shared type and reinterpreted back via the tag value.
+- Dispatched impl block generics are defined by `<dyn({int}) T = {ErasedTy}>` where `ErasedTy` has the same size and alignment as the erased type.
+- Concrete tag dispatched types are declared AOT and have a tag type, derived with `#[reprC(id(int))]`/`#[id(int)]`, passed alongside erased type.
 
 ## 2. Public API
 
@@ -52,54 +51,33 @@ Any conversion written manually against traits of this crate **DOES NOT** consti
 
 ### 2.1 `ReprC` Derive Macro
 
-`#[derive(ReprC)]` derives implementations required to convert a type to a corresponding C-compatible companion type.
+`#[derive(ReprC)]` derives implementations required to convert a type to a corresponding generated C-compatible companion type.
 A C-compatible companion type is a type with a defined C ABI and no trap representations, whose fields are themselves C-compatible companion types.
-The only exception is raw pointers: their referents are not required to have a C-compatible companion type (unlike references, which require a valid referent).
 
 - By default, the derive defines a C-compatible companion type and conversions between the two types.
-- For `#[repr(C)]` types, representation requirements are checked recursively at compile time for all field types.
-- If a `#[repr(C)]` type is valid, conversion to/from its companion type is optimized to a no-op transmute.
-- For `#[repr(transparent)]`, representation is delegated to the wrapped type (no companion type is defined).
-- `#[reprC(unsafe(is_valid = |target| ...))]` defines custom validity invariants for a `#[repr(transparent)]` type.
-- If a custom validity invariant is given, `#[reprC(NICHE_VALUE = <expr>)]` defines the trap value used in niche optimization.
+- Conversion of types with explicit representation (i.e. `#[repr(C)]`/`repr(transmute)`) are optimized.
+- `#[reprC(is_valid = |field0, ...| {...})]` provides additional validity invariant of a struct/variant.
+- `#[reprC(NICHE_VALUE = <expr>)]` defines the struct's trap value that is used for niche optimization.
+- `#[reprC(id(int))]` defines the tag type that identifies the item when it is erased by dynamic dispatch.
 
-### 2.2 The `#[export("ABI")]` Attribute
+### 2.2 The `ffi!` Macro
 
-`#[export("ABI")]` generates `extern "ABI"` companion functions and the symbols they will be exported under.
-An `extern "ABI"` companion function is a function which has an `ABI`-compatible signature with `ABI`-compatible companion argument/return types.
-The attribute **MUST NOT** modify the signature or behavior of the item it is attached to.
+`ffi!` is a fn-like macro that enables writing export/extern declarations of types, methods and impl blocks.
+It must always start with a declaration of direction and ABI (e.g. `#![export("system")]`/`#![extern("system")]`).
 
-- By default, the attribute mangles export names as: `{symbol_prefix}_{TraitName}_{trait_generic_args}_{SelfTy}_{self_ty_generic_args}_{method}`.
-- `symbol_prefix` defaults to `CARGO_CRATE_NAME`.
-- `#[symbol_name = "..."]` overrides default name mangling with its own semantics.
-- On an `impl` block, `#[export("ABI")]` generates a companion function for every eligible method in the block.
-- On a `fn` item, `#[export("ABI")]` generates a companion function exported as `{symbol_prefix}_{fn_name}`.
-- `#[export(skip)]` on an impl method excludes that method from being processed by the attribute.
-- Although not marked as `unsafe`, a low risk of symbol collision UB still exists.
-
-### 2.3 The `export_!` Macro
-
-`export_!` is a powerful macro that provides a declaration-driven interface extending the behavior of `#[export("ABI")]`.
-The macro can generate `extern "ABI"` companion functions for externally defined functions or methods, including methods from derived trait impls.
-It can also generate `extern "ABI"` tag-based polymorphic dispatch functions which route the call to the corresponding concrete implementation.
-
-- `export_!` inherits the same constraints, eligibility, naming, and safety rules of `#[export("ABI")]`.
-- `export_C!` is a specialization of `export_!` with ABI fixed to `"C"` and is used for convenience.
-- `type Type;` declares export of an opaque type which doesn't have to have C-compatible representation
-- `#[dispatch({param} = [Type1, ..., TypeN])]` declares concrete types used for polymorphic dispatch routing.
-- `#![symbol_prefix = "..."]` overrides the `CARGO_CRATE_NAME` default symbol prefix for the inferred `symbol_name`.
-- `#[symbol_name = "..."]` overrides default name mangling with its own semantics.
-
-### 2.4 The `extern_!` Macro
-
-`extern_!` declares extern types and `extern "ABI"` companion functions that bodies of declared Rust code call into.
-The macro **MUST NOT** modify the signatures or behavior of declared Rust items.
-
-- By default, the macro infers `symbol_name` as: `{symbol_prefix}_{TraitName}_{trait_generic_args}_{SelfTy}_{self_ty_generic_args}_{method}`.
-- `symbol_prefix` defaults to `CARGO_CRATE_NAME`.
-- `extern_!` requires `#![abi = "..."]` that it applies to generated `extern "ABI"` companion function declarations.
-- `extern_C!` is a specialization of `extern_!` with ABI fixed to `"C"` and is used for convenience.
-- `type Type;` declares an opaque type which doesn't have to have C-compatible representation
-- `#![symbol_prefix = "..."]` overrides the `CARGO_CRATE_NAME` default symbol prefix for the inferred `symbol_name`.
-- `#[symbol_name = "..."]` overrides default name mangling with its own semantics.
-- Although not declared `unsafe`, using extern symbols always carries a risk of UB.
+- `#![export("ABI")]` directs the `ffi` macro to export the contained items with the given ABI. The declared items must exist and be resolvable.
+- `#![extern("ABI")]` directs the `ffi` macro to import the contained items with the given ABI. The macro is said to contain extern declarations.
+- `#![feature(extern_types)]` opts into the corresponding unstable macro codegen path; no other feature names are supported.
+- Trait method symbol names are inferred as `{symbol_prefix}__{TraitPath}__{SelfTy}__{method}`.
+- Inherent method symbol names are inferred as `{symbol_prefix}__{SelfTy}__{method}`.
+- Free function symbol names are inferred as `{symbol_prefix}__{fn_name}`.
+- `#![symbol_prefix = "..."]` defines the symbol prefix (defaults to `CARGO_CRATE_NAME`).
+- `#[symbol_name = "..."]` overrides the name mangling enforced by the `ffi` macro.
+- `#![panic = "abort"]` controls whether fn declared within current `ffi!` block abort or unwind(default) on panic.
+- `type Type;` declares an opaque type (it's representation is unknown). This type should not be dereferenced.
+- `#[id(int)]` on a type declaration defines the tag type that identifies the type when it is erased by dynamic dispatch.
+- `#[dispatch(<Type1, ...>)]` opts-into a kind of polymorphic dispatch where concrete types are known at compile time but erased at runtime.
+- `..` splits a wide companion type into separate data and metadata arguments at the ABI boundary.
+- `#[unsafe(lifetimes)]` opts into declarations with explicit lifetimes inside `ffi`.
+- `cfg_attr` is fully supported in all attribute positions inside the `ffi` macro.
+- Although not declared `unsafe`, using `ffi` macro always carries a risk of UB.

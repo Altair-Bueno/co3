@@ -1,4 +1,4 @@
-use co3::{ReprC, extern_C, handles};
+use co3::{ReprC, ffi, handles};
 
 trait Dispatch {
     fn me(self);
@@ -32,7 +32,7 @@ handles! {
 }
 
 mod provider {
-    use co3::export_C;
+    use co3::ffi;
 
     use super::*;
 
@@ -57,27 +57,45 @@ mod provider {
     #[allow(unused_variables)]
     pub extern "C" fn disallowed_opaque_types(arg1: Box<MyType>, arg2: Box<MyType>) {}
 
-    export_C! {
+    ffi! {
+        #![export("C")]
+
         type MyType;
 
         impl ToOwned for Box<MyType> {
             #[symbol_name = "my_type_new"]
             fn to_owned(&self) -> <Self as ToOwned>::Owned;
         }
+    }
+
+    ffi! {
+        #![export("C")]
 
         pub extern "C" fn disallowed_types_by_ref(arg1: (), arg2: [u8; 2], move arg3: (), move arg4: [u8; 2]);
+    }
+    ffi! {
+        #![export("C")]
+
         pub extern "C" fn disallowed_types_by_val(move arg1: (), move arg2: [u8; 2]) -> [u8; 2];
+    }
+    ffi! {
+        #![export("C")]
+
         pub extern "C" fn disallowed_opaque_types(move arg1: Box<MyType>, arg2: Box<MyType>);
     }
 
-    export_C! {
+    ffi! {
+        #![export("C")]
+
         #[dispatch(<Handle>)]
         impl<dyn(usize) T = Array> Dispatch for T {
             fn me(self);
         }
     }
 
-    export_C! {
+    ffi! {
+        #![export("C")]
+
         #[dispatch(<Handle2>)]
         impl<dyn(usize) T = Array2> Dispatch for T {
             fn me(self);
@@ -85,7 +103,9 @@ mod provider {
     }
 }
 
-extern_C! {
+ffi! {
+    #![extern("C")]
+
     #![symbol_prefix = "kita"]
 
     type MyType;
@@ -96,19 +116,47 @@ extern_C! {
         #[symbol_name = "my_type_new"]
         fn to_owned(&self) -> <Self as ToOwned>::Owned;
     }
+}
+
+ffi! {
+    #![extern("C")]
+
+    #![symbol_prefix = "kita"]
 
     pub extern "C" fn disallowed_types_by_ref(arg1: (), arg2: [u8; 2]);
+}
+
+ffi! {
+    #![extern("C")]
+
+    #![symbol_prefix = "kita"]
+
     pub extern "C" fn disallowed_types_by_val(move arg1: (), move arg2: [u8; 2]) -> [u8; 2];
+}
+
+ffi! {
+    #![extern("C")]
+
+    #![symbol_prefix = "kita"]
+
     pub extern "C" fn disallowed_opaque_types(move arg1: OwnedMyType, arg2: OwnedMyType);
 }
 
-extern_C! {
+ffi! {
+    #![extern("C")]
+
     #![symbol_prefix = "kita"]
 
     #[dispatch(<Array>)]
     impl<dyn(usize) T = Handle> Dispatch for T {
         fn me(id: <dyn T>::ID, self);
     }
+}
+
+ffi! {
+    #![extern("C")]
+
+    #![symbol_prefix = "kita"]
 
     #[dispatch(<Array2>)]
     impl<dyn(usize) T = Handle2> Dispatch for T {

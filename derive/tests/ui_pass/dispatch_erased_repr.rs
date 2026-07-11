@@ -1,4 +1,4 @@
-use co3::{ReprC, extern_C, handles};
+use co3::{ReprC, ffi, handles};
 
 trait Attribute {}
 
@@ -29,7 +29,7 @@ impl Attribute for Custom1 {}
 impl Attribute for Custom2<'_> {}
 
 mod provider {
-    use co3::export_C;
+    use co3::ffi;
 
     use super::*;
 
@@ -80,7 +80,9 @@ mod provider {
         }
     }
 
-    export_C! {
+    ffi! {
+        #![export("C")]
+
         #![symbol_prefix = "kita"]
 
         #[dispatch(<Custom1>, <Custom2<'_>>)]
@@ -91,13 +93,15 @@ mod provider {
     }
 }
 
-extern_C! {
+ffi! {
+    #![extern("C")]
+
     #![symbol_prefix = "kita"]
 
     #[dispatch(<Custom1>, <Custom2<'_>>)]
     impl<dyn(u16) T: Attribute = EnvAttr> ByteValue for T {
-        fn into_byte(handle_id: <dyn T>::ID, self) -> u8;
-        fn add_ref(handle_id: <dyn T>::ID, #[soft] &self, #[soft] rhs: &Self) -> u8;
+        fn into_byte(self) -> u8;
+        fn add_ref(#[soft] &self, #[soft] rhs: &Self) -> u8;
     }
 }
 

@@ -1,4 +1,4 @@
-use co3::{export_C, extern_C, handles, handle::HandleFamily};
+use co3::{ffi, handles, handle::HandleFamily};
 
 trait Trait {}
 struct Kita;
@@ -14,7 +14,9 @@ handles! {
     Kita,
 }
 
-export_C! {
+ffi! {
+    #![export("C")]
+
     #[id(u32)]
     pub type GenericHandle<'a, T, const N: usize>;
 
@@ -53,7 +55,9 @@ pub extern "C" fn export3<const N: usize>(v: [u32; N]) -> [u32; N] {
     v
 }
 
-export_C! {
+ffi! {
+    #![export("C")]
+
     impl GenericHandle<'static, u32, 12> {
         #[unsafe(lifetimes)]
         pub fn export1<'a>(&self);
@@ -82,7 +86,9 @@ export_C! {
     impl<'a, dyn(u32) U, const K: usize> Trait for GenericHandle<'a, U, K> {}
 }
 
-extern_C! {
+ffi! {
+    #![extern("C")]
+
     #![symbol_prefix = "kita"]
 
     impl GenericHandle<'static, u32, 12> {

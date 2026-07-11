@@ -1,18 +1,26 @@
-use co3::{export_C, extern_C, tuple::ReprCTuple2};
+use co3::{ffi, tuple::ReprCTuple2};
 
-export_C! {
+ffi! {
+    #![export("C")]
+
     fn good(value: ..ReprCTuple2<u8, u8>);
 }
 
-extern_C! {
+ffi! {
+    #![extern("C")]
+
     fn good(value: ..ReprCTuple2<u8, u8>);
 }
 
-export_C! {
+ffi! {
+    #![export("C")]
+
     fn bad(value: ..u32);
 }
 
-extern_C! {
+ffi! {
+    #![extern("C")]
+
     fn bad(value: ..u32);
 }
 

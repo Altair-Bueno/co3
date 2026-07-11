@@ -1,41 +1,35 @@
-error: `#[unsafe(lifetimes)]` is only supported inside `export_!`/`extern_!` macros
-  --> tests/ui_fail/lifetimes_require_opt_in.rs:17:5
-   |
-17 |     #[unsafe(lifetimes)]
-   |     ^^^^^^^^^^^^^^^^^^^^
-
 error: Explicit lifetimes found but no `#[unsafe(lifetimes)]`
-  --> tests/ui_fail/lifetimes_require_opt_in.rs:23:26
+  --> tests/ui_fail/lifetimes_require_opt_in.rs:18:26
    |
-23 |         fn exported_named<'a>(value: &'a u8) -> &'a u8;
+18 |         fn exported_named<'a>(value: &'a u8) -> &'a u8;
    |                          ^^^^
 
 error: Explicit lifetimes found but no `#[unsafe(lifetimes)]`
-  --> tests/ui_fail/lifetimes_require_opt_in.rs:25:13
+  --> tests/ui_fail/lifetimes_require_opt_in.rs:20:13
    |
-25 |         impl<'a> Exported<'a> {
+20 |         impl<'a> Exported<'a> {
    |             ^^^^
 
 error: Explicit lifetimes found but no `#[unsafe(lifetimes)]`
-  --> tests/ui_fail/lifetimes_require_opt_in.rs:31:20
+  --> tests/ui_fail/lifetimes_require_opt_in.rs:26:20
    |
-31 |             fn pong<'a>(&self);
+26 |             fn pong<'a>(&self);
    |                    ^^^^
 
 error: Explicit lifetimes found but no `#[unsafe(lifetimes)]`
-  --> tests/ui_fail/lifetimes_require_opt_in.rs:45:22
+  --> tests/ui_fail/lifetimes_require_opt_in.rs:42:22
    |
-45 |     fn imported_named<'a>(value: &'a u8) -> &'a u8;
+42 |     fn imported_named<'a>(value: &'a u8) -> &'a u8;
    |                      ^^^^
 
 error: Explicit lifetimes found but no `#[unsafe(lifetimes)]`
-  --> tests/ui_fail/lifetimes_require_opt_in.rs:49:9
+  --> tests/ui_fail/lifetimes_require_opt_in.rs:46:9
    |
-49 |     impl<'a> Imported<'a> {
+46 |     impl<'a> Imported<'a> {
    |         ^^^^
 
 error: Explicit lifetimes found but no `#[unsafe(lifetimes)]`
-  --> tests/ui_fail/lifetimes_require_opt_in.rs:55:16
+  --> tests/ui_fail/lifetimes_require_opt_in.rs:52:16
    |
-55 |         fn pong<'a>(&self);
+52 |         fn pong<'a>(&self);
    |                ^^^^

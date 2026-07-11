@@ -1,5 +1,5 @@
-error: Uninhabited enum is a never type. You can declare it as an opaque type in `export_!` or `extern_!` with `type Foo;`
- --> tests/ui_fail/uninhabited_enum.rs:7:10
+error: Uninhabited enum is a never type. You can declare it as an opaque type in `ffi!` with `type Foo;`
+ --> tests/ui_fail/uninhabited_enum.rs:4:10
   |
-7 | pub enum FfiStruct2 {}
+4 | pub enum FfiStruct2 {}
   |          ^^^^^^^^^^

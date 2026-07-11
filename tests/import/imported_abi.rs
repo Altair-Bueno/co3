@@ -1,4 +1,4 @@
-use co3::{ReprC, export, extern_, extern_C};
+use co3::{ReprC, export, ffi};
 
 trait AmbiguousX<T, const N: usize> {
     #[expect(unused)]
@@ -24,8 +24,9 @@ enum Ambiguous {
 #[repr(transparent)]
 struct MyType<T>(T);
 
-extern_! {
-    #![abi = "Rust"]
+ffi! {
+    #![extern("Rust")]
+
     #![symbol_prefix = "import"]
 
     impl AmbiguousX<u32, 4> for MyType<u32> {
@@ -45,7 +46,9 @@ extern_! {
     pub unsafe extern "C" fn ambiguous2_imported() -> Ambiguous;
 }
 
-extern_C! {
+ffi! {
+    #![extern("C")]
+
     #![symbol_prefix = "import"]
 
     type MyType2;
@@ -79,7 +82,7 @@ extern_C! {
 }
 
 mod provider {
-    use co3::export_C;
+    use co3::ffi;
 
     use super::*;
 
@@ -93,7 +96,9 @@ mod provider {
         A(String),
     }
 
-    export_C! {
+    ffi! {
+        #![export("C")]
+
         type MyType2;
 
         impl Drop for MyType2 {

@@ -1,4 +1,4 @@
-use co3::{export_C, extern_C, handles};
+use co3::{ffi, handles};
 
 pub trait Unimplemented {}
 
@@ -18,7 +18,9 @@ handles! {
     Externed2<u32>,
 }
 
-export_C! {
+ffi! {
+    #![export("C")]
+
     #[id(u8)]
     type Exported2<T>;
 
@@ -33,7 +35,9 @@ export_C! {
     }
 }
 
-extern_C! {
+ffi! {
+    #![extern("C")]
+
     #[id(u64)]
     type Externed2<T>;
 
