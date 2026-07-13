@@ -3,7 +3,7 @@
 use core::{mem::MaybeUninit, ops::Add};
 
 use crate::{
-    CFnArg, Decode, Encode, ExternC, FfiReturn, RobustReprC,
+    CFnArg, Decode, Encode, ExternC, RobustReprC,
     borrow::{Borrow, BorrowCast, BorrowCastMut, ToOwned},
     ir::ReprFamily,
     niche::{NicheFamily, WithoutNiche},
@@ -150,13 +150,13 @@ impl<T: Copy, E: Copy> From<Result<T, E>> for ReprCResult<T, E> {
 }
 
 impl<T: Copy, E: Copy> TryFrom<ReprCResult<T, E>> for Result<T, E> {
-    type Error = FfiReturn;
+    type Error = ();
 
     fn try_from(value: ReprCResult<T, E>) -> Result<Self, Self::Error> {
         match value.tag() {
             0 => Ok(Ok(unsafe { value.ok.1.assume_init() })),
             1 => Ok(Err(unsafe { value.err.1.assume_init() })),
-            _ => Err(FfiReturn::TrapRepresentation),
+            _ => Err(()),
         }
     }
 }
@@ -175,7 +175,7 @@ impl<T: Copy, E: Copy> NicheFamily for ReprCResult<T, E> {
     type Kind = WithoutNiche;
 }
 
-impl<T: Borrow + Copy, E: Borrow + Copy> Borrow for ReprCResult<T, E>
+unsafe impl<T: Borrow + Copy, E: Borrow + Copy> Borrow for ReprCResult<T, E>
 where
     for<'itm> T::Borrowed<'itm>: Copy,
     for<'itm> E::Borrowed<'itm>: Copy,

@@ -3,7 +3,7 @@
 use core::mem::MaybeUninit;
 
 use crate::{
-    CFnArg, Decode, Encode, ExternC, FfiReturn, RobustReprC,
+    CFnArg, Decode, Encode, ExternC, RobustReprC,
     borrow::{Borrow, BorrowCast, BorrowCastMut, ToOwned},
     ir::ReprFamily,
     niche::{NicheFamily, WithoutNiche},
@@ -125,13 +125,13 @@ impl<T> From<Option<T>> for ReprCOption<T> {
 }
 
 impl<T> TryFrom<ReprCOption<T>> for Option<T> {
-    type Error = FfiReturn;
+    type Error = ();
 
     fn try_from(value: ReprCOption<T>) -> Result<Self, Self::Error> {
         match value.tag {
             0 => Ok(None),
             1 => Ok(Some(unsafe { value.payload.assume_init() })),
-            _ => Err(FfiReturn::TrapRepresentation),
+            _ => Err(()),
         }
     }
 }
@@ -146,7 +146,7 @@ impl<T> NicheFamily for ReprCOption<T> {
     type Kind = WithoutNiche;
 }
 
-impl<T: Borrow> Borrow for ReprCOption<T> {
+unsafe impl<T: Borrow> Borrow for ReprCOption<T> {
     type Borrowed<'itm>
         = ReprCOption<T::Borrowed<'itm>>
     where

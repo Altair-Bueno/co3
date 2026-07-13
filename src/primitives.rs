@@ -22,7 +22,7 @@ macro_rules! primitive_derive {
             type Kind = WithoutNiche;
         }
 
-        impl Borrow for $primitive {
+        unsafe impl Borrow for $primitive {
             type Borrowed<'itm>
                 = Self
             where
@@ -102,7 +102,7 @@ macro_rules! raw_pointer_derive {
             type Kind = WithoutNiche;
         }
 
-        impl<R: ?Sized> Borrow for *$mutability R {
+        unsafe impl<R: ?Sized> Borrow for *$mutability R {
             type Borrowed<'itm>
                 = Self
             where
@@ -207,7 +207,7 @@ macro_rules! fieldless_enum_derive {
             }
         }
 
-        impl Borrow for $src {
+        unsafe impl Borrow for $src {
             type Borrowed<'itm> = Self;
 
             type Owner = ();

@@ -271,7 +271,7 @@ macro_rules! impl_boxed_carrier {
             type Kind = WithoutNiche;
         }
 
-        impl<C, A: Allocator> Borrow for $ty<C, A> {
+        unsafe impl<C, A: Allocator> Borrow for $ty<C, A> {
             type Borrowed<'itm>
                 = Self
             where

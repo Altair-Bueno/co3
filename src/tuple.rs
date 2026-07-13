@@ -85,7 +85,7 @@ macro_rules! impl_tuple {
             }
         }
 
-        impl<$($ty: Borrow),+> Borrow for ($($ty,)+) {
+        unsafe impl<$($ty: Borrow),+> Borrow for ($($ty,)+) {
             type Borrowed<'itm>
                 = ($( $ty::Borrowed<'itm>, )+)
             where
@@ -107,7 +107,7 @@ macro_rules! impl_tuple {
                 ($( $ty.borrow(owner.$ty), )+)
             }
         }
-        impl<$($ty: Borrow),*> Borrow for $ffi_ty<$($ty),*> {
+        unsafe impl<$($ty: Borrow),*> Borrow for $ffi_ty<$($ty),*> {
             type Borrowed<'itm>
                 = $ffi_ty<$( $ty::Borrowed<'itm> ),+>
             where

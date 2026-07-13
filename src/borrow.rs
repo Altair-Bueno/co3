@@ -46,7 +46,12 @@ pub fn borrow_cast_mut<C: BorrowCastMut<AsMut: Copy> + Copy>(source: C) -> C::As
 /// A trait for structurally borrowing data.
 ///
 /// It should hold that `<T::CType as BorrowCast>::AsConst == <T::Borrowed as ExternC>::CType`
-pub trait Borrow: Sized {
+///
+/// # Safety
+///
+/// If [`Self::Owner`] implements [`crate::stored::EmptyStore`], [`Borrow::borrow`] must not
+/// return references into `owner`. This rule prevents ownership transfer in return values.
+pub unsafe trait Borrow: Sized {
     type Borrowed<'itm>
     where
         Self: 'itm;
@@ -61,7 +66,7 @@ pub trait ToOwned<'itm>: Borrow {
     fn to_owned(source: Self::Borrowed<'itm>) -> Self;
 }
 
-impl<R: Borrow> Borrow for Option<R> {
+unsafe impl<R: Borrow> Borrow for Option<R> {
     type Borrowed<'itm>
         = Option<R::Borrowed<'itm>>
     where
@@ -84,7 +89,7 @@ impl<'itm, R: ToOwned<'itm>> ToOwned<'itm> for Option<R> {
     }
 }
 
-impl<T: Borrow, E: Borrow> Borrow for Result<T, E> {
+unsafe impl<T: Borrow, E: Borrow> Borrow for Result<T, E> {
     type Borrowed<'itm>
         = Result<T::Borrowed<'itm>, E::Borrowed<'itm>>
     where
@@ -119,7 +124,7 @@ impl<'itm, T: ToOwned<'itm>, E: ToOwned<'itm>> ToOwned<'itm> for Result<T, E> {
     }
 }
 
-impl<R: ?Sized> Borrow for &R {
+unsafe impl<R: ?Sized> Borrow for &R {
     type Borrowed<'itm>
         = Self
     where
@@ -142,7 +147,7 @@ impl<'itm, 'a: 'itm, R: ?Sized> ToOwned<'itm> for &'a R {
     }
 }
 
-impl<R: ?Sized> Borrow for &mut R {
+unsafe impl<R: ?Sized> Borrow for &mut R {
     type Borrowed<'itm>
         = Self
     where
@@ -167,7 +172,7 @@ impl<'itm, 'a: 'itm, R: ?Sized> ToOwned<'itm> for &'a mut R {
 
 #[cfg(feature = "alloc")]
 // NOTE: extern types cannot be borrowed, only moved
-impl<R: SizeFamily<Kind: NonExternTypeLike> + ?Sized> Borrow for Box<R> {
+unsafe impl<R: SizeFamily<Kind: NonExternTypeLike> + ?Sized> Borrow for Box<R> {
     type Borrowed<'itm>
         = &'itm R
     where
@@ -197,7 +202,7 @@ where
 }
 
 #[cfg(feature = "alloc")]
-impl<R> Borrow for Vec<R> {
+unsafe impl<R> Borrow for Vec<R> {
     type Borrowed<'itm>
         = &'itm [R]
     where
@@ -222,7 +227,7 @@ impl<'itm, R: Clone> ToOwned<'itm> for Vec<R> {
     }
 }
 
-impl<R: Borrow, const N: usize> Borrow for [R; N] {
+unsafe impl<R: Borrow, const N: usize> Borrow for [R; N] {
     type Borrowed<'itm>
         = [R::Borrowed<'itm>; N]
     where

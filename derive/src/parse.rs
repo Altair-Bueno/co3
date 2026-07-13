@@ -7,6 +7,7 @@ use syn::{
     Type, TypeParamBound, TypePath,
     parse::{ParseStream, Parser},
     parse_quote, parse_quote_spanned,
+    punctuated::Punctuated,
     spanned::Spanned,
     visit_mut::VisitMut,
 };
@@ -26,6 +27,18 @@ pub(crate) struct FfiInput {
     pub(crate) abi: syn::Abi,
     pub(crate) attrs: Vec<Attribute>,
     pub(crate) items: Vec<ParsedForeignItem>,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub(crate) struct MacroFeatures {
+    pub(crate) extern_types: bool,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub(crate) enum PanicMode {
+    #[default]
+    Unwind,
+    Abort,
 }
 
 struct FfiBody {
@@ -185,6 +198,131 @@ fn parse_decl_attr(kind: DeclKind, attr: &Attribute) -> Result<(DeclKind, syn::A
     let abi = syn::parse2(quote!(extern #abi_lit))?;
 
     Ok((kind, abi))
+}
+
+pub(crate) fn parse_symbol_prefix_attr(attrs: &mut Vec<Attribute>) -> Result<Option<LitStr>> {
+    let mut kept = Vec::with_capacity(attrs.len());
+
+    let mut symbol_prefix = None;
+    for attr in attrs.drain(..) {
+        if !attr.path().is_ident("symbol_prefix") {
+            kept.push(attr);
+            continue;
+        }
+
+        let err_msg = "Expected `#![symbol_prefix = \"...\"]`";
+        let syn::Meta::NameValue(nv) = &attr.meta else {
+            return Err(syn::Error::new_spanned(&attr, err_msg));
+        };
+
+        let syn::Expr::Lit(syn::ExprLit {
+            lit: syn::Lit::Str(value),
+            ..
+        }) = &nv.value
+        else {
+            return Err(syn::Error::new_spanned(&nv.value, err_msg));
+        };
+
+        if symbol_prefix.replace(value.clone()).is_some() {
+            return Err(syn::Error::new_spanned(
+                attr,
+                "Duplicate `#![symbol_prefix = \"...\"]`",
+            ));
+        }
+    }
+
+    *attrs = kept;
+    Ok(symbol_prefix)
+}
+
+pub(crate) fn parse_feature_attrs(attrs: &mut Vec<Attribute>) -> Result<MacroFeatures> {
+    let mut kept = Vec::with_capacity(attrs.len());
+    let mut features = MacroFeatures::default();
+
+    for attr in attrs.drain(..) {
+        if !attr.path().is_ident("feature") {
+            kept.push(attr);
+            continue;
+        }
+
+        let syn::Meta::List(list) = &attr.meta else {
+            return Err(syn::Error::new_spanned(attr, "Expected `#![feature(...)]`"));
+        };
+
+        let metas =
+            list.parse_args_with(Punctuated::<syn::Meta, syn::Token![,]>::parse_terminated)?;
+
+        for meta in metas {
+            let syn::Meta::Path(path) = &meta else {
+                let err_msg = "Expected feature name in `#![feature(...)]`";
+                return Err(syn::Error::new_spanned(meta, err_msg));
+            };
+
+            let Some(ident) = path.get_ident() else {
+                let err_msg = "Expected feature name in `#![feature(...)]`";
+                return Err(syn::Error::new_spanned(path, err_msg));
+            };
+
+            let feature = ident.to_string();
+            let already_enabled = match feature.as_str() {
+                "extern_types" => &mut features.extern_types,
+                _ => {
+                    let err_msg = "Only `extern_types` is supported";
+                    return Err(syn::Error::new_spanned(ident, err_msg));
+                }
+            };
+
+            if core::mem::replace(already_enabled, true) {
+                return Err(syn::Error::new_spanned(
+                    ident,
+                    format!("Duplicate `{feature}` feature"),
+                ));
+            }
+        }
+    }
+
+    *attrs = kept;
+    Ok(features)
+}
+
+pub(crate) fn parse_panic_attr(attrs: &mut Vec<Attribute>) -> Result<PanicMode> {
+    let mut kept = Vec::with_capacity(attrs.len());
+    let mut panic_mode = None;
+
+    for attr in attrs.drain(..) {
+        if !attr.path().is_ident("panic") {
+            kept.push(attr);
+            continue;
+        }
+
+        let err_msg = "Expected `#![panic = \"abort\"]`";
+        let syn::Meta::NameValue(nv) = &attr.meta else {
+            return Err(syn::Error::new_spanned(&attr, err_msg));
+        };
+
+        let syn::Expr::Lit(syn::ExprLit {
+            lit: syn::Lit::Str(value),
+            ..
+        }) = &nv.value
+        else {
+            return Err(syn::Error::new_spanned(&nv.value, err_msg));
+        };
+
+        let next = match value.value().as_str() {
+            "abort" => PanicMode::Abort,
+            _ => return Err(syn::Error::new_spanned(value, err_msg)),
+        };
+
+        if panic_mode.replace(next).is_some() {
+            return Err(syn::Error::new_spanned(
+                attr,
+                "Duplicate `#![panic = \"...\"]`",
+            ));
+        }
+    }
+
+    *attrs = kept;
+    Ok(panic_mode.unwrap_or_default())
 }
 
 fn normalize_extern_attr_tokens(tokens: TokenStream) -> TokenStream {

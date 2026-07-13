@@ -1,4 +1,4 @@
-use co3::{ReprC, export, ffi, handles};
+use co3::{ReprC, ffi, handles};
 
 #[derive(Clone, Debug, PartialEq, Eq, ReprC)]
 #[repr(transparent)]
@@ -50,10 +50,7 @@ mod provider {
         Opaque,
     }
 
-    // TODO: Should it be reported that `crate` is not supported on types?
-    #[export("C", symbol_prefix = "kita")]
     #[derive(Debug, Clone, Copy)]
-    #[id(u8)]
     pub struct Opaque(u8);
 
     impl Add for Opaque {
@@ -64,27 +61,13 @@ mod provider {
         }
     }
 
-    #[export("C", symbol_prefix = "kita")]
     impl Default for Box<Opaque> {
-        #[symbol_name = "kita__Default__OwnedOpaque__default"]
         fn default() -> Self {
             Box::new(Opaque(3))
         }
     }
 
-    ffi! {
-        #![export("C")]
-
-        #![symbol_prefix = "kita"]
-
-        impl ToOwned for Box<Opaque> {
-            fn to_owned(&self) -> <Self as ToOwned>::Owned;
-        }
-    }
-
-    #[export("C", symbol_prefix = "kita")]
-    #[dispatch(<Opaque>)]
-    impl<#[erased(u8)] T: Add<Output = u8> + ToOwned<Owned = T> = u8> Value<T>
+    impl<T: Add<Output = u8> + ToOwned<Owned = T> + ?Sized> Value<T>
     where
         Box<T>: Default,
     {
@@ -92,16 +75,44 @@ mod provider {
             Self((*Box::<T>::default()).to_owned())
         }
 
-        #[symbol_name = "ping"]
-        fn ping(#[by_val] self, #[soft] inc: &TransparentCTuple1<T>) -> u8 {
+        fn ping(self, inc: &TransparentCTuple1<T>) -> u8 {
             self.0 + inc.0.to_owned()
         }
     }
 
-    // TODO: Support separate #[export(symbol_prefix = "kita")]?
-    #[export("C", symbol_prefix = "kita")]
-    fn combine(#[by_val] lhs: Value<u32>, #[soft] rhs: &(u8,)) -> u8 {
+    fn combine(lhs: Value<u32>, rhs: &(u8,)) -> u8 {
         lhs.0 as u8 + rhs.0
+    }
+
+    ffi! {
+        #![export("C")]
+
+        #![symbol_prefix = "kita"]
+
+        #[id(u8)]
+        type Opaque;
+
+        impl Default for Box<Opaque> {
+            #[symbol_name = "kita__Default__OwnedOpaque__default"]
+            fn default() -> Self;
+        }
+
+        impl ToOwned for Box<Opaque> {
+            fn to_owned(&self) -> <Self as ToOwned>::Owned;
+        }
+
+        #[dispatch(<Opaque>)]
+        impl<#[erased(u8)] T: Add<Output = u8> + ToOwned<Owned = T> = u8> Value<T>
+        where
+            Box<T>: Default,
+        {
+            fn new() -> Self;
+
+            #[symbol_name = "ping"]
+            fn ping(move self, #[soft] inc: &TransparentCTuple1<T>) -> u8;
+        }
+
+        fn combine(move lhs: Value<u32>, #[soft] rhs: &(u8,)) -> u8;
     }
 }
 

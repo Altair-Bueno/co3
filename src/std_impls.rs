@@ -33,7 +33,7 @@ macro_rules! non_zero_derive {
             type Kind = WithStableNiche;
         }
 
-        impl Borrow for NonZero<$primitive> {
+        unsafe impl Borrow for NonZero<$primitive> {
             type Borrowed<'itm>
                 = Self
             where
@@ -137,7 +137,7 @@ impl NicheFamily for () {
     type Kind = WithoutNiche;
 }
 
-impl Borrow for () {
+unsafe impl Borrow for () {
     type Borrowed<'itm>
         = Self
     where
@@ -199,7 +199,7 @@ impl<T: ?Sized> NicheFamily for NonNull<T> {
     type Kind = WithStableNiche;
 }
 
-impl<T: ?Sized> Borrow for NonNull<T> {
+unsafe impl<T: ?Sized> Borrow for NonNull<T> {
     type Borrowed<'itm>
         = Self
     where
@@ -285,7 +285,7 @@ impl NicheFamily for String {
 }
 
 #[cfg(feature = "alloc")]
-impl Borrow for String {
+unsafe impl Borrow for String {
     type Borrowed<'itm>
         = &'itm str
     where
@@ -359,7 +359,7 @@ impl<T: ?Sized> NicheFamily for UnsafeCell<T> {
     type Kind = WithoutNiche;
 }
 
-impl<T: Borrow> Borrow for UnsafeCell<T> {
+unsafe impl<T: Borrow> Borrow for UnsafeCell<T> {
     type Borrowed<'itm>
         = T::Borrowed<'itm>
     where
@@ -430,7 +430,7 @@ impl<T: ?Sized> NicheFamily for Cell<T> {
     type Kind = WithoutNiche;
 }
 
-impl<T: Borrow> Borrow for Cell<T> {
+unsafe impl<T: Borrow> Borrow for Cell<T> {
     type Borrowed<'itm>
         = T::Borrowed<'itm>
     where
@@ -501,7 +501,7 @@ impl<T: NicheFamily + ?Sized> NicheFamily for ManuallyDrop<T> {
     type Kind = T::Kind;
 }
 
-impl<T: Borrow> Borrow for ManuallyDrop<T> {
+unsafe impl<T: Borrow> Borrow for ManuallyDrop<T> {
     type Borrowed<'itm>
         = T::Borrowed<'itm>
     where

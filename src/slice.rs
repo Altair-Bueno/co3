@@ -174,7 +174,7 @@ macro_rules! impl_slice_carrier {
             type Kind = WithoutNiche;
         }
 
-        impl<C> Borrow for $ty<C> {
+        unsafe impl<C> Borrow for $ty<C> {
             type Borrowed<'itm>
                 = Self
             where

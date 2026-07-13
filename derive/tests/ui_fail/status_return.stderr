@@ -1,0 +1,149 @@
+error[E0277]: the trait bound `u8: StatusReturn` is not satisfied
+  --> tests/ui_fail/status_return.rs:59:5
+   |
+59 | /     ffi! {
+60 | |         #![export("C")]
+61 | |
+62 | |         fn direct_return_panic() -> u8;
+63 | |     }
+   | |_____^ the trait `StatusReturn` is not implemented for `u8`
+   |
+help: the following other types implement trait `StatusReturn`
+  --> tests/ui_fail/status_return.rs:7:1
+   |
+ 7 | impl StatusReturn for CustomReturn {
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `CustomReturn`
+   |
+  ::: $WORKSPACE/src/out_ptr.rs
+   |
+   | impl StatusReturn for FfiReturn {
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `FfiReturn`
+   = note: this error originates in the macro `ffi` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error[E0277]: the trait bound `(): StatusReturn` is not satisfied
+  --> tests/ui_fail/status_return.rs:76:5
+   |
+76 | /     ffi! {
+77 | |         #![export("C")]
+78 | |
+79 | |         fn out_ptr_return_panic(#[out_ptr] out_ptr: &mut u8);
+80 | |     }
+   | |_____^ the trait `StatusReturn` is not implemented for `()`
+   |
+help: the following other types implement trait `StatusReturn`
+  --> tests/ui_fail/status_return.rs:7:1
+   |
+ 7 | impl StatusReturn for CustomReturn {
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `CustomReturn`
+   |
+  ::: $WORKSPACE/src/out_ptr.rs
+   |
+   | impl StatusReturn for FfiReturn {
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `FfiReturn`
+   = note: this error originates in the macro `ffi` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error[E0277]: the trait bound `u8: StatusReturn` is not satisfied
+  --> tests/ui_fail/status_return.rs:94:1
+   |
+94 | / ffi! {
+95 | |     #![extern("C")]
+96 | |
+97 | |     fn direct_return_panic() -> u8;
+98 | | }
+   | |_^ the trait `StatusReturn` is not implemented for `u8`
+   |
+help: the following other types implement trait `StatusReturn`
+  --> tests/ui_fail/status_return.rs:7:1
+   |
+ 7 | impl StatusReturn for CustomReturn {
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `CustomReturn`
+   |
+  ::: $WORKSPACE/src/out_ptr.rs
+   |
+   | impl StatusReturn for FfiReturn {
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `FfiReturn`
+   = note: this error originates in the macro `ffi` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error[E0277]: the trait bound `(): StatusReturn` is not satisfied
+   --> tests/ui_fail/status_return.rs:111:1
+    |
+111 | / ffi! {
+112 | |     #![extern("C")]
+113 | |
+114 | |     fn out_ptr_return_panic(#[out_ptr] out_ptr: &mut u8);
+115 | | }
+    | |_^ the trait `StatusReturn` is not implemented for `()`
+    |
+help: the following other types implement trait `StatusReturn`
+   --> tests/ui_fail/status_return.rs:7:1
+    |
+  7 | impl StatusReturn for CustomReturn {
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `CustomReturn`
+    |
+   ::: $WORKSPACE/src/out_ptr.rs
+    |
+    | impl StatusReturn for FfiReturn {
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `FfiReturn`
+    = note: this error originates in the macro `ffi` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error[E0277]: the trait bound `u8: StatusReturn` is not satisfied
+  --> tests/ui_fail/status_return.rs:94:1
+   |
+94 | / ffi! {
+95 | |     #![extern("C")]
+96 | |
+97 | |     fn direct_return_panic() -> u8;
+98 | | }
+   | |_^ the trait `StatusReturn` is not implemented for `u8`
+   |
+help: the following other types implement trait `StatusReturn`
+  --> tests/ui_fail/status_return.rs:7:1
+   |
+ 7 | impl StatusReturn for CustomReturn {
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `CustomReturn`
+   |
+  ::: $WORKSPACE/src/out_ptr.rs
+   |
+   | impl StatusReturn for FfiReturn {
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `FfiReturn`
+note: required by a bound in `direct_return_panic::direct_return_panic`
+  --> tests/ui_fail/status_return.rs:94:1
+   |
+94 | / ffi! {
+95 | |     #![extern("C")]
+96 | |
+97 | |     fn direct_return_panic() -> u8;
+98 | | }
+   | |_^ required by this bound in `direct_return_panic`
+   = note: this error originates in the macro `ffi` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error[E0277]: the trait bound `(): StatusReturn` is not satisfied
+   --> tests/ui_fail/status_return.rs:111:1
+    |
+111 | / ffi! {
+112 | |     #![extern("C")]
+113 | |
+114 | |     fn out_ptr_return_panic(#[out_ptr] out_ptr: &mut u8);
+115 | | }
+    | |_^ the trait `StatusReturn` is not implemented for `()`
+    |
+help: the following other types implement trait `StatusReturn`
+   --> tests/ui_fail/status_return.rs:7:1
+    |
+  7 | impl StatusReturn for CustomReturn {
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `CustomReturn`
+    |
+   ::: $WORKSPACE/src/out_ptr.rs
+    |
+    | impl StatusReturn for FfiReturn {
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `FfiReturn`
+note: required by a bound in `out_ptr_return_panic::out_ptr_return_panic`
+   --> tests/ui_fail/status_return.rs:111:1
+    |
+111 | / ffi! {
+112 | |     #![extern("C")]
+113 | |
+114 | |     fn out_ptr_return_panic(#[out_ptr] out_ptr: &mut u8);
+115 | | }
+    | |_^ required by this bound in `out_ptr_return_panic`
+    = note: this error originates in the macro `ffi` (in Nightly builds, run with -Z macro-backtrace for more info)

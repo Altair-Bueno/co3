@@ -26,7 +26,6 @@ use alloc_crate::{borrow::ToOwned, boxed::Box, vec::Vec};
 
 #[cfg(feature = "derive")]
 pub use co3_derive::*;
-use derive_more::Display;
 use disjoint_impls::disjoint_impls;
 // TODO: I don't like having to reexport macros from other crates
 #[doc(hidden)]
@@ -58,7 +57,6 @@ pub mod handle;
 pub mod ir;
 pub mod niche;
 pub mod option;
-pub mod out_ptr;
 mod primitives;
 pub mod result;
 pub mod size;
@@ -68,20 +66,11 @@ pub mod stored;
 pub mod transmute;
 pub mod tuple;
 
-/// Result of execution of an FFI function
-#[derive(Debug, Display, Clone, Copy, PartialEq, Eq)]
-#[repr(i8)]
-pub enum FfiReturn {
-    /// FFI function failed during the execution of the wrapped method on the provided handle.
-    ExecutionFail = -4,
-    /// FFI function execution panicked.
-    UnrecoverableError = -3,
-    /// The input argument provided to FFI function contains a trap representation.
-    TrapRepresentation = -2,
-    /// Provided handle id doesn't match any known handles.
-    UnknownHandle = -1,
-    /// FFI function executed successfully.
-    Ok = 0,
+pub trait Status {
+    fn ok() -> Self;
+    fn trap_value() -> Self;
+    fn unknown_handle() -> Self;
+    fn soft_sync_error() -> Self;
 }
 
 /// Robust type that conforms to C ABI and can be safely shared across FFI boundaries.
