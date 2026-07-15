@@ -14,28 +14,28 @@ mod provider {
     }
 
     ffi! {
-        #![export("C")]
+        #![unsafe(export("C"))]
         fn exported_named<'a>(value: &'a u8) -> &'a u8;
 
         impl<'a> Exported<'a> {
             fn ping(&self);
         }
 
-        #[unsafe(lifetimes)]
+        #[explicit_lifetimes]
         impl<'a> Exported<'a> {
             fn pong<'a>(&self);
         }
 
-        #[unsafe(lifetimes)]
+        #[explicit_lifetimes]
         impl<'a> Exported<'a> {
-            #[unsafe(lifetimes)]
+            #[explicit_lifetimes]
             fn pang<'a>(&self);
         }
     }
 }
 
 ffi! {
-    #![extern("C")]
+    #![unsafe(extern("C"))]
 
     #![symbol_prefix = "kita"]
 
@@ -47,14 +47,14 @@ ffi! {
         fn ping(&self);
     }
 
-    #[unsafe(lifetimes)]
+    #[explicit_lifetimes]
     impl<'a> Imported<'a> {
         fn pong<'a>(&self);
     }
 
-    #[unsafe(lifetimes)]
+    #[explicit_lifetimes]
     impl<'a> Imported<'a> {
-        #[unsafe(lifetimes)]
+        #[explicit_lifetimes]
         fn pang<'a>(&self);
     }
 }

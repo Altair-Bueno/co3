@@ -41,17 +41,19 @@ impl ExportDispatchTrait for DriftHandle {
 }
 
 handles! {
-    DriftHandle,
+    unsafe {
+        DriftHandle,
+    }
 }
 
 ffi! {
-    #![export("C")]
+    #![unsafe(export("C"))]
 
     fn export_fn(arg: &Box<u32>);
 }
 
 ffi! {
-    #![extern("C")]
+    #![unsafe(extern("C"))]
 
     #![symbol_prefix = "signature_drift"]
 
@@ -60,7 +62,7 @@ ffi! {
 }
 
 ffi! {
-    #![export("C")]
+    #![unsafe(export("C"))]
 
     impl ExportImpl {
         fn method(arg: &Box<u32>);
@@ -68,7 +70,7 @@ ffi! {
 }
 
 ffi! {
-    #![extern("C")]
+    #![unsafe(extern("C"))]
 
     #![symbol_prefix = "signature_drift"]
 
@@ -78,7 +80,7 @@ ffi! {
 }
 
 ffi! {
-    #![export("C")]
+    #![unsafe(export("C"))]
 
     #[dispatch(<DriftHandle>)]
     impl<dyn(u8) T = DriftHandle> ExportDispatchTrait for T {
@@ -87,7 +89,7 @@ ffi! {
 }
 
 ffi! {
-    #![extern("C")]
+    #![unsafe(extern("C"))]
 
     #![symbol_prefix = "signature_drift"]
 

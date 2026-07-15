@@ -19,7 +19,9 @@ struct EnvAttr(usize);
 struct Custom(usize);
 
 handles! {
-    Custom,
+    unsafe {
+        Custom,
+    }
 }
 
 impl Attr for Custom {}
@@ -33,18 +35,21 @@ fn value_soft(value: &(u8,)) -> u8 {
 }
 
 ffi! {
-    #![export("C")]
+    #![unsafe(export("C"))]
 
+    #![cfg(all())]
+    #![cfg_attr(all(), cfg(all()))]
     #![cfg_attr(any(), symbol_prefix = "unused")]
     #![cfg_attr(all(), symbol_prefix = "cfg_attr")]
 
+    #[cfg(all())]
     #[cfg_attr(any(), symbol_name = "unused")]
     #[cfg_attr(all(), symbol_name = "cfg_attr__value_plain")]
-    fn value_plain(value: Value) -> u8;
+    fn value_plain(#[cfg(all())] value: Value) -> u8;
 }
 
 ffi! {
-    #![extern("C")]
+    #![unsafe(extern("C"))]
 
     #![cfg_attr(any(), symbol_prefix = "unused")]
     #![cfg_attr(all(), symbol_prefix = "cfg_attr")]
@@ -55,14 +60,14 @@ ffi! {
 }
 
 ffi! {
-    #![cfg_attr(all(), export("C"))]
+    #![cfg_attr(all(), unsafe(export("C")))]
 
     #[symbol_name = "cfg_attr__value_soft"]
     fn value_soft(#[cfg_attr(all(), soft)] value: &(u8,)) -> u8;
 }
 
 ffi! {
-    #![cfg_attr(all(), extern("C"))]
+    #![cfg_attr(all(), unsafe(extern("C")))]
 
     #[symbol_name = "cfg_attr__value_soft"]
     fn imported_value_soft(#[cfg_attr(all(), soft)] value: &(u8,)) -> u8;
@@ -71,10 +76,11 @@ ffi! {
 struct ExportOpaque;
 
 ffi! {
-    #![export("C")]
+    #![unsafe(export("C"))]
 
     #![symbol_prefix = "cfg_attr"]
 
+    #[cfg(all())]
     #[cfg_attr(all(), id(u8))]
     type ExportOpaque;
 }
@@ -83,7 +89,7 @@ mod imported {
     use co3::ffi;
 
     ffi! {
-        #![extern("C")]
+        #![unsafe(extern("C"))]
 
         #![symbol_prefix = "cfg_attr"]
 
@@ -102,7 +108,9 @@ mod provider {
     pub(super) struct Custom(usize);
 
     handles! {
-        Custom,
+        unsafe {
+            Custom,
+        }
     }
 
     impl Attr for Custom {}
@@ -114,24 +122,28 @@ mod provider {
     }
 
     ffi! {
-        #![export("C")]
+        #![unsafe(export("C"))]
 
         #![symbol_prefix = "cfg_attr_dispatch"]
 
+        #[cfg(all())]
         #[cfg_attr(all(), dispatch(<Custom>))]
         impl<#[cfg_attr(all(), erased(u16))] T: Attr = EnvAttr> ByteValue for T {
+            #[cfg(all())]
             fn into_byte(self) -> u8;
         }
     }
 }
 
 ffi! {
-    #![extern("C")]
+    #![unsafe(extern("C"))]
 
     #![symbol_prefix = "cfg_attr_dispatch"]
 
+    #[cfg(all())]
     #[cfg_attr(all(), dispatch(<Custom>))]
     impl<#[cfg_attr(all(), erased(u16))] T: Attr = EnvAttr> ByteValue for T {
+        #[cfg(all())]
         fn into_byte(handle_id: <dyn T>::ID, self) -> u8;
     }
 }

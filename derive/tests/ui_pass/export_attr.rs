@@ -9,7 +9,9 @@ struct Value<T: ToOwned + ?Sized>(T::Owned);
 struct TransparentCTuple1<T: ?Sized>(T);
 
 handles! {
-    Opaque,
+    unsafe {
+        Opaque,
+    }
 }
 
 #[derive(Debug, Clone, Copy, ReprC)]
@@ -24,13 +26,13 @@ impl Default for Opaque {
 }
 
 ffi! {
-    #![extern("C")]
+    #![unsafe(extern("C"))]
 
     #![symbol_prefix = "kita"]
 
     #[dispatch(<Opaque>)]
-    impl<dyn(u8) T: ToOwned + ?Sized = u8> Value<T> {
-        fn new(t_id: <dyn T>::ID) -> Self;
+    impl<dyn(u8) T: ToOwned = u8> Value<T> {
+        move fn new(t_id: <dyn T>::ID) -> Self;
 
         #[symbol_name = "ping"]
         fn ping2(t_id: <dyn T>::ID, move self, #[soft] inc: &TransparentCTuple1<T>) -> u8;
@@ -47,7 +49,9 @@ mod provider {
     use super::*;
 
     handles! {
-        Opaque,
+        unsafe {
+            Opaque,
+        }
     }
 
     #[derive(Debug, Clone, Copy)]
@@ -67,7 +71,7 @@ mod provider {
         }
     }
 
-    impl<T: Add<Output = u8> + ToOwned<Owned = T> + ?Sized> Value<T>
+    impl<T: Add<Output = u8> + ToOwned<Owned = T>> Value<T>
     where
         Box<T>: Default,
     {
@@ -85,7 +89,7 @@ mod provider {
     }
 
     ffi! {
-        #![export("C")]
+        #![unsafe(export("C"))]
 
         #![symbol_prefix = "kita"]
 
@@ -94,19 +98,19 @@ mod provider {
 
         impl Default for Box<Opaque> {
             #[symbol_name = "kita__Default__OwnedOpaque__default"]
-            fn default() -> Self;
+            move fn default() -> Self;
         }
 
         impl ToOwned for Box<Opaque> {
-            fn to_owned(&self) -> <Self as ToOwned>::Owned;
+            move fn to_owned(&self) -> <Self as ToOwned>::Owned;
         }
 
         #[dispatch(<Opaque>)]
-        impl<#[erased(u8)] T: Add<Output = u8> + ToOwned<Owned = T> = u8> Value<T>
+        impl<#[erased(u8)] T: Add<Output = u8> + ToOwned<Owned = T> + ?Sized = u8> Value<T>
         where
             Box<T>: Default,
         {
-            fn new() -> Self;
+            move fn new() -> Self;
 
             #[symbol_name = "ping"]
             fn ping(move self, #[soft] inc: &TransparentCTuple1<T>) -> u8;

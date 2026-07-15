@@ -10,17 +10,19 @@ impl HandleFamily for Kita {
 }
 
 handles! {
-    GenericHandle<'_, u32, 23>,
-    Kita,
+    unsafe {
+        GenericHandle<'_, u32, 23>,
+        Kita,
+    }
 }
 
 ffi! {
-    #![export("C")]
+    #![unsafe(export("C"))]
 
     #[id(u32)]
     pub type GenericHandle<'a, T, const N: usize>;
 
-    #[unsafe(lifetimes)]
+    #[explicit_lifetimes]
     #[dispatch(<Kita, 23>)]
     impl<'a, dyn(u32) U, const K: usize> Drop for GenericHandle<'a, U, K> {
         fn drop(#[soft] move &mut self);
@@ -56,14 +58,14 @@ pub extern "C" fn export3<const N: usize>(v: [u32; N]) -> [u32; N] {
 }
 
 ffi! {
-    #![export("C")]
+    #![unsafe(export("C"))]
 
     impl GenericHandle<'static, u32, 12> {
-        #[unsafe(lifetimes)]
+        #[explicit_lifetimes]
         pub fn export1<'a>(&self);
     }
 
-    #[unsafe(lifetimes)]
+    #[explicit_lifetimes]
     impl<'a> GenericHandle<'a, u32, 12> {
         pub fn export2(#[by_val] &self);
     }
@@ -76,23 +78,23 @@ ffi! {
         pub fn handle3(&self);
     }
 
-    #[unsafe(lifetimes)]
+    #[explicit_lifetimes]
     pub extern "C" fn export1<'a>(v: &'a u32) -> &'a u32;
     pub extern "C" fn export2<T>(v: T) -> T;
     pub extern "C" fn export3<const N: usize>(v: [u32; N]) -> [u32; N];
 
-    #[unsafe(lifetimes)]
+    #[explicit_lifetimes]
     #[dispatch(<Kita, 23>)]
     impl<'a, dyn(u32) U, const K: usize> Trait for GenericHandle<'a, U, K> {}
 }
 
 ffi! {
-    #![extern("C")]
+    #![unsafe(extern("C"))]
 
     #![symbol_prefix = "kita"]
 
     impl GenericHandle<'static, u32, 12> {
-        #[unsafe(lifetimes)]
+        #[explicit_lifetimes]
         pub fn extern1<'a>(&self);
     }
     impl GenericHandle<'_, u32, 12> {
@@ -105,12 +107,12 @@ ffi! {
         pub fn handle3(&self);
     }
 
-    #[unsafe(lifetimes)]
+    #[explicit_lifetimes]
     pub extern "C" fn extern1<'a>(v: &'a u32) -> &'a u32;
     pub extern "C" fn extern2<T>(v: T) -> T;
     pub extern "C" fn extern3<const N: usize>(v: [u32; N]) -> [u32; N];
 
-    #[unsafe(lifetimes)]
+    #[explicit_lifetimes]
     #[dispatch(<Kita, 23>)]
     impl<'a, dyn(u32) U, const K: usize> Trait for GenericHandle<'a, U, K> {
         fn drop(self_id: <dyn U>::ID, &mut self);

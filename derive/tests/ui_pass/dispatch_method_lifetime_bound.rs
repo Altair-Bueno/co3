@@ -21,7 +21,9 @@ impl HandleFamily for &CustomAttribute {
 }
 
 handles! {
-    &CustomAttribute,
+    unsafe {
+        &CustomAttribute,
+    }
 }
 
 mod provider {
@@ -40,9 +42,9 @@ mod provider {
     }
 
     ffi! {
-        #![export("C")]
+        #![unsafe(export("C"))]
 
-        #[unsafe(lifetimes)]
+        #[explicit_lifetimes]
         #[dispatch(<&CustomAttribute>)]
         impl<'a, dyn(u8) T: 'a + 'a> Dispatch for T
         where
@@ -55,9 +57,9 @@ mod provider {
 }
 
 ffi! {
-    #![extern("C")]
+    #![unsafe(extern("C"))]
 
-    #[unsafe(lifetimes)]
+    #[explicit_lifetimes]
     #[dispatch(<&CustomAttribute>)]
     impl<'a, dyn(u8) T: Attribute + 'a> Dispatch for T {
         #[symbol_name = "len"]

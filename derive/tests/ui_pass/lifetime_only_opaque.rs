@@ -1,15 +1,15 @@
 use co3::ffi;
 
 ffi! {
-    #![extern("C")]
+    #![unsafe(extern("C"))]
     #![symbol_prefix = "kita"]
 
     pub type Opaque<'a>;
 
-    #[unsafe(lifetimes)]
+    #[explicit_lifetimes]
     impl<'a> Default for OwnedOpaque<'a> {
         #[symbol_name = "kita__Default__Box_Opaque__default"]
-        fn default() -> Self;
+        move fn default() -> Self;
     }
 
     impl Opaque<'_> {
@@ -33,7 +33,7 @@ mod provider {
     }
 
     ffi! {
-        #![export("C")]
+        #![unsafe(export("C"))]
 
         #![symbol_prefix = "kita"]
 
@@ -41,10 +41,10 @@ mod provider {
 
         // TODO: This should be allowed with '_ but it's not.
         // This is a special case where reference is materialized
-        #[unsafe(lifetimes)]
+        #[explicit_lifetimes]
         impl<'a> Default for Box<Opaque<'a>> {
             #[symbol_name = "kita__Default__Box_Opaque__default"]
-            fn default() -> Self;
+            move fn default() -> Self;
         }
 
         impl Opaque<'_> {

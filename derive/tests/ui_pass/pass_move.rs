@@ -18,20 +18,20 @@ mod provider {
     }
 
     ffi! {
-        #![export("C")]
+        #![unsafe(export("C"))]
 
         impl Value {
             #[symbol_name = "transform"]
-            fn transform(move self, move other: &Self) -> Self;
+            move fn transform(move self, move other: &Self) -> Self;
         }
 
         #[symbol_name = "combine"]
-        fn combine(input: &Value, move rhs: Value) -> Value;
+        move fn combine(input: &Value, move rhs: Value) -> Value;
     }
 }
 
 ffi! {
-    #![extern("C")]
+    #![unsafe(extern("C"))]
 
     #![expect(unused_doc_comments)]
     //! Documentation
@@ -39,12 +39,12 @@ ffi! {
     impl Value {
         /// Documentation
         #[symbol_name = "transform"]
-        fn transform2(move self: Self, other: &Self) -> Self;
+        move fn transform2(move self: Self, other: &Self) -> Self;
     }
 
-    /// Documentation
-    #[symbol_name = "combine"]
-    fn combine(move input: &Value, move rhs: Value) -> Value;
+/// Documentation
+#[symbol_name = "combine"]
+move fn combine(input: &Value, move rhs: Value) -> Value;
 }
 
 fn main() {

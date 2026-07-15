@@ -3,14 +3,18 @@ use quote::{format_ident, quote};
 use syn::{FnArg, ItemImpl, punctuated::Punctuated, visit_mut::VisitMut};
 
 use crate::{
-    dispatch::{HandleId, gen_handle_erase_stmts, handle_id, is_handle_id_arg},
-    ffi_fn::{self, is_spread_arg, item_fn_input_ident, ownership_mode_for_arg, spread_arg_names},
-    generate::OwnershipMode,
-    is_symbol_name_attr, symbol_name_value,
-    utils::{
-        gen_normalization_stmts, gen_store_name, soft_for_arg, strip_internal_generic_param,
-        unwrap_result_type,
+    dispatch::{
+        HandleId, gen_handle_erase_stmts, gen_return_derase_expr, handle_id, is_handle_id_arg,
     },
+    ffi_fn::{
+        self, gen_return_borrow_check, gen_soft_sync_error_value, gen_trap_value, is_by_val_attr,
+        is_spread_arg, item_fn_input_ident, ownership_mode_for_arg, spread_arg_names,
+    },
+    generate::OwnershipMode,
+    is_symbol_name_attr,
+    parse::FailureMode,
+    symbol_name_value,
+    utils::{gen_store_name, soft_for_arg, strip_internal_generic_param},
 };
 
 fn strip_internal_arg_attrs(signature: &mut syn::Signature) {
@@ -19,7 +23,7 @@ fn strip_internal_arg_attrs(signature: &mut syn::Signature) {
     impl VisitMut for InternalAttrStripper {
         fn visit_receiver_mut(&mut self, node: &mut syn::Receiver) {
             node.attrs.retain(|attr| {
-                !attr.path().is_ident("by_val")
+                !is_by_val_attr(attr)
                     && !attr.path().is_ident("soft")
                     && !attr.path().is_ident("spread")
             });
@@ -27,7 +31,7 @@ fn strip_internal_arg_attrs(signature: &mut syn::Signature) {
 
         fn visit_pat_type_mut(&mut self, node: &mut syn::PatType) {
             node.attrs.retain(|attr| {
-                !attr.path().is_ident("by_val")
+                !is_by_val_attr(attr)
                     && !attr.path().is_ident("soft")
                     && !attr.path().is_ident("spread")
             });
@@ -39,19 +43,30 @@ fn strip_internal_arg_attrs(signature: &mut syn::Signature) {
 
 pub fn wrap_fn_definition(
     abi: &syn::Abi,
+    failure_mode: FailureMode,
     block_attrs: &[syn::Attribute],
     mut item: syn::ItemFn,
 ) -> TokenStream {
     let vis = &item.vis;
 
-    let wrapper_attrs = item.attrs.iter().filter(|attr| !is_symbol_name_attr(attr));
+    let wrapper_attrs = item
+        .attrs
+        .iter()
+        .filter(|attr| !is_symbol_name_attr(attr) && !is_by_val_attr(attr));
 
     let mut wrapper_sig = item.sig.clone();
     strip_internal_arg_attrs(&mut wrapper_sig);
 
-    let wrapper_body = gen_wrapper_body::<false>(None, None, &item.sig);
+    let wrapper_body = gen_wrapper_body::<false>(
+        failure_mode,
+        item.attrs.iter().any(is_by_val_attr),
+        None,
+        None,
+        &item.sig,
+    );
+
     ffi_fn::normalize_fn_signature(&mut item.sig, None);
-    let decl = ffi_fn::gen_extern_fn_signature(item.sig);
+    let decl = ffi_fn::gen_extern_fn_signature(item.sig, failure_mode);
     let extern_fn_decl = gen_extern_decl(abi, block_attrs, &item.attrs, decl);
 
     quote! {
@@ -63,7 +78,10 @@ pub fn wrap_fn_definition(
     }
 }
 
-pub fn wrap_impl_definition<const DISPATCHED: bool>(impl_: &ItemImpl) -> ItemImpl {
+pub fn wrap_impl_definition<const DISPATCHED: bool>(
+    failure_mode: FailureMode,
+    impl_: &ItemImpl,
+) -> ItemImpl {
     let ItemImpl {
         attrs: impl_attrs,
         defaultness,
@@ -84,7 +102,10 @@ pub fn wrap_impl_definition<const DISPATCHED: bool>(impl_: &ItemImpl) -> ItemImp
         let mut sig = item.sig.clone();
         let vis = &item.vis;
 
-        let wrapper_attrs = item.attrs.iter().filter(|attr| !is_symbol_name_attr(attr));
+        let wrapper_attrs = item
+            .attrs
+            .iter()
+            .filter(|attr| !is_symbol_name_attr(attr) && !is_by_val_attr(attr));
 
         let self_binding = sig
             .inputs
@@ -109,7 +130,13 @@ pub fn wrap_impl_definition<const DISPATCHED: bool>(impl_: &ItemImpl) -> ItemImp
             })
             .collect::<Vec<_>>();
 
-        let wrapper_body = gen_wrapper_body::<DISPATCHED>(Some(self_ty), Some(generics), &sig);
+        let wrapper_body = gen_wrapper_body::<DISPATCHED>(
+            failure_mode,
+            item.attrs.iter().any(is_by_val_attr),
+            Some(self_ty),
+            Some(generics),
+            &sig,
+        );
 
         sig.inputs = if DISPATCHED {
             sig.inputs
@@ -181,6 +208,8 @@ pub(crate) fn gen_extern_decl(
 }
 
 fn gen_wrapper_body<const DISPATCHED: bool>(
+    failure_mode: FailureMode,
+    fn_by_val: bool,
     self_ty: Option<&syn::Type>,
     dispatch_generics: Option<&syn::Generics>,
     sig: &syn::Signature,
@@ -195,89 +224,119 @@ fn gen_wrapper_body<const DISPATCHED: bool>(
     };
 
     let input_convert = gen_input_conversion_stmts(&sig.inputs);
-    let output_init = gen_output_init_stmt(&sig.output);
-    let ffi_fn_call_stmt = gen_ffi_fn_call_stmt(sig);
     let store_sync_stmts = gen_store_sync_stmts(&sig.inputs);
+    let sync_check = gen_wrapper_sync_check(failure_mode, sig.inputs.len(), store_sync_stmts);
 
-    let sync_success_args: Vec<_> = (0..sig.inputs.len())
-        .map(|idx| {
-            let idx = syn::Index::from(idx);
-            quote! { u8::from(!__co3_sync_errors[#idx]) }
-        })
-        .collect();
+    let ffi_fn_call = gen_ffi_fn_call(sig);
+    if let syn::ReturnType::Type(_, output_ty) = &sig.output {
+        let return_derase = gen_return_derase::<DISPATCHED>(self_ty, dispatch_generics, output_ty);
+        let return_borrow_check = gen_return_borrow_check(output_ty, fn_by_val);
+        let decode_error = gen_return_decode_error(failure_mode, output_ty);
+        let ffi_fn_call = gen_ffi_fn_call(sig);
 
-    let sync_success_fmt = if sig.inputs.is_empty() {
-        "\n".to_owned()
-    } else {
-        let placeholders = core::iter::repeat_n("{}", sig.inputs.len())
-            .collect::<Vec<_>>()
-            .join(", ");
+        return quote! {
+            #return_borrow_check
 
-        format!("\nArg Sync: ({placeholders})\n")
-    };
+            #input_convert
+            let __co3_out = {
+                #(#handle_erase_stmts)*
+                #ffi_fn_call
+            };
 
-    let body = if let syn::ReturnType::Type(_, output_ty) = &sig.output {
-        let fmt = format!("{sync_success_fmt}Out Read: {{}}\n");
+            #sync_check
+            let __co3_out = #return_derase;
+            let __co3_out: Option<#output_ty> = unsafe {
+                co3::decode(__co3_out)
+            };
 
-        let (decode_ty, return_) = if let Some((ok, _)) = unwrap_result_type(output_ty) {
-            (quote!(#ok), quote!(Ok(__co3_out)))
-        } else {
-            (quote!(#output_ty), quote!(__co3_out))
+            let Some(__co3_out) = __co3_out else {
+                #decode_error
+            };
+
+            __co3_out
         };
-
-        let out_res = quote!(u8::from(core::option::Option::is_some(&__co3_out)));
-        let panic_sync_error = if sync_success_args.is_empty() {
-            quote! { panic!(#fmt, #out_res); }
-        } else {
-            quote! { panic!(#fmt, #(#sync_success_args),*, #out_res); }
-        };
-
-        quote! {
-            let __co3_sync_errors = #store_sync_stmts;
-
-            let __co3_out = unsafe { core::mem::MaybeUninit::assume_init(__co3_out) };
-            let __co3_out: Option<#decode_ty> = unsafe { co3::decode(__co3_out) };
-
-            let mut __co3_sync_errors_iter = core::iter::IntoIterator::into_iter(__co3_sync_errors);
-            if core::iter::Iterator::any(&mut __co3_sync_errors_iter, core::convert::identity)
-                || core::option::Option::is_none(&__co3_out)
-            {
-                #panic_sync_error
-            }
-
-            let __co3_out = unsafe { core::option::Option::unwrap_unchecked(__co3_out) };
-            let __co3_out = __co3_out;
-
-            #return_
-        }
-    } else {
-        let panic_sync_error = if sync_success_args.is_empty() {
-            quote! { panic!(#sync_success_fmt); }
-        } else {
-            quote! { panic!(#sync_success_fmt, #(#sync_success_args),*); }
-        };
-
-        quote! {
-            let __co3_sync_errors = #store_sync_stmts;
-
-            let mut __co3_sync_errors_iter = core::iter::IntoIterator::into_iter(__co3_sync_errors);
-            if core::iter::Iterator::any(&mut __co3_sync_errors_iter, core::convert::identity) {
-                #panic_sync_error
-            }
-        }
-    };
+    }
 
     quote! {
         #input_convert
-        #output_init
 
         {
             #(#handle_erase_stmts)*
-            #ffi_fn_call_stmt
+            #ffi_fn_call;
         }
 
-        #body
+        #sync_check
     }
+}
+
+fn gen_wrapper_sync_check(
+    failure_mode: FailureMode,
+    inputs_len: usize,
+    store_sync_stmts: TokenStream,
+) -> TokenStream {
+    let sync_error = match failure_mode {
+        FailureMode::Panic => {
+            let sync_success_args = (0..inputs_len)
+                .map(|idx| {
+                    let idx = syn::Index::from(idx);
+                    quote! { u8::from(!__co3_sync_errors[#idx]) }
+                })
+                .collect::<Vec<_>>();
+
+            let sync_success_fmt = if sync_success_args.is_empty() {
+                "\n".to_owned()
+            } else {
+                let placeholders = core::iter::repeat_n("{}", sync_success_args.len())
+                    .collect::<Vec<_>>()
+                    .join(", ");
+
+                format!("\nArg Sync: ({placeholders})\n")
+            };
+
+            if sync_success_args.is_empty() {
+                quote! { panic!(#sync_success_fmt); }
+            } else {
+                quote! { panic!(#sync_success_fmt, #(#sync_success_args),*); }
+            }
+        }
+        FailureMode::Error => {
+            let error = gen_soft_sync_error_value();
+            quote! { return #error; }
+        }
+    };
+
+    ffi_fn::gen_sync_check(store_sync_stmts, sync_error)
+}
+
+fn gen_return_decode_error(failure_mode: FailureMode, output_ty: &syn::Type) -> TokenStream {
+    match failure_mode {
+        FailureMode::Panic => quote! {
+            panic!(concat!(stringify!(#output_ty), "Decode failed"));
+        },
+        FailureMode::Error => {
+            let error = gen_trap_value();
+            quote! { return #error; }
+        }
+    }
+}
+
+fn gen_return_derase<const DISPATCHED: bool>(
+    self_ty: Option<&syn::Type>,
+    dispatch_generics: Option<&syn::Generics>,
+    output_ty: &syn::Type,
+) -> TokenStream {
+    if !DISPATCHED {
+        return quote!(__co3_out);
+    }
+
+    self_ty
+        .zip(dispatch_generics)
+        .map(|(self_ty, generics)| {
+            let mut output_ty = output_ty.clone();
+            ffi_fn::SelfConcretizer { self_ty }.visit_type_mut(&mut output_ty);
+            gen_return_derase_expr(generics, &output_ty, quote!(__co3_out))
+        })
+        .unwrap_or_else(|| quote!(__co3_out))
 }
 
 fn gen_store_sync_stmts(inputs: &Punctuated<FnArg, syn::Token![,]>) -> TokenStream {
@@ -325,7 +384,6 @@ fn gen_input_conversion_stmts(inputs: &Punctuated<FnArg, syn::Token![,]>) -> Tok
         };
 
         let store_name = gen_store_name(&arg_name);
-        stmts.extend(gen_normalization_stmts(&arg_name, &arg_ty));
         if OwnershipMode::Borrow == ownership_mode_for_arg(attrs) {
             let owner_name = format_ident!("__co3_{arg_name}_owner");
 
@@ -362,66 +420,23 @@ fn gen_input_conversion_stmts(inputs: &Punctuated<FnArg, syn::Token![,]>) -> Tok
     stmts
 }
 
-fn gen_output_init_stmt(output: &syn::ReturnType) -> TokenStream {
-    let syn::ReturnType::Type(_, output) = output else {
-        return quote! {};
-    };
-
-    let output = unwrap_result_type(output).map_or(&**output, |(ok, _)| ok);
-    let output_ty = quote!(core::mem::MaybeUninit<<#output as co3::ExternC>::CType>);
-
-    quote! {
-        let mut __co3_out: #output_ty = core::mem::MaybeUninit::zeroed();
-        let __co3_out_ptr = core::mem::MaybeUninit::as_mut_ptr(&mut __co3_out);
-    }
-}
-
-fn gen_ffi_fn_call_stmt(sig: &syn::Signature) -> TokenStream {
-    let mut arg_names: Vec<TokenStream> = Vec::new();
-
+fn gen_ffi_fn_call(sig: &syn::Signature) -> TokenStream {
     let fn_name = &sig.ident;
-    for input in &sig.inputs {
-        let (attrs, arg_name) = match input {
-            FnArg::Receiver(receiver) => (&receiver.attrs, format_ident!("__co3_self")),
-            FnArg::Typed(syn::PatType { attrs, pat, .. }) => {
-                (attrs, item_fn_input_ident(pat).clone())
+
+    let arg_names = sig.inputs.iter().map(|input| match input {
+        FnArg::Receiver(_) => quote!(__co3_self),
+        FnArg::Typed(syn::PatType { attrs, pat, .. }) => {
+            let arg_name = item_fn_input_ident(pat);
+            if is_spread_arg(attrs) {
+                let (data_name, metadata_name) = spread_arg_names(arg_name);
+                quote!(#data_name, #metadata_name)
+            } else {
+                quote!(#arg_name)
             }
-        };
-
-        if is_spread_arg(attrs) {
-            let (data_name, metadata_name) = spread_arg_names(&arg_name);
-            arg_names.extend([quote!(#data_name), quote!(#metadata_name)]);
-        } else {
-            arg_names.push(quote!(#arg_name));
         }
-    }
-
-    if matches!(sig.output, syn::ReturnType::Type(_, _)) {
-        arg_names.push(quote!(__co3_out_ptr));
-    }
-
-    let execution_fail_arm = if let syn::ReturnType::Type(_, output_ty) = &sig.output {
-        if unwrap_result_type(output_ty).is_some() {
-            quote! {
-                co3::FfiReturn::ExecutionFail => {
-                    // TODO: Implement error handling
-                    unimplemented!("Error handling is not properly implemented yet");
-                }
-            }
-        } else {
-            quote! {}
-        }
-    } else {
-        quote! {}
-    };
+    });
 
     quote! {
-        let __co3_return: co3::FfiReturn = unsafe { #fn_name(#(#arg_names),*) };
-
-        match __co3_return {
-            co3::FfiReturn::Ok => {},
-            #execution_fail_arm
-            _ => panic!(concat!(stringify!(#fn_name), " returned {}"), __co3_return)
-        }
+        unsafe { #fn_name(#(#arg_names),*) }
     }
 }

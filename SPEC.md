@@ -28,17 +28,17 @@ These guarantees define the contract of this library:
 Conversion modes define how values cross the FFI boundary, including ownership behavior, pointer-identity semantics, and validation strictness.
 Each mode makes explicit tradeoffs and is selected through compile-time configuration:
 
-1. **`move` (opt-in, attribute on fn arguments)**
-- `Drop` types are borrowed instead of transferring ownership unless function argument is `move`d.
+1. **`move` (opt-in, on fn arguments or as `move fn`)**
+- `Drop` types are borrowed instead of transferring ownership unless argument/return is `move`d
 - Owned backing storage is kept alive in a type-specific store while exposing borrowed FFI views.
 - `move` removes the cost of cloning owned types in decode paths that is incurred by default.
 
-2. **`#[soft]` (opt-in, attribute on fn arguments)**
+2. **`#[soft]` (opt-in, on fn arguments)**
 - Enables additional reference conversion paths that rely on cloning the referent (e.g. `&(u8,)`).
 - Uses intermediate owned/cloned values and store synchronization for mutable writeback paths.
 - Pointer identity is not preserved and pointer equality for these types **MUST NOT** be relied on.
 
-3. **`#[tag_dispatch<Type1, ...>]` (opt-in, attribute on impl blocks)**
+3. **`#[tag_dispatch<Type1, ...>]` (opt-in, on impl blocks)**
 - Enables tagged generic dispatch where type's C-compatible representation is erased into a shared type and reinterpreted back via the tag value.
 - Dispatched impl block generics are defined by `<dyn({int}) T = {ErasedTy}>` where `ErasedTy` has the same size and alignment as the erased type.
 - Concrete tag dispatched types are declared AOT and have a tag type, derived with `#[reprC(id(int))]`/`#[id(int)]`, passed alongside erased type.
@@ -63,21 +63,21 @@ A C-compatible companion type is a type with a defined C ABI and no trap represe
 ### 2.2 The `ffi!` Macro
 
 `ffi!` is a fn-like macro that enables writing export/extern declarations of types, methods and impl blocks.
-It must always start with a declaration of direction and ABI (e.g. `#![export("system")]`/`#![extern("system")]`).
+It must always start with a declaration of direction and ABI (e.g. `#![unsafe(export("system"))]`/`#![unsafe(extern("system"))]`).
 
-- `#![export("ABI")]` directs the `ffi` macro to export the contained items with the given ABI. The declared items must exist and be resolvable.
-- `#![extern("ABI")]` directs the `ffi` macro to import the contained items with the given ABI. The macro is said to contain extern declarations.
+- `#![unsafe(export("ABI"))]` creates export declarations with the given ABI. The declared items must exist and be resolvable.
+- `#![unsafe(extern("ABI"))]` creates import declarations with the given ABI. The macro is said to contain extern declarations.
 - `#![feature(extern_types)]` opts into the corresponding unstable macro codegen path; no other feature names are supported.
 - Trait method symbol names are inferred as `{symbol_prefix}__{TraitPath}__{SelfTy}__{method}`.
 - Inherent method symbol names are inferred as `{symbol_prefix}__{SelfTy}__{method}`.
 - Free function symbol names are inferred as `{symbol_prefix}__{fn_name}`.
 - `#![symbol_prefix = "..."]` defines the symbol prefix (defaults to `CARGO_CRATE_NAME`).
 - `#[symbol_name = "..."]` overrides the name mangling enforced by the `ffi` macro.
-- `#![panic = "abort"]` controls whether fn declared within current `ffi!` block abort or unwind(default) on panic.
+- `#![failure = "panic" | "error"]` controls whether internal failures panic(default) or are returned.
 - `type Type;` declares an opaque type (it's representation is unknown). This type should not be dereferenced.
 - `#[id(int)]` on a type declaration defines the tag type that identifies the type when it is erased by dynamic dispatch.
 - `#[dispatch(<Type1, ...>)]` opts-into a kind of polymorphic dispatch where concrete types are known at compile time but erased at runtime.
 - `..` splits a wide companion type into separate data and metadata arguments at the ABI boundary.
-- `#[unsafe(lifetimes)]` opts into declarations with explicit lifetimes inside `ffi`.
+- `#[explicit_lifetimes]` opts into declarations with explicit lifetimes inside `ffi`.
 - `cfg_attr` is fully supported in all attribute positions inside the `ffi` macro.
 - Although not declared `unsafe`, using `ffi` macro always carries a risk of UB.

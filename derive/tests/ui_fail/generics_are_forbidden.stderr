@@ -1,47 +1,47 @@
 error: Type and const generics on impls are not supported. Use `#[dispatch]`
-  --> tests/ui_fail/generics_are_forbidden.rs:71:9
+  --> tests/ui_fail/generics_are_forbidden.rs:73:9
    |
-71 |     impl<T> GenericHandle<'static, T, 12> {
+73 |     impl<T> GenericHandle<'static, T, 12> {
    |         ^^^
 
 error: Type and const generics on impls are not supported. Use `#[dispatch]`
-  --> tests/ui_fail/generics_are_forbidden.rs:75:9
+  --> tests/ui_fail/generics_are_forbidden.rs:77:9
    |
-75 |     impl<const N: usize> GenericHandle<'static, u32, N> {
+77 |     impl<const N: usize> GenericHandle<'static, u32, N> {
    |         ^^^^^^^^^^^^^^^^
 
 error: Type and const generics on impls are not supported. Use `#[dispatch]`
-  --> tests/ui_fail/generics_are_forbidden.rs:81:30
+  --> tests/ui_fail/generics_are_forbidden.rs:83:30
    |
-81 |     pub extern "C" fn export2<T>(v: T) -> T;
+83 |     pub extern "C" fn export2<T>(v: T) -> T;
    |                              ^^^
 
 error: Type and const generics on impls are not supported. Use `#[dispatch]`
-  --> tests/ui_fail/generics_are_forbidden.rs:82:30
+  --> tests/ui_fail/generics_are_forbidden.rs:84:30
    |
-82 |     pub extern "C" fn export3<const N: usize>(v: [u32; N]) -> [u32; N];
+84 |     pub extern "C" fn export3<const N: usize>(v: [u32; N]) -> [u32; N];
    |                              ^^^^^^^^^^^^^^^^
 
 error: Type and const generics on impls are not supported. Use `#[dispatch]`
-   --> tests/ui_fail/generics_are_forbidden.rs:101:9
+   --> tests/ui_fail/generics_are_forbidden.rs:103:9
     |
-101 |     impl<T> GenericHandle<'static, T, 12> {
+103 |     impl<T> GenericHandle<'static, T, 12> {
     |         ^^^
 
 error: Type and const generics on impls are not supported. Use `#[dispatch]`
-   --> tests/ui_fail/generics_are_forbidden.rs:104:9
+   --> tests/ui_fail/generics_are_forbidden.rs:106:9
     |
-104 |     impl<const N: usize> GenericHandle<'static, u32, N> {
+106 |     impl<const N: usize> GenericHandle<'static, u32, N> {
     |         ^^^^^^^^^^^^^^^^
 
 error: Type and const generics on impls are not supported. Use `#[dispatch]`
-   --> tests/ui_fail/generics_are_forbidden.rs:110:30
+   --> tests/ui_fail/generics_are_forbidden.rs:112:30
     |
-110 |     pub extern "C" fn extern2<T>(v: T) -> T;
+112 |     pub extern "C" fn extern2<T>(v: T) -> T;
     |                              ^^^
 
 error: Type and const generics on impls are not supported. Use `#[dispatch]`
-   --> tests/ui_fail/generics_are_forbidden.rs:111:30
+   --> tests/ui_fail/generics_are_forbidden.rs:113:30
     |
-111 |     pub extern "C" fn extern3<const N: usize>(v: [u32; N]) -> [u32; N];
+113 |     pub extern "C" fn extern3<const N: usize>(v: [u32; N]) -> [u32; N];
     |                              ^^^^^^^^^^^^^^^^

@@ -6,8 +6,8 @@
 //! # use co3::{ExternC, ffi};
 //!
 //! ffi! {
-//!     #![cfg_attr(not(feature = "ffi-extern"), export("C"))]
-//!     #![cfg_attr(feature = "ffi-extern", extern("C"))]
+//!     #![cfg_attr(not(feature = "ffi-extern"), unsafe(export("C")))]
+//!     #![cfg_attr(feature = "ffi-extern", unsafe(extern("C")))]
 //!
 //!     #![symbol_prefix = "provider"]
 //!
@@ -66,8 +66,7 @@ pub mod stored;
 pub mod transmute;
 pub mod tuple;
 
-pub trait Status {
-    fn ok() -> Self;
+pub trait Error {
     fn trap_value() -> Self;
     fn unknown_handle() -> Self;
     fn soft_sync_error() -> Self;

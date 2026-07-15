@@ -23,8 +23,10 @@ impl Kita for CVoid {
 }
 
 handles! {
-    Opaque1,
-    Opaque2,
+    unsafe {
+        Opaque1,
+        Opaque2,
+    }
 }
 
 impl Kita for u32 {
@@ -40,13 +42,13 @@ impl Kita for u32 {
 fn kita(_a: &u32) {}
 
 ffi! {
-    #![export("C")]
+    #![unsafe(export("C"))]
 
     fn kita(a: &Box<u32>);
 }
 
 ffi! {
-    #![export("C")]
+    #![unsafe(export("C"))]
 
     impl Kita for u32 {
         fn kita2(a: &Box<u32>);
@@ -54,7 +56,7 @@ ffi! {
 }
 
 ffi! {
-    #![extern("C")]
+    #![unsafe(extern("C"))]
 
     #![symbol_prefix = "kita"]
 
@@ -66,20 +68,20 @@ ffi! {
     impl ToOwned for Opaque1 {
         type Owned = OwnedOpaque1;
 
-        fn to_owned(&self) -> <Self as ToOwned>::Owned;
+        move fn to_owned(&self) -> <Self as ToOwned>::Owned;
     }
 
     impl ToOwned for Opaque2 {
         type Owned = OwnedOpaque2;
 
-        fn to_owned(&self) -> <Self as ToOwned>::Owned;
+        move fn to_owned(&self) -> <Self as ToOwned>::Owned;
     }
 
     #[dispatch(<Opaque1>, <Opaque2>)]
     impl<dyn(u32) T: ToOwned = CVoid> Kita for T {
         type MySelf = <T as ToOwned>::Owned;
 
-        fn kita(self_id: <dyn Self>::ID, self: &Self) -> Vec<<Self as Kita>::MySelf>;
+        move fn kita(self_id: <dyn Self>::ID, self: &Self) -> Vec<<Self as Kita>::MySelf>;
         fn kita2(a: &u32, self_id: <dyn T>::ID);
     }
 }

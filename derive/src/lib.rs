@@ -3,15 +3,23 @@
 //! # Example
 //!
 //! ```rust
+//! #![cfg(not(feature = "ffi-extern"))]
+//! struct Local;
+//!
+//! #[cfg(not(feature = "ffi-extern"))]
+//! type LocalType = Box<Local>;
+//! #[cfg(feature = "ffi-extern")]
+//! type LocalType = OwnedLocal;
+//!
 //! co3::ffi! {
-//!     #![cfg_attr(not(feature = "ffi-extern"), export("C"))]
-//!     #![cfg_attr(feature = "ffi-extern", extern("C"))]
+//!     #![cfg_attr(not(feature = "ffi-extern"), unsafe(export("C")))]
+//!     #![cfg_attr(feature = "ffi-extern", unsafe(extern("C")))]
 //!
 //!     #![symbol_prefix = "provider"]
 //!
 //!     type Local;
 //!
-//!     fn make_local() -> Local;
+//!     fn make_local() -> LocalType;
 //! }
 //! ```
 use std::collections::BTreeMap;
@@ -26,9 +34,9 @@ use syn::{
 
 use crate::{
     cfg_attr::{emit_macro_invocations, expand as expand_cfg_attr},
-    dispatch::{find_dispatch_attr, parse_dispatch_attr, synthesize_dispatch_handle_ids},
-    generate::{emit_decl_exports, expand_extern_import_decls},
-    parse::{FfiInput, ParsedForeignItem, parse_ffi_input},
+    dispatch::{find_dispatch_attr, synthesize_dispatch_handle_ids},
+    generate::{expand_export_decls, expand_extern_decls},
+    parse::{FailureMode, FfiInput, MacroFeatures, ParsedForeignItem, parse_dispatch_attr},
     repr::derive_repr_c,
     utils::{
         has_non_lifetime_generics, is_drop_impl, is_type_erased, path_symbol_name, push_error,
@@ -53,21 +61,11 @@ pub(crate) enum DeclKind {
     Extern,
 }
 
-impl DeclKind {
-    fn is_extern(self) -> bool {
-        matches!(self, Self::Extern)
-    }
-}
-
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-struct MacroFeatures {
-    extern_types: bool,
-}
-
 struct Input {
     abi: syn::Abi,
     attrs: Vec<Attribute>,
     features: MacroFeatures,
+    failure_mode: FailureMode,
     items: Vec<ForeignItem>,
 }
 
@@ -119,14 +117,6 @@ enum DropImpl {
 #[manyhow]
 #[proc_macro_derive(ReprC, attributes(reprC))]
 pub fn repr_c_derive(item: syn::DeriveInput) -> Result<TokenStream> {
-    if let Some(export_attr) = item.attrs.iter().find(|attr| {
-        let last_seg = attr.path().segments.last();
-        last_seg.is_some_and(|seg| seg.ident == "export")
-    }) {
-        let err_msg = "Opaque items can't derive ReprC";
-        return Err(syn::Error::new_spanned(export_attr, err_msg));
-    }
-
     derive_repr_c(&item)
 }
 
@@ -135,47 +125,47 @@ pub fn repr_c_derive(item: syn::DeriveInput) -> Result<TokenStream> {
 pub fn ffi(input: TokenStream) -> Result<TokenStream> {
     let cfg_attr_variants = expand_cfg_attr(input.clone())?;
 
-    if cfg_attr_variants.len() > 1 {
-        return Ok(emit_macro_invocations(
-            quote!(co3::ffi),
-            TokenStream::new(),
-            cfg_attr_variants,
-        ));
+    if cfg_attr_variants.len() == 1 {
+        let (kind, input) = Input::parse(input)?;
+
+        let Input {
+            abi,
+            features,
+            failure_mode,
+            attrs,
+            items,
+            ..
+        } = input;
+
+        return Ok(match kind {
+            DeclKind::Export => expand_export_decls(abi, features, failure_mode, items),
+            DeclKind::Extern => expand_extern_decls(abi, features, failure_mode, &attrs, items),
+        });
     }
 
-    let FfiInput {
-        kind,
-        abi,
-        attrs,
-        items,
-    } = parse_ffi_input(input)?;
-    let input = Input::parse(kind, abi, attrs, items)?;
-
-    let Input {
-        abi,
-        features,
-        attrs,
-        items,
-        ..
-    } = input;
-    Ok(match kind {
-        DeclKind::Export => emit_decl_exports(abi, features, items),
-        DeclKind::Extern => expand_extern_import_decls(abi, features, &attrs, items),
-    })
+    Ok(emit_macro_invocations(
+        quote!(co3::ffi),
+        TokenStream::new(),
+        cfg_attr_variants,
+    ))
 }
 
 impl Input {
-    fn parse(
-        kind: DeclKind,
-        abi: syn::Abi,
-        mut attrs: Vec<Attribute>,
-        mut decls: Vec<ParsedForeignItem>,
-    ) -> Result<Self> {
-        let symbol_prefix =
-            parse_symbol_prefix_attr(&mut attrs)?.unwrap_or_else(default_symbol_prefix);
+    fn parse(tokens: TokenStream) -> Result<(DeclKind, Self)> {
+        let FfiInput {
+            kind,
+            abi,
+            symbol_prefix,
+            features,
+            failure_mode,
+            attrs,
+            items: mut decls,
+        } = FfiInput::parse(tokens)?;
 
-        prepare_decls(kind, &attrs, &symbol_prefix, &mut decls)?;
-        let features = parse_feature_attrs(&mut attrs)?;
+        match kind {
+            DeclKind::Export => prepare_export_decls(&attrs, &symbol_prefix, &mut decls),
+            DeclKind::Extern => prepare_extern_decls(&symbol_prefix, &mut decls),
+        }?;
 
         for item in &decls {
             match item {
@@ -201,13 +191,7 @@ impl Input {
                         ensure_single_dispatch_attr(attrs)?;
                     }
 
-                    let has_non_lifetime_generics = ty
-                        .generics
-                        .params
-                        .iter()
-                        .any(|param| !matches!(param, syn::GenericParam::Lifetime(_)));
-
-                    if has_non_lifetime_generics && id.is_none() {
+                    if has_non_lifetime_generics(&ty.generics) && id.is_none() {
                         let err_msg = "Generic types must declare handle #[id(...)]";
                         return Err(syn::Error::new_spanned(ty, err_msg));
                     }
@@ -226,8 +210,10 @@ impl Input {
                     ParsedForeignItem::Impl(mut impl_)
                         if find_dispatch_attr(&impl_.attrs).is_some() =>
                     {
-                        let args =
-                            parse_dispatch_attr(&impl_, kind.is_extern() && is_drop_impl(&impl_))?;
+                        let args = parse_dispatch_attr(
+                            &impl_,
+                            matches!(kind, DeclKind::Extern) && is_drop_impl(&impl_),
+                        )?;
 
                         for item in &mut impl_.items {
                             let syn::ImplItem::Fn(method) = item else {
@@ -242,29 +228,16 @@ impl Input {
                         }
 
                         impl_.attrs.retain(|a| !a.path().is_ident("dispatch"));
-                        strip_unsafe_lifetimes_attrs(&mut impl_.attrs);
-                        for item in &mut impl_.items {
-                            let syn::ImplItem::Fn(method) = item else {
-                                continue;
-                            };
-                            strip_unsafe_lifetimes_attrs(&mut method.attrs);
-                        }
+                        strip_impl_explicit_lifetimes_attrs(&mut impl_);
                         ForeignItem::DynImpl(DynImpl { impl_, args })
                     }
                     ParsedForeignItem::Type(item) => ForeignItem::Type(item),
                     ParsedForeignItem::Impl(mut impl_) => {
-                        strip_unsafe_lifetimes_attrs(&mut impl_.attrs);
-                        for item in &mut impl_.items {
-                            let syn::ImplItem::Fn(method) = item else {
-                                continue;
-                            };
-                            strip_unsafe_lifetimes_attrs(&mut method.attrs);
-                        }
-
+                        strip_impl_explicit_lifetimes_attrs(&mut impl_);
                         ForeignItem::Impl(impl_)
                     }
                     ParsedForeignItem::Fn(mut item) => {
-                        strip_unsafe_lifetimes_attrs(&mut item.attrs);
+                        strip_explicit_lifetimes_attrs(&mut item.attrs);
                         ForeignItem::Fn(item)
                     }
                 })
@@ -277,12 +250,16 @@ impl Input {
             default_init(&symbol_prefix, &mut items)?;
         }
 
-        Ok(Self {
-            abi,
-            attrs,
-            features,
-            items,
-        })
+        Ok((
+            kind,
+            Self {
+                abi,
+                attrs,
+                features,
+                failure_mode,
+                items,
+            },
+        ))
     }
 }
 
@@ -311,25 +288,6 @@ fn default_init(symbol_prefix: &syn::LitStr, items: &mut [ForeignItem]) -> Resul
     Ok(())
 }
 
-fn default_symbol_prefix() -> LitStr {
-    LitStr::new(
-        &std::env::var("CARGO_CRATE_NAME").unwrap_or_else(|_| "co3".to_owned()),
-        proc_macro2::Span::call_site(),
-    )
-}
-
-fn prepare_decls(
-    kind: DeclKind,
-    attrs: &[Attribute],
-    symbol_prefix: &LitStr,
-    decls: &mut [ParsedForeignItem],
-) -> Result<()> {
-    match kind {
-        DeclKind::Export => prepare_export_decls(attrs, symbol_prefix, decls),
-        DeclKind::Extern => prepare_extern_decls(symbol_prefix, decls),
-    }
-}
-
 fn prepare_export_decls(
     attrs: &[Attribute],
     symbol_prefix: &LitStr,
@@ -338,13 +296,21 @@ fn prepare_export_decls(
     validate_export_attrs(attrs)?;
 
     for decl in decls.iter_mut() {
-        ensure_export_symbol_names(decl, symbol_prefix);
+        ensure_symbol_names(decl, symbol_prefix);
     }
 
     validate_export_decls(decls)
 }
 
-fn ensure_export_symbol_names(decl: &mut ParsedForeignItem, symbol_prefix: &LitStr) {
+fn prepare_extern_decls(symbol_prefix: &LitStr, decls: &mut [ParsedForeignItem]) -> Result<()> {
+    for decl in decls.iter_mut() {
+        ensure_symbol_names(decl, symbol_prefix);
+    }
+
+    validate_extern_decls(decls)
+}
+
+fn ensure_symbol_names(decl: &mut ParsedForeignItem, symbol_prefix: &LitStr) {
     match decl {
         ParsedForeignItem::Fn(ItemFn { attrs, sig, .. }) => {
             ensure_symbol_name_on_fn(attrs, symbol_prefix, &sig.ident);
@@ -372,171 +338,6 @@ fn ensure_export_symbol_names(decl: &mut ParsedForeignItem, symbol_prefix: &LitS
     }
 }
 
-fn prepare_extern_decls(symbol_prefix: &LitStr, decls: &mut [ParsedForeignItem]) -> Result<()> {
-    for decl in decls.iter_mut() {
-        ensure_extern_symbol_names(decl, symbol_prefix);
-    }
-
-    validate_extern_decls(decls)
-}
-
-fn ensure_extern_symbol_names(decl: &mut ParsedForeignItem, symbol_prefix: &LitStr) {
-    match decl {
-        ParsedForeignItem::Fn(ItemFn { attrs, sig, .. }) => {
-            ensure_extern_symbol_name_on_fn(attrs, symbol_prefix, &sig.ident);
-        }
-        ParsedForeignItem::Impl(impl_) => {
-            let trait_symbol = impl_
-                .trait_
-                .as_ref()
-                .map(|(_, path, _)| path_symbol_name(path, &impl_.generics));
-            let self_ty = type_symbol_name(&impl_.self_ty, &impl_.generics);
-
-            for item in &mut impl_.items {
-                let syn::ImplItem::Fn(syn::ImplItemFn { attrs, sig, .. }) = item else {
-                    continue;
-                };
-
-                ensure_extern_symbol_name_on_impl_fn(
-                    attrs,
-                    symbol_prefix,
-                    trait_symbol.as_deref(),
-                    &self_ty,
-                    &sig.ident,
-                );
-            }
-        }
-        ParsedForeignItem::Type(_) => {}
-    }
-}
-
-fn ensure_extern_symbol_name_on_fn(
-    attrs: &mut Vec<Attribute>,
-    symbol_prefix: &LitStr,
-    fn_name: &syn::Ident,
-) {
-    if attrs.iter().any(is_symbol_name_attr) {
-        return;
-    }
-
-    let symbol_name = LitStr::new(
-        &format!("{}__{fn_name}", symbol_prefix.value()),
-        fn_name.span(),
-    );
-    attrs.push(parse_quote!(#[symbol_name = #symbol_name]));
-}
-
-fn ensure_extern_symbol_name_on_impl_fn(
-    attrs: &mut Vec<Attribute>,
-    symbol_prefix: &LitStr,
-    trait_symbol: Option<&str>,
-    self_ty: &str,
-    fn_name: &syn::Ident,
-) {
-    if attrs.iter().any(is_symbol_name_attr) {
-        return;
-    }
-
-    let symbol_name = if let Some(trait_) = trait_symbol {
-        LitStr::new(
-            &format!("{}__{trait_}__{self_ty}__{fn_name}", symbol_prefix.value()),
-            fn_name.span(),
-        )
-    } else {
-        LitStr::new(
-            &format!("{}__{self_ty}__{fn_name}", symbol_prefix.value()),
-            fn_name.span(),
-        )
-    };
-
-    attrs.push(parse_quote!(#[symbol_name = #symbol_name]));
-}
-
-fn parse_symbol_prefix_attr(attrs: &mut Vec<Attribute>) -> Result<Option<LitStr>> {
-    let mut kept = Vec::with_capacity(attrs.len());
-
-    let mut symbol_prefix = None;
-    for attr in attrs.drain(..) {
-        if !attr.path().is_ident("symbol_prefix") {
-            kept.push(attr);
-            continue;
-        }
-
-        let err_msg = "Expected `#![symbol_prefix = \"...\"]`";
-        let syn::Meta::NameValue(nv) = &attr.meta else {
-            return Err(syn::Error::new_spanned(&attr, err_msg));
-        };
-
-        let syn::Expr::Lit(syn::ExprLit {
-            lit: syn::Lit::Str(value),
-            ..
-        }) = &nv.value
-        else {
-            return Err(syn::Error::new_spanned(&nv.value, err_msg));
-        };
-
-        if symbol_prefix.replace(value.clone()).is_some() {
-            return Err(syn::Error::new_spanned(
-                attr,
-                "Duplicate `#![symbol_prefix = \"...\"]`",
-            ));
-        }
-    }
-
-    *attrs = kept;
-    Ok(symbol_prefix)
-}
-
-fn parse_feature_attrs(attrs: &mut Vec<Attribute>) -> Result<MacroFeatures> {
-    let mut kept = Vec::with_capacity(attrs.len());
-    let mut features = MacroFeatures::default();
-
-    for attr in attrs.drain(..) {
-        if !attr.path().is_ident("feature") {
-            kept.push(attr);
-            continue;
-        }
-
-        let syn::Meta::List(list) = &attr.meta else {
-            return Err(syn::Error::new_spanned(attr, "Expected `#![feature(...)]`"));
-        };
-
-        let metas =
-            list.parse_args_with(Punctuated::<syn::Meta, syn::Token![,]>::parse_terminated)?;
-
-        for meta in metas {
-            let syn::Meta::Path(path) = &meta else {
-                let err_msg = "Expected feature name in `#![feature(...)]`";
-                return Err(syn::Error::new_spanned(meta, err_msg));
-            };
-
-            let Some(ident) = path.get_ident() else {
-                let err_msg = "Expected feature name in `#![feature(...)]`";
-                return Err(syn::Error::new_spanned(path, err_msg));
-            };
-
-            let feature = ident.to_string();
-            let already_enabled = match feature.as_str() {
-                "extern_types" => &mut features.extern_types,
-                _ => {
-                    let err_msg = "Only `extern_types` is supported";
-                    return Err(syn::Error::new_spanned(ident, err_msg));
-                }
-            };
-
-            if core::mem::replace(already_enabled, true) {
-                return Err(syn::Error::new_spanned(
-                    ident,
-                    format!("Duplicate `{feature}` feature"),
-                ));
-            }
-        }
-    }
-
-    *attrs = kept;
-    Ok(features)
-}
-
 pub(crate) fn is_symbol_name_attr(attr: &Attribute) -> bool {
     attr.path().is_ident("symbol_name")
 }
@@ -553,61 +354,22 @@ pub(crate) fn symbol_name_value(attr: &Attribute) -> Option<&syn::Expr> {
     Some(&nv.value)
 }
 
-pub(crate) fn is_unsafe_lifetimes_attr(attr: &Attribute) -> bool {
-    if !attr.path().is_ident("unsafe") {
-        return false;
-    }
-
-    let syn::Meta::List(meta_list) = &attr.meta else {
-        return false;
-    };
-
-    let metas = meta_list
-        .parse_args_with(syn::punctuated::Punctuated::<syn::Meta, syn::Token![,]>::parse_terminated)
-        .ok();
-    let Some(metas) = metas else {
-        return false;
-    };
-
-    metas
-        .into_iter()
-        .any(|meta| matches!(meta, syn::Meta::Path(path) if path.is_ident("lifetimes")))
+pub(crate) fn is_explicit_lifetimes_attr(attr: &Attribute) -> bool {
+    attr.path().is_ident("explicit_lifetimes")
 }
 
-pub(crate) fn strip_unsafe_lifetimes_attrs(attrs: &mut Vec<Attribute>) {
-    let mut kept = Vec::with_capacity(attrs.len());
+pub(crate) fn strip_explicit_lifetimes_attrs(attrs: &mut Vec<Attribute>) {
+    attrs.retain(|attr| !is_explicit_lifetimes_attr(attr));
+}
 
-    for attr in attrs.drain(..) {
-        if !attr.path().is_ident("unsafe") {
-            kept.push(attr);
-            continue;
-        }
-
-        let syn::Meta::List(meta_list) = &attr.meta else {
-            kept.push(attr);
+fn strip_impl_explicit_lifetimes_attrs(impl_: &mut ItemImpl) {
+    strip_explicit_lifetimes_attrs(&mut impl_.attrs);
+    for item in &mut impl_.items {
+        let syn::ImplItem::Fn(method) = item else {
             continue;
         };
-
-        let Ok(metas) = meta_list.parse_args_with(
-            syn::punctuated::Punctuated::<syn::Meta, syn::Token![,]>::parse_terminated,
-        ) else {
-            kept.push(attr);
-            continue;
-        };
-
-        let kept_metas = metas
-            .into_iter()
-            .filter(|meta| !matches!(meta, syn::Meta::Path(path) if path.is_ident("lifetimes")))
-            .collect::<syn::punctuated::Punctuated<syn::Meta, syn::Token![,]>>();
-
-        if kept_metas.is_empty() {
-            continue;
-        }
-
-        kept.push(parse_quote!(#[unsafe(#kept_metas)]));
+        strip_explicit_lifetimes_attrs(&mut method.attrs);
     }
-
-    *attrs = kept;
 }
 
 fn pack_type_drop_impls(decls: Vec<ForeignItem>) -> Result<Vec<ForeignItem>> {

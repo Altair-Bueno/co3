@@ -1,0 +1,9 @@
+error: handle declarations require `unsafe { ... }`. Check safety section of `co3::handle::Handle`
+  --> tests/ui_fail/handles_require_unsafe.rs:9:1
+   |
+ 9 | / handles! {
+10 | |     Opaque,
+11 | | }
+   | |_^
+   |
+   = note: this error originates in the macro `handles` (in Nightly builds, run with -Z macro-backtrace for more info)

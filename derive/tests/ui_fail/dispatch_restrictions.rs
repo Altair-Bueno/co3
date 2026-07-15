@@ -41,12 +41,14 @@ unsafe impl Handle for Externed0 {
 }
 
 handles! {
-    Exported1,
-    Externed1,
+    unsafe {
+        Exported1,
+        Externed1,
+    }
 }
 
 ffi! {
-    #![export("C")]
+    #![unsafe(export("C"))]
 
     #[dispatch(<u32>)]
     impl<dyn(u8) T> Kita for T {
@@ -55,10 +57,10 @@ ffi! {
 }
 
 ffi! {
-    #![export("C")]
+    #![unsafe(export("C"))]
 
     #[dispatch(<'a, u32>)]
-    #[unsafe(lifetimes)]
+    #[explicit_lifetimes]
     impl<'a, dyn(u8) T> Kita<'a> for T {
         fn drop(&mut self);
     }
@@ -67,9 +69,9 @@ ffi! {
 ffi! {
     #![symbol_prefix = "kita"]
 
-    #![extern("C")]
+    #![unsafe(extern("C"))]
 
-    #[unsafe(lifetimes)]
+    #[explicit_lifetimes]
     #[dispatch(<'a, u32>)]
     impl<'a, dyn(u8) T> Kita<'a> for T {
         fn drop(&mut self, self_id: <dyn Self>::ID);
@@ -77,9 +79,9 @@ ffi! {
 }
 
 ffi! {
-    #![export("C")]
+    #![unsafe(export("C"))]
 
-    #[unsafe(lifetimes)]
+    #[explicit_lifetimes]
     #[dispatch(<&i16>, <&'_ i32>, <&'a u32>)]
     impl<'a, dyn(u8) T> Kita<'a> for T {
         fn kita(self);
@@ -87,10 +89,10 @@ ffi! {
 }
 
 ffi! {
-    #![extern("C")]
+    #![unsafe(extern("C"))]
 
     #[dispatch(<&i16>, <&'_ i32>, <&'a u32>)]
-    #[unsafe(lifetimes)]
+    #[explicit_lifetimes]
     impl<'a, dyn(u8) T> Kita<'a> for T {
         #[symbol_name = "kita"]
         fn kita(handle_id: <dyn T>::ID, self);
@@ -98,7 +100,7 @@ ffi! {
 }
 
 ffi! {
-    #![export("C")]
+    #![unsafe(export("C"))]
 
     #[dispatch(<u32>)]
     impl<T> Kita for T {
@@ -107,7 +109,7 @@ ffi! {
 }
 
 ffi! {
-    #![extern("C")]
+    #![unsafe(extern("C"))]
 
     #[dispatch(<u32>)]
     impl<T> Kita for T {
@@ -117,7 +119,7 @@ ffi! {
 }
 
 ffi! {
-    #![export("C")]
+    #![unsafe(export("C"))]
 
     #[dispatch(<u32>)]
     impl<dyn T> Kita for T {
@@ -126,7 +128,7 @@ ffi! {
 }
 
 ffi! {
-    #![extern("C")]
+    #![unsafe(extern("C"))]
 
     #[dispatch(<u32>)]
     impl<dyn T> Kita for T {
@@ -136,7 +138,7 @@ ffi! {
 }
 
 ffi! {
-    #![export("C")]
+    #![unsafe(export("C"))]
 
     #[dispatch(<u32>)]
     impl<T> Kita for dyn T {
@@ -145,7 +147,7 @@ ffi! {
 }
 
 ffi! {
-    #![export("C")]
+    #![unsafe(export("C"))]
 
     #[dispatch(<u32>)]
     impl<T> Kita for dyn T {
@@ -155,7 +157,7 @@ ffi! {
 }
 
 ffi! {
-    #![export("C")]
+    #![unsafe(export("C"))]
 
     #[dispatch(<u32>)]
     impl<T> Kita for dyn u32 {
@@ -164,7 +166,7 @@ ffi! {
 }
 
 ffi! {
-    #![extern("C")]
+    #![unsafe(extern("C"))]
     #![symbol_prefix = "kita"]
 
     #[dispatch(<u32>)]
@@ -175,7 +177,7 @@ ffi! {
 }
 
 ffi! {
-    #![export("C")]
+    #![unsafe(export("C"))]
 
     #[dispatch(<u32>)]
     impl<T> Kita for dyn Option<T> {
@@ -184,7 +186,7 @@ ffi! {
 }
 
 ffi! {
-    #![extern("C")]
+    #![unsafe(extern("C"))]
 
     #[dispatch(<u32>)]
     impl<T> Kita for dyn Option<T> {
@@ -194,7 +196,7 @@ ffi! {
 }
 
 ffi! {
-    #![extern("C")]
+    #![unsafe(extern("C"))]
 
     #[dispatch(<u32>)]
     impl<dyn(i64) T> Kita for T {
@@ -205,7 +207,7 @@ ffi! {
 
 // TODO: This produces extra unrelated error message
 ffi! {
-    #![extern("C")]
+    #![unsafe(extern("C"))]
 
     #[dispatch(<u32>)]
     impl<dyn(u64) T> Kita for T {
@@ -215,7 +217,7 @@ ffi! {
 }
 
 ffi! {
-    #![export("C")]
+    #![unsafe(export("C"))]
 
     #[id(char)]
     type Exported0;
@@ -227,7 +229,7 @@ ffi! {
 }
 
 ffi! {
-    #![extern("C")]
+    #![unsafe(extern("C"))]
     #![symbol_prefix = "kita"]
 
     #[id(char)]
@@ -241,7 +243,7 @@ ffi! {
 }
 
 ffi! {
-    #![export("C")]
+    #![unsafe(export("C"))]
 
     #[id(u32)]
     type Exported1;
@@ -253,7 +255,7 @@ ffi! {
 }
 
 ffi! {
-    #![extern("C")]
+    #![unsafe(extern("C"))]
     #![symbol_prefix = "kita"]
 
     #[id(u32)]

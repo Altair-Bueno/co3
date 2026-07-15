@@ -1,28 +1,14 @@
-use proc_macro2::TokenStream;
+use proc_macro2::{Literal, TokenStream};
 use quote::quote;
 
 use crate::{
     repr::{
+        attr::ReprKind,
         ctype::{gen_ctype_name, gen_extern_c_bounds_for_ctype},
-        is_exhaustive_enum,
+        enum_tag_type, is_exhaustive_enum,
     },
     utils::build_extern_c_type_tuple,
 };
-
-fn gen_self_niche_bound(target: Option<TokenStream>) -> TokenStream {
-    match target {
-        Some(target) => quote! { Self: co3::ExternC<CType = #target>, },
-        None => quote! { Self: co3::ExternC, },
-    }
-}
-
-fn gen_field_niche_type_bounds(fields: &[&syn::Type]) -> TokenStream {
-    let bounds = fields.iter().map(|field| {
-        quote! { <#field as co3::ExternC>::CType: Copy, }
-    });
-
-    quote! { #(#bounds)* }
-}
 
 pub fn gen_struct_niche_ir(
     struct_name: &syn::Ident,
@@ -30,162 +16,130 @@ pub fn gen_struct_niche_ir(
     fields: &syn::Fields,
     niche_value: Option<&syn::Expr>,
 ) -> TokenStream {
-    gen_struct_niche_ir_with_mode(struct_name, generics, fields, niche_value)
-}
-
-pub fn gen_struct_niche_ir_with_mode(
-    struct_name: &syn::Ident,
-    generics: &syn::Generics,
-    fields: &syn::Fields,
-    niche_value: Option<&syn::Expr>,
-) -> TokenStream {
-    let types = fields.iter().map(|f| &f.ty).collect::<Vec<_>>();
-
     let (impl_generics, ty_generics, _) = generics.split_for_impl();
+
     let predicates = generics
         .where_clause
         .as_ref()
         .map(|where_clause| &where_clause.predicates);
 
     let ctype_name = gen_ctype_name(struct_name);
-    let self_bounds = gen_self_niche_bound(Some(quote!(#ctype_name #ty_generics)));
-    let field_lowering_bounds = gen_extern_c_bounds_for_ctype::<false>(generics, &types);
-    let field_type_bounds = gen_field_niche_type_bounds(&types);
-    let (fields_tuple, c_fields_tuple, accessors) = build_extern_c_type_tuple(&types);
-
-    if let Some(niche_value) = niche_value {
-        return quote! {
-            impl #impl_generics co3::niche::Niche for #struct_name #ty_generics where
-                #(#field_lowering_bounds,)*
-                #field_type_bounds
-                #self_bounds
-                #predicates
-            {
-                const NICHE_VALUE: Self::CType = #niche_value;
-            }
-        };
-    }
+    let self_bounds = quote! { Self: co3::ExternC<CType = #ctype_name #ty_generics>, };
 
     let for_dummy = generics
         .params
         .is_empty()
         .then_some(quote! { for<'_dummy> });
+    let types = fields.iter().map(|f| &f.ty).collect::<Vec<_>>();
+    let extern_c_bounds = gen_extern_c_bounds_for_ctype::<true>(generics, &types);
 
-    let niche_field_values = accessors.iter().map(|accessor| {
-        quote! { <#fields_tuple as co3::niche::Niche>::NICHE_VALUE.#accessor }
-    });
-    let niche_value = match fields {
-        syn::Fields::Named(_) | syn::Fields::Unit => {
-            let field_names = fields.iter().map(|f| &f.ident);
-            quote! {{ #(#field_names: #niche_field_values),* }}
-        }
-        syn::Fields::Unnamed(_) => {
-            quote!((#(#niche_field_values),*))
-        }
+    let (niche_value, inferred_niche_bounds) = if let Some(niche_value) = niche_value {
+        (quote! { #niche_value }, quote! {})
+    } else {
+        let (fields_tuple, c_fields_tuple, accessors) = build_extern_c_type_tuple(&types);
+        let niche_field_values = accessors.iter().map(|accessor| {
+            quote! { <#fields_tuple as co3::niche::Niche>::NICHE_VALUE.#accessor }
+        });
+        let niche_value = match fields {
+            syn::Fields::Named(_) | syn::Fields::Unit => {
+                let field_names = fields.iter().map(|f| &f.ident);
+                quote! { #ctype_name { #(#field_names: #niche_field_values),* } }
+            }
+            syn::Fields::Unnamed(_) => {
+                quote! { #ctype_name(#(#niche_field_values),*) }
+            }
+        };
+        (
+            niche_value,
+            quote! { #for_dummy #fields_tuple: co3::niche::Niche<CType = #c_fields_tuple>, },
+        )
     };
 
     quote! {
         impl #impl_generics co3::niche::Niche for #struct_name #ty_generics where
-            #(#field_lowering_bounds,)*
-            #field_type_bounds
+            #for_dummy #ctype_name #ty_generics: Copy,
+            #for_dummy Self: Sized,
+            #inferred_niche_bounds
+            #(#extern_c_bounds,)*
             #self_bounds
-            #for_dummy #fields_tuple: co3::niche::Niche<CType = #c_fields_tuple>,
             #predicates
         {
-            const NICHE_VALUE: Self::CType = #ctype_name #niche_value;
+            const NICHE_VALUE: Self::CType = #niche_value;
         }
     }
 }
 
 pub fn gen_enum_niche_ir(
-    repr: syn::Type,
+    repr: Option<&ReprKind>,
     enum_name: &syn::Ident,
     generics: &syn::Generics,
     variants: &syn::punctuated::Punctuated<syn::Variant, syn::Token![,]>,
-) -> TokenStream {
-    gen_enum_niche_ir_with_mode(repr, enum_name, generics, variants, None)
-}
-
-pub fn gen_enum_niche_ir_with_mode(
-    repr: syn::Type,
-    enum_name: &syn::Ident,
-    generics: &syn::Generics,
-    variants: &syn::punctuated::Punctuated<syn::Variant, syn::Token![,]>,
-    custom_niche_value: Option<&syn::Expr>,
 ) -> TokenStream {
     let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
-    let niche_discriminant = proc_macro2::Literal::usize_unsuffixed(variants.len());
+
+    if matches!(repr, Some(ReprKind::Transparent)) {
+        let Some(variant) = variants.first() else {
+            return quote! {};
+        };
+        if variant.fields.is_empty() {
+            return quote! {};
+        }
+
+        return gen_struct_niche_ir(enum_name, generics, &variant.fields, None);
+    }
+
+    let Some(tag_ty) = enum_tag_type(repr, variants.len()) else {
+        return quote! {};
+    };
+    if is_exhaustive_enum(variants.len(), &tag_ty) {
+        return quote! {};
+    }
+
     let is_fieldless = variants
         .iter()
         .all(|v| matches!(v.fields, syn::Fields::Unit));
-    let field_types = variants
-        .iter()
-        .flat_map(|variant| variant.fields.iter().map(|field| &field.ty))
-        .collect::<Vec<_>>();
 
     let predicates = where_clause
         .as_ref()
         .map(|where_clause| &where_clause.predicates);
 
+    let niche_discriminant = Literal::usize_unsuffixed(variants.len());
+    let niche_tag_value = quote! { #niche_discriminant as #tag_ty };
+
     let niche_value = if is_fieldless {
-        quote! { #niche_discriminant }
+        niche_tag_value
     } else {
-        quote! {{
-            let mut value: Self::CType = unsafe { core::mem::zeroed() };
+        match repr {
+            Some(ReprKind::C(Some(_))) => quote! {
+                Self::CType {
+                    tag: #niche_tag_value,
+                    payload: unsafe { core::mem::zeroed() },
+                }
+            },
+            None | Some(ReprKind::Primitive(_)) => quote! {{
+                let mut value: Self::CType = unsafe { core::mem::zeroed() };
 
-            // SAFETY: All variant structs have tag as first field at offset 0
-            // We can safely write it by casting the union pointer to the repr type
-            unsafe { *<*mut Self::CType>::cast::<#repr>(core::ptr::from_mut(&mut value)) = #niche_discriminant };
+                // SAFETY: The CType is a union of variant structs with the tag as first field.
+                unsafe { *<*mut Self::CType>::cast::<#tag_ty>(core::ptr::from_mut(&mut value)) = #niche_tag_value };
 
-            value
-        }}
+                value
+            }},
+            Some(ReprKind::Transparent) => unreachable!(),
+            Some(ReprKind::C(None)) => unreachable!(),
+        }
     };
 
-    let self_bounds = if is_fieldless {
-        gen_self_niche_bound(None)
-    } else {
-        quote! { Self: co3::ExternC<CType: Copy>, }
-    };
-    let field_lowering_bounds = gen_extern_c_bounds_for_ctype::<true>(generics, &field_types);
-    let field_type_bounds = gen_field_niche_type_bounds(&field_types);
-
-    if let Some(niche_value) = custom_niche_value {
-        return quote! {
-            impl #impl_generics co3::niche::Niche for #enum_name #ty_generics where
-                #(#field_lowering_bounds,)*
-                #field_type_bounds
-                #self_bounds
-                #predicates
-            {
-                const NICHE_VALUE: <Self as co3::ExternC>::CType = #niche_value;
-            }
-
-            impl #impl_generics co3::niche::NicheFamily for #enum_name #ty_generics #where_clause {
-                type Kind = co3::niche::WithCustomNiche;
-            }
-        };
-    }
-
-    if is_exhaustive_enum(variants.len(), &repr) {
-        return quote! {
-            impl #impl_generics co3::niche::NicheFamily for #enum_name #ty_generics #where_clause {
-                type Kind = co3::niche::WithoutNiche;
-            }
-        };
-    }
+    let self_bounds = generics
+        .params
+        .is_empty()
+        .then(|| quote! { Self: co3::ExternC<CType: Copy>, });
 
     quote! {
         impl #impl_generics co3::niche::Niche for #enum_name #ty_generics where
-            #(#field_lowering_bounds,)*
-            #field_type_bounds
             #self_bounds
             #predicates
         {
             const NICHE_VALUE: <Self as co3::ExternC>::CType = #niche_value;
-        }
-
-        impl #impl_generics co3::niche::NicheFamily for #enum_name #ty_generics #where_clause {
-            type Kind = co3::niche::WithCustomNiche;
         }
     }
 }

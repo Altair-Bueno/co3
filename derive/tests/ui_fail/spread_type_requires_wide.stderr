@@ -2,7 +2,7 @@ error[E0277]: the trait bound `u32: Spread` is not satisfied
   --> tests/ui_fail/spread_type_requires_wide.rs:15:1
    |
 15 | / ffi! {
-16 | |     #![export("C")]
+16 | |     #![unsafe(export("C"))]
 17 | |
 18 | |     fn bad(value: ..u32);
 19 | | }
@@ -32,7 +32,7 @@ error[E0277]: the trait bound `u32: Spread` is not satisfied
   --> tests/ui_fail/spread_type_requires_wide.rs:21:1
    |
 21 | / ffi! {
-22 | |     #![extern("C")]
+22 | |     #![unsafe(extern("C"))]
 23 | |
 24 | |     fn bad(value: ..u32);
 25 | | }
@@ -62,7 +62,7 @@ error[E0277]: the trait bound `u32: Spread` is not satisfied
   --> tests/ui_fail/spread_type_requires_wide.rs:24:12
    |
 21 | / ffi! {
-22 | |     #![extern("C")]
+22 | |     #![unsafe(extern("C"))]
 23 | |
 24 | |     fn bad(value: ..u32);
    | |            ^^^^^ the trait `Spread` is not implemented for `u32`

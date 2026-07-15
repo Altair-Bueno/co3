@@ -256,7 +256,7 @@ macro_rules! impl_tuple {
             type CType = $ffi_ty<$($head::CType,)* $last::CType>;
         }
 
-        unsafe impl<$($head: CheckedTransmute<CType: Sized>,)* $last: CheckedTransmute + ?Sized> CheckedTransmute for $ffi_ty<$($head,)* $last> {
+        unsafe impl<$($head: CheckedTransmute<CType: Copy>,)* $last: CheckedTransmute + ?Sized> CheckedTransmute for $ffi_ty<$($head,)* $last> {
             #[inline(always)]
             #[expect(non_snake_case)]
             unsafe fn is_valid(target: &Self::CType) -> bool {

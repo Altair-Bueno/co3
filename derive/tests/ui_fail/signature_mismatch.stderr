@@ -1,25 +1,25 @@
 error[E0308]: mismatched types
-  --> tests/ui_fail/signature_mismatch.rs:56:1
+  --> tests/ui_fail/signature_mismatch.rs:58:1
    |
-56 | / ffi! {
-57 | |     #![extern("C")]
-58 | |
-59 | |     #![symbol_prefix = "kita"]
+58 | / ffi! {
+59 | |     #![unsafe(extern("C"))]
+60 | |
+61 | |     #![symbol_prefix = "kita"]
 ...  |
-85 | | }
+87 | | }
    | |_^ expected `u32`, found `u8`
    |
    = note: enum variant discriminant can only be of a primitive type compatible with the enum's `repr`
    = note: this error originates in the macro `ffi` (in Nightly builds, run with -Z macro-backtrace for more info)
 
 error[E0308]: mismatched types
-  --> tests/ui_fail/signature_mismatch.rs:42:1
+  --> tests/ui_fail/signature_mismatch.rs:44:1
    |
-42 | / ffi! {
-43 | |     #![export("C")]
-44 | |
-45 | |     fn kita(a: &Box<u32>);
-46 | | }
+44 | / ffi! {
+45 | |     #![unsafe(export("C"))]
+46 | |
+47 | |     fn kita(a: &Box<u32>);
+48 | | }
    | |_^ expected fn pointer, found fn item
    |
    = note: expected fn pointer `for<'a> fn(&'a Box<u32>)`
@@ -27,14 +27,14 @@ error[E0308]: mismatched types
    = note: this error originates in the macro `ffi` (in Nightly builds, run with -Z macro-backtrace for more info)
 
 error[E0308]: mismatched types
-  --> tests/ui_fail/signature_mismatch.rs:48:1
+  --> tests/ui_fail/signature_mismatch.rs:50:1
    |
-48 | / ffi! {
-49 | |     #![export("C")]
-50 | |
-51 | |     impl Kita for u32 {
+50 | / ffi! {
+51 | |     #![unsafe(export("C"))]
+52 | |
+53 | |     impl Kita for u32 {
 ...  |
-54 | | }
+56 | | }
    | |_^ expected fn pointer, found fn item
    |
    = note: expected fn pointer `for<'a> fn(&'a Box<u32>)`
@@ -42,37 +42,37 @@ error[E0308]: mismatched types
    = note: this error originates in the macro `ffi` (in Nightly builds, run with -Z macro-backtrace for more info)
 
 error[E0308]: mismatched types
-  --> tests/ui_fail/signature_mismatch.rs:82:17
+  --> tests/ui_fail/signature_mismatch.rs:84:22
    |
-82 |         fn kita(self_id: <dyn Self>::ID, self: &Self) -> Vec<<Self as Kita>::MySelf>;
-   |            ---- ^^^^^^^ expected `u32`, found `u8`
-   |            |
-   |            arguments to this function are incorrect
+84 |         move fn kita(self_id: <dyn Self>::ID, self: &Self) -> Vec<<Self as Kita>::MySelf>;
+   |                 ---- ^^^^^^^ expected `u32`, found `u8`
+   |                 |
+   |                 arguments to this function are incorrect
    |
 note: function defined here
-  --> tests/ui_fail/signature_mismatch.rs:82:12
+  --> tests/ui_fail/signature_mismatch.rs:84:17
    |
-82 |         fn kita(self_id: <dyn Self>::ID, self: &Self) -> Vec<<Self as Kita>::MySelf>;
-   |            ^^^^ -------
+84 |         move fn kita(self_id: <dyn Self>::ID, self: &Self) -> Vec<<Self as Kita>::MySelf>;
+   |                 ^^^^ -------
 help: you can convert a `u8` to a `u32`
    |
-82 |         fn kita(self_id.into(): <dyn Self>::ID, self: &Self) -> Vec<<Self as Kita>::MySelf>;
-   |                        +++++++
+84 |         move fn kita(self_id.into(): <dyn Self>::ID, self: &Self) -> Vec<<Self as Kita>::MySelf>;
+   |                             +++++++
 
 error[E0308]: mismatched types
-  --> tests/ui_fail/signature_mismatch.rs:83:27
+  --> tests/ui_fail/signature_mismatch.rs:85:27
    |
-83 |         fn kita2(a: &u32, self_id: <dyn T>::ID);
+85 |         fn kita2(a: &u32, self_id: <dyn T>::ID);
    |            -----          ^^^^^^^ expected `u32`, found `u8`
    |            |
    |            arguments to this function are incorrect
    |
 note: function defined here
-  --> tests/ui_fail/signature_mismatch.rs:83:12
+  --> tests/ui_fail/signature_mismatch.rs:85:12
    |
-83 |         fn kita2(a: &u32, self_id: <dyn T>::ID);
+85 |         fn kita2(a: &u32, self_id: <dyn T>::ID);
    |            ^^^^^          -------
 help: you can convert a `u8` to a `u32`
    |
-83 |         fn kita2(a: &u32, self_id.into(): <dyn T>::ID);
+85 |         fn kita2(a: &u32, self_id.into(): <dyn T>::ID);
    |                                  +++++++

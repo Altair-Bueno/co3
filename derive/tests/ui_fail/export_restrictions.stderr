@@ -1,127 +1,127 @@
 error: item not supported
-  --> tests/ui_fail/export_restrictions.rs:16:5
+  --> tests/ui_fail/export_restrictions.rs:18:5
    |
-16 |     #[derive(Clone)]
+18 |     #[derive(Clone)]
    |     ^
 
-error: missing `#![export("...")]` or `#![extern("...")]`
-  --> tests/ui_fail/export_restrictions.rs:23:1
+error: missing `#![unsafe(export("..."))]` or `#![unsafe(extern("..."))]`
+  --> tests/ui_fail/export_restrictions.rs:25:1
    |
-23 | ffi! {}
+25 | ffi! {}
    | ^^^^^^^
    |
    = note: this error originates in the macro `ffi` (in Nightly builds, run with -Z macro-backtrace for more info)
 
 error: duplicate declaration kind attribute
-  --> tests/ui_fail/export_restrictions.rs:27:8
+  --> tests/ui_fail/export_restrictions.rs:29:8
    |
-27 |     #![export("C")]
-   |        ^^^^^^^^^^^
+29 |     #![unsafe(export("C"))]
+   |        ^^^^^^^^^^^^^^^^^^^
 
 error: duplicate declaration kind attribute
-  --> tests/ui_fail/export_restrictions.rs:32:8
+  --> tests/ui_fail/export_restrictions.rs:34:8
    |
-32 |     #![extern("C")]
-   |        ^^^^^^^^^^^
+34 |     #![unsafe(extern("C"))]
+   |        ^^^^^^^^^^^^^^^^^^^
 
 error: Only `extern_types` is supported
-  --> tests/ui_fail/export_restrictions.rs:38:16
+  --> tests/ui_fail/export_restrictions.rs:40:16
    |
-38 |     #![feature(generic_const_exprs)]
+40 |     #![feature(generic_const_exprs)]
    |                ^^^^^^^^^^^^^^^^^^^
 
 error: Duplicate `extern_types` feature
-  --> tests/ui_fail/export_restrictions.rs:45:16
+  --> tests/ui_fail/export_restrictions.rs:47:16
    |
-45 |     #![feature(extern_types)]
+47 |     #![feature(extern_types)]
    |                ^^^^^^^^^^^^
 
 error: item not supported
-  --> tests/ui_fail/export_restrictions.rs:51:5
+  --> tests/ui_fail/export_restrictions.rs:53:5
    |
-51 |     trait Kita {
+53 |     trait Kita {
    |     ^^^^^
 
 error: item not supported
-  --> tests/ui_fail/export_restrictions.rs:59:5
+  --> tests/ui_fail/export_restrictions.rs:61:5
    |
-59 |     enum Kita {}
+61 |     enum Kita {}
    |     ^^^^
 
 error: item not supported
-  --> tests/ui_fail/export_restrictions.rs:65:5
+  --> tests/ui_fail/export_restrictions.rs:67:5
    |
-65 |     struct Kita {}
+67 |     struct Kita {}
    |     ^^^^^^
 
 error: item not supported
-  --> tests/ui_fail/export_restrictions.rs:71:5
+  --> tests/ui_fail/export_restrictions.rs:73:5
    |
-71 |     union Kita {}
+73 |     union Kita {}
    |     ^^^^^
 
 error: Attribute not supported in this position
-  --> tests/ui_fail/export_restrictions.rs:77:5
+  --> tests/ui_fail/export_restrictions.rs:79:5
    |
-77 |     #[unknown_attribute]
+79 |     #[unknown_attribute]
    |     ^^^^^^^^^^^^^^^^^^^^
 
 error: Attribute not supported in this position
-  --> tests/ui_fail/export_restrictions.rs:84:5
+  --> tests/ui_fail/export_restrictions.rs:86:5
    |
-84 |     #[some_attr]
+86 |     #[some_attr]
    |     ^^^^^^^^^^^^
 
 error: Attribute not supported in this position
-  --> tests/ui_fail/export_restrictions.rs:91:5
+  --> tests/ui_fail/export_restrictions.rs:93:5
    |
-91 |     #[some_attr]
+93 |     #[some_attr]
    |     ^^^^^^^^^^^^
 
 error: `#[dispatch]` is only supported on impl blocks`
-   --> tests/ui_fail/export_restrictions.rs:101:9
+   --> tests/ui_fail/export_restrictions.rs:103:9
     |
-101 |         #[dispatch]
+103 |         #[dispatch]
     |         ^^^^^^^^^^^
 
 error: Attribute not supported in this position
-   --> tests/ui_fail/export_restrictions.rs:101:9
+   --> tests/ui_fail/export_restrictions.rs:103:9
     |
-101 |         #[dispatch]
+103 |         #[dispatch]
     |         ^^^^^^^^^^^
 
 error: Attribute not supported in this position
-   --> tests/ui_fail/export_restrictions.rs:109:5
+   --> tests/ui_fail/export_restrictions.rs:111:5
     |
-109 |     #[dispatch]
+111 |     #[dispatch]
     |     ^^^^^^^^^^^
 
 error: fn bodies are not allowed in declarations
-   --> tests/ui_fail/export_restrictions.rs:117:24
+   --> tests/ui_fail/export_restrictions.rs:119:24
     |
-117 |         fn kita1(self) {}
+119 |         fn kita1(self) {}
     |                        ^
 
 error: fn bodies are not allowed in declarations
-   --> tests/ui_fail/export_restrictions.rs:124:22
+   --> tests/ui_fail/export_restrictions.rs:126:22
     |
-124 |     fn kita1(a: u32) {}
+126 |     fn kita1(a: u32) {}
     |                      ^
 
 error: patterns aren't allowed in function declarations
-   --> tests/ui_fail/export_restrictions.rs:130:14
+   --> tests/ui_fail/export_restrictions.rs:132:14
     |
-130 |     fn kita1((a, b): (u32, u32));
+132 |     fn kita1((a, b): (u32, u32));
     |              ^^^^^^
 
 error: dispatch must provide 1 generic argument
-   --> tests/ui_fail/export_restrictions.rs:144:5
+   --> tests/ui_fail/export_restrictions.rs:146:5
     |
-144 |     #[dispatch]
+146 |     #[dispatch]
     |     ^^^^^^^^^^^
 
 error: dispatch must provide 1 generic argument
-   --> tests/ui_fail/export_restrictions.rs:161:16
+   --> tests/ui_fail/export_restrictions.rs:163:16
     |
-161 |     #[dispatch(<u32, u8>)]
+163 |     #[dispatch(<u32, u8>)]
     |                ^^^^^^^^^

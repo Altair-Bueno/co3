@@ -7,25 +7,27 @@ struct Export1<T>(T);
 impl<T> Kita for Export1<T> {}
 
 handles! {
-    Export1<u32>,
+    unsafe {
+        Export1<u32>,
+    }
 }
 
 ffi! {
-    #![export("C")]
+    #![unsafe(export("C"))]
 
     #[id(u8)]
     type OpaqueType<T>;
 }
 
 ffi! {
-    #![extern("C")]
+    #![unsafe(extern("C"))]
 
     #[id(u8)]
     type ExternType<T>;
 }
 
 ffi! {
-    #![export("C")]
+    #![unsafe(export("C"))]
 
     #![symbol_prefix = "kita"]
 
@@ -35,7 +37,7 @@ ffi! {
 }
 
 ffi! {
-    #![extern("C")]
+    #![unsafe(extern("C"))]
 
     #![symbol_prefix = "kita"]
 
@@ -45,7 +47,7 @@ ffi! {
 }
 
 ffi! {
-    #![export("C")]
+    #![unsafe(export("C"))]
 
     #[id(u32)]
     type Export1<T>;
@@ -58,7 +60,7 @@ ffi! {
 }
 
 ffi! {
-    #![extern("C")]
+    #![unsafe(extern("C"))]
 
     #![symbol_prefix = "kita"]
 

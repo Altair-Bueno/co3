@@ -2,7 +2,7 @@ error[E0277]: the trait bound `RefSizedDecodeStore<(u8,), ((),)>: co3::stored::E
   --> tests/ui_fail/soft_refs_are_denied.rs:11:5
    |
 11 | /     ffi! {
-12 | |         #![export("C")]
+12 | |         #![unsafe(export("C"))]
 13 | |
 14 | |         pub fn by_ref_is_allowed(#[soft] arg1: &(u8,), #[soft] arg2: Vec<(u8,)>) -> u8;
 15 | |         pub fn by_val_is_denied(arg1: &(u8,), #[soft] move arg2: Vec<(u8,)>) -> u8;
@@ -30,7 +30,7 @@ error[E0271]: type mismatch resolving `<[(u8,)] as ReprFamily>::Kind == ReprC<_>
   --> tests/ui_fail/soft_refs_are_denied.rs:11:5
    |
 11 | /     ffi! {
-12 | |         #![export("C")]
+12 | |         #![unsafe(export("C"))]
 13 | |
 14 | |         pub fn by_ref_is_allowed(#[soft] arg1: &(u8,), #[soft] arg2: Vec<(u8,)>) -> u8;
 15 | |         pub fn by_val_is_denied(arg1: &(u8,), #[soft] move arg2: Vec<(u8,)>) -> u8;
@@ -54,7 +54,7 @@ error[E0277]: the trait bound `RefSizedEncodeStore<(u8,)>: co3::stored::EmptySto
   --> tests/ui_fail/soft_refs_are_denied.rs:28:40
    |
 24 | / ffi! {
-25 | |     #![extern("C")]
+25 | |     #![unsafe(extern("C"))]
 26 | |
 27 | |     pub extern "C" fn by_ref_is_allowed(#[soft] arg1: &(u8,), #[soft] arg2: Vec<(u8,)>) -> u8;
 28 | |     pub extern "C" fn by_val_is_denied(arg1: &(u8,), #[soft] move arg2: Vec<(u8,)>) -> u8;
@@ -82,7 +82,7 @@ error[E0271]: type mismatch resolving `<[(u8,)] as ReprFamily>::Kind == ReprC<_>
   --> tests/ui_fail/soft_refs_are_denied.rs:28:67
    |
 24 | / ffi! {
-25 | |     #![extern("C")]
+25 | |     #![unsafe(extern("C"))]
 26 | |
 27 | |     pub extern "C" fn by_ref_is_allowed(#[soft] arg1: &(u8,), #[soft] arg2: Vec<(u8,)>) -> u8;
 28 | |     pub extern "C" fn by_val_is_denied(arg1: &(u8,), #[soft] move arg2: Vec<(u8,)>) -> u8;

@@ -17,7 +17,7 @@ impl Hello {
 }
 
 ffi! {
-    #![export("C")]
+    #![unsafe(export("C"))]
 
     impl Hello {
         #[symbol_name = "hello"]
@@ -26,7 +26,7 @@ ffi! {
 }
 
 ffi! {
-    #![extern("C")]
+    #![unsafe(extern("C"))]
 
     #![symbol_prefix = "kita"]
 
@@ -35,7 +35,7 @@ ffi! {
 }
 
 ffi! {
-    #![extern("C")]
+    #![unsafe(extern("C"))]
 
     #[symbol_name = "hello"]
     pub extern "C" fn hello3(a: Hello, b: Hello) -> i32;

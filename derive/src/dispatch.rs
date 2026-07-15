@@ -3,21 +3,22 @@ use std::collections::{BTreeMap, BTreeSet};
 use proc_macro2::TokenStream;
 use quote::{format_ident, quote};
 use syn::{
-    GenericArgument, GenericParam, Result, parse::Parser, parse_quote, punctuated::Punctuated,
-    spanned::Spanned, visit::Visit, visit_mut::VisitMut,
+    GenericParam, ReturnType, parse_quote, punctuated::Punctuated, spanned::Spanned,
+    visit_mut::VisitMut,
 };
 
 use crate::{
     DynImpl,
     ffi_fn::{
-        emit_extern_definition, gen_definition_body, gen_extern_fn_signature,
-        gen_fn_signature_check, gen_input_decode_stmts, gen_store_sync_stmts, is_spread_arg,
-        item_fn_input_arg_type, merge_generics, normalize_fn_signature, output_abi_ty,
-        strip_erased_type_params,
+        self, emit_extern_definition, gen_definition_body, gen_failure_panic,
+        gen_fn_signature_check, gen_input_decode_stmts, gen_store_sync_stmts, gen_sync_check,
+        gen_sync_error, gen_unknown_handle_error, is_spread_arg, item_fn_input_arg_type,
+        item_fn_output_type, merge_generics, normalize_fn_signature, strip_erased_type_params,
     },
+    parse::FailureMode,
     utils::{
         DispatchMonomorphizer, ParamUseDetector, erased_abi_repr, erased_id_repr, is_drop_impl,
-        is_type_erased, unwrap_result_type,
+        is_type_erased,
     },
 };
 
@@ -73,146 +74,9 @@ pub(crate) fn find_dispatch_attr(attrs: &[syn::Attribute]) -> Option<&syn::Attri
     attrs.iter().find(|&attr| attr.path().is_ident("dispatch"))
 }
 
-pub(crate) fn parse_dispatch_attr(
-    impl_: &syn::ItemImpl,
-    allow_empty: bool,
-) -> Result<Punctuated<syn::AngleBracketedGenericArguments, syn::Token![,]>> {
-    let Some(attr) = find_dispatch_attr(&impl_.attrs) else {
-        return Ok(Punctuated::default());
-    };
-
-    let params = &impl_
-        .generics
-        .params
-        .iter()
-        .filter(|arg| !matches!(arg, GenericParam::Lifetime(_)))
-        .collect::<Vec<_>>();
-
-    let err_msg = format!(
-        "dispatch must provide {} generic argument{}",
-        params.len(),
-        if params.len() == 1 { "" } else { "s" }
-    );
-
-    let syn::Meta::List(list) = &attr.meta else {
-        if !allow_empty && !params.is_empty() {
-            return Err(syn::Error::new_spanned(attr, err_msg));
-        }
-
-        return Ok(Punctuated::default());
-    };
-
-    let mut generic_args: Punctuated<syn::AngleBracketedGenericArguments, syn::Token![,]> =
-        Punctuated::parse_terminated.parse2(list.tokens.clone())?;
-
-    if generic_args.is_empty() && !allow_empty && !params.is_empty() {
-        return Err(syn::Error::new_spanned(attr, err_msg));
-    }
-
-    struct LifetimeArgValidator {
-        errors: Option<syn::Error>,
-    }
-
-    impl LifetimeArgValidator {
-        fn push(&mut self, err: syn::Error) {
-            if let Some(errors) = &mut self.errors {
-                errors.combine(err);
-            } else {
-                self.errors = Some(err);
-            }
-        }
-    }
-
-    impl Visit<'_> for LifetimeArgValidator {
-        fn visit_lifetime(&mut self, node: &syn::Lifetime) {
-            if node.ident == "_" {
-                return;
-            }
-
-            let err_msg = "undeclared lifetime; consider using '_";
-            self.push(syn::Error::new_spanned(node, err_msg));
-        }
-    }
-
-    let mut lifetime_validator = LifetimeArgValidator { errors: None };
-
-    for entry in &generic_args {
-        for arg in &entry.args {
-            if matches!(arg, syn::GenericArgument::Lifetime(_)) {
-                let err_msg = "lifetime arguments not required in #[dispatch]";
-                lifetime_validator.push(syn::Error::new_spanned(arg, err_msg));
-                continue;
-            }
-            lifetime_validator.visit_generic_argument(arg);
-        }
-    }
-
-    if let Some(errors) = lifetime_validator.errors {
-        return Err(errors);
-    }
-
-    for entry in &generic_args {
-        let args_len = entry
-            .args
-            .iter()
-            .filter(|arg| !matches!(arg, GenericArgument::Lifetime(_)))
-            .count();
-
-        if args_len != params.len() {
-            return Err(syn::Error::new_spanned(entry, err_msg));
-        }
-    }
-
-    let mut errors = None::<syn::Error>;
-    for entry in &mut generic_args {
-        let err_msg = "argument kind must match declared parameter kind";
-
-        for (param, arg) in params.iter().zip(
-            entry
-                .args
-                .iter_mut()
-                .filter(|arg| !matches!(arg, GenericArgument::Lifetime(_))),
-        ) {
-            if let (GenericParam::Const(_), GenericArgument::Type(ty)) = (param, &arg)
-                && matches!(ty, syn::Type::Path(_))
-            {
-                *arg = parse_quote!({ #ty });
-            }
-        }
-
-        for (param, arg) in params.iter().zip(
-            entry
-                .args
-                .iter()
-                .filter(|arg| !matches!(arg, GenericArgument::Lifetime(_))),
-        ) {
-            let mismatch = match param {
-                GenericParam::Lifetime(_) => false,
-                GenericParam::Type(_) => !matches!(arg, GenericArgument::Type(_)),
-                GenericParam::Const(_) => !matches!(arg, GenericArgument::Const(_)),
-            };
-
-            if mismatch {
-                let err = syn::Error::new_spanned(arg, err_msg);
-
-                if let Some(errors) = &mut errors {
-                    errors.combine(err);
-                } else {
-                    errors = Some(err);
-                }
-            }
-        }
-    }
-
-    if let Some(errors) = errors {
-        return Err(errors);
-    }
-
-    Ok(generic_args)
-}
-
 pub(crate) fn gen_dispatch_export(
     abi: &syn::Abi,
+    failure_mode: FailureMode,
     dispatch: DynImpl,
     self_id: Option<&syn::Type>,
 ) -> TokenStream {
@@ -221,6 +85,7 @@ pub(crate) fn gen_dispatch_export(
     let trait_ = impl_.trait_.as_ref().map(|(_, path, _)| path);
     let self_ty = &impl_.self_ty;
     let generics = &impl_.generics;
+    let impl_attrs = &impl_.attrs;
     let dispatch_id_checks = gen_dispatch_id_uniqueness_checks(generics, &args);
 
     let drop_impl = is_drop_impl(&impl_);
@@ -239,6 +104,7 @@ pub(crate) fn gen_dispatch_export(
         monomorphize_predicates(&mut item.sig.generics, &args);
         strip_erased_type_params(&mut item.sig.generics);
 
+        let fn_by_val = item.attrs.iter().any(crate::ffi_fn::is_by_val_attr);
         let (id_arg_names, handle_ids): (Vec<_>, Vec<_>) = item
             .sig
             .inputs
@@ -260,33 +126,39 @@ pub(crate) fn gen_dispatch_export(
             })
             .unzip();
 
-        let dispatch_arms =
-            gen_dispatch_arms(generics, trait_, self_ty, &item.sig, drop_impl, &args)
-                .collect::<Vec<_>>();
+        let dispatch_arms = gen_dispatch_arms(
+            generics,
+            trait_,
+            self_ty,
+            &item.sig,
+            fn_by_val,
+            drop_impl,
+            &args,
+            failure_mode,
+        )
+        .collect::<Vec<_>>();
 
-        let decode_id_stmts = gen_input_decode_stmts(&handle_ids);
+        let decode_id_stmts = gen_input_decode_stmts(&handle_ids, failure_mode);
         let sync_id_stores = gen_store_sync_stmts(handle_ids.len());
+        let unknown_handle = gen_unknown_handle_error(failure_mode);
+        let sync_error = gen_sync_error(failure_mode);
+        let id_sync_check = gen_sync_check(sync_id_stores, sync_error);
 
         let fn_body = quote! {{
             #decode_id_stmts
 
-            let __co3_dispatch_result: Result<(), co3::FfiReturn> = match (#(#id_arg_names,)*) {
+            let __co3_dispatch_result: core::result::Result<_, _> = match (#(#id_arg_names,)*) {
                 #(#dispatch_arms,)*
-                _ => Err(co3::FfiReturn::UnknownHandle),
+                _ => #unknown_handle,
             };
 
-            let __co3_sync_errors = #sync_id_stores;
-            let mut __co3_sync_errors_iter = core::iter::IntoIterator::into_iter(__co3_sync_errors);
-            if core::iter::Iterator::any(&mut __co3_sync_errors_iter, core::convert::identity) {
-                return Err(co3::FfiReturn::TrapRepresentation);
-            }
-
+            #id_sync_check
             __co3_dispatch_result
         }};
 
         erase_handle_types(generics, self_id, &mut item.sig, &args);
-        let sig = gen_extern_fn_signature(item.sig);
-        let definition = emit_extern_definition(abi, &item.attrs, sig, fn_body);
+        let sig = ffi_fn::gen_extern_fn_signature(item.sig, failure_mode);
+        let definition = emit_extern_definition(abi, &item.attrs, failure_mode, sig, fn_body);
 
         quote! {
             #erased_layout_checks
@@ -295,8 +167,11 @@ pub(crate) fn gen_dispatch_export(
     });
 
     quote! {
-        #dispatch_id_checks
-        #(#definitions)*
+        #(#impl_attrs)*
+        const _: () = {
+            #dispatch_id_checks
+            #(#definitions)*
+        };
     }
 }
 
@@ -322,8 +197,8 @@ pub(crate) fn gen_dispatch_id_uniqueness_checks(
                     }
                     _ => None,
                 })?;
-            StaticLifetimeNormalizer.visit_generic_argument_mut(&mut arg);
 
+            StaticLifetimeNormalizer.visit_generic_argument_mut(&mut arg);
             Some(quote! { #variant = <#arg as co3::handle::Handle>::ID })
         });
 
@@ -373,13 +248,9 @@ pub(crate) fn gen_dispatch_erased_layout_checks(
             ));
         }
 
-        let syn::ReturnType::Type(_, output_ty) = &sig.output else {
+        let ReturnType::Type(_, output_ty) = &sig.output else {
             return checks;
         };
-
-        let output_ty = unwrap_result_type(output_ty)
-            .map(|(ok, _)| ok)
-            .unwrap_or(output_ty);
 
         if param_detector.type_mentions_param(output_ty) {
             let concrete_ty = dispatch_output_abi_ty(generics, entry, output_ty);
@@ -446,7 +317,7 @@ fn dispatch_output_abi_ty(
 ) -> syn::Type {
     let mut ty = ty.clone();
     DispatchMonomorphizer::new(generics, entry).visit_type_mut(&mut ty);
-    output_abi_ty(&ty)
+    item_fn_output_type(&ty)
 }
 
 fn erased_input_abi_tys(
@@ -460,7 +331,7 @@ fn erased_input_abi_tys(
 
 fn erased_output_abi_ty(generics: &syn::Generics, ty: &syn::Type) -> syn::Type {
     let ty = ErasedParamReplacer::new(generics).replace(ty.clone());
-    output_abi_ty(&ty)
+    item_fn_output_type(&ty)
 }
 
 fn input_abi_tys(attrs: &[syn::Attribute], ty: &syn::Type) -> Vec<syn::Type> {
@@ -518,13 +389,16 @@ pub(crate) fn synthesize_dispatch_handle_ids(
     sig.inputs = synthesized;
 }
 
+#[expect(clippy::too_many_arguments)]
 fn gen_dispatch_arms(
     generics: &syn::Generics,
     trait_: Option<&syn::Path>,
     self_ty: &syn::Type,
     sig: &syn::Signature,
+    fn_by_val: bool,
     is_drop_impl: bool,
     args: &Punctuated<syn::AngleBracketedGenericArguments, syn::Token![,]>,
+    failure_mode: FailureMode,
 ) -> impl Iterator<Item = TokenStream> {
     let derase_handle_stmts = gen_handle_retype_stmts(RetypeDirection::Derase, generics, sig);
 
@@ -585,17 +459,52 @@ fn gen_dispatch_arms(
         } else {
             parse_quote!(<#self_ty>::#fn_name)
         };
+
         monomorphizer.visit_expr_mut(&mut check_callee);
         let signature_check = gen_fn_signature_check(check_sig, check_callee);
-        let arm_body = gen_definition_body(arm_sig, callee);
+        let arm_body = gen_definition_body(arm_sig.clone(), callee, fn_by_val, failure_mode);
+        let mut arm_body: syn::Block = if let ReturnType::Type(_, output_ty) = &arm_sig.output {
+            let concrete_ty = item_fn_output_type(output_ty);
 
-        let mut arm_body: syn::Block = parse_quote! {{
-            (|| -> Result<(), co3::FfiReturn> {
-                #(#derase_handle_stmts)*
-                #signature_check
-                #arm_body
-            })()
-        }};
+            let erased_ty = ErasedParamReplacer::new(generics).replace(concrete_ty.clone());
+            let erased_out = gen_retype(&quote!(__co3_arm_out), &concrete_ty, &erased_ty);
+
+            let erased_err = match failure_mode {
+                FailureMode::Panic => {
+                    let failure_panic = gen_failure_panic(quote!(__co3_arm_err));
+                    quote! { Err(__co3_arm_err) => #failure_panic, }
+                }
+                FailureMode::Error => {
+                    let erased_err = gen_retype(&quote!(__co3_arm_err), &concrete_ty, &erased_ty);
+
+                    quote! {
+                        Err(__co3_arm_err) => {
+                            let __co3_arm_err = co3::encode(__co3_arm_err);
+                            Ok(#erased_err)
+                        },
+                    }
+                }
+            };
+
+            parse_quote! {{
+                match (|| -> Result<_, _> {
+                    #(#derase_handle_stmts)*
+                    #signature_check
+                    #arm_body
+                })() {
+                    Ok(__co3_arm_out) => Ok::<_, ()>(#erased_out),
+                    #erased_err
+                }
+            }}
+        } else {
+            parse_quote! {{
+                (|| -> Result<_, _> {
+                    #(#derase_handle_stmts)*
+                    #signature_check
+                    #arm_body
+                })()
+            }}
+        };
 
         patterns
             .iter_mut()
@@ -646,7 +555,7 @@ pub(crate) fn erase_handle_types(
         }
     }
 
-    if let syn::ReturnType::Type(_, ty) = &mut sig.output {
+    if let ReturnType::Type(_, ty) = &mut sig.output {
         **ty = erased_params.replace((**ty).clone());
     }
 
@@ -676,9 +585,19 @@ pub(crate) fn gen_handle_erase_stmts(
 }
 
 fn gen_retype(arg_name: &TokenStream, source_ty: &syn::Type, target_ty: &syn::Type) -> TokenStream {
-    // NOTE: This transmute is safe because it only works when it's just a pointer cast. When
-    // `c_void` is not behind a pointer, it doesn't compile because of missing encode/decode impl
+    // TODO: Write a safety comment.
     quote! { unsafe { core::mem::transmute_copy::<#source_ty, #target_ty>(&#arg_name) } }
+}
+
+pub(crate) fn gen_return_derase_expr(
+    generics: &syn::Generics,
+    output_ty: &syn::Type,
+    value: TokenStream,
+) -> TokenStream {
+    let concrete_ty = item_fn_output_type(output_ty);
+    let erased_ty = ErasedParamReplacer::new(generics).replace(concrete_ty.clone());
+
+    gen_retype(&value, &erased_ty, &concrete_ty)
 }
 
 fn gen_handle_retype_stmts(
@@ -708,54 +627,7 @@ fn gen_handle_retype_stmts(
         stmts.push(quote! { let #arg_name = #retype; });
     }
 
-    let syn::ReturnType::Type(_, output_ty) = &sig.output else {
-        return stmts;
-    };
-
-    let output_ty = unwrap_result_type(output_ty)
-        .map(|(ok, _)| ok)
-        .unwrap_or(output_ty);
-
-    let out_name = quote!(__co3_out_ptr);
-    let out_ptr_ty = output_abi_ty(output_ty);
-    let erased_out_ptr_ty = erased_params.replace(out_ptr_ty.clone());
-    let out_ptr_arg_ty: syn::Type = parse_quote! { *mut #out_ptr_ty };
-    let erased_out_ptr_arg_ty: syn::Type = parse_quote! { *mut #erased_out_ptr_ty };
-
-    let retype_out_ptr = match direction {
-        RetypeDirection::Erase => gen_retype(&out_name, &out_ptr_arg_ty, &erased_out_ptr_arg_ty),
-        RetypeDirection::Derase => gen_retype(&out_name, &erased_out_ptr_arg_ty, &out_ptr_arg_ty),
-    };
-
-    stmts.push(quote! { let __co3_out_ptr = #retype_out_ptr; });
     stmts
-}
-
-pub(crate) fn parse_handle_id_attr(attrs: &mut Vec<syn::Attribute>) -> Result<Option<syn::Type>> {
-    let mut kept = Vec::with_capacity(attrs.len());
-
-    let mut id_ty = None;
-    for attr in attrs.drain(..) {
-        if !attr.path().is_ident("id") {
-            kept.push(attr);
-            continue;
-        }
-
-        let syn::Meta::List(list) = &attr.meta else {
-            return Err(syn::Error::new_spanned(attr, "expected `#[id(repr)]`"));
-        };
-
-        let ty = list
-            .parse_args::<syn::Type>()
-            .map_err(|_| syn::Error::new_spanned(&attr, "expected `#[id(repr)]`"))?;
-
-        if id_ty.replace(ty).is_some() {
-            return Err(syn::Error::new_spanned(attr, "duplicate `#[id(...)]`"));
-        }
-    }
-
-    *attrs = kept;
-    Ok(id_ty)
 }
 
 pub(crate) fn handle_id(ty: &syn::Type) -> Option<HandleId<'_>> {

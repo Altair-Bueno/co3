@@ -9,7 +9,7 @@ mod provider {
     }
 
     ffi! {
-        #![export("C")]
+        #![unsafe(export("C"))]
 
         pub fn by_ref_is_allowed(#[soft] arg1: &(u8,), #[soft] arg2: Vec<(u8,)>) -> u8;
         pub fn by_val_is_denied(arg1: &(u8,), #[soft] move arg2: Vec<(u8,)>) -> u8;
@@ -22,7 +22,7 @@ mod provider {
 }
 
 ffi! {
-    #![extern("C")]
+    #![unsafe(extern("C"))]
 
     pub extern "C" fn by_ref_is_allowed(#[soft] arg1: &(u8,), #[soft] arg2: Vec<(u8,)>) -> u8;
     pub extern "C" fn by_val_is_denied(arg1: &(u8,), #[soft] move arg2: Vec<(u8,)>) -> u8;

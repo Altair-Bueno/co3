@@ -370,10 +370,7 @@ fn gen_robust_impls<const ADD_COPY: bool>(
             type Kind = co3::ir::ReprC<co3::ir::Robust>;
         }
 
-        impl #impl_generics co3::niche::NicheFamily for #ident #ty_generics where
-            #(#copy_bounds,)*
-            #predicates
-        {
+        impl #impl_generics co3::niche::NicheFamily for #ident #ty_generics #where_clause {
             type Kind = co3::niche::WithoutNiche;
         }
 

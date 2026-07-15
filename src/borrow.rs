@@ -34,12 +34,12 @@ pub unsafe trait BorrowCastMut: RobustReprC {
 }
 
 #[inline(always)]
-pub fn borrow_cast<C: BorrowCast<AsConst: Copy> + Copy>(source: C) -> C::AsConst {
+pub const fn borrow_cast<C: BorrowCast<AsConst: Copy> + Copy>(source: C) -> C::AsConst {
     unsafe { core::mem::transmute_copy(&source) }
 }
 
 #[inline(always)]
-pub fn borrow_cast_mut<C: BorrowCastMut<AsMut: Copy> + Copy>(source: C) -> C::AsMut {
+pub const fn borrow_cast_mut<C: BorrowCastMut<AsMut: Copy> + Copy>(source: C) -> C::AsMut {
     unsafe { core::mem::transmute_copy(&source) }
 }
 

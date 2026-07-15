@@ -1,12 +1,12 @@
 error[E0277]: the size for values of type `str` cannot be known at compilation time
-  --> tests/ui_fail/unsized_type_dispatch.rs:71:1
+  --> tests/ui_fail/unsized_type_dispatch.rs:73:1
    |
-71 | / ffi! {
-72 | |     #![extern("C")]
-73 | |
-74 | |     #![symbol_prefix = "kita"]
+73 | / ffi! {
+74 | |     #![unsafe(extern("C"))]
+75 | |
+76 | |     #![symbol_prefix = "kita"]
 ...  |
-80 | | }
+82 | | }
    | |_^ doesn't have a size known at compile-time
    |
    = help: within `Unsized<str>`, the trait `std::marker::Sized` is not implemented for `str`
@@ -16,12 +16,12 @@ note: required because it appears within the type `Unsized<str>`
  8 | struct Unsized<T: ?Sized>(T);
    |        ^^^^^^^
 note: required by an implicit `Sized` bound in `__Co3DispatchParams`
-  --> tests/ui_fail/unsized_type_dispatch.rs:77:18
+  --> tests/ui_fail/unsized_type_dispatch.rs:79:18
    |
-77 |     impl<dyn(u8) T = [c_void]> Wrapper<T> {
+79 |     impl<dyn(u8) T = [c_void]> Wrapper<T> {
    |                  ^ required by the implicit `Sized` requirement on this type parameter in `__Co3DispatchParams`
    = note: this error originates in the macro `ffi` (in Nightly builds, run with -Z macro-backtrace for more info)
 help: consider relaxing the implicit `Sized` restriction
    |
-77 |     impl<dyn(u8) T: ?Sized = [c_void]> Wrapper<T> {
+79 |     impl<dyn(u8) T: ?Sized = [c_void]> Wrapper<T> {
    |                   ++++++++

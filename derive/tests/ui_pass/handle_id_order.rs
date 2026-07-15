@@ -5,12 +5,14 @@ use co3::{
 };
 
 handles! {
-    Opaque1,
-    Opaque2,
+    unsafe {
+        Opaque1,
+        Opaque2,
+    }
 }
 
 ffi! {
-    #![extern("C")]
+    #![unsafe(extern("C"))]
 
     #![symbol_prefix = "this_crate"]
 
@@ -24,24 +26,24 @@ ffi! {
         type Owned = OwnedOpaque1;
 
         #[symbol_name = "this_crate__ToOwned__Box_Opaque1__to_owned"]
-        fn to_owned(&self) -> <Self as ToOwned>::Owned;
+        move fn to_owned(&self) -> <Self as ToOwned>::Owned;
     }
 
     impl ToOwned for Opaque2 {
         type Owned = OwnedOpaque2;
 
         #[symbol_name = "this_crate__ToOwned__Box_Opaque2__to_owned"]
-        fn to_owned(&self) -> <Self as ToOwned>::Owned;
+        move fn to_owned(&self) -> <Self as ToOwned>::Owned;
     }
 
     impl Default for OwnedOpaque1 {
         #[symbol_name = "this_crate__Default__Box_Opaque1__default"]
-        fn default() -> Self;
+        move fn default() -> Self;
     }
 
     impl Default for OwnedOpaque2 {
         #[symbol_name = "this_crate__Default__Box_Opaque2__default"]
-        fn default() -> Self;
+        move fn default() -> Self;
     }
 
     fn kita1(
@@ -65,8 +67,10 @@ mod provider {
     pub struct Opaque2;
 
     handles! {
-        Opaque1,
-        Opaque2,
+        unsafe {
+            Opaque1,
+            Opaque2,
+        }
     }
 
     impl Default for Box<Opaque1> {
@@ -88,7 +92,7 @@ mod provider {
     }
 
     ffi! {
-        #![export("C")]
+        #![unsafe(export("C"))]
 
         #![symbol_prefix = "this_crate"]
 
@@ -99,7 +103,7 @@ mod provider {
 
         impl Default for Box<Opaque1> {
             #[symbol_name = "this_crate__Default__Box_Opaque1__default"]
-            fn default() -> Self;
+            move fn default() -> Self;
         }
 
         impl Drop for Opaque2 {
@@ -109,17 +113,17 @@ mod provider {
 
         impl Default for Box<Opaque2> {
             #[symbol_name = "this_crate__Default__Box_Opaque2__default"]
-            fn default() -> Self;
+            move fn default() -> Self;
         }
 
         impl ToOwned for Box<Opaque1> {
             #[symbol_name = "this_crate__ToOwned__Box_Opaque1__to_owned"]
-            fn to_owned(&self) -> <Self as ToOwned>::Owned;
+            move fn to_owned(&self) -> <Self as ToOwned>::Owned;
         }
 
         impl ToOwned for Box<Opaque2> {
             #[symbol_name = "this_crate__ToOwned__Box_Opaque2__to_owned"]
-            fn to_owned(&self) -> <Self as ToOwned>::Owned;
+            move fn to_owned(&self) -> <Self as ToOwned>::Owned;
         }
 
         #[dispatch(<Opaque2, Opaque1>)]

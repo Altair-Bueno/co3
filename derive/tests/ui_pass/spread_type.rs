@@ -29,7 +29,7 @@ impl ExportSpreadLen for Counter {
 }
 
 ffi! {
-    #![export("C")]
+    #![unsafe(export("C"))]
 
     #[symbol_name = "spread_len"]
     fn spread_len_impl(values: ..&[u32]) -> usize;
@@ -46,7 +46,7 @@ ffi! {
 }
 
 ffi! {
-    #![extern("C")]
+    #![unsafe(extern("C"))]
 
     #[symbol_name = "spread_len"]
     fn spread_len(values: ..&[u32]) -> usize;

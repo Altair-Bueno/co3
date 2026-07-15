@@ -4,7 +4,8 @@ use syn::{Error, Result, Type, visit::Visit};
 
 use crate::{
     dispatch::HandleId,
-    find_dispatch_attr, is_symbol_name_attr, is_unsafe_lifetimes_attr,
+    ffi_fn::is_by_val_attr,
+    find_dispatch_attr, is_explicit_lifetimes_attr, is_symbol_name_attr,
     parse::ParsedForeignItem,
     trait_object_single_trait_bound,
     utils::{has_non_lifetime_generics, is_drop_impl, is_type_erased, push_error},
@@ -12,8 +13,41 @@ use crate::{
 
 const GENERICS_ERR: &str = "Type and const generics on impls are not supported. Use `#[dispatch]`";
 
+pub(crate) fn validate_niche_value_sized_tail(fields: &syn::Fields) -> Result<()> {
+    fn peel_type(ty: &syn::Type) -> &syn::Type {
+        match ty {
+            syn::Type::Group(ty) => peel_type(&ty.elem),
+            syn::Type::Paren(ty) => peel_type(&ty.elem),
+            _ => ty,
+        }
+    }
+
+    fn is_always_unsized(ty: &syn::Type) -> bool {
+        match peel_type(ty) {
+            syn::Type::Slice(_) | syn::Type::TraitObject(_) => true,
+            syn::Type::Path(ty) if ty.qself.is_none() => ty.path.is_ident("str"),
+            _ => false,
+        }
+    }
+
+    let Some(field) = fields.iter().last() else {
+        return Ok(());
+    };
+
+    if !is_always_unsized(&field.ty) {
+        return Ok(());
+    }
+
+    let err_msg = "`NICHE_VALUE` is not supported on unsized types";
+    Err(Error::new_spanned(&field.ty, err_msg))
+}
+
 fn unsupported_attr(attr: &syn::Attribute) -> Error {
     Error::new_spanned(attr, "Attribute not supported in this position")
+}
+
+fn is_cfg_attr(attr: &syn::Attribute) -> bool {
+    attr.path().is_ident("cfg") || attr.path().is_ident("cfg_attr")
 }
 
 fn handle_id<'a>(ty: &'a syn::Type, self_ty: &syn::Type) -> Option<HandleId<'a>> {
@@ -36,7 +70,11 @@ fn handle_id<'a>(ty: &'a syn::Type, self_ty: &syn::Type) -> Option<HandleId<'a>>
 
 fn validate_export_fn_attrs(attrs: &[syn::Attribute]) -> Result<()> {
     for attr in attrs {
-        if is_symbol_name_attr(attr) || is_unsafe_lifetimes_attr(attr) {
+        if is_symbol_name_attr(attr)
+            || is_explicit_lifetimes_attr(attr)
+            || is_by_val_attr(attr)
+            || is_cfg_attr(attr)
+        {
             continue;
         }
 
@@ -46,8 +84,8 @@ fn validate_export_fn_attrs(attrs: &[syn::Attribute]) -> Result<()> {
     Ok(())
 }
 
-fn has_unsafe_lifetimes_attr(attrs: &[syn::Attribute]) -> bool {
-    attrs.iter().any(is_unsafe_lifetimes_attr)
+fn has_explicit_lifetimes_attr(attrs: &[syn::Attribute]) -> bool {
+    attrs.iter().any(is_explicit_lifetimes_attr)
 }
 
 fn validate_lifetime_opt_in(attrs: &[syn::Attribute], generics: &syn::Generics) -> Result<()> {
@@ -63,11 +101,11 @@ fn validate_lifetime_opt_in(attrs: &[syn::Attribute], generics: &syn::Generics) 
         return Ok(());
     }
 
-    if has_unsafe_lifetimes_attr(attrs) {
+    if has_explicit_lifetimes_attr(attrs) {
         return Ok(());
     }
 
-    let err_msg = "Explicit lifetimes found but no `#[unsafe(lifetimes)]`";
+    let err_msg = "Explicit lifetimes found but no `#[explicit_lifetimes]`";
     Err(Error::new_spanned(generics, err_msg))
 }
 
@@ -83,7 +121,7 @@ fn validate_no_dispatch_attrs(attrs: &[syn::Attribute], errors: &mut Option<Erro
 fn ensure_no_handle_arg_attrs(sig: &syn::Signature) -> Result<()> {
     fn validate_no_lifetimes_attrs(attrs: &[syn::Attribute], errors: &mut Option<Error>) {
         for attr in attrs {
-            if is_unsafe_lifetimes_attr(attr) {
+            if is_explicit_lifetimes_attr(attr) {
                 push_error(errors, unsupported_attr(attr));
             }
         }
@@ -111,6 +149,17 @@ fn ensure_no_handle_arg_attrs(sig: &syn::Signature) -> Result<()> {
 }
 
 pub(crate) fn validate_export_decls(decls: &[ParsedForeignItem]) -> Result<()> {
+    validate_decls(decls, validate_export_decl)
+}
+
+pub(crate) fn validate_extern_decls(decls: &[ParsedForeignItem]) -> Result<()> {
+    validate_decls(decls, validate_extern_decl)
+}
+
+fn validate_decls(
+    decls: &[ParsedForeignItem],
+    validate_decl: impl Fn(&ParsedForeignItem) -> Result<()>,
+) -> Result<()> {
     let mut errors = None;
 
     if let Err(err) = validate_shared(decls) {
@@ -118,7 +167,7 @@ pub(crate) fn validate_export_decls(decls: &[ParsedForeignItem]) -> Result<()> {
     }
 
     for decl in decls {
-        if let Err(err) = validate_export_decl(decl) {
+        if let Err(err) = validate_decl(decl) {
             push_error(&mut errors, err);
         }
     }
@@ -132,29 +181,9 @@ pub(crate) fn validate_export_decls(decls: &[ParsedForeignItem]) -> Result<()> {
 
 pub(crate) fn validate_export_attrs(attrs: &[syn::Attribute]) -> Result<()> {
     for attr in attrs {
-        if !attr.path().is_ident("feature") {
+        if !attr.path().is_ident("feature") && !is_cfg_attr(attr) {
             return Err(unsupported_attr(attr));
         }
-    }
-
-    Ok(())
-}
-
-pub(crate) fn validate_extern_decls(decls: &[ParsedForeignItem]) -> Result<()> {
-    let mut errors = None;
-
-    if let Err(err) = validate_shared(decls) {
-        push_error(&mut errors, err);
-    }
-
-    for decl in decls {
-        if let Err(err) = validate_extern_decl(decl) {
-            push_error(&mut errors, err);
-        }
-    }
-
-    if let Some(errors) = errors {
-        return Err(errors);
     }
 
     Ok(())
@@ -185,7 +214,7 @@ fn validate_export_decl(decl: &ParsedForeignItem) -> Result<()> {
         }
         ParsedForeignItem::Type(decl) => {
             for attr in &decl.ty.attrs {
-                if !attr.path().is_ident("id") {
+                if !attr.path().is_ident("id") && !is_cfg_attr(attr) {
                     push_error(&mut errors, unsupported_attr(attr));
                 }
             }
@@ -231,7 +260,7 @@ fn validate_shared(decls: &[ParsedForeignItem]) -> Result<()> {
         match decl {
             ParsedForeignItem::Type(decl) => {
                 for attr in &decl.ty.attrs {
-                    if is_unsafe_lifetimes_attr(attr) {
+                    if is_explicit_lifetimes_attr(attr) {
                         push_error(&mut errors, unsupported_attr(attr));
                     }
                     if attr.path().is_ident("dispatch") {
@@ -249,14 +278,16 @@ fn validate_shared(decls: &[ParsedForeignItem]) -> Result<()> {
                 if let Err(err) = validate_lifetime_opt_in(&decl_fn.attrs, &decl_fn.sig.generics) {
                     push_error(&mut errors, err);
                 }
-
                 validate_no_dispatch_attrs(&decl_fn.attrs, &mut errors);
             }
             ParsedForeignItem::Impl(impl_) => {
                 let is_dispatch_impl = find_dispatch_attr(&impl_.attrs).is_some();
 
                 for attr in &impl_.attrs {
-                    if !attr.path().is_ident("dispatch") && !is_unsafe_lifetimes_attr(attr) {
+                    if !attr.path().is_ident("dispatch")
+                        && !is_explicit_lifetimes_attr(attr)
+                        && !is_cfg_attr(attr)
+                    {
                         push_error(&mut errors, unsupported_attr(attr));
                     }
                 }

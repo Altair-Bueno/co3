@@ -2,25 +2,35 @@ use std::collections::BTreeSet;
 
 use proc_macro2::TokenStream;
 use quote::{format_ident, quote};
-use syn::{FnArg, ImplItem, ImplItemFn, ItemImpl, punctuated::Punctuated, visit_mut::VisitMut};
+use syn::{
+    FnArg, ImplItem, ImplItemFn, ItemImpl, parse_quote, punctuated::Punctuated, visit_mut::VisitMut,
+};
 
 use crate::{
-    DropImpl, DynImpl, ForeignItem, ForeignItemType, MacroFeatures,
+    DropImpl, DynImpl, ForeignItem, ForeignItemType,
     dispatch::{
         StaticLifetimeNormalizer, erase_handle_types, gen_dispatch_erased_layout_checks,
         gen_dispatch_export, gen_dispatch_id_uniqueness_checks, inject_unnamed_lifetimes,
     },
     ffi_fn::{
-        self, emit_extern_definition, gen_extern_fn_signature, merge_generics,
+        self, emit_extern_definition, fn_return_ty, gen_extern_fn_signature, merge_generics,
         normalize_fn_signature, strip_erased_type_params,
     },
+    parse::{FailureMode, MacroFeatures},
     repr::gen_sized_family_impl,
     symbol_name_value,
     utils::{
-        DispatchMonomorphizer, ParamUseDetector, is_type_erased, strip_internal_generic_param,
+        DispatchMonomorphizer, ParamUseDetector, has_non_lifetime_generics, is_type_erased,
+        strip_internal_generic_param,
     },
     wrapper::{gen_extern_decl, wrap_fn_definition, wrap_impl_definition},
 };
+
+fn cfg_attrs(attrs: &[syn::Attribute]) -> impl Iterator<Item = &syn::Attribute> {
+    attrs
+        .iter()
+        .filter(|attr| attr.path().is_ident("cfg") || attr.path().is_ident("cfg_attr"))
+}
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub(crate) enum OwnershipMode {
@@ -29,9 +39,10 @@ pub(crate) enum OwnershipMode {
     ByValue,
 }
 
-pub(crate) fn emit_decl_exports(
+pub(crate) fn expand_export_decls(
     abi: syn::Abi,
     _features: MacroFeatures,
+    failure_mode: FailureMode,
     decls: Vec<ForeignItem>,
 ) -> TokenStream {
     let exports = decls.into_iter().map(|decl| match decl {
@@ -41,13 +52,14 @@ pub(crate) fn emit_decl_exports(
             dyn_self_impls,
             drop,
         }) => {
+            let type_cfg_attrs = cfg_attrs(&ty.attrs).map(|attr| quote!(#attr)).collect::<Vec<_>>();
             let (impl_generics, ty_generics, where_clause) = ty.generics.split_for_impl();
             let params = &ty.generics.params;
 
             let ident = &ty.ident;
             let dispatch = dyn_self_impls
                 .into_iter()
-                .map(|dispatch| gen_dispatch_export(&abi, dispatch, id.as_deref()));
+                .map(|dispatch| gen_dispatch_export(&abi, failure_mode, dispatch, id.as_deref()));
 
             let drop_impl = drop.as_ref().map(|drop| match drop {
                 DropImpl::DynSelfImpl(item) => &item.impl_,
@@ -57,65 +69,75 @@ pub(crate) fn emit_decl_exports(
 
             let drop_check = gen_drop_impl_check(&ty, drop_impl.unwrap());
             let drop = drop.map(|drop| match drop {
-                DropImpl::DynSelfImpl(item) => gen_dispatch_export(&abi, item, id.as_deref()),
-                DropImpl::DynImpl(item) => gen_dispatch_export(&abi, item, None),
-                DropImpl::Impl(impl_) => gen_drop_impl_definition(&abi, impl_),
+                DropImpl::DynSelfImpl(item) => {
+                    gen_dispatch_export(&abi, failure_mode, item, id.as_deref())
+                }
+                DropImpl::DynImpl(item) => gen_dispatch_export(&abi, failure_mode, item, None),
+                DropImpl::Impl(impl_) => gen_drop_impl_definition(&abi, failure_mode, impl_),
             });
 
             let opaque = derive_opaque_item(id.as_deref(), ident, &ty.generics);
             let size_impl = gen_sized_family_impl(ident, &ty.generics);
 
             quote! {
-                #opaque
+                #(#type_cfg_attrs)*
+                const _: () = {
+                    #opaque
 
-                #drop
-                #size_impl
-                #drop_check
+                    #drop
+                    #size_impl
+                    #drop_check
 
-                unsafe impl #impl_generics co3::stored::EncodeOwned for #ident #ty_generics #where_clause {
-                    type Store = ();
+                    unsafe impl #impl_generics co3::stored::EncodeOwned for #ident #ty_generics #where_clause {
+                        type Store = ();
 
-                    #[inline(always)]
-                    fn soft_encode<'itm>(self, (): &mut ()) -> Self::CType
-                    where
-                        Self: 'itm
-                    {
-                        self
+                        #[inline(always)]
+                        fn soft_encode<'itm>(self, (): &mut ()) -> Self::CType
+                        where
+                            Self: 'itm
+                        {
+                            self
+                        }
                     }
-                }
-                unsafe impl<'_dšč, #params> co3::stored::DecodeOwned<'_dšč> for #ident #ty_generics #where_clause {
-                    type Store = ();
+                    unsafe impl<'_dšč, #params> co3::stored::DecodeOwned<'_dšč> for #ident #ty_generics #where_clause {
+                        type Store = ();
 
-                    #[inline(always)]
-                    unsafe fn soft_decode<'_išč: '_dšč>(source: Self::CType, (): &mut ()) -> Option<Self> {
-                        Some(source)
+                        #[inline(always)]
+                        unsafe fn soft_decode<'_išč: '_dšč>(source: Self::CType, (): &mut ()) -> Option<Self> {
+                            Some(source)
+                        }
                     }
-                }
 
-                impl #impl_generics co3::Encode for #ident #ty_generics #where_clause {}
-                impl #impl_generics co3::Decode<'_> for #ident #ty_generics #where_clause {}
+                    impl #impl_generics co3::Encode for #ident #ty_generics #where_clause {}
+                    impl #impl_generics co3::Decode<'_> for #ident #ty_generics #where_clause {}
 
-                unsafe impl #impl_generics co3::borrow::BorrowCast for #ident #ty_generics #where_clause {
-                    type AsConst = Self;
-                }
-                unsafe impl #impl_generics co3::borrow::BorrowCastMut for #ident #ty_generics #where_clause {
-                    type AsMut = Self;
-                }
+                    unsafe impl #impl_generics co3::borrow::BorrowCast for #ident #ty_generics #where_clause {
+                        type AsConst = Self;
+                    }
+                    unsafe impl #impl_generics co3::borrow::BorrowCastMut for #ident #ty_generics #where_clause {
+                        type AsMut = Self;
+                    }
 
-                #(#dispatch)*
+                    #(#dispatch)*
+                };
             }
         }
-        ForeignItem::Fn(item) => ffi_fn::gen_fn_definition(&abi, item),
-        ForeignItem::Impl(impl_) => ffi_fn::gen_impl_definition(&abi, impl_),
-        ForeignItem::DynImpl(item) => gen_dispatch_export(&abi, item, None),
+        ForeignItem::Fn(item) => {
+            ffi_fn::gen_fn_definition(&abi, failure_mode, item)
+        }
+        ForeignItem::Impl(impl_) => {
+            ffi_fn::gen_impl_definition(&abi, failure_mode, impl_)
+        }
+        ForeignItem::DynImpl(item) => gen_dispatch_export(&abi, failure_mode, item, None),
     });
 
     quote! { #( const _: () = { #exports }; )* }
 }
 
-pub(crate) fn expand_extern_import_decls(
+pub(crate) fn expand_extern_decls(
     abi: syn::Abi,
     features: MacroFeatures,
+    failure_mode: FailureMode,
     attrs: &[syn::Attribute],
     decls: Vec<ForeignItem>,
 ) -> TokenStream {
@@ -146,6 +168,7 @@ pub(crate) fn expand_extern_import_decls(
 
     fn gen_impl_extern_fn_decls(
         abi: &syn::Abi,
+        failure_mode: FailureMode,
         attrs: &[syn::Attribute],
         impl_: ItemImpl,
         self_id: Option<&syn::Type>,
@@ -172,7 +195,7 @@ pub(crate) fn expand_extern_import_decls(
                     strip_erased_type_params(&mut item.sig.generics);
                 }
 
-                let decl = gen_extern_fn_signature(item.sig);
+                let decl = gen_extern_fn_signature(item.sig, failure_mode);
                 let extern_decl = gen_extern_decl(abi, attrs, &item.attrs, decl);
 
                 Some(quote! {
@@ -185,11 +208,12 @@ pub(crate) fn expand_extern_import_decls(
 
     fn expand_impl_import(
         abi: &syn::Abi,
+        failure_mode: FailureMode,
         attrs: &[syn::Attribute],
         impl_: ItemImpl,
     ) -> TokenStream {
-        let import = wrap_impl_definition::<false>(&impl_);
-        let extern_decl = gen_impl_extern_fn_decls(abi, attrs, impl_, None, None);
+        let import = wrap_impl_definition::<false>(failure_mode, &impl_);
+        let extern_decl = gen_impl_extern_fn_decls(abi, failure_mode, attrs, impl_, None, None);
 
         quote! {
             const _: () = {
@@ -201,6 +225,7 @@ pub(crate) fn expand_extern_import_decls(
 
     fn expand_dispatch_import(
         abi: &syn::Abi,
+        failure_mode: FailureMode,
         attrs: &[syn::Attribute],
         self_id: Option<&syn::Type>,
         dispatch: DynImpl,
@@ -214,10 +239,11 @@ pub(crate) fn expand_extern_import_decls(
             .map(|entry| inject_unnamed_lifetimes(&mut impl_.generics.params, entry))
             .collect::<Punctuated<_, syn::Token![,]>>();
 
-        let wrapped = wrap_impl_definition::<true>(&impl_);
+        let wrapped = wrap_impl_definition::<true>(failure_mode, &impl_);
         let dispatch_helper = gen_dispatch_helper(&impl_.generics, &args);
         let imports = expand_extern_dispatch_impl(&wrapped, &args);
-        let extern_decl = gen_impl_extern_fn_decls(abi, attrs, impl_, self_id, Some(&args));
+        let extern_decl =
+            gen_impl_extern_fn_decls(abi, failure_mode, attrs, impl_, self_id, Some(&args));
 
         quote! {
             const _: () = {
@@ -236,28 +262,37 @@ pub(crate) fn expand_extern_import_decls(
             dyn_self_impls,
             drop,
         }) => {
+            let type_cfg_attrs = cfg_attrs(&ty.attrs)
+                .map(|attr| quote!(#attr))
+                .collect::<Vec<_>>();
             let ty = wrap_extern_type_decl(&abi, features, attrs, id.as_deref(), ty);
 
-            let dispatch = dyn_self_impls
-                .into_iter()
-                .map(|dispatch| expand_dispatch_import(&abi, attrs, id.as_deref(), dispatch));
+            let dispatch = dyn_self_impls.into_iter().map(|dispatch| {
+                expand_dispatch_import(&abi, failure_mode, attrs, id.as_deref(), dispatch)
+            });
 
             let drop = drop.map(|drop| match drop {
                 DropImpl::DynSelfImpl(d) | DropImpl::DynImpl(d) => {
                     expand_dispatch_drop_import(&abi, attrs, d.impl_, id.as_deref().unwrap())
                 }
-                DropImpl::Impl(impl_) => expand_impl_import(&abi, attrs, impl_),
+                DropImpl::Impl(impl_) => expand_impl_import(&abi, failure_mode, attrs, impl_),
             });
 
             quote! {
                 #ty
-                #drop
-                #(#dispatch)*
+
+                #(#type_cfg_attrs)*
+                const _: () = {
+                    #drop
+                    #(#dispatch)*
+                };
             }
         }
-        ForeignItem::Fn(item) => wrap_fn_definition(&abi, attrs, item),
-        ForeignItem::Impl(impl_) => expand_impl_import(&abi, attrs, impl_),
-        ForeignItem::DynImpl(dispatch) => expand_dispatch_import(&abi, attrs, None, dispatch),
+        ForeignItem::Fn(item) => wrap_fn_definition(&abi, failure_mode, attrs, item),
+        ForeignItem::Impl(impl_) => expand_impl_import(&abi, failure_mode, attrs, impl_),
+        ForeignItem::DynImpl(dispatch) => {
+            expand_dispatch_import(&abi, failure_mode, attrs, None, dispatch)
+        }
     });
 
     quote! { #(#imports)* }
@@ -326,27 +361,36 @@ fn gen_dispatch_helper(
     })
 }
 
-fn gen_drop_impl_definition(abi: &syn::Abi, mut impl_: ItemImpl) -> TokenStream {
+fn gen_drop_impl_definition(
+    abi: &syn::Abi,
+    failure_mode: FailureMode,
+    mut impl_: ItemImpl,
+) -> TokenStream {
     let self_ty = &impl_.self_ty;
 
+    let decode_error = ffi_fn::gen_decode_error(failure_mode);
     let Some(syn::ImplItem::Fn(mut item)) = impl_.items.pop() else {
         unreachable!()
     };
 
     let ffi_fn_body = quote! {{
-        let __co3_self: &mut #self_ty = unsafe {
+        let Some(__co3_self) = (unsafe {
             co3::decode(__co3_self)
-        }.ok_or(co3::FfiReturn::TrapRepresentation)?;
+        }) else {
+            #decode_error
+        };
 
+        let __co3_self: &mut #self_ty = __co3_self;
         unsafe { core::ptr::drop_in_place(__co3_self as *mut _) };
 
-        Ok(())
+        Ok::<_, ()>(())
     }};
 
     normalize_fn_signature(&mut item.sig, Some(self_ty));
     merge_generics(impl_.generics.clone(), &mut item.sig.generics);
-    let fn_signature = gen_extern_fn_signature(item.sig);
-    emit_extern_definition(abi, &item.attrs, fn_signature, ffi_fn_body)
+    let fn_signature = gen_extern_fn_signature(item.sig, failure_mode);
+
+    emit_extern_definition(abi, &item.attrs, failure_mode, fn_signature, ffi_fn_body)
 }
 
 fn expand_dispatch_drop_import(
@@ -427,7 +471,7 @@ fn expand_dispatch_drop_import(
                     #(#attrs)*
 
                     #link_name
-                    fn drop(#(#values: #inputs),*) -> co3::FfiReturn where #(#bounds,)*;
+                    fn drop(#(#values: #inputs),*) where #(#bounds,)*;
                 }
 
                 let __co3_self = self as *mut #self_ty as *mut core::ffi::c_void;
@@ -487,13 +531,7 @@ fn wrap_extern_type_decl(
     id: Option<&syn::Type>,
     mut type_: syn::ForeignItemType,
 ) -> TokenStream {
-    let has_non_lifetime_generics = type_
-        .generics
-        .params
-        .iter()
-        .any(|param| !matches!(param, syn::GenericParam::Lifetime(_)));
-
-    if has_non_lifetime_generics {
+    if has_non_lifetime_generics(&type_.generics) {
         let ident = &type_.ident;
         let generics = &type_.generics;
         let (_, ty_generics, _) = generics.split_for_impl();

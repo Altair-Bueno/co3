@@ -5,8 +5,9 @@ use syn::{Attribute, Ident, spanned::Spanned as _, visit::Visit};
 use crate::{
     generate::gen_handle_family_impl,
     repr::attr::{ReprKind, parse_repr},
-    repr::item::{derive_fieldless_enum, derive_item, field_vars},
+    repr::item::{derive_fieldless_enum, derive_item},
     utils::push_error,
+    validate::validate_niche_value_sized_tail,
 };
 
 mod attr;
@@ -101,45 +102,6 @@ fn parse_repr_c_attrs(attrs: &[Attribute]) -> syn::Result<ReprCAttrs> {
     Ok(repr_c)
 }
 
-fn infer_struct_is_valid_from_niche(
-    fields: &syn::Fields,
-    niche_value: Option<&syn::Expr>,
-    is_valid: &mut Option<syn::ExprClosure>,
-) {
-    let Some(niche_value) = niche_value else {
-        return;
-    };
-
-    if is_valid.is_some() {
-        return;
-    }
-
-    let field_vars = field_vars(fields);
-    let field_tys = fields.iter().map(|field| &field.ty).collect::<Vec<_>>();
-    let niche_fields = match fields {
-        syn::Fields::Unnamed(_) => (0..fields.iter().count())
-            .map(|i| {
-                let i = syn::Index::from(i);
-                quote! { __co3_niche_value.#i }
-            })
-            .collect::<Vec<_>>(),
-        syn::Fields::Named(_) | syn::Fields::Unit => fields
-            .iter()
-            .filter_map(|field| {
-                let field_name = field.ident.as_ref()?;
-                Some(quote! { __co3_niche_value.#field_name })
-            })
-            .collect::<Vec<_>>(),
-    };
-
-    *is_valid = Some(syn::parse_quote! {
-        |#(#field_vars: &#field_tys),*| {
-            let __co3_niche_value = #niche_value;
-            #(*#field_vars != #niche_fields)||*
-        }
-    });
-}
-
 fn type_is_valid_closure(
     fields: &syn::Fields,
     is_valid: &mut Option<syn::ExprClosure>,
@@ -188,11 +150,11 @@ pub(crate) fn derive_repr_c(input: &syn::DeriveInput) -> syn::Result<TokenStream
             }
 
             validate_fields_no_ffi_type_attr(&data.fields, &mut errors);
-            infer_struct_is_valid_from_niche(
-                &data.fields,
-                repr_c_attrs.niche_value.as_ref(),
-                &mut repr_c_attrs.is_valid,
-            );
+            if repr_c_attrs.niche_value.is_some()
+                && let Err(err) = validate_niche_value_sized_tail(&data.fields)
+            {
+                push_error(&mut errors, err);
+            }
             if let Err(err) = type_is_valid_closure(&data.fields, &mut repr_c_attrs.is_valid) {
                 push_error(&mut errors, err);
             }
@@ -401,6 +363,8 @@ fn assert_no_drop(generics: &syn::Generics, ident: &syn::Ident) -> TokenStream {
             impl #impl_generics AssertNoDrop for #ident #ty_generics #where_clause {
                 fn assert_no_drop() {
                     const {
+                        // TODO: This is the only place co3::impls! is used
+                        // Remove it from public API when Drop is handled
                         assert!(co3::impls!(Self: !Drop));
                     }
                 }

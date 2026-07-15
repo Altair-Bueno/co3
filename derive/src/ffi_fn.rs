@@ -11,61 +11,134 @@ use syn::{
 use crate::{
     dispatch::{StaticLifetimeNormalizer, handle_id},
     generate::OwnershipMode,
+    parse::FailureMode,
     symbol_name_value,
-    utils::{TypeImplTraitResolver, gen_normalization_stmts, soft_for_arg, unwrap_result_type},
+    utils::soft_for_arg,
 };
 
 fn export_definition_attrs(attrs: &[syn::Attribute]) -> TokenStream {
-    let attrs = attrs.iter().map(|attr| {
+    let attrs = attrs.iter().filter_map(|attr| {
+        if is_by_val_attr(attr) {
+            return None;
+        }
         let Some(value) = symbol_name_value(attr) else {
-            return quote!(#attr);
+            return Some(quote!(#attr));
         };
 
-        quote!(#[unsafe(export_name = #value)])
+        Some(quote!(#[unsafe(export_name = #value)]))
     });
 
     quote!(#(#attrs)*)
 }
 
+pub(crate) fn is_by_val_attr(attr: &syn::Attribute) -> bool {
+    attr.path().is_ident("by_val")
+}
+
+pub(crate) fn fn_return_ty(sig: &syn::Signature) -> Option<&syn::Type> {
+    match &sig.output {
+        syn::ReturnType::Default => None,
+        syn::ReturnType::Type(_, ty) => Some(ty),
+    }
+}
+
+pub(crate) fn gen_failure_panic(err: TokenStream) -> TokenStream {
+    quote! {
+        panic!(
+            "co3 generated FFI failure with error type `{}`",
+            core::any::type_name_of_val(&#err),
+        )
+    }
+}
+
+pub(crate) fn gen_trap_value() -> TokenStream {
+    quote! { co3::Error::trap_value() }
+}
+
+pub(crate) fn gen_soft_sync_error_value() -> TokenStream {
+    quote! { co3::Error::soft_sync_error() }
+}
+
+pub(crate) fn gen_decode_error(failure_mode: FailureMode) -> TokenStream {
+    match failure_mode {
+        FailureMode::Panic => quote! { panic!("co3 generated FFI decode failure"); },
+        FailureMode::Error => {
+            let error = gen_trap_value();
+            quote! { return Err(#error); }
+        }
+    }
+}
+
+pub(crate) fn gen_sync_error(failure_mode: FailureMode) -> TokenStream {
+    match failure_mode {
+        FailureMode::Panic => quote! { panic!("co3 generated FFI sync failure"); },
+        FailureMode::Error => {
+            let error = gen_soft_sync_error_value();
+            quote! { return Err(#error); }
+        }
+    }
+}
+
+pub(crate) fn gen_sync_check(
+    store_sync_stmts: TokenStream,
+    sync_error: TokenStream,
+) -> TokenStream {
+    quote! {
+        let __co3_sync_errors = #store_sync_stmts;
+        let mut __co3_sync_errors_iter = core::iter::IntoIterator::into_iter(__co3_sync_errors);
+        if core::iter::Iterator::any(&mut __co3_sync_errors_iter, core::convert::identity) {
+            #sync_error
+        }
+    }
+}
+
+pub(crate) fn gen_unknown_handle_error(failure_mode: FailureMode) -> TokenStream {
+    match failure_mode {
+        FailureMode::Panic => quote! { panic!("co3 generated FFI unknown handle") },
+        FailureMode::Error => quote! { Err(co3::Error::unknown_handle()) },
+    }
+}
+
 pub(crate) fn emit_extern_definition(
     abi: &syn::Abi,
     attrs: &[syn::Attribute],
+    failure_mode: FailureMode,
     fn_signature: TokenStream,
     ffi_fn_body: TokenStream,
 ) -> TokenStream {
     let attrs = export_definition_attrs(attrs);
 
+    let error_handler = match failure_mode {
+        FailureMode::Panic => gen_failure_panic(quote!(err)),
+        FailureMode::Error => quote! { co3::encode(err) },
+    };
+
     quote! {
         #attrs
         unsafe #abi #fn_signature {
-            let fn_ = || {
-                let fn_body = || #ffi_fn_body;
+            let fn_body = || #ffi_fn_body;
 
-                if let Err(err) = fn_body() {
-                    return err;
-                }
-
-                co3::FfiReturn::Ok
-            };
-
-            match std::panic::catch_unwind(fn_) {
-                Ok(res) => res,
-                Err(_) => {
-                    // TODO: Implement error handling
-                    co3::FfiReturn::UnrecoverableError
-                },
+            match fn_body() {
+                Ok(value) => value,
+                Err(err) => #error_handler,
             }
         }
     }
 }
 
-pub(crate) fn gen_definition_body(sig: syn::Signature, callee: TokenStream) -> TokenStream {
+pub(crate) fn gen_definition_body(
+    sig: syn::Signature,
+    callee: TokenStream,
+    fn_by_val: bool,
+    failure_mode: FailureMode,
+) -> TokenStream {
     let inputs = &sig.inputs;
-    let output = &sig.output;
+    let return_ty = fn_return_ty(&sig);
 
-    let decode_input_stmts = gen_input_decode_stmts(inputs);
-    let output_assignment = gen_output_encode_stmt(output);
+    let decode_input_stmts = gen_input_decode_stmts(inputs, failure_mode);
     let store_sync_stmts = gen_store_sync_stmts(inputs.len());
+    let sync_error = gen_sync_error(failure_mode);
+    let sync_check = gen_sync_check(store_sync_stmts, sync_error);
 
     let arg_names = inputs
         .iter()
@@ -75,28 +148,47 @@ pub(crate) fn gen_definition_body(sig: syn::Signature, callee: TokenStream) -> T
         })
         .collect::<Vec<_>>();
 
+    let return_borrow_check = if let Some(return_ty) = &return_ty {
+        let out_name = format_ident!("__co3_output");
+        gen_return_borrow_check(return_ty, fn_by_val)
+    } else {
+        quote! {}
+    };
+    let output = match failure_mode {
+        FailureMode::Panic => quote! { Ok::<_, ()>(co3::encode(__co3_output)) },
+        FailureMode::Error => match return_ty {
+            Some(return_ty) => quote! { Ok::<_, #return_ty>(co3::encode(__co3_output)) },
+            None => quote! { Ok(co3::encode(__co3_output)) },
+        },
+    };
+
     quote! {{
-        let mut __co3_call_error = false;
+        #return_borrow_check
 
         #decode_input_stmts
         let __co3_output = #callee(
             #(#arg_names),*
         );
 
-        #output_assignment
+        #sync_check
 
-        let __co3_sync_errors = #store_sync_stmts;
-        let mut __co3_sync_errors_iter = core::iter::IntoIterator::into_iter(__co3_sync_errors);
-        if core::iter::Iterator::any(&mut __co3_sync_errors_iter, core::convert::identity) {
-            return Err(co3::FfiReturn::TrapRepresentation);
-        }
-
-        if __co3_call_error {
-            return Err(co3::FfiReturn::ExecutionFail);
-        }
-
-        Ok(())
+        #output
     }}
+}
+
+pub(crate) fn gen_return_borrow_check(return_ty: &syn::Type, fn_by_val: bool) -> TokenStream {
+    if fn_by_val {
+        return quote! {};
+    }
+
+    quote! {
+        const {
+            assert!(
+                co3::impls!(#return_ty: co3::borrow::Borrow<Owner: co3::stored::EmptyStore>),
+                "Use `move fn` to transfer ownership",
+            );
+        }
+    }
 }
 
 pub(crate) fn item_fn_input_ident(input: &syn::Pat) -> &Ident {
@@ -129,6 +221,7 @@ pub(crate) fn spread_arg_names(arg_name: &Ident) -> (Ident, Ident) {
 
 pub(crate) fn gen_input_decode_stmts<'a>(
     inputs: impl IntoIterator<Item = &'a syn::FnArg>,
+    failure_mode: FailureMode,
 ) -> TokenStream {
     let inputs = inputs.into_iter().collect::<Vec<_>>();
 
@@ -142,6 +235,7 @@ pub(crate) fn gen_input_decode_stmts<'a>(
         .collect::<Vec<_>>();
 
     let store_sync_stmts = gen_store_sync_stmts(inputs.len());
+    let decode_error = gen_decode_error(failure_mode);
 
     let mut value_tys = Vec::with_capacity(inputs.len());
     let mut store_tys = Vec::with_capacity(inputs.len());
@@ -221,7 +315,7 @@ pub(crate) fn gen_input_decode_stmts<'a>(
 
         let (#(Some(#arg_names),)*) = __co3_input_values else {
             let __co3_sync_errors = #store_sync_stmts;
-            return Err(co3::FfiReturn::TrapRepresentation);
+            #decode_error
         };
     }
 }
@@ -252,49 +346,6 @@ pub(crate) fn gen_fn_signature_check(
     quote! { let __co3_fn: #fn_ty = #callee; }
 }
 
-fn gen_output_encode_stmt(ret_ty: &syn::ReturnType) -> TokenStream {
-    let output = format_ident!("__co3_output");
-
-    let syn::ReturnType::Type(_, ret_ty) = &ret_ty else {
-        return quote! {};
-    };
-
-    if let Some((ok, _)) = unwrap_result_type(ret_ty) {
-        let normalize_output = gen_normalization_stmts(&output, ok);
-
-        quote! {
-            match __co3_output {
-                Ok(__co3_output) => {
-                    #normalize_output
-
-                    unsafe {
-                        <#ok as co3::out_ptr::OutPtrWrite>::write_out(
-                            #output,
-                            __co3_out_ptr,
-                        );
-                    }
-                }
-                Err(_) => {
-                    __co3_call_error = true;
-                }
-            }
-        }
-    } else {
-        let normalize_output = gen_normalization_stmts(&output, ret_ty);
-
-        quote! {
-            #normalize_output
-
-            unsafe {
-                <#ret_ty as co3::out_ptr::OutPtrWrite>::write_out(
-                    #output,
-                    __co3_out_ptr
-                );
-            }
-        }
-    }
-}
-
 pub(crate) fn gen_store_sync_stmts(len: usize) -> TokenStream {
     let idxs = (0..len).map(syn::Index::from);
 
@@ -309,12 +360,13 @@ pub(crate) fn gen_store_sync_stmts(len: usize) -> TokenStream {
     }}
 }
 
-fn gen_fn_definition_body(item: &syn::ItemFn) -> TokenStream {
+fn gen_fn_definition_body(item: &syn::ItemFn, failure_mode: FailureMode) -> TokenStream {
     let fn_name = &item.sig.ident;
     let callee = quote! { self::#fn_name };
     let check_callee = parse_quote! { self::#fn_name };
+    let fn_by_val = item.attrs.iter().any(is_by_val_attr);
     let signature_check = gen_fn_signature_check(item.sig.clone(), check_callee);
-    let body = gen_definition_body(item.sig.clone(), callee);
+    let body = gen_definition_body(item.sig.clone(), callee, fn_by_val, failure_mode);
 
     quote! {{
         #signature_check
@@ -322,8 +374,13 @@ fn gen_fn_definition_body(item: &syn::ItemFn) -> TokenStream {
     }}
 }
 
-pub fn gen_impl_definition(abi: &syn::Abi, mut impl_: syn::ItemImpl) -> TokenStream {
+pub fn gen_impl_definition(
+    abi: &syn::Abi,
+    failure_mode: FailureMode,
+    mut impl_: syn::ItemImpl,
+) -> TokenStream {
     let trait_ = impl_.trait_.as_ref().map(|(_, path, _)| path);
+    let impl_attrs = &impl_.attrs;
 
     let self_ty = &impl_.self_ty;
     impl_.items.iter_mut().for_each(|item| {
@@ -352,23 +409,32 @@ pub fn gen_impl_definition(abi: &syn::Abi, mut impl_: syn::ItemImpl) -> TokenStr
         } else {
             parse_quote!(<#self_ty>::#fn_name)
         };
+
+        let fn_by_val = item.attrs.iter().any(is_by_val_attr);
+        let fn_signature = gen_extern_fn_signature(item.sig.clone(), failure_mode);
         let signature_check = gen_fn_signature_check(item.sig.clone(), check_callee);
-        let body = gen_definition_body(item.sig.clone(), callee);
+        let body = gen_definition_body(item.sig, callee, fn_by_val, failure_mode);
+
         let ffi_fn_body = quote! {{
             #signature_check
             #body
         }};
-        let fn_signature = gen_extern_fn_signature(item.sig.clone());
 
         Some(emit_extern_definition(
             abi,
             &item.attrs,
+            failure_mode,
             fn_signature,
             ffi_fn_body,
         ))
     });
 
-    quote! { #(#definitions)* }
+    quote! {
+        #(#impl_attrs)*
+        const _: () = {
+            #(#definitions)*
+        };
+    }
 }
 
 pub(crate) fn merge_generics(impl_generics: syn::Generics, fn_generics: &mut syn::Generics) {
@@ -395,16 +461,32 @@ pub(crate) fn strip_erased_type_params(generics: &mut syn::Generics) {
         .collect();
 }
 
-pub fn gen_fn_definition(abi: &syn::Abi, mut item: syn::ItemFn) -> TokenStream {
+pub fn gen_fn_definition(
+    abi: &syn::Abi,
+    failure_mode: FailureMode,
+    mut item: syn::ItemFn,
+) -> TokenStream {
     normalize_fn_signature(&mut item.sig, None);
 
-    let ffi_fn_body = gen_fn_definition_body(&item);
-    let fn_signature = gen_extern_fn_signature(item.sig);
+    let ffi_fn_body = gen_fn_definition_body(&item, failure_mode);
+    let fn_signature = gen_extern_fn_signature(item.sig, failure_mode);
 
-    emit_extern_definition(abi, &item.attrs, fn_signature, ffi_fn_body)
+    emit_extern_definition(abi, &item.attrs, failure_mode, fn_signature, ffi_fn_body)
 }
 
-pub(crate) fn gen_extern_fn_signature(mut sig: syn::Signature) -> TokenStream {
+pub(crate) fn gen_extern_fn_signature(
+    mut sig: syn::Signature,
+    failure_mode: FailureMode,
+) -> TokenStream {
+    if let syn::ReturnType::Type(_, return_type) = &sig.output
+        && matches!(failure_mode, FailureMode::Error)
+    {
+        sig.generics
+            .make_where_clause()
+            .predicates
+            .push(parse_quote!(#return_type: co3::Error));
+    }
+
     explicitize_signature_lifetimes(&mut sig);
     // FIXME: This feels like a HACK
     synthesize_lifetime_bounds(&mut sig);
@@ -472,25 +554,22 @@ fn lower_signature_input(generics: &mut syn::Generics, input: syn::FnArg) -> Vec
 }
 
 fn lower_signature_output(sig: &mut syn::Signature) {
-    let return_type = core::mem::replace(&mut sig.output, parse_quote!(-> co3::FfiReturn));
+    let return_type = core::mem::replace(&mut sig.output, syn::ReturnType::Default);
 
-    let syn::ReturnType::Type(_, return_type) = return_type else {
-        return;
+    let return_type = match return_type {
+        syn::ReturnType::Default => return,
+        syn::ReturnType::Type(_, return_type) => *return_type,
     };
 
-    let ret_ty = unwrap_result_type(&return_type).map_or(&*return_type, |(ok, _)| ok);
-    let output_ty = output_abi_ty(ret_ty);
+    let lowered_return_type = item_fn_output_type(&return_type);
+    sig.output = parse_quote!(-> #lowered_return_type);
 
     sig.generics
         .make_where_clause()
         .predicates
-        // TODO: Should look for &mut instead of raw ptr?
-        .push(parse_quote!(*mut #output_ty: co3::CFnArg));
-    // TODO: CFnReturn should be used here if we allow
-    // custom return types and not just co3::FfiReturn
-
-    sig.inputs
-        .push(parse_quote! { __co3_out_ptr: *mut #output_ty });
+        .push(parse_quote! {
+            #lowered_return_type: co3::CFnReturn
+        });
 }
 
 fn explicitize_signature_lifetimes(sig: &mut syn::Signature) {
@@ -710,13 +789,11 @@ pub(crate) fn item_fn_input_arg_type(attrs: &[syn::Attribute], arg_ty: &Type) ->
     }
 }
 
-pub(super) fn output_abi_ty(ty: &syn::Type) -> syn::Type {
-    parse_quote!(<#ty as co3::out_ptr::OutPtr>::OutPtr)
+pub(crate) fn item_fn_output_type(return_ty: &Type) -> Type {
+    parse_quote!(<#return_ty as co3::ExternC>::CType)
 }
 
 pub(crate) fn normalize_fn_signature(sig: &mut syn::Signature, self_ty: Option<&Type>) {
-    TypeImplTraitResolver.visit_signature_mut(sig);
-
     for input in &mut sig.inputs {
         if let syn::FnArg::Receiver(syn::Receiver { attrs, ty, .. }) = input {
             *input = parse_quote! { #(#attrs)* __co3_self: #ty }
@@ -729,7 +806,7 @@ pub(crate) fn normalize_fn_signature(sig: &mut syn::Signature, self_ty: Option<&
 }
 
 pub(crate) fn ownership_mode_for_arg(attrs: &[syn::Attribute]) -> OwnershipMode {
-    if attrs.iter().any(|attr| attr.path().is_ident("by_val")) {
+    if attrs.iter().any(is_by_val_attr) {
         return OwnershipMode::ByValue;
     }
 

@@ -25,10 +25,12 @@ struct Array([u8; 2]);
 struct Array2([u8; 8]);
 
 handles! {
-    Handle,
-    Handle2,
-    Array,
-    Array2,
+    unsafe {
+        Handle,
+        Handle2,
+        Array,
+        Array2,
+    }
 }
 
 mod provider {
@@ -46,19 +48,30 @@ mod provider {
         fn me(self) {}
     }
 
-    #[allow(unused_variables)]
-    pub extern "C" fn disallowed_types_by_ref(arg1: (), arg2: [u8; 2], arg3: (), arg4: [u8; 2]) {}
+    #[expect(unused_variables)]
+    pub extern "C" fn disallowed_args_by_ref(arg1: (), arg2: [u8; 2]) {}
 
-    #[allow(unused_variables)]
-    pub extern "C" fn disallowed_types_by_val(arg1: (), arg2: [u8; 2]) -> [u8; 2] {
-        arg2
+    #[expect(unused_variables)]
+    pub extern "C" fn disallowed_args_by_val(arg1: (), arg2: [u8; 2]) {}
+
+    #[expect(unused_variables)]
+    pub extern "C" fn disallowed_return1() -> [u8; 2] {
+        [42, 42]
     }
 
-    #[allow(unused_variables)]
-    pub extern "C" fn disallowed_opaque_types(arg1: Box<MyType>, arg2: Box<MyType>) {}
+    #[expect(unused_variables)]
+    pub extern "C" fn disallowed_return2() -> Box<[u8]> {
+        Box::new([42, 42])
+    }
+
+    #[expect(unused_variables)]
+    pub extern "C" fn disallowed_opaque_args(arg1: Box<MyType>) {}
+    pub extern "C" fn disallowed_opaque_return() -> Box<MyType> {
+        Box::new(MyType)
+    }
 
     ffi! {
-        #![export("C")]
+        #![unsafe(export("C"))]
 
         type MyType;
 
@@ -69,32 +82,48 @@ mod provider {
     }
 
     ffi! {
-        #![export("C")]
+        #![unsafe(export("C"))]
 
-        pub extern "C" fn disallowed_types_by_ref(arg1: (), arg2: [u8; 2], move arg3: (), move arg4: [u8; 2]);
+        pub extern "C" fn disallowed_args_by_ref(arg1: (), arg2: [u8; 2]);
     }
     ffi! {
-        #![export("C")]
+        #![unsafe(export("C"))]
 
-        pub extern "C" fn disallowed_types_by_val(move arg1: (), move arg2: [u8; 2]) -> [u8; 2];
-    }
-    ffi! {
-        #![export("C")]
-
-        pub extern "C" fn disallowed_opaque_types(move arg1: Box<MyType>, arg2: Box<MyType>);
+        pub extern "C" fn disallowed_args_by_val(move arg1: (), move arg2: [u8; 2]);
     }
 
     ffi! {
-        #![export("C")]
+        #![unsafe(export("C"))]
+
+        pub extern "C" fn disallowed_return1() -> [u8; 2];
+    }
+    ffi! {
+        #![unsafe(export("C"))]
+
+        pub extern "C" fn disallowed_return2() -> Box<[u8]>;
+    }
+
+    ffi! {
+        #![unsafe(export("C"))]
+
+        pub extern "C" fn disallowed_opaque_args(arg1: Box<MyType>);
+    }
+    ffi! {
+        #![unsafe(export("C"))]
+
+        pub extern "C" fn disallowed_opaque_return() -> Box<MyType>;
+    }
+
+    ffi! {
+        #![unsafe(export("C"))]
 
         #[dispatch(<Handle>)]
         impl<dyn(usize) T = Array> Dispatch for T {
             fn me(self);
         }
     }
-
     ffi! {
-        #![export("C")]
+        #![unsafe(export("C"))]
 
         #[dispatch(<Handle2>)]
         impl<dyn(usize) T = Array2> Dispatch for T {
@@ -104,8 +133,7 @@ mod provider {
 }
 
 ffi! {
-    #![extern("C")]
-
+    #![unsafe(extern("C"))]
     #![symbol_prefix = "kita"]
 
     type MyType;
@@ -114,36 +142,52 @@ ffi! {
         type Owned = OwnedMyType;
 
         #[symbol_name = "my_type_new"]
-        fn to_owned(&self) -> <Self as ToOwned>::Owned;
+        move fn to_owned(&self) -> <Self as ToOwned>::Owned;
     }
 }
 
 ffi! {
-    #![extern("C")]
+    #![unsafe(extern("C"))]
 
     #![symbol_prefix = "kita"]
 
-    pub extern "C" fn disallowed_types_by_ref(arg1: (), arg2: [u8; 2]);
+    pub extern "C" fn disallowed_args_by_ref(arg1: (), arg2: [u8; 2]);
 }
 
 ffi! {
-    #![extern("C")]
+    #![unsafe(extern("C"))]
 
     #![symbol_prefix = "kita"]
 
-    pub extern "C" fn disallowed_types_by_val(move arg1: (), move arg2: [u8; 2]) -> [u8; 2];
+    pub extern "C" fn disallowed_args_by_val(move arg1: (), move arg2: [u8; 2]);
 }
 
 ffi! {
-    #![extern("C")]
+    #![unsafe(extern("C"))]
+
+    pub extern "C" fn disallowed_return1() -> [u8; 2];
+}
+ffi! {
+    #![unsafe(extern("C"))]
+
+    pub extern "C" fn disallowed_return2() -> Box<[u8]>;
+}
+
+ffi! {
+    #![unsafe(extern("C"))]
 
     #![symbol_prefix = "kita"]
 
-    pub extern "C" fn disallowed_opaque_types(move arg1: OwnedMyType, arg2: OwnedMyType);
+    pub extern "C" fn disallowed_opaque_args(arg1: OwnedMyType);
+}
+ffi! {
+    #![unsafe(extern("C"))]
+
+    pub extern "C" fn disallowed_opaque_return() -> OwnedMyType;
 }
 
 ffi! {
-    #![extern("C")]
+    #![unsafe(extern("C"))]
 
     #![symbol_prefix = "kita"]
 
@@ -154,7 +198,7 @@ ffi! {
 }
 
 ffi! {
-    #![extern("C")]
+    #![unsafe(extern("C"))]
 
     #![symbol_prefix = "kita"]
 

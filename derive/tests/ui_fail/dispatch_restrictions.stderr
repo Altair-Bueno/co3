@@ -1,131 +1,131 @@
 error: explicit `<dyn Type>::ID` is only supported in extern declarations
-  --> tests/ui_fail/dispatch_restrictions.rs:53:32
+  --> tests/ui_fail/dispatch_restrictions.rs:55:32
    |
-53 |         fn kita(self, self_id: <dyn T>::ID) -> u32;
+55 |         fn kita(self, self_id: <dyn T>::ID) -> u32;
    |                                ^^^^^^^^^^^
 
 error: lifetime arguments not required in #[dispatch]
-  --> tests/ui_fail/dispatch_restrictions.rs:60:17
+  --> tests/ui_fail/dispatch_restrictions.rs:62:17
    |
-60 |     #[dispatch(<'a, u32>)]
+62 |     #[dispatch(<'a, u32>)]
    |                 ^^
 
 error: lifetime arguments not required in #[dispatch]
-  --> tests/ui_fail/dispatch_restrictions.rs:73:17
+  --> tests/ui_fail/dispatch_restrictions.rs:75:17
    |
-73 |     #[dispatch(<'a, u32>)]
+75 |     #[dispatch(<'a, u32>)]
    |                 ^^
 
 error: undeclared lifetime; consider using '_
-  --> tests/ui_fail/dispatch_restrictions.rs:83:37
+  --> tests/ui_fail/dispatch_restrictions.rs:85:37
    |
-83 |     #[dispatch(<&i16>, <&'_ i32>, <&'a u32>)]
+85 |     #[dispatch(<&i16>, <&'_ i32>, <&'a u32>)]
    |                                     ^^
 
 error: undeclared lifetime; consider using '_
-  --> tests/ui_fail/dispatch_restrictions.rs:92:37
+  --> tests/ui_fail/dispatch_restrictions.rs:94:37
    |
-92 |     #[dispatch(<&i16>, <&'_ i32>, <&'a u32>)]
+94 |     #[dispatch(<&i16>, <&'_ i32>, <&'a u32>)]
    |                                     ^^
 
 error: `#[dispatch]` requires at least one `dyn Type` or `dyn Self`
-   --> tests/ui_fail/dispatch_restrictions.rs:104:22
+   --> tests/ui_fail/dispatch_restrictions.rs:106:22
     |
-104 |     impl<T> Kita for T {
+106 |     impl<T> Kita for T {
     |                      ^
 
 error: `#[dispatch]` requires at least one `dyn Type` or `dyn Self`
-   --> tests/ui_fail/dispatch_restrictions.rs:113:22
+   --> tests/ui_fail/dispatch_restrictions.rs:115:22
     |
-113 |     impl<T> Kita for T {
+115 |     impl<T> Kita for T {
     |                      ^
 
 error: `#[dispatch]` impl type parameters must use `dyn(id_repr) T`
-   --> tests/ui_fail/dispatch_restrictions.rs:123:10
+   --> tests/ui_fail/dispatch_restrictions.rs:125:10
     |
-123 |     impl<dyn T> Kita for T {
+125 |     impl<dyn T> Kita for T {
     |          ^^^
 
 error: `#[dispatch]` impl type parameters must use `dyn(id_repr) T`
-   --> tests/ui_fail/dispatch_restrictions.rs:132:10
+   --> tests/ui_fail/dispatch_restrictions.rs:134:10
     |
-132 |     impl<dyn T> Kita for T {
+134 |     impl<dyn T> Kita for T {
     |          ^^^
 
 error: blanket `dyn T` is not supported; declare `<dyn T> instead
-   --> tests/ui_fail/dispatch_restrictions.rs:142:22
+   --> tests/ui_fail/dispatch_restrictions.rs:144:22
     |
-142 |     impl<T> Kita for dyn T {
+144 |     impl<T> Kita for dyn T {
     |                      ^^^^^
 
 error: blanket `dyn T` is not supported; declare `<dyn T> instead
-   --> tests/ui_fail/dispatch_restrictions.rs:151:22
+   --> tests/ui_fail/dispatch_restrictions.rs:153:22
     |
-151 |     impl<T> Kita for dyn T {
+153 |     impl<T> Kita for dyn T {
     |                      ^^^^^
 
 error: `dyn Self` is only supported on generic `Self`
-   --> tests/ui_fail/dispatch_restrictions.rs:161:22
+   --> tests/ui_fail/dispatch_restrictions.rs:163:22
     |
-161 |     impl<T> Kita for dyn u32 {
+163 |     impl<T> Kita for dyn u32 {
     |                      ^^^^^^^
 
 error: `dyn Self` is only supported on generic `Self`
-   --> tests/ui_fail/dispatch_restrictions.rs:171:22
+   --> tests/ui_fail/dispatch_restrictions.rs:173:22
     |
-171 |     impl<T> Kita for dyn u32 {
+173 |     impl<T> Kita for dyn u32 {
     |                      ^^^^^^^
 
 error: `dyn Self` is only supported for declared types
-   --> tests/ui_fail/dispatch_restrictions.rs:181:22
+   --> tests/ui_fail/dispatch_restrictions.rs:183:22
     |
-181 |     impl<T> Kita for dyn Option<T> {
+183 |     impl<T> Kita for dyn Option<T> {
     |                      ^^^^^^^^^^^^^
 
 error: `dyn Self` is only supported for declared types
-   --> tests/ui_fail/dispatch_restrictions.rs:190:22
+   --> tests/ui_fail/dispatch_restrictions.rs:192:22
     |
-190 |     impl<T> Kita for dyn Option<T> {
+192 |     impl<T> Kita for dyn Option<T> {
     |                      ^^^^^^^^^^^^^
 
 error: `<dyn Type>::ID` is not allowed in return position
-   --> tests/ui_fail/dispatch_restrictions.rs:202:51
+   --> tests/ui_fail/dispatch_restrictions.rs:204:51
     |
-202 |         fn kita(self, self_id: <dyn Self>::ID) -> <dyn T>::ID;
+204 |         fn kita(self, self_id: <dyn Self>::ID) -> <dyn T>::ID;
     |                                                   ^^^^^^^^^^^
 
 error: `<dyn Type>::ID` is only allowed as a top-level function argument
-   --> tests/ui_fail/dispatch_restrictions.rs:213:33
+   --> tests/ui_fail/dispatch_restrictions.rs:215:33
     |
-213 |         fn kita(self, self_id: (<dyn Self>::ID,)) -> u32;
+215 |         fn kita(self, self_id: (<dyn Self>::ID,)) -> u32;
     |                                 ^
 
 error[E0552]: unrecognized representation hint
-   --> tests/ui_fail/dispatch_restrictions.rs:224:14
+   --> tests/ui_fail/dispatch_restrictions.rs:226:14
     |
-224 |     impl<dyn(char) T> RefKita for T {
+226 |     impl<dyn(char) T> RefKita for T {
     |              ^^^^
     |
     = help: valid reprs are `Rust` (default), `C`, `align`, `packed`, `transparent`, `simd`, `i8`, `u8`, `i16`, `u16`, `i32`, `u32`, `i64`, `u64`, `i128`, `u128`, `isize`, `usize`
     = note: for more information, visit <https://doc.rust-lang.org/reference/type-layout.html?highlight=repr#representations>
 
 error[E0552]: unrecognized representation hint
-   --> tests/ui_fail/dispatch_restrictions.rs:237:14
+   --> tests/ui_fail/dispatch_restrictions.rs:239:14
     |
-237 |     impl<dyn(char) T> RefKita for T {
+239 |     impl<dyn(char) T> RefKita for T {
     |              ^^^^
     |
     = help: valid reprs are `Rust` (default), `C`, `align`, `packed`, `transparent`, `simd`, `i8`, `u8`, `i16`, `u16`, `i32`, `u32`, `i64`, `u64`, `i128`, `u128`, `isize`, `usize`
     = note: for more information, visit <https://doc.rust-lang.org/reference/type-layout.html?highlight=repr#representations>
 
 error[E0119]: conflicting implementations of trait `RefKita` for type `Externed1`
-   --> tests/ui_fail/dispatch_restrictions.rs:255:1
+   --> tests/ui_fail/dispatch_restrictions.rs:257:1
     |
-255 | // ffi! {
-256 | ||     #![extern("C")]
-257 | ||     #![symbol_prefix = "kita"]
+257 | // ffi! {
+258 | ||     #![unsafe(extern("C"))]
+259 | ||     #![symbol_prefix = "kita"]
 ...   ||
-262 | ||     #[dispatch(<Externed1>, <Externed1>)]
+264 | ||     #[dispatch(<Externed1>, <Externed1>)]
     | ||_________________________-____________^ conflicting implementation for `Externed1`
     | |__________________________|
     |                            first implementation here
@@ -133,45 +133,45 @@ error[E0119]: conflicting implementations of trait `RefKita` for type `Externed1
     = note: this error originates in the macro `ffi` (in Nightly builds, run with -Z macro-backtrace for more info)
 
 error[E0308]: mismatched types
-   --> tests/ui_fail/dispatch_restrictions.rs:217:1
+   --> tests/ui_fail/dispatch_restrictions.rs:219:1
     |
-217 | / ffi! {
-218 | |     #![export("C")]
-219 | |
-220 | |     #[id(char)]
+219 | / ffi! {
+220 | |     #![unsafe(export("C"))]
+221 | |
+222 | |     #[id(char)]
 ...   |
-227 | | }
+229 | | }
     | |_^ expected `isize`, found `char`
     |
     = note: enum variant discriminant can only be of a primitive type compatible with the enum's `repr`
     = note: this error originates in the macro `ffi` (in Nightly builds, run with -Z macro-backtrace for more info)
 
 error[E0308]: mismatched types
-   --> tests/ui_fail/dispatch_restrictions.rs:229:1
+   --> tests/ui_fail/dispatch_restrictions.rs:231:1
     |
-229 | / ffi! {
-230 | |     #![extern("C")]
-231 | |     #![symbol_prefix = "kita"]
+231 | / ffi! {
+232 | |     #![unsafe(extern("C"))]
+233 | |     #![symbol_prefix = "kita"]
 ...   |
-241 | | }
+243 | | }
     | |_^ expected `isize`, found `char`
     |
     = note: enum variant discriminant can only be of a primitive type compatible with the enum's `repr`
     = note: this error originates in the macro `ffi` (in Nightly builds, run with -Z macro-backtrace for more info)
 
 error[E0081]: discriminant value `0` assigned more than once
-   --> tests/ui_fail/dispatch_restrictions.rs:243:1
+   --> tests/ui_fail/dispatch_restrictions.rs:245:1
     |
-243 | // ffi! {
-244 | ||     #![export("C")]
-245 | ||
-246 | ||     #[id(u32)]
+245 | // ffi! {
+246 | ||     #![unsafe(export("C"))]
+247 | ||
+248 | ||     #[id(u32)]
 ...   ||
-249 | ||     #[dispatch(<Exported1>, <Exported1>)]
-250 | ||     impl<dyn(u32) T> RefKita for T {
+251 | ||     #[dispatch(<Exported1>, <Exported1>)]
+252 | ||     impl<dyn(u32) T> RefKita for T {
     | ||___________________^
 ...   |
-253 | |  }
+255 | |  }
     | |  -
     | |  |
     | |__`0` assigned here
@@ -180,17 +180,17 @@ error[E0081]: discriminant value `0` assigned more than once
     = note: this error originates in the macro `ffi` (in Nightly builds, run with -Z macro-backtrace for more info)
 
 error[E0081]: discriminant value `1` assigned more than once
-   --> tests/ui_fail/dispatch_restrictions.rs:255:1
+   --> tests/ui_fail/dispatch_restrictions.rs:257:1
     |
-255 | // ffi! {
-256 | ||     #![extern("C")]
-257 | ||     #![symbol_prefix = "kita"]
+257 | // ffi! {
+258 | ||     #![unsafe(extern("C"))]
+259 | ||     #![symbol_prefix = "kita"]
 ...   ||
-262 | ||     #[dispatch(<Externed1>, <Externed1>)]
-263 | ||     impl<dyn(u32) T> RefKita for T {
+264 | ||     #[dispatch(<Externed1>, <Externed1>)]
+265 | ||     impl<dyn(u32) T> RefKita for T {
     | ||___________________^
 ...   |
-267 | |  }
+269 | |  }
     | |  -
     | |  |
     | |__`1` assigned here

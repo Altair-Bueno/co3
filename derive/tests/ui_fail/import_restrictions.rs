@@ -9,30 +9,30 @@ trait Kita {
 ffi! {}
 
 ffi! {
-    #![extern("C")]
-    #![export("C")]
+    #![unsafe(extern("C"))]
+    #![unsafe(export("C"))]
 }
 
 ffi! {
-    #![extern("Rust")]
-    #![export("C")]
+    #![unsafe(extern("Rust"))]
+    #![unsafe(export("C"))]
 }
 
 ffi! {
     #![feature(generic_const_exprs)]
 
-    #![extern("C")]
+    #![unsafe(extern("C"))]
 }
 
 ffi! {
     #![feature(extern_types)]
     #![feature(extern_types)]
 
-    #![extern("C")]
+    #![unsafe(extern("C"))]
 }
 
 ffi! {
-    #![extern("C")]
+    #![unsafe(extern("C"))]
 
     trait Kita {
         fn kita(self);
@@ -40,25 +40,25 @@ ffi! {
 }
 
 ffi! {
-    #![extern("C")]
+    #![unsafe(extern("C"))]
 
     enum Kita {}
 }
 
 ffi! {
-    #![extern("C")]
+    #![unsafe(extern("C"))]
 
     struct Kita {}
 }
 
 ffi! {
-    #![extern("C")]
+    #![unsafe(extern("C"))]
 
     union Kita {}
 }
 
 ffi! {
-    #![extern("C")]
+    #![unsafe(extern("C"))]
 
     #![symbol_prefix = "kita"]
 
@@ -69,7 +69,7 @@ ffi! {
 }
 
 ffi! {
-    #![extern("C")]
+    #![unsafe(extern("C"))]
 
     #![symbol_prefix = "kita"]
 
@@ -80,7 +80,7 @@ ffi! {
 }
 
 ffi! {
-    #![extern("C")]
+    #![unsafe(extern("C"))]
 
     #[dispatch]
     impl Kita {
@@ -89,19 +89,19 @@ ffi! {
 }
 
 ffi! {
-    #![extern("C")]
+    #![unsafe(extern("C"))]
 
     fn kita1(a: u32) {}
 }
 
 ffi! {
-    #![extern("C")]
+    #![unsafe(extern("C"))]
 
     fn kita1((a, b): (u32, u32));
 }
 
 ffi! {
-    #![extern("C")]
+    #![unsafe(extern("C"))]
 
     #[id(u8)]
     type Handle<T>;
@@ -118,7 +118,7 @@ ffi! {
 }
 
 ffi! {
-    #![extern("C")]
+    #![unsafe(extern("C"))]
 
     #[id(u8)]
     type Handle<T>;

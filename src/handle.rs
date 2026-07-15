@@ -110,6 +110,6 @@ macro_rules! handles {
     };
 
     ( $($decls:tt)* ) => {
-        compile_error!("handle declarations require `unsafe { ... }`. Check safety section of `co3::Handle`");
+        compile_error!("handle declarations require `unsafe { ... }`. Check safety section of `co3::handle::Handle`");
     };
 }

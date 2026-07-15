@@ -84,7 +84,7 @@ unsafe impl<R: CheckedTransmute<CType: Copy>, const N: usize> CheckedTransmute f
     }
 }
 
-unsafe impl<R: CheckedTransmute<CType: Sized>> CheckedTransmute for [R] {
+unsafe impl<R: CheckedTransmute<CType: Copy>> CheckedTransmute for [R] {
     #[inline(always)]
     unsafe fn is_valid(target: &Self::CType) -> bool {
         for item in target {

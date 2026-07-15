@@ -10,13 +10,15 @@ use crate::repr::{
     borrow::{
         either_variant_name, gen_borrow_cast_eq_bounds, gen_const_view_name, gen_either_name,
         gen_identity_borrow_impls, gen_item_borrow_impls, gen_item_view, gen_view_ctype_name,
-        gen_view_family_impls, gen_view_owner_name,
+        gen_view_delegate_impls, gen_view_owner_name,
     },
     ctype::{
         gen_ctype_name, gen_extern_c_bounds_for_ctype, gen_item_ctype, gen_variant_struct_name,
     },
     enum_tag_type, gen_size_family_impl, gen_sized_family_impl, generic_param_idents,
-    is_exhaustive_enum, is_type_parameterized, repr_type_is_signed,
+    is_exhaustive_enum, is_type_parameterized,
+    niche::{gen_enum_niche_ir, gen_struct_niche_ir},
+    repr_type_is_signed,
     wide::gen_transparent_wide_impl,
 };
 
@@ -32,7 +34,7 @@ pub(super) fn derive_item(
     let view_def = (!is_view).then(|| gen_item_view(input, attrs, variant_attrs));
 
     let family_impls = if is_view {
-        gen_view_family_impls(&input.ident, &input.generics)
+        gen_view_delegate_impls(&input.ident, &input.generics)
     } else {
         gen_item_family_impls(
             repr,
@@ -51,8 +53,7 @@ pub(super) fn derive_item(
 
     let borrow_impls = (!is_view).then(|| gen_item_borrow_impls(input));
     let codec_impls = gen_item_codec_impls(repr, input, attrs, variant_attrs);
-    // TODO:
-    //let niche_impls = gen_struct_niche_ir_with_mode(name, generics, fields, ffi_type_kind);
+    let niche_impls = (!is_view).then(|| gen_item_niche_impls(repr, input, attrs));
 
     let repr_c_impls = repr
         .is_some()
@@ -66,9 +67,28 @@ pub(super) fn derive_item(
         #borrow_impls
         #wide_impl
         #codec_impls
-        //#niche_impls
+        #niche_impls
 
         #repr_c_impls
+    }
+}
+
+fn gen_item_niche_impls(
+    repr: Option<&ReprKind>,
+    input: &syn::DeriveInput,
+    attrs: &ReprCAttrs,
+) -> TokenStream {
+    match &input.data {
+        syn::Data::Struct(data) => gen_struct_niche_ir(
+            &input.ident,
+            &input.generics,
+            &data.fields,
+            attrs.niche_value.as_ref(),
+        ),
+        syn::Data::Enum(data) => {
+            gen_enum_niche_ir(repr, &input.ident, &input.generics, &data.variants)
+        }
+        syn::Data::Union(_) => unreachable!(),
     }
 }
 
@@ -142,6 +162,7 @@ fn gen_item_repr_c_impls(
             &input.generics,
             &data.fields,
             attrs.is_valid.as_ref(),
+            attrs.niche_value.as_ref(),
         ),
         syn::Data::Enum(data) if repr == Some(&ReprKind::Transparent) => {
             let variant = &data.variants[0];
@@ -153,6 +174,7 @@ fn gen_item_repr_c_impls(
                 &input.generics,
                 &variant.fields,
                 is_valid,
+                None,
             )
         }
         syn::Data::Enum(data) => gen_repr_c_data_enum_impls(
@@ -185,7 +207,6 @@ fn gen_struct_family_impls(
 
     let size_family_impl = gen_size_family_impl(name, generics, &fields);
     let niche_family_impl = if has_custom_niche {
-        // TODO: ?Sized types shouln't allow custom niche. Add validation against it
         gen_niche_family_impl_with_kind(name, generics, quote! {co3::niche::WithCustomNiche })
     } else {
         gen_niche_family_impl(name, generics, &fields)
@@ -225,7 +246,11 @@ fn gen_enum_family_impls(
         gen_sized_family_impl(name, generics)
     };
 
-    let niche_family_impl = gen_enum_niche_family_impl(repr, name, generics, variants);
+    let niche_family_impl = if repr == Some(&ReprKind::Transparent) {
+        gen_niche_family_impl(name, generics, &fields)
+    } else {
+        gen_enum_niche_family_impl(repr, name, generics, variants)
+    };
 
     quote! {
         #repr_family_impl
@@ -572,6 +597,7 @@ fn gen_repr_c_struct_impls<const ADD_COPY: bool>(
     generics: &syn::Generics,
     fields: &syn::Fields,
     is_valid: Option<&syn::ExprClosure>,
+    niche_value: Option<&syn::Expr>,
 ) -> TokenStream {
     let field_types = fields.iter().map(|field| &field.ty).collect::<Vec<_>>();
     let field_vars = field_vars(fields);
@@ -581,9 +607,29 @@ fn gen_repr_c_struct_impls<const ADD_COPY: bool>(
     } else {
         gen_ctype_name(name)
     };
+    let niche_validation = niche_value.map(|niche_value| {
+        let niche_fields = match fields {
+            syn::Fields::Named(_) | syn::Fields::Unit => fields
+                .iter()
+                .filter_map(|field| field.ident.as_ref())
+                .map(|field_name| quote! { __co3_niche_value.#field_name })
+                .collect::<Vec<_>>(),
+            syn::Fields::Unnamed(_) => (0..fields.iter().count())
+                .map(|idx| {
+                    let idx = syn::Index::from(idx);
+                    quote! { __co3_niche_value.#idx }
+                })
+                .collect::<Vec<_>>(),
+        };
+
+        quote! { && {
+            let __co3_niche_value = #niche_value;
+            #(*#field_vars != #niche_fields)||*
+        }}
+    });
 
     let destructure_target = gen_fields_destructure(fields);
-    let is_valid_body = gen_record_is_valid(&field_vars, &field_types, is_valid);
+    let is_valid_body = gen_record_is_valid(&field_vars, &field_types, is_valid, niche_validation);
 
     let is_valid_impl = quote! {
         let #ctype_name #destructure_target = target;
@@ -660,7 +706,7 @@ fn gen_repr_c_data_enum_impls(
         };
 
         let is_valid = variant_attrs[variant_idx].is_valid.as_ref();
-        let is_valid_body = gen_record_is_valid(&field_names, &variant_fields, is_valid);
+        let is_valid_body = gen_record_is_valid(&field_names, &variant_fields, is_valid, None);
 
         quote! {
             #variant_idx_lit => {
@@ -770,6 +816,7 @@ fn gen_record_is_valid(
     field_names: &[Ident],
     field_types: &[&syn::Type],
     is_valid: Option<&syn::ExprClosure>,
+    niche_validation: Option<TokenStream>,
 ) -> TokenStream {
     let custom_validation = is_valid.map(|is_valid| {
         quote! { && { #(
@@ -785,7 +832,7 @@ fn gen_record_is_valid(
             return false;
         })*
 
-        true #custom_validation
+        true #niche_validation #custom_validation
     }
 }
 
@@ -800,10 +847,10 @@ pub(super) fn derive_fieldless_enum(
 
     let repr_family = match repr {
         None => quote! { co3::ir::ReprRust },
-        Some(ReprKind::C(_)) => unreachable!(),
+        Some(ReprKind::C(None)) => unreachable!(),
         // NOTE: Fieldless enum with one variant is a ZST
         Some(ReprKind::Transparent) => quote!(co3::ir::Robust),
-        Some(ReprKind::Primitive(tag)) => {
+        Some(ReprKind::C(Some(tag)) | ReprKind::Primitive(tag)) => {
             let robustness = if is_exhaustive_enum(variants.len(), tag) {
                 quote! { co3::ir::Robust }
             } else {
@@ -824,14 +871,16 @@ pub(super) fn derive_fieldless_enum(
 
     let checked_transmute_method = match repr {
         None => quote! {},
-        Some(ReprKind::C(_)) => unreachable!(),
+        Some(ReprKind::C(None)) => unreachable!(),
         Some(ReprKind::Transparent) => {
             quote! { unsafe fn is_valid((): &()) -> bool { true } }
         }
-        Some(ReprKind::Primitive(repr)) if is_exhaustive_enum(variants.len(), repr) => {
+        Some(ReprKind::C(Some(repr)) | ReprKind::Primitive(repr))
+            if is_exhaustive_enum(variants.len(), repr) =>
+        {
             quote! { unsafe fn is_valid(_: &Self::CType) -> bool { true } }
         }
-        Some(ReprKind::Primitive(repr)) => {
+        Some(ReprKind::C(Some(repr)) | ReprKind::Primitive(repr)) => {
             let niche_value = proc_macro2::Literal::usize_unsuffixed(variants.len());
 
             let is_valid = if repr_type_is_signed(repr) {
@@ -846,8 +895,8 @@ pub(super) fn derive_fieldless_enum(
 
     let checked_transmute_impl = match repr {
         None => quote! {},
-        Some(ReprKind::C(_)) => unreachable!(),
-        Some(ReprKind::Transparent | ReprKind::Primitive(_)) => {
+        Some(ReprKind::C(None)) => unreachable!(),
+        Some(ReprKind::Transparent | ReprKind::C(Some(_)) | ReprKind::Primitive(_)) => {
             quote! {
                 unsafe impl #impl_generics co3::transmute::CheckedTransmute for #name #ty_generics #where_clause {
                     #[inline(always)]
@@ -887,12 +936,11 @@ pub(super) fn derive_fieldless_enum(
             Some(Self::#transparent_variant)
         }
     };
-    // TODO:
-    //let niche_ir = gen_enum_niche_ir(repr, enum_name, generics, variants);
+    let niche_impl = gen_enum_niche_ir(repr, name, generics, variants);
     let borrow_impls = gen_identity_borrow_impls(name, generics);
 
     quote! {
-        //#niche_ir
+        #niche_impl
         #borrow_impls
 
         impl #impl_generics co3::ir::ReprFamily for #name #ty_generics #where_clause {
@@ -1237,12 +1285,6 @@ fn gen_niche_family_impl(
     let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
     let predicates = where_clause.as_ref().map(|w| &w.predicates);
 
-    let sized_bound = if generics.params.is_empty() {
-        quote!(for<'_dummy> Self: Sized,)
-    } else {
-        quote!(Self: Sized,)
-    };
-
     let (parametrized_fields, non_parametrized_fields): (Vec<&syn::Type>, Vec<_>) = fields
         .iter()
         .partition(|ty| is_type_parameterized(ty, generics));
@@ -1270,7 +1312,6 @@ fn gen_niche_family_impl(
         impl #impl_generics co3::niche::NicheFamily for #name #ty_generics where
             #(#field_bounds,)*
             #(#aggregate_bounds,)*
-            #sized_bound
             #predicates
         {
             type Kind = #niche_kind;
@@ -1286,17 +1327,8 @@ fn gen_niche_family_impl_with_kind(
     let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
     let predicates = where_clause.as_ref().map(|w| &w.predicates);
 
-    let sized_bound = if generics.params.is_empty() {
-        quote!(for<'_dummy> Self: Sized,)
-    } else {
-        quote!(Self: Sized,)
-    };
-
     quote! {
-        impl #impl_generics co3::niche::NicheFamily for #item_name #ty_generics where
-            #sized_bound
-            #predicates
-        {
+        impl #impl_generics co3::niche::NicheFamily for #item_name #ty_generics #where_clause {
             type Kind = #kind;
         }
     }

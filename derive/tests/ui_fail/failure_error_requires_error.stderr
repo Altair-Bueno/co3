@@ -1,0 +1,11 @@
+error[E0277]: the trait bound `u8: co3::Error` is not satisfied
+  --> tests/ui_fail/failure_error_requires_error.rs:7:1
+   |
+ 7 | / ffi! {
+ 8 | |     #![unsafe(export("C"))]
+ 9 | |     #![failure = "error"]
+...  |
+12 | | }
+   | |_^ the trait `co3::Error` is not implemented for `u8`
+   |
+   = note: this error originates in the macro `ffi` (in Nightly builds, run with -Z macro-backtrace for more info)

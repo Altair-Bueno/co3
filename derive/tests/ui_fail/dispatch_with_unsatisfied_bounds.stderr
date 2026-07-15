@@ -1,7 +1,7 @@
 error[E0277]: the trait bound `i32: Unimplemented` is not satisfied
-  --> tests/ui_fail/dispatch_with_unsatisfied_bounds.rs:33:56
+  --> tests/ui_fail/dispatch_with_unsatisfied_bounds.rs:35:56
    |
-33 |     impl<dyn(u8) T: Unimplemented> RefKita for T where i32: Unimplemented {
+35 |     impl<dyn(u8) T: Unimplemented> RefKita for T where i32: Unimplemented {
    |                                                        ^^^^^^^^^^^^^^^^^^ the trait `Unimplemented` is not implemented for `i32`
    |
 help: this trait has no implementations, consider adding one
@@ -11,14 +11,14 @@ help: this trait has no implementations, consider adding one
    | ^^^^^^^^^^^^^^^^^^^^^^^
 
 error[E0277]: the trait bound `Exported2<u32>: Unimplemented` is not satisfied
-  --> tests/ui_fail/dispatch_with_unsatisfied_bounds.rs:21:1
+  --> tests/ui_fail/dispatch_with_unsatisfied_bounds.rs:23:1
    |
-21 | / ffi! {
-22 | |     #![export("C")]
-23 | |
-24 | |     #[id(u8)]
+23 | / ffi! {
+24 | |     #![unsafe(export("C"))]
+25 | |
+26 | |     #[id(u8)]
 ...  |
-36 | | }
+38 | | }
    | |_^ unsatisfied trait bound
    |
 help: the trait `Unimplemented` is not implemented for `Exported2<u32>`
@@ -34,21 +34,21 @@ help: this trait has no implementations, consider adding one
    = note: this error originates in the macro `ffi` (in Nightly builds, run with -Z macro-backtrace for more info)
 
 error[E0277]: the trait bound `Externed2<u32>: Unimplemented` is not satisfied
-  --> tests/ui_fail/dispatch_with_unsatisfied_bounds.rs:50:17
+  --> tests/ui_fail/dispatch_with_unsatisfied_bounds.rs:52:17
    |
-50 |       #[dispatch(<Externed2<u32>>)]
+52 |       #[dispatch(<Externed2<u32>>)]
    |  _________________^
-51 | |     impl<dyn(u64) T: Unimplemented> RefKita for T where i32: Unimplemented {
+53 | |     impl<dyn(u64) T: Unimplemented> RefKita for T where i32: Unimplemented {
    | |__________________________________^ unsatisfied trait bound
    |
 help: the trait `Unimplemented` is not implemented for `Externed2<u32>`
-  --> tests/ui_fail/dispatch_with_unsatisfied_bounds.rs:38:1
+  --> tests/ui_fail/dispatch_with_unsatisfied_bounds.rs:40:1
    |
-38 | / ffi! {
-39 | |     #![extern("C")]
-40 | |
-41 | |     #[id(u64)]
-42 | |     type Externed2<T>;
+40 | / ffi! {
+41 | |     #![unsafe(extern("C"))]
+42 | |
+43 | |     #[id(u64)]
+44 | |     type Externed2<T>;
    | |__________________^
 help: this trait has no implementations, consider adding one
   --> tests/ui_fail/dispatch_with_unsatisfied_bounds.rs:3:1
@@ -58,9 +58,9 @@ help: this trait has no implementations, consider adding one
    = note: this error originates in the macro `ffi` (in Nightly builds, run with -Z macro-backtrace for more info)
 
 error[E0277]: the trait bound `i32: Unimplemented` is not satisfied
-  --> tests/ui_fail/dispatch_with_unsatisfied_bounds.rs:51:57
+  --> tests/ui_fail/dispatch_with_unsatisfied_bounds.rs:53:57
    |
-51 |     impl<dyn(u64) T: Unimplemented> RefKita for T where i32: Unimplemented {
+53 |     impl<dyn(u64) T: Unimplemented> RefKita for T where i32: Unimplemented {
    |                                                         ^^^^^^^^^^^^^^^^^^ the trait `Unimplemented` is not implemented for `i32`
    |
 help: this trait has no implementations, consider adding one

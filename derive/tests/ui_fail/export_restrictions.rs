@@ -1,7 +1,9 @@
 use co3::ffi;
 
 co3::handles! {
-    FfiStruct,
+    unsafe {
+        FfiStruct,
+    }
 }
 
 trait Kita {
@@ -11,7 +13,7 @@ trait Kita {
 }
 
 ffi! {
-    #![export("C")]
+    #![unsafe(export("C"))]
 
     #[derive(Clone)]
     enum FfiStruct {
@@ -23,30 +25,30 @@ ffi! {
 ffi! {}
 
 ffi! {
-    #![export("C")]
-    #![export("C")]
+    #![unsafe(export("C"))]
+    #![unsafe(export("C"))]
 }
 
 ffi! {
-    #![export("C")]
-    #![extern("C")]
+    #![unsafe(export("C"))]
+    #![unsafe(extern("C"))]
 }
 
 ffi! {
-    #![export("C")]
+    #![unsafe(export("C"))]
 
     #![feature(generic_const_exprs)]
 }
 
 ffi! {
-    #![export("C")]
+    #![unsafe(export("C"))]
 
     #![feature(extern_types)]
     #![feature(extern_types)]
 }
 
 ffi! {
-    #![export("C")]
+    #![unsafe(export("C"))]
 
     trait Kita {
         fn kita(self);
@@ -54,39 +56,39 @@ ffi! {
 }
 
 ffi! {
-    #![export("C")]
+    #![unsafe(export("C"))]
 
     enum Kita {}
 }
 
 ffi! {
-    #![export("C")]
+    #![unsafe(export("C"))]
 
     struct Kita {}
 }
 
 ffi! {
-    #![export("C")]
+    #![unsafe(export("C"))]
 
     union Kita {}
 }
 
 ffi! {
-    #![export("C")]
+    #![unsafe(export("C"))]
 
     #[unknown_attribute]
     fn kita3(_a: u32);
 }
 
 ffi! {
-    #![export("C")]
+    #![unsafe(export("C"))]
 
     #[some_attr]
     type OpaqueType;
 }
 
 ffi! {
-    #![export("C")]
+    #![unsafe(export("C"))]
 
     #[some_attr]
     impl Clone for FfiStruct {
@@ -95,7 +97,7 @@ ffi! {
 }
 
 ffi! {
-    #![export("C")]
+    #![unsafe(export("C"))]
 
     impl Kita for u32 {
         #[dispatch]
@@ -104,14 +106,14 @@ ffi! {
 }
 
 ffi! {
-    #![export("C")]
+    #![unsafe(export("C"))]
 
     #[dispatch]
     type OpaqueType;
 }
 
 ffi! {
-    #![export("C")]
+    #![unsafe(export("C"))]
 
     impl Kita for u32 {
         fn kita1(self) {}
@@ -119,19 +121,19 @@ ffi! {
 }
 
 ffi! {
-    #![export("C")]
+    #![unsafe(export("C"))]
 
     fn kita1(a: u32) {}
 }
 
 ffi! {
-    #![export("C")]
+    #![unsafe(export("C"))]
 
     fn kita1((a, b): (u32, u32));
 }
 
 ffi! {
-    #![export("C")]
+    #![unsafe(export("C"))]
 
     #[id(u32)]
     type OpaqueType<T>;
@@ -148,7 +150,7 @@ ffi! {
 }
 
 ffi! {
-    #![export("C")]
+    #![unsafe(export("C"))]
 
     #[id(u32)]
     type OpaqueType<T>;

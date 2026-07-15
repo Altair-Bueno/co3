@@ -1,4 +1,4 @@
-error: missing `#![export("...")]` or `#![extern("...")]`
+error: missing `#![unsafe(export("..."))]` or `#![unsafe(extern("..."))]`
  --> tests/ui_fail/import_restrictions.rs:9:1
   |
 9 | ffi! {}
@@ -9,14 +9,14 @@ error: missing `#![export("...")]` or `#![extern("...")]`
 error: duplicate declaration kind attribute
   --> tests/ui_fail/import_restrictions.rs:13:8
    |
-13 |     #![export("C")]
-   |        ^^^^^^^^^^^
+13 |     #![unsafe(export("C"))]
+   |        ^^^^^^^^^^^^^^^^^^^
 
 error: duplicate declaration kind attribute
   --> tests/ui_fail/import_restrictions.rs:18:8
    |
-18 |     #![export("C")]
-   |        ^^^^^^^^^^^
+18 |     #![unsafe(export("C"))]
+   |        ^^^^^^^^^^^^^^^^^^^
 
 error: Only `extern_types` is supported
   --> tests/ui_fail/import_restrictions.rs:22:16

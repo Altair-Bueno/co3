@@ -12,7 +12,9 @@ struct Unsized<T: ?Sized>(T);
 struct Wrapper<T: ?Sized>(Box<T>);
 
 handles! {
-    Unsized<str>,
+    unsafe {
+        Unsized<str>,
+    }
 }
 
 impl From<Box<Unsized<str>>> for Unsized<String> {
@@ -59,7 +61,7 @@ mod provider {
     }
 
     ffi! {
-        #![export("C")]
+        #![unsafe(export("C"))]
 
         #[dispatch(<Unsized<str>>)]
         impl<dyn(u8) T = [c_void]> Wrapper<T> {
@@ -69,7 +71,7 @@ mod provider {
 }
 
 ffi! {
-    #![extern("C")]
+    #![unsafe(extern("C"))]
 
     #![symbol_prefix = "kita"]
 

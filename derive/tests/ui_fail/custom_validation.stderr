@@ -1,35 +1,53 @@
 error: `is_valid` is only supported on structs or enum variants
-  --> tests/ui_fail/custom_validation.rs:12:5
+  --> tests/ui_fail/custom_validation.rs:14:5
    |
-12 |     #[reprC(is_valid = |a| *a != 0)]
+14 |     #[reprC(is_valid = |a| *a != 0)]
    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 error: `NICHE_VALUE` is only supported on structs
-  --> tests/ui_fail/custom_validation.rs:18:10
+  --> tests/ui_fail/custom_validation.rs:20:10
    |
-18 | pub enum CustomEnum1 {
+20 | pub enum CustomEnum1 {
    |          ^^^^^^^^^^^
 
 error: `is_valid` is only supported on structs or enum variants
-  --> tests/ui_fail/custom_validation.rs:25:10
+  --> tests/ui_fail/custom_validation.rs:27:10
    |
-25 | pub enum CustomEnum2 {
+27 | pub enum CustomEnum2 {
    |          ^^^^^^^^^^^
 
 error: Unions are not supported
-  --> tests/ui_fail/custom_validation.rs:31:1
+  --> tests/ui_fail/custom_validation.rs:33:1
    |
-31 | / #[reprC(is_valid = |a| *a != 0)]
-32 | | pub union CustomUnion1 {
-33 | |     a: u32
-34 | | }
+33 | / #[reprC(is_valid = |a| *a != 0)]
+34 | | pub union CustomUnion1 {
+35 | |     a: u32
+36 | | }
    | |_^
 
 error: Unions are not supported
-  --> tests/ui_fail/custom_validation.rs:37:1
+  --> tests/ui_fail/custom_validation.rs:39:1
    |
-37 | / #[reprC(is_valid = |a| *a != 0)]
-38 | | pub union CustomUnion2 {
-39 | |     a: u32
-40 | | }
+39 | / #[reprC(is_valid = |a| *a != 0)]
+40 | | pub union CustomUnion2 {
+41 | |     a: u32
+42 | | }
    | |_^
+
+error: `NICHE_VALUE` is not supported on unsized types
+  --> tests/ui_fail/custom_validation.rs:52:28
+   |
+52 | pub struct UnsizedSlice<T>([T]);
+   |                            ^^^
+
+error: `NICHE_VALUE` is not supported on unsized types
+  --> tests/ui_fail/custom_validation.rs:56:23
+   |
+56 | pub struct UnsizedStr(str);
+   |                       ^^^
+
+error: `NICHE_VALUE` is not supported on unsized types
+  --> tests/ui_fail/custom_validation.rs:60:31
+   |
+60 | pub struct UnsizedTraitObject(dyn Send);
+   |                               ^^^^^^^^

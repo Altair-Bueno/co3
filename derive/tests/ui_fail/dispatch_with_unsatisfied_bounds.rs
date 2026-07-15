@@ -14,12 +14,14 @@ impl RefKita for Exported2<u32> {
 }
 
 handles! {
-    Exported2<u32>,
-    Externed2<u32>,
+    unsafe {
+        Exported2<u32>,
+        Externed2<u32>,
+    }
 }
 
 ffi! {
-    #![export("C")]
+    #![unsafe(export("C"))]
 
     #[id(u8)]
     type Exported2<T>;
@@ -36,7 +38,7 @@ ffi! {
 }
 
 ffi! {
-    #![extern("C")]
+    #![unsafe(extern("C"))]
 
     #[id(u64)]
     type Externed2<T>;

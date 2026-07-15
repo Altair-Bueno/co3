@@ -1,34 +1,34 @@
-error: Explicit lifetimes found but no `#[unsafe(lifetimes)]`
+error: Explicit lifetimes found but no `#[explicit_lifetimes]`
   --> tests/ui_fail/lifetimes_require_opt_in.rs:18:26
    |
 18 |         fn exported_named<'a>(value: &'a u8) -> &'a u8;
    |                          ^^^^
 
-error: Explicit lifetimes found but no `#[unsafe(lifetimes)]`
+error: Explicit lifetimes found but no `#[explicit_lifetimes]`
   --> tests/ui_fail/lifetimes_require_opt_in.rs:20:13
    |
 20 |         impl<'a> Exported<'a> {
    |             ^^^^
 
-error: Explicit lifetimes found but no `#[unsafe(lifetimes)]`
+error: Explicit lifetimes found but no `#[explicit_lifetimes]`
   --> tests/ui_fail/lifetimes_require_opt_in.rs:26:20
    |
 26 |             fn pong<'a>(&self);
    |                    ^^^^
 
-error: Explicit lifetimes found but no `#[unsafe(lifetimes)]`
+error: Explicit lifetimes found but no `#[explicit_lifetimes]`
   --> tests/ui_fail/lifetimes_require_opt_in.rs:42:22
    |
 42 |     fn imported_named<'a>(value: &'a u8) -> &'a u8;
    |                      ^^^^
 
-error: Explicit lifetimes found but no `#[unsafe(lifetimes)]`
+error: Explicit lifetimes found but no `#[explicit_lifetimes]`
   --> tests/ui_fail/lifetimes_require_opt_in.rs:46:9
    |
 46 |     impl<'a> Imported<'a> {
    |         ^^^^
 
-error: Explicit lifetimes found but no `#[unsafe(lifetimes)]`
+error: Explicit lifetimes found but no `#[explicit_lifetimes]`
   --> tests/ui_fail/lifetimes_require_opt_in.rs:52:16
    |
 52 |         fn pong<'a>(&self);

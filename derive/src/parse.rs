@@ -1,6 +1,6 @@
 use std::collections::HashSet;
 
-use proc_macro2::{Ident, TokenStream, TokenTree};
+use proc_macro2::{Delimiter, Group, Ident, TokenStream, TokenTree};
 use quote::quote;
 use syn::{
     Attribute, FnArg, GenericArgument, GenericParam, ItemFn, ItemImpl, LitStr, PatType, Result,
@@ -9,10 +9,11 @@ use syn::{
     parse_quote, parse_quote_spanned,
     punctuated::Punctuated,
     spanned::Spanned,
+    visit::Visit,
     visit_mut::VisitMut,
 };
 
-use crate::{DeclKind, dispatch::parse_handle_id_attr};
+use crate::DeclKind;
 
 const FN_BODIES_NOT_ALLOWED_MSG: &str = "fn bodies are not allowed in declarations";
 
@@ -25,6 +26,9 @@ pub(crate) enum ParsedForeignItem {
 pub(crate) struct FfiInput {
     pub(crate) kind: DeclKind,
     pub(crate) abi: syn::Abi,
+    pub(crate) symbol_prefix: LitStr,
+    pub(crate) features: MacroFeatures,
+    pub(crate) failure_mode: FailureMode,
     pub(crate) attrs: Vec<Attribute>,
     pub(crate) items: Vec<ParsedForeignItem>,
 }
@@ -35,10 +39,10 @@ pub(crate) struct MacroFeatures {
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub(crate) enum PanicMode {
+pub(crate) enum FailureMode {
     #[default]
-    Unwind,
-    Abort,
+    Panic,
+    Error,
 }
 
 struct FfiBody {
@@ -110,16 +114,32 @@ fn parse_items(input: ParseStream) -> Result<Vec<ParsedForeignItem>> {
     Ok(items)
 }
 
-pub(crate) fn parse_ffi_input(tokens: TokenStream) -> Result<FfiInput> {
-    let FfiBody { mut attrs, items } = parse_ffi_body(tokens)?;
-    let (kind, abi) = take_decl_attr(&mut attrs)?;
+impl FfiInput {
+    pub(crate) fn parse(tokens: TokenStream) -> Result<Self> {
+        let FfiBody { mut attrs, items } = parse_ffi_body(tokens)?;
+        let (kind, abi) = take_decl_attr(&mut attrs)?;
+        let symbol_prefix =
+            parse_symbol_prefix_attr(&mut attrs)?.unwrap_or_else(default_symbol_prefix);
+        let failure_mode = parse_failure_attr(&mut attrs)?;
+        let features = parse_feature_attrs(&mut attrs)?;
 
-    Ok(FfiInput {
-        kind,
-        abi,
-        attrs,
-        items,
-    })
+        Ok(Self {
+            kind,
+            abi,
+            symbol_prefix,
+            features,
+            failure_mode,
+            attrs,
+            items,
+        })
+    }
+}
+
+fn default_symbol_prefix() -> LitStr {
+    LitStr::new(
+        &std::env::var("CARGO_CRATE_NAME").unwrap_or_else(|_| "co3".to_owned()),
+        proc_macro2::Span::call_site(),
+    )
 }
 
 fn parse_ffi_body(tokens: TokenStream) -> Result<FfiBody> {
@@ -154,16 +174,11 @@ fn take_decl_attr(attrs: &mut Vec<Attribute>) -> Result<(DeclKind, syn::Abi)> {
     let mut decl = None;
 
     attrs.retain(|attr| {
-        let path = attr.path();
-        let kind = if path.is_ident("export") {
-            DeclKind::Export
-        } else if path.is_ident("r#extern") {
-            DeclKind::Extern
-        } else {
+        if !attr.path().is_ident("unsafe") {
             return true;
-        };
+        }
 
-        let next = parse_decl_attr(kind, attr);
+        let next = parse_decl_attr(attr);
         if decl.replace(next).is_some() {
             decl = Some(Err(syn::Error::new_spanned(
                 &attr.meta,
@@ -178,29 +193,41 @@ fn take_decl_attr(attrs: &mut Vec<Attribute>) -> Result<(DeclKind, syn::Abi)> {
         Some(result) => result,
         None => Err(syn::Error::new(
             proc_macro2::Span::call_site(),
-            "missing `#![export(\"...\")]` or `#![extern(\"...\")]`",
+            "missing `#![unsafe(export(\"...\"))]` or `#![unsafe(extern(\"...\"))]`",
         )),
     }
 }
 
-fn parse_decl_attr(kind: DeclKind, attr: &Attribute) -> Result<(DeclKind, syn::Abi)> {
-    let err_msg = match kind {
-        DeclKind::Export => "expected `#![export(\"...\")]`",
-        DeclKind::Extern => "expected `#![extern(\"...\")]`",
-    };
+fn parse_decl_attr(attr: &Attribute) -> Result<(DeclKind, syn::Abi)> {
+    let err_msg = "expected `#![unsafe(export(\"...\"))]` or `#![unsafe(extern(\"...\"))]`";
 
     let syn::Meta::List(list) = &attr.meta else {
         return Err(syn::Error::new_spanned(attr, err_msg));
     };
 
-    let abi_lit = syn::parse2::<LitStr>(list.tokens.clone())
+    let nested = syn::parse2::<syn::Meta>(list.tokens.clone())
+        .map_err(|_| syn::Error::new_spanned(attr, err_msg))?;
+    let syn::Meta::List(nested) = nested else {
+        return Err(syn::Error::new_spanned(attr, err_msg));
+    };
+
+    let path = &nested.path;
+    let kind = if path.is_ident("export") {
+        DeclKind::Export
+    } else if path.is_ident("r#extern") {
+        DeclKind::Extern
+    } else {
+        return Err(syn::Error::new_spanned(attr, err_msg));
+    };
+
+    let abi_lit = syn::parse2::<LitStr>(nested.tokens.clone())
         .map_err(|_| syn::Error::new_spanned(attr, err_msg))?;
     let abi = syn::parse2(quote!(extern #abi_lit))?;
 
     Ok((kind, abi))
 }
 
-pub(crate) fn parse_symbol_prefix_attr(attrs: &mut Vec<Attribute>) -> Result<Option<LitStr>> {
+fn parse_symbol_prefix_attr(attrs: &mut Vec<Attribute>) -> Result<Option<LitStr>> {
     let mut kept = Vec::with_capacity(attrs.len());
 
     let mut symbol_prefix = None;
@@ -235,7 +262,7 @@ pub(crate) fn parse_symbol_prefix_attr(attrs: &mut Vec<Attribute>) -> Result<Opt
     Ok(symbol_prefix)
 }
 
-pub(crate) fn parse_feature_attrs(attrs: &mut Vec<Attribute>) -> Result<MacroFeatures> {
+fn parse_feature_attrs(attrs: &mut Vec<Attribute>) -> Result<MacroFeatures> {
     let mut kept = Vec::with_capacity(attrs.len());
     let mut features = MacroFeatures::default();
 
@@ -285,17 +312,17 @@ pub(crate) fn parse_feature_attrs(attrs: &mut Vec<Attribute>) -> Result<MacroFea
     Ok(features)
 }
 
-pub(crate) fn parse_panic_attr(attrs: &mut Vec<Attribute>) -> Result<PanicMode> {
+fn parse_failure_attr(attrs: &mut Vec<Attribute>) -> Result<FailureMode> {
     let mut kept = Vec::with_capacity(attrs.len());
-    let mut panic_mode = None;
+    let mut failure_mode = None;
 
     for attr in attrs.drain(..) {
-        if !attr.path().is_ident("panic") {
+        if !attr.path().is_ident("failure") {
             kept.push(attr);
             continue;
         }
 
-        let err_msg = "Expected `#![panic = \"abort\"]`";
+        let err_msg = "Expected `#![failure = \"panic\"]` or `#![failure = \"error\"]`";
         let syn::Meta::NameValue(nv) = &attr.meta else {
             return Err(syn::Error::new_spanned(&attr, err_msg));
         };
@@ -309,37 +336,217 @@ pub(crate) fn parse_panic_attr(attrs: &mut Vec<Attribute>) -> Result<PanicMode> 
         };
 
         let next = match value.value().as_str() {
-            "abort" => PanicMode::Abort,
+            "panic" => FailureMode::Panic,
+            "error" => FailureMode::Error,
             _ => return Err(syn::Error::new_spanned(value, err_msg)),
         };
 
-        if panic_mode.replace(next).is_some() {
+        if failure_mode.replace(next).is_some() {
             return Err(syn::Error::new_spanned(
                 attr,
-                "Duplicate `#![panic = \"...\"]`",
+                "Duplicate `#![failure = \"...\"]`",
             ));
         }
     }
 
     *attrs = kept;
-    Ok(panic_mode.unwrap_or_default())
+    Ok(failure_mode.unwrap_or_default())
+}
+
+pub(crate) fn parse_dispatch_attr(
+    impl_: &syn::ItemImpl,
+    allow_empty: bool,
+) -> Result<Punctuated<syn::AngleBracketedGenericArguments, syn::Token![,]>> {
+    let Some(attr) = impl_
+        .attrs
+        .iter()
+        .find(|attr| attr.path().is_ident("dispatch"))
+    else {
+        return Ok(Punctuated::default());
+    };
+
+    let params = &impl_
+        .generics
+        .params
+        .iter()
+        .filter(|arg| !matches!(arg, GenericParam::Lifetime(_)))
+        .collect::<Vec<_>>();
+
+    let err_msg = format!(
+        "dispatch must provide {} generic argument{}",
+        params.len(),
+        if params.len() == 1 { "" } else { "s" }
+    );
+
+    let syn::Meta::List(list) = &attr.meta else {
+        if !allow_empty && !params.is_empty() {
+            return Err(syn::Error::new_spanned(attr, err_msg));
+        }
+
+        return Ok(Punctuated::default());
+    };
+
+    let mut generic_args: Punctuated<syn::AngleBracketedGenericArguments, syn::Token![,]> =
+        Punctuated::parse_terminated.parse2(list.tokens.clone())?;
+
+    if generic_args.is_empty() && !allow_empty && !params.is_empty() {
+        return Err(syn::Error::new_spanned(attr, err_msg));
+    }
+
+    struct LifetimeArgValidator {
+        errors: Option<syn::Error>,
+    }
+
+    impl LifetimeArgValidator {
+        fn push(&mut self, err: syn::Error) {
+            if let Some(errors) = &mut self.errors {
+                errors.combine(err);
+            } else {
+                self.errors = Some(err);
+            }
+        }
+    }
+
+    impl Visit<'_> for LifetimeArgValidator {
+        fn visit_lifetime(&mut self, node: &syn::Lifetime) {
+            if node.ident == "_" {
+                return;
+            }
+
+            let err_msg = "undeclared lifetime; consider using '_";
+            self.push(syn::Error::new_spanned(node, err_msg));
+        }
+    }
+
+    let mut lifetime_validator = LifetimeArgValidator { errors: None };
+
+    for entry in &generic_args {
+        for arg in &entry.args {
+            if matches!(arg, syn::GenericArgument::Lifetime(_)) {
+                let err_msg = "lifetime arguments not required in #[dispatch]";
+                lifetime_validator.push(syn::Error::new_spanned(arg, err_msg));
+                continue;
+            }
+            lifetime_validator.visit_generic_argument(arg);
+        }
+    }
+
+    if let Some(errors) = lifetime_validator.errors {
+        return Err(errors);
+    }
+
+    for entry in &generic_args {
+        let args_len = entry
+            .args
+            .iter()
+            .filter(|arg| !matches!(arg, GenericArgument::Lifetime(_)))
+            .count();
+
+        if args_len != params.len() {
+            return Err(syn::Error::new_spanned(entry, err_msg));
+        }
+    }
+
+    let mut errors = None::<syn::Error>;
+    for entry in &mut generic_args {
+        let err_msg = "argument kind must match declared parameter kind";
+
+        for (param, arg) in params.iter().zip(
+            entry
+                .args
+                .iter_mut()
+                .filter(|arg| !matches!(arg, GenericArgument::Lifetime(_))),
+        ) {
+            if let (GenericParam::Const(_), GenericArgument::Type(ty)) = (param, &arg)
+                && matches!(ty, syn::Type::Path(_))
+            {
+                *arg = parse_quote!({ #ty });
+            }
+        }
+
+        for (param, arg) in params.iter().zip(
+            entry
+                .args
+                .iter()
+                .filter(|arg| !matches!(arg, GenericArgument::Lifetime(_))),
+        ) {
+            let mismatch = match param {
+                GenericParam::Lifetime(_) => false,
+                GenericParam::Type(_) => !matches!(arg, GenericArgument::Type(_)),
+                GenericParam::Const(_) => !matches!(arg, GenericArgument::Const(_)),
+            };
+
+            if mismatch {
+                let err = syn::Error::new_spanned(arg, err_msg);
+
+                if let Some(errors) = &mut errors {
+                    errors.combine(err);
+                } else {
+                    errors = Some(err);
+                }
+            }
+        }
+    }
+
+    if let Some(errors) = errors {
+        return Err(errors);
+    }
+
+    Ok(generic_args)
+}
+
+pub(crate) fn parse_handle_id_attr(attrs: &mut Vec<syn::Attribute>) -> Result<Option<syn::Type>> {
+    let mut kept = Vec::with_capacity(attrs.len());
+
+    let mut id_ty = None;
+    for attr in attrs.drain(..) {
+        if !attr.path().is_ident("id") {
+            kept.push(attr);
+            continue;
+        }
+
+        let syn::Meta::List(list) = &attr.meta else {
+            return Err(syn::Error::new_spanned(attr, "expected `#[id(repr)]`"));
+        };
+
+        let ty = list
+            .parse_args::<syn::Type>()
+            .map_err(|_| syn::Error::new_spanned(&attr, "expected `#[id(repr)]`"))?;
+
+        if id_ty.replace(ty).is_some() {
+            return Err(syn::Error::new_spanned(attr, "duplicate `#[id(...)]`"));
+        }
+    }
+
+    *attrs = kept;
+    Ok(id_ty)
 }
 
 fn normalize_extern_attr_tokens(tokens: TokenStream) -> TokenStream {
-    let mut iter = tokens.into_iter();
-    let Some(first) = iter.next() else {
-        return TokenStream::new();
-    };
-
-    let first = if first.to_string() == "extern" {
-        let mut ident = Ident::new_raw("extern", first.span());
-        ident.set_span(first.span());
-        TokenTree::Ident(ident)
-    } else {
-        first
-    };
-
-    std::iter::once(first).chain(iter).collect()
+    tokens
+        .into_iter()
+        .map(|token| match token {
+            TokenTree::Ident(ident) if ident == "extern" => {
+                let mut ident = Ident::new_raw("extern", ident.span());
+                ident.set_span(ident.span());
+                TokenTree::Ident(ident)
+            }
+            TokenTree::Group(group) => {
+                let mut normalized = Group::new(
+                    match group.delimiter() {
+                        Delimiter::Parenthesis => Delimiter::Parenthesis,
+                        Delimiter::Brace => Delimiter::Brace,
+                        Delimiter::Bracket => Delimiter::Bracket,
+                        Delimiter::None => Delimiter::None,
+                    },
+                    normalize_extern_attr_tokens(group.stream()),
+                );
+                normalized.set_span(group.span());
+                TokenTree::Group(normalized)
+            }
+            token => token,
+        })
+        .collect()
 }
 
 fn is_fn_head(input: syn::parse::ParseStream) -> syn::Result<bool> {
@@ -349,6 +556,7 @@ fn is_fn_head(input: syn::parse::ParseStream) -> syn::Result<bool> {
     let _ = ahead.parse::<Option<syn::Token![async]>>()?;
     let _ = ahead.parse::<Option<syn::Token![unsafe]>>()?;
     let _ = ahead.parse::<Option<syn::Abi>>()?;
+    let _ = ahead.parse::<Option<syn::Token![move]>>()?;
 
     Ok(ahead.peek(syn::Token![fn]))
 }
@@ -425,14 +633,28 @@ struct PreprocessedArg {
     tokens: TokenStream,
 }
 
+fn push_by_val(attrs: &mut Vec<Attribute>) {
+    attrs.push(parse_quote!(#[by_val]));
+}
+
+fn parse_move_by_val(
+    input: syn::parse::ParseStream,
+    attrs: &mut Vec<Attribute>,
+) -> syn::Result<bool> {
+    if input.peek(syn::Token![move]) {
+        input.parse::<syn::Token![move]>()?;
+        push_by_val(attrs);
+        return Ok(true);
+    }
+
+    Ok(false)
+}
+
 impl PreprocessedArg {
     fn parse_with(input: syn::parse::ParseStream) -> syn::Result<Self> {
         let attrs = input.call(syn::Attribute::parse_outer)?;
         let mut merged_attrs = attrs;
-        if input.peek(syn::Token![move]) {
-            input.parse::<syn::Token![move]>()?;
-            merged_attrs.push(parse_quote!(#[by_val]));
-        }
+        let _ = parse_move_by_val(input, &mut merged_attrs)?;
 
         let receiver = if input.peek(syn::Token![&]) {
             let ahead = input.fork();
@@ -517,10 +739,33 @@ fn preprocess_signature_inputs(inputs: TokenStream) -> syn::Result<TokenStream> 
     parser.parse2(inputs)
 }
 
-fn preprocess_signature_tokens(signature_tokens: TokenStream) -> syn::Result<TokenStream> {
+fn preprocess_signature_tokens(
+    signature_tokens: TokenStream,
+    attrs: &mut Vec<Attribute>,
+) -> syn::Result<TokenStream> {
     let mut rewritten = Vec::new();
     let mut saw_inputs = false;
-    for tt in signature_tokens {
+    let mut saw_fn = false;
+    let mut by_val = false;
+    let mut signature_tokens = signature_tokens.into_iter().peekable();
+    while let Some(tt) = signature_tokens.next() {
+        if !saw_fn && let proc_macro2::TokenTree::Ident(ident) = &tt {
+            if ident == "move"
+                && signature_tokens.peek().is_some_and(
+                    |next| matches!(next, proc_macro2::TokenTree::Ident(next) if next == "fn"),
+                )
+            {
+                if by_val {
+                    return Err(syn::Error::new(ident.span(), "duplicate `move fn`"));
+                }
+                by_val = true;
+                push_by_val(attrs);
+                continue;
+            }
+            if ident == "fn" {
+                saw_fn = true;
+            }
+        }
         if let proc_macro2::TokenTree::Group(group) = &tt
             && group.delimiter() == proc_macro2::Delimiter::Parenthesis
             && !saw_inputs
@@ -539,14 +784,17 @@ fn preprocess_signature_tokens(signature_tokens: TokenStream) -> syn::Result<Tok
     Ok(rewritten.into_iter().collect())
 }
 
-fn parse_signature(input: syn::parse::ParseStream) -> syn::Result<syn::Signature> {
+fn parse_signature(
+    input: syn::parse::ParseStream,
+    attrs: &mut Vec<Attribute>,
+) -> syn::Result<syn::Signature> {
     let mut signature_tokens = TokenStream::new();
     while !input.peek(syn::Token![;]) && !input.peek(syn::token::Brace) {
         let tt: proc_macro2::TokenTree = input.parse()?;
         signature_tokens.extend(std::iter::once(tt));
     }
 
-    let rewritten = preprocess_signature_tokens(signature_tokens)?;
+    let rewritten = preprocess_signature_tokens(signature_tokens, attrs)?;
     let mut sig = syn::parse2::<syn::Signature>(rewritten)?;
     normalize_const_args_in_fn(&mut sig);
 
@@ -554,9 +802,9 @@ fn parse_signature(input: syn::parse::ParseStream) -> syn::Result<syn::Signature
 }
 
 fn parse_fn_item(input: syn::parse::ParseStream) -> syn::Result<ItemFn> {
-    let attrs = input.call(syn::Attribute::parse_outer)?;
+    let mut attrs = input.call(syn::Attribute::parse_outer)?;
     let vis = input.parse::<syn::Visibility>()?;
-    let sig = parse_signature(input)?;
+    let sig = parse_signature(input, &mut attrs)?;
     if input.peek(syn::token::Brace) {
         return Err(input.error(FN_BODIES_NOT_ALLOWED_MSG));
     }
@@ -621,7 +869,7 @@ fn parse_impl_item(input: syn::parse::ParseStream) -> syn::Result<ItemImpl> {
                 break;
             }
 
-            let attrs = input.call(syn::Attribute::parse_outer)?;
+            let mut attrs = input.call(syn::Attribute::parse_outer)?;
             let vis = input.parse::<syn::Visibility>()?;
             let ahead = input.fork();
             if ahead.peek(syn::Token![type]) {
@@ -635,7 +883,7 @@ fn parse_impl_item(input: syn::parse::ParseStream) -> syn::Result<ItemImpl> {
                 continue;
             }
 
-            let sig = parse_signature(input)?;
+            let sig = parse_signature(input, &mut attrs)?;
             let body = if input.peek(syn::token::Brace) {
                 return Err(input.error(FN_BODIES_NOT_ALLOWED_MSG));
             } else {
@@ -842,6 +1090,32 @@ mod tests {
                 .iter()
                 .any(|attr| attr.path().is_ident("by_val"))
         );
+    }
+
+    #[test]
+    fn parses_move_fn_return() {
+        let item = Parser::parse_str(parse_fn_item, "move fn name() -> Value;").unwrap();
+
+        assert!(item.attrs.iter().any(|attr| attr.path().is_ident("by_val")));
+    }
+
+    #[test]
+    fn parses_qualified_move_fn_return() {
+        let item = Parser::parse_str(
+            parse_fn_item,
+            "unsafe extern \"C\" move fn name() -> Value;",
+        )
+        .unwrap();
+
+        assert!(item.attrs.iter().any(|attr| attr.path().is_ident("by_val")));
+        assert!(item.sig.unsafety.is_some());
+        assert!(item.sig.abi.is_some());
+    }
+
+    #[test]
+    fn rejects_reordered_move_fn_return() {
+        Parser::parse_str(parse_fn_item, "move unsafe fn name() -> Value;").unwrap_err();
+        Parser::parse_str(parse_fn_item, "move async fn name() -> Value;").unwrap_err();
     }
 
     #[test]

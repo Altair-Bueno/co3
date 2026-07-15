@@ -21,8 +21,10 @@ struct Custom1(usize);
 struct Custom2<'a>(&'a u8);
 
 handles! {
-    Custom1,
-    Custom2<'_>,
+    unsafe {
+        Custom1,
+        Custom2<'_>,
+    }
 }
 
 impl Attribute for Custom1 {}
@@ -43,8 +45,10 @@ mod provider {
     struct Custom2<'a>(&'a u8);
 
     handles! {
-        Custom1,
-        Custom2<'_>,
+        unsafe {
+            Custom1,
+            Custom2<'_>,
+        }
     }
 
     impl Attribute for Custom1 {}
@@ -81,7 +85,7 @@ mod provider {
     }
 
     ffi! {
-        #![export("C")]
+        #![unsafe(export("C"))]
 
         #![symbol_prefix = "kita"]
 
@@ -94,7 +98,7 @@ mod provider {
 }
 
 ffi! {
-    #![extern("C")]
+    #![unsafe(extern("C"))]
 
     #![symbol_prefix = "kita"]
 
