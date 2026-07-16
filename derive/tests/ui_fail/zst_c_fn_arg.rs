@@ -24,6 +24,7 @@ enum ParamFieldlessEnum {
     A,
 }
 
+// FIXME: This should fail
 #[derive(Clone, Copy, ReprC)]
 struct ZeroLenArrayZst {
     field: [u8; 0],
@@ -53,6 +54,16 @@ struct NoReprZst {
     a: (),
     b: (),
 }
+
+#[derive(Debug, Clone, Copy, ReprC)]
+#[repr(transparent)]
+pub enum FieldlessTransparentEnum {
+    A,
+}
+
+#[derive(Debug, Clone, Copy, ReprC)]
+#[repr(transparent)]
+pub struct UnitTransparentStruct;
 
 fn require_arg<T: CFnArg>() {}
 fn require_return<T: CFnReturn>() {}

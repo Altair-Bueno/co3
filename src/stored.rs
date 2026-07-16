@@ -517,7 +517,7 @@ disjoint_impls! {
         // FIXME: This type is wrong. it's supposed to be slice like owned representation
         type Store = RefDstDecodeStore<R, Box<[<R::Data as DecodeOwned<'d>>::Store]>>;
 
-        unsafe fn soft_decode<'itm: 'd>(source: Self::CType, store: &'itm mut Self::Store) -> Option<Self> {
+        unsafe fn soft_decode<'itm: 'd>(source: Self::CType, _store: &'itm mut Self::Store) -> Option<Self> {
             if source.is_niche() {
                 return None;
             }

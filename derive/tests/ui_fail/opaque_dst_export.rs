@@ -12,7 +12,7 @@ ffi! {
     #[id(u8)]
     type OpaqueSlice<T>;
 
-    #[dispatch(<u8>)]
+    #[erased(<u8>)]
     impl<T> Drop for dyn OpaqueSlice<T> {
         fn drop(&mut self);
     }

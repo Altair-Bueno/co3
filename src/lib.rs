@@ -15,6 +15,7 @@
 //!     fn make_local() -> Local;
 //! }
 //! ```
+#![cfg_attr(feature = "allocator-api", feature(allocator_api))]
 #![no_std]
 
 #[cfg(feature = "alloc")]
@@ -46,8 +47,6 @@ use crate::{
     stored::{DecodeOwned, EmptyStore, EncodeOwned, ReprRustOrTransmutedNonRobust, Store},
 };
 
-#[cfg(feature = "alloc")]
-pub mod alloc;
 pub mod borrow;
 #[cfg(feature = "alloc")]
 pub mod boxed;

@@ -4,49 +4,49 @@ error: explicit `<dyn Type>::ID` is only supported in extern declarations
 55 |         fn kita(self, self_id: <dyn T>::ID) -> u32;
    |                                ^^^^^^^^^^^
 
-error: lifetime arguments not required in #[dispatch]
-  --> tests/ui_fail/dispatch_restrictions.rs:62:17
+error: lifetime arguments not required in #[erased]
+  --> tests/ui_fail/dispatch_restrictions.rs:62:15
    |
-62 |     #[dispatch(<'a, u32>)]
-   |                 ^^
+62 |     #[erased(<'a, u32>)]
+   |               ^^
 
-error: lifetime arguments not required in #[dispatch]
-  --> tests/ui_fail/dispatch_restrictions.rs:75:17
+error: lifetime arguments not required in #[erased]
+  --> tests/ui_fail/dispatch_restrictions.rs:75:15
    |
-75 |     #[dispatch(<'a, u32>)]
-   |                 ^^
-
-error: undeclared lifetime; consider using '_
-  --> tests/ui_fail/dispatch_restrictions.rs:85:37
-   |
-85 |     #[dispatch(<&i16>, <&'_ i32>, <&'a u32>)]
-   |                                     ^^
+75 |     #[erased(<'a, u32>)]
+   |               ^^
 
 error: undeclared lifetime; consider using '_
-  --> tests/ui_fail/dispatch_restrictions.rs:94:37
+  --> tests/ui_fail/dispatch_restrictions.rs:85:35
    |
-94 |     #[dispatch(<&i16>, <&'_ i32>, <&'a u32>)]
-   |                                     ^^
+85 |     #[erased(<&i16>, <&'_ i32>, <&'a u32>)]
+   |                                   ^^
 
-error: `#[dispatch]` requires at least one `dyn Type` or `dyn Self`
+error: undeclared lifetime; consider using '_
+  --> tests/ui_fail/dispatch_restrictions.rs:94:35
+   |
+94 |     #[erased(<&i16>, <&'_ i32>, <&'a u32>)]
+   |                                   ^^
+
+error: `#[erased]` requires at least one `dyn Type` or `dyn Self`
    --> tests/ui_fail/dispatch_restrictions.rs:106:22
     |
 106 |     impl<T> Kita for T {
     |                      ^
 
-error: `#[dispatch]` requires at least one `dyn Type` or `dyn Self`
+error: `#[erased]` requires at least one `dyn Type` or `dyn Self`
    --> tests/ui_fail/dispatch_restrictions.rs:115:22
     |
 115 |     impl<T> Kita for T {
     |                      ^
 
-error: `#[dispatch]` impl type parameters must use `dyn(id_repr) T`
+error: `#[erased]` impl type parameters must use `dyn(id_repr) T`
    --> tests/ui_fail/dispatch_restrictions.rs:125:10
     |
 125 |     impl<dyn T> Kita for T {
     |          ^^^
 
-error: `#[dispatch]` impl type parameters must use `dyn(id_repr) T`
+error: `#[erased]` impl type parameters must use `dyn(id_repr) T`
    --> tests/ui_fail/dispatch_restrictions.rs:134:10
     |
 134 |     impl<dyn T> Kita for T {
@@ -125,10 +125,10 @@ error[E0119]: conflicting implementations of trait `RefKita` for type `Externed1
 258 | ||     #![unsafe(extern("C"))]
 259 | ||     #![symbol_prefix = "kita"]
 ...   ||
-264 | ||     #[dispatch(<Externed1>, <Externed1>)]
-    | ||_________________________-____________^ conflicting implementation for `Externed1`
-    | |__________________________|
-    |                            first implementation here
+264 | ||     #[erased(<Externed1>, <Externed1>)]
+    | ||_______________________-____________^ conflicting implementation for `Externed1`
+    | |________________________|
+    |                          first implementation here
     |
     = note: this error originates in the macro `ffi` (in Nightly builds, run with -Z macro-backtrace for more info)
 
@@ -167,7 +167,7 @@ error[E0081]: discriminant value `0` assigned more than once
 247 | ||
 248 | ||     #[id(u32)]
 ...   ||
-251 | ||     #[dispatch(<Exported1>, <Exported1>)]
+251 | ||     #[erased(<Exported1>, <Exported1>)]
 252 | ||     impl<dyn(u32) T> RefKita for T {
     | ||___________________^
 ...   |
@@ -186,7 +186,7 @@ error[E0081]: discriminant value `1` assigned more than once
 258 | ||     #![unsafe(extern("C"))]
 259 | ||     #![symbol_prefix = "kita"]
 ...   ||
-264 | ||     #[dispatch(<Externed1>, <Externed1>)]
+264 | ||     #[erased(<Externed1>, <Externed1>)]
 265 | ||     impl<dyn(u32) T> RefKita for T {
     | ||___________________^
 ...   |

@@ -227,7 +227,7 @@ impl Input {
                             );
                         }
 
-                        impl_.attrs.retain(|a| !a.path().is_ident("dispatch"));
+                        impl_.attrs.retain(|a| !a.path().is_ident("erased"));
                         strip_impl_explicit_lifetimes_attrs(&mut impl_);
                         ForeignItem::DynImpl(DynImpl { impl_, args })
                     }
@@ -643,7 +643,7 @@ fn synthesize_default_drop_impl(symbol_prefix: &LitStr, ty: &syn::ForeignItemTyp
 }
 
 fn ensure_single_dispatch_attr(attrs: &[Attribute]) -> Result<()> {
-    let mut dispatch_attrs = attrs.iter().filter(|attr| attr.path().is_ident("dispatch"));
+    let mut dispatch_attrs = attrs.iter().filter(|attr| attr.path().is_ident("erased"));
 
     let mut errors = None::<syn::Error>;
     if dispatch_attrs.next().is_none() {
@@ -651,7 +651,7 @@ fn ensure_single_dispatch_attr(attrs: &[Attribute]) -> Result<()> {
     };
 
     for attr in dispatch_attrs {
-        let err = syn::Error::new_spanned(attr, "duplicate `#[dispatch]` attribute");
+        let err = syn::Error::new_spanned(attr, "duplicate `#[erased]` attribute");
 
         if let Some(errors) = &mut errors {
             errors.combine(err);

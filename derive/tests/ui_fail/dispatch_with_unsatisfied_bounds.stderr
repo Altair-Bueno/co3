@@ -34,10 +34,10 @@ help: this trait has no implementations, consider adding one
    = note: this error originates in the macro `ffi` (in Nightly builds, run with -Z macro-backtrace for more info)
 
 error[E0277]: the trait bound `Externed2<u32>: Unimplemented` is not satisfied
-  --> tests/ui_fail/dispatch_with_unsatisfied_bounds.rs:52:17
+  --> tests/ui_fail/dispatch_with_unsatisfied_bounds.rs:52:15
    |
-52 |       #[dispatch(<Externed2<u32>>)]
-   |  _________________^
+52 |       #[erased(<Externed2<u32>>)]
+   |  _______________^
 53 | |     impl<dyn(u64) T: Unimplemented> RefKita for T where i32: Unimplemented {
    | |__________________________________^ unsatisfied trait bound
    |

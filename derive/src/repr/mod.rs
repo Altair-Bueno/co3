@@ -144,11 +144,6 @@ pub(crate) fn derive_repr_c(input: &syn::DeriveInput) -> syn::Result<TokenStream
 
     match &input.data {
         syn::Data::Struct(data) => {
-            if matches!(data.fields, syn::Fields::Unit) {
-                let err_msg = "Unit structs are not supported yet";
-                push_error(&mut errors, syn::Error::new_spanned(&input.ident, err_msg));
-            }
-
             validate_fields_no_ffi_type_attr(&data.fields, &mut errors);
             if repr_c_attrs.niche_value.is_some()
                 && let Err(err) = validate_niche_value_sized_tail(&data.fields)

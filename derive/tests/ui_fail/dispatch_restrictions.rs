@@ -50,7 +50,7 @@ handles! {
 ffi! {
     #![unsafe(export("C"))]
 
-    #[dispatch(<u32>)]
+    #[erased(<u32>)]
     impl<dyn(u8) T> Kita for T {
         fn kita(self, self_id: <dyn T>::ID) -> u32;
     }
@@ -59,7 +59,7 @@ ffi! {
 ffi! {
     #![unsafe(export("C"))]
 
-    #[dispatch(<'a, u32>)]
+    #[erased(<'a, u32>)]
     #[explicit_lifetimes]
     impl<'a, dyn(u8) T> Kita<'a> for T {
         fn drop(&mut self);
@@ -72,7 +72,7 @@ ffi! {
     #![unsafe(extern("C"))]
 
     #[explicit_lifetimes]
-    #[dispatch(<'a, u32>)]
+    #[erased(<'a, u32>)]
     impl<'a, dyn(u8) T> Kita<'a> for T {
         fn drop(&mut self, self_id: <dyn Self>::ID);
     }
@@ -82,7 +82,7 @@ ffi! {
     #![unsafe(export("C"))]
 
     #[explicit_lifetimes]
-    #[dispatch(<&i16>, <&'_ i32>, <&'a u32>)]
+    #[erased(<&i16>, <&'_ i32>, <&'a u32>)]
     impl<'a, dyn(u8) T> Kita<'a> for T {
         fn kita(self);
     }
@@ -91,7 +91,7 @@ ffi! {
 ffi! {
     #![unsafe(extern("C"))]
 
-    #[dispatch(<&i16>, <&'_ i32>, <&'a u32>)]
+    #[erased(<&i16>, <&'_ i32>, <&'a u32>)]
     #[explicit_lifetimes]
     impl<'a, dyn(u8) T> Kita<'a> for T {
         #[symbol_name = "kita"]
@@ -102,7 +102,7 @@ ffi! {
 ffi! {
     #![unsafe(export("C"))]
 
-    #[dispatch(<u32>)]
+    #[erased(<u32>)]
     impl<T> Kita for T {
         fn kita(self) -> u32;
     }
@@ -111,7 +111,7 @@ ffi! {
 ffi! {
     #![unsafe(extern("C"))]
 
-    #[dispatch(<u32>)]
+    #[erased(<u32>)]
     impl<T> Kita for T {
         #[symbol_name = "kita"]
         fn kita(self) -> u32;
@@ -121,7 +121,7 @@ ffi! {
 ffi! {
     #![unsafe(export("C"))]
 
-    #[dispatch(<u32>)]
+    #[erased(<u32>)]
     impl<dyn T> Kita for T {
         fn kita(self) -> u32;
     }
@@ -130,7 +130,7 @@ ffi! {
 ffi! {
     #![unsafe(extern("C"))]
 
-    #[dispatch(<u32>)]
+    #[erased(<u32>)]
     impl<dyn T> Kita for T {
         #[symbol_name = "kita"]
         fn kita(self) -> u32;
@@ -140,7 +140,7 @@ ffi! {
 ffi! {
     #![unsafe(export("C"))]
 
-    #[dispatch(<u32>)]
+    #[erased(<u32>)]
     impl<T> Kita for dyn T {
         fn kita(self) -> u32;
     }
@@ -149,7 +149,7 @@ ffi! {
 ffi! {
     #![unsafe(export("C"))]
 
-    #[dispatch(<u32>)]
+    #[erased(<u32>)]
     impl<T> Kita for dyn T {
         #[symbol_name = "kita"]
         fn kita(self) -> u32;
@@ -159,7 +159,7 @@ ffi! {
 ffi! {
     #![unsafe(export("C"))]
 
-    #[dispatch(<u32>)]
+    #[erased(<u32>)]
     impl<T> Kita for dyn u32 {
         fn kita(self) -> u32;
     }
@@ -169,7 +169,7 @@ ffi! {
     #![unsafe(extern("C"))]
     #![symbol_prefix = "kita"]
 
-    #[dispatch(<u32>)]
+    #[erased(<u32>)]
     impl<T> Kita for dyn u32 {
         #[symbol_name = "kita"]
         fn kita(&self, self_id: <dyn Self>::ID) -> u32;
@@ -179,7 +179,7 @@ ffi! {
 ffi! {
     #![unsafe(export("C"))]
 
-    #[dispatch(<u32>)]
+    #[erased(<u32>)]
     impl<T> Kita for dyn Option<T> {
         fn kita(self) -> u32;
     }
@@ -188,7 +188,7 @@ ffi! {
 ffi! {
     #![unsafe(extern("C"))]
 
-    #[dispatch(<u32>)]
+    #[erased(<u32>)]
     impl<T> Kita for dyn Option<T> {
         #[symbol_name = "kita"]
         fn kita(&self, self_id: <dyn Self>::ID) -> u32;
@@ -198,7 +198,7 @@ ffi! {
 ffi! {
     #![unsafe(extern("C"))]
 
-    #[dispatch(<u32>)]
+    #[erased(<u32>)]
     impl<dyn(i64) T> Kita for T {
         #[symbol_name = "kita"]
         fn kita(self, self_id: <dyn Self>::ID) -> <dyn T>::ID;
@@ -209,7 +209,7 @@ ffi! {
 ffi! {
     #![unsafe(extern("C"))]
 
-    #[dispatch(<u32>)]
+    #[erased(<u32>)]
     impl<dyn(u64) T> Kita for T {
         #[symbol_name = "kita"]
         fn kita(self, self_id: (<dyn Self>::ID,)) -> u32;
@@ -222,7 +222,7 @@ ffi! {
     #[id(char)]
     type Exported0;
 
-    #[dispatch(<Exported0>)]
+    #[erased(<Exported0>)]
     impl<dyn(char) T> RefKita for T {
         fn kita(&self) -> u32;
     }
@@ -235,7 +235,7 @@ ffi! {
     #[id(char)]
     type Externed0;
 
-    #[dispatch(<Externed0>)]
+    #[erased(<Externed0>)]
     impl<dyn(char) T> RefKita for T {
         #[symbol_name = "kita"]
         fn kita(&self, self_id: <dyn Self>::ID) -> u32;
@@ -248,7 +248,7 @@ ffi! {
     #[id(u32)]
     type Exported1;
 
-    #[dispatch(<Exported1>, <Exported1>)]
+    #[erased(<Exported1>, <Exported1>)]
     impl<dyn(u32) T> RefKita for T {
         fn kita(&self) -> u32;
     }
@@ -261,7 +261,7 @@ ffi! {
     #[id(u32)]
     type Externed1;
 
-    #[dispatch(<Externed1>, <Externed1>)]
+    #[erased(<Externed1>, <Externed1>)]
     impl<dyn(u32) T> RefKita for T {
         #[symbol_name = "kita"]
         fn kita(self_id: <dyn T>::ID, &self) -> u32;

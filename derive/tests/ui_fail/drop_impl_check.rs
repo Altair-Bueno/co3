@@ -52,7 +52,7 @@ ffi! {
     #[id(u32)]
     type Export1<T>;
 
-    #[dispatch(<u32>)]
+    #[erased(<u32>)]
     // TODO: These Drop impls could be allowed
     impl<T> Drop for dyn Export1<T> where Self: Kita {
         fn drop(&mut self);
@@ -67,7 +67,7 @@ ffi! {
     #[id(u32)]
     type Extern2<T>;
 
-    #[dispatch]
+    #[erased]
     impl<T> Drop for dyn Extern2<T> where Self: Kita {
         fn drop(&mut self, self_id: <dyn Self>::ID);
     }

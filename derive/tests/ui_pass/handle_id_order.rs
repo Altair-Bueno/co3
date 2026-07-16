@@ -126,7 +126,7 @@ mod provider {
             move fn to_owned(&self) -> <Self as ToOwned>::Owned;
         }
 
-        #[dispatch(<Opaque2, Opaque1>)]
+        #[erased(<Opaque2, Opaque1>)]
         impl<dyn(u8) T, dyn(u32) U> Custom<T> for U {
             #[symbol_name = "this_crate__kita1"]
             fn kita1(&mut self, inc: &T) -> u8;

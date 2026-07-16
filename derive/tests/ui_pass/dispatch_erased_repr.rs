@@ -89,7 +89,7 @@ mod provider {
 
         #![symbol_prefix = "kita"]
 
-        #[dispatch(<Custom1>, <Custom2<'_>>)]
+        #[erased(<Custom1>, <Custom2<'_>>)]
         impl<dyn(u16) T: Attribute = EnvAttr> ByteValue for T {
             fn into_byte(self) -> u8;
             fn add_ref(#[soft] &self, #[soft] rhs: &Self) -> u8;
@@ -102,7 +102,7 @@ ffi! {
 
     #![symbol_prefix = "kita"]
 
-    #[dispatch(<Custom1>, <Custom2<'_>>)]
+    #[erased(<Custom1>, <Custom2<'_>>)]
     impl<dyn(u16) T: Attribute = EnvAttr> ByteValue for T {
         fn into_byte(self) -> u8;
         fn add_ref(#[soft] &self, #[soft] rhs: &Self) -> u8;

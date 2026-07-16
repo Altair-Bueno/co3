@@ -16,13 +16,13 @@ ffi! {
     #[id(u8)]
     type Opaque<T, U>;
 
-    #[dispatch]
+    #[erased]
     impl<T, U> Drop for dyn Opaque<T, U> {
         #[symbol_name = "drop"]
         fn drop(self_id: <dyn Self>::ID, &mut self);
     }
 
-    #[dispatch(
+    #[erased(
         <bool, u8>,
         <u8, bool>
     )]
@@ -31,7 +31,7 @@ ffi! {
         fn try_as_ref(id: <dyn Self>::ID, &self) -> Result<&Self, u8>;
     }
 
-    #[dispatch(
+    #[erased(
         <Opaque<bool, u8>>,
         <Opaque<u8, bool>>,
     )]
@@ -39,7 +39,7 @@ ffi! {
         fn clone(self_id: <dyn Self>::ID, &self) -> Self;
     }
 
-    #[dispatch(
+    #[erased(
         <Opaque<u8, bool>>,
         <Opaque<bool, u8>>,
     )]
@@ -48,7 +48,7 @@ ffi! {
         fn default(self_id: <dyn Self>::ID) -> Self;
     }
 
-    #[dispatch(
+    #[erased(
         <bool, u8>,
         <u8, bool>,
     )]
@@ -56,7 +56,7 @@ ffi! {
         fn eq(self_id: <dyn Self>::ID, &self, other: &Self) -> bool;
     }
 
-    #[dispatch(
+    #[erased(
         <Opaque<bool, u8>, Opaque<u8, bool>>,
     )]
     impl<dyn(u8) T, dyn(u8) U> PartialEq<U> for T {
@@ -64,14 +64,14 @@ ffi! {
         fn eq(self_id: <dyn Self>::ID, other_id: <dyn U>::ID, &self, other: &U) -> bool;
     }
 
-    #[dispatch(<bool>)]
+    #[erased(<bool>)]
     impl<T> Custom for dyn Opaque<T, u8> {
         #[symbol_name = "custom_inc_as_ref"]
         fn inc(self_id: <dyn Self>::ID, self, by: Vec<u32>) -> Self;
     }
 
     // TODO:
-    //#[dispatch(<u8>)]
+    //#[erased(<u8>)]
     //impl<T> Custom for dyn Opaque<T, bool> {
     //    #[symbol_name = "custom_inc_move"]
     //    fn inc(self_id: <dyn Self>::ID, self, move by: Vec<u32>) -> Self;
@@ -122,7 +122,7 @@ mod provider {
         #[id(u8)]
         pub type Opaque<T, U>;
 
-        #[dispatch(
+        #[erased(
             <bool, u8>,
             <u8, bool>,
         )]
@@ -131,7 +131,7 @@ mod provider {
             fn drop(&mut self);
         }
 
-        #[dispatch(
+        #[erased(
             <bool, u8>,
             <u8, bool>
         )]
@@ -140,7 +140,7 @@ mod provider {
             fn try_as_ref(&self) -> Result<&Self, u8>;
         }
 
-        #[dispatch(
+        #[erased(
             <Opaque<bool, u8>>,
             <Opaque<u8, bool>>,
         )]
@@ -148,7 +148,7 @@ mod provider {
             fn clone(&self) -> Self;
         }
 
-        #[dispatch(
+        #[erased(
             <bool, u8>,
             <u8, bool>,
         )]
@@ -157,7 +157,7 @@ mod provider {
             fn default() -> Self;
         }
 
-        #[dispatch(
+        #[erased(
             <bool, u8>,
             <u8, bool>,
         )]
@@ -165,7 +165,7 @@ mod provider {
             fn eq(&self, other: &Self) -> bool;
         }
 
-        #[dispatch(
+        #[erased(
             <Opaque<bool, u8>, Opaque<u8, bool>>,
         )]
         impl<dyn(u8) T, dyn(u8) TU> PartialEq<TU> for T {
@@ -173,14 +173,14 @@ mod provider {
             fn eq(&self, other: &TU) -> bool;
         }
 
-        #[dispatch(<bool>)]
+        #[erased(<bool>)]
         impl<T> Custom for dyn Opaque<T, u8> {
             #[symbol_name = "custom_inc_as_ref"]
             fn inc(self, by: Vec<u32>) -> Self;
         }
 
         // TODO:
-        //#[dispatch(
+        //#[erased(
         //    <Opaque<u8, bool>>,
         //)]
         //impl<dyn(u8) T> Custom for T {

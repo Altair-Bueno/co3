@@ -54,17 +54,17 @@ error: item not supported
 57 |     union Kita {}
    |     ^^^^^
 
-error: `#[dispatch]` is only supported on impl blocks`
+error: `#[erased]` is only supported on impl blocks`
   --> tests/ui_fail/import_restrictions.rs:66:9
    |
-66 |         #[dispatch]
-   |         ^^^^^^^^^^^
+66 |         #[erased]
+   |         ^^^^^^^^^
 
-error: dispatch must provide 2 generic arguments
-  --> tests/ui_fail/import_restrictions.rs:76:16
+error: erased must provide 2 generic arguments
+  --> tests/ui_fail/import_restrictions.rs:76:14
    |
-76 |     #[dispatch(<u32>)]
-   |                ^^^^^
+76 |     #[erased(<u32>)]
+   |              ^^^^^
 
 error: fn bodies are not allowed in declarations
   --> tests/ui_fail/import_restrictions.rs:87:19
@@ -84,14 +84,14 @@ error: patterns aren't allowed in function declarations
 100 |     fn kita1((a, b): (u32, u32));
     |              ^^^^^^
 
-error: dispatch must provide 1 generic argument
+error: erased must provide 1 generic argument
    --> tests/ui_fail/import_restrictions.rs:114:5
     |
-114 |     #[dispatch]
-    |     ^^^^^^^^^^^
+114 |     #[erased]
+    |     ^^^^^^^^^
 
-error: dispatch must provide 1 generic argument
-   --> tests/ui_fail/import_restrictions.rs:131:16
+error: erased must provide 1 generic argument
+   --> tests/ui_fail/import_restrictions.rs:131:14
     |
-131 |     #[dispatch(<u8, i8>)]
-    |                ^^^^^^^^
+131 |     #[erased(<u8, i8>)]
+    |              ^^^^^^^^

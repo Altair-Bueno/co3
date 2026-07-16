@@ -168,7 +168,14 @@ fn gen_borrow_impls<const ADD_SIZED: bool>(
     let predicates = where_clause.as_ref().map(|w| &w.predicates);
     let params = &generics.params;
 
-    let view_ty_generics = generic_param_idents(&generics.params);
+    let mut view_ty_generics = Vec::new();
+    if !fields.is_empty() {
+        view_ty_generics.push(quote! { '_išč });
+    }
+    view_ty_generics.extend(generic_param_idents(&generics.params));
+    let view_ty_generics = (!view_ty_generics.is_empty()).then(|| {
+        quote! { <#(#view_ty_generics),*> }
+    });
     let borrow_bounds = gen_field_trait_bounds(generics, fields, quote! { co3::borrow::Borrow });
     let to_owned_bounds =
         gen_field_trait_bounds(generics, fields, quote! { co3::borrow::ToOwned<'_išč> });
@@ -190,7 +197,7 @@ fn gen_borrow_impls<const ADD_SIZED: bool>(
             #predicates
         {
             type Borrowed<'_išč>
-                = #view_name<'_išč #(, #view_ty_generics)*>
+                = #view_name #view_ty_generics
             where
                 Self: '_išč;
 
@@ -357,10 +364,13 @@ fn rewrite_view_generics(input: &mut DeriveInput) {
         gen_field_trait_bounds(&input.generics, &field_tys, quote! { co3::borrow::Borrow })
             .collect::<Vec<_>>();
 
-    input.generics.params.insert(0, parse_quote!('_dšč));
-    let where_clause = input.generics.make_where_clause();
-    where_clause.predicates.push(parse_quote!(Self: '_dšč));
+    if !field_tys.is_empty() {
+        input.generics.params.insert(0, parse_quote!('_dšč));
+        let where_clause = input.generics.make_where_clause();
+        where_clause.predicates.push(parse_quote!(Self: '_dšč));
+    }
 
+    let where_clause = input.generics.make_where_clause();
     where_clause.predicates.extend(borrow_bounds);
 }
 
@@ -454,8 +464,13 @@ pub fn gen_view_delegate_impls(name: &Ident, generics: &syn::Generics) -> TokenS
     let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
     let predicates = where_clause.as_ref().map(|w| &w.predicates);
 
+    let has_view_lifetime = matches!(
+        generics.params.first(),
+        Some(syn::GenericParam::Lifetime(param)) if param.lifetime.ident == "_dšč"
+    );
     let owner_ty_generics =
-        generic_param_idents(generics.params.iter().skip(1)).collect::<Vec<_>>();
+        generic_param_idents(generics.params.iter().skip(has_view_lifetime as usize))
+            .collect::<Vec<_>>();
 
     let owner_name = gen_view_owner_name(name);
     let owner_ty = quote! { #owner_name<#(#owner_ty_generics),*> };

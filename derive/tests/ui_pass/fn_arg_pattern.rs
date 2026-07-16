@@ -31,6 +31,7 @@ ffi! {
     #![symbol_prefix = "kita"]
 
     #[symbol_name = "hello"]
+    #[allow(improper_ctypes_definitions)]
     pub extern "C" fn hello2(a: Hello, b: Hello) -> i32;
 }
 
@@ -38,6 +39,7 @@ ffi! {
     #![unsafe(extern("C"))]
 
     #[symbol_name = "hello"]
+    #[allow(improper_ctypes_definitions)]
     pub extern "C" fn hello3(a: Hello, b: Hello) -> i32;
 }
 

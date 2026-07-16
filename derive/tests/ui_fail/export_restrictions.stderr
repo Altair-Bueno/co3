@@ -78,23 +78,23 @@ error: Attribute not supported in this position
 93 |     #[some_attr]
    |     ^^^^^^^^^^^^
 
-error: `#[dispatch]` is only supported on impl blocks`
+error: `#[erased]` is only supported on impl blocks`
    --> tests/ui_fail/export_restrictions.rs:103:9
     |
-103 |         #[dispatch]
-    |         ^^^^^^^^^^^
+103 |         #[erased]
+    |         ^^^^^^^^^
 
 error: Attribute not supported in this position
    --> tests/ui_fail/export_restrictions.rs:103:9
     |
-103 |         #[dispatch]
-    |         ^^^^^^^^^^^
+103 |         #[erased]
+    |         ^^^^^^^^^
 
 error: Attribute not supported in this position
    --> tests/ui_fail/export_restrictions.rs:111:5
     |
-111 |     #[dispatch]
-    |     ^^^^^^^^^^^
+111 |     #[erased]
+    |     ^^^^^^^^^
 
 error: fn bodies are not allowed in declarations
    --> tests/ui_fail/export_restrictions.rs:119:24
@@ -114,14 +114,14 @@ error: patterns aren't allowed in function declarations
 132 |     fn kita1((a, b): (u32, u32));
     |              ^^^^^^
 
-error: dispatch must provide 1 generic argument
+error: erased must provide 1 generic argument
    --> tests/ui_fail/export_restrictions.rs:146:5
     |
-146 |     #[dispatch]
-    |     ^^^^^^^^^^^
+146 |     #[erased]
+    |     ^^^^^^^^^
 
-error: dispatch must provide 1 generic argument
-   --> tests/ui_fail/export_restrictions.rs:163:16
+error: erased must provide 1 generic argument
+   --> tests/ui_fail/export_restrictions.rs:163:14
     |
-163 |     #[dispatch(<u32, u8>)]
-    |                ^^^^^^^^^
+163 |     #[erased(<u32, u8>)]
+    |              ^^^^^^^^^

@@ -245,7 +245,7 @@ error[E0080]: evaluation panicked: erased argument size mismatch
 117 | /     ffi! {
 118 | |         #![unsafe(export("C"))]
 119 | |
-120 | |         #[dispatch(<Handle>)]
+120 | |         #[erased(<Handle>)]
 ...   |
 124 | |     }
     | |_____^ evaluation of `provider::_::_::{constant#0}` failed here
@@ -256,7 +256,7 @@ note: erroneous constant encountered
 117 | /     ffi! {
 118 | |         #![unsafe(export("C"))]
 119 | |
-120 | |         #[dispatch(<Handle>)]
+120 | |         #[erased(<Handle>)]
 ...   |
 124 | |     }
     | |_____^
@@ -269,7 +269,7 @@ error[E0080]: evaluation panicked: erased argument alignment mismatch
 125 | /     ffi! {
 126 | |         #![unsafe(export("C"))]
 127 | |
-128 | |         #[dispatch(<Handle2>)]
+128 | |         #[erased(<Handle2>)]
 ...   |
 132 | |     }
     | |_____^ evaluation of `provider::_::_::{constant#0}` failed here
@@ -280,7 +280,7 @@ note: erroneous constant encountered
 125 | /     ffi! {
 126 | |         #![unsafe(export("C"))]
 127 | |
-128 | |         #[dispatch(<Handle2>)]
+128 | |         #[erased(<Handle2>)]
 ...   |
 132 | |     }
     | |_____^

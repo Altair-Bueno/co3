@@ -280,7 +280,7 @@ fn gen_struct_codec_impls(
     let encode_store = encode_store_type(fields);
     let decode_store = decode_store_type(fields);
 
-    let (encode_impl, decode_impl) = {
+    let codec_impls = {
         let fields_destructure = gen_fields_destructure(fields);
 
         let ctype_name = if is_view {
@@ -292,28 +292,21 @@ fn gen_struct_codec_impls(
         let (encode_body, decode_body) =
             gen_record_conversion(None, quote!(Self), fields, is_valid);
 
-        (
-            quote! {
+        CodecImpls {
+            encode_store,
+            decode_store,
+            encode_impl: quote! {
                 let Self #fields_destructure = self;
                 #ctype_name #encode_body
             },
-            quote! {
+            decode_impl: quote! {
                 let #ctype_name #fields_destructure = source;
                 #decode_body
             },
-        )
+        }
     };
 
-    gen_codec_impls::<false>(
-        is_view,
-        name,
-        generics,
-        &field_types,
-        encode_store,
-        decode_store,
-        encode_impl,
-        decode_impl,
-    )
+    gen_codec_impls::<false>(is_view, name, generics, &field_types, codec_impls)
 }
 
 fn gen_enum_codec_impls(
@@ -519,25 +512,18 @@ fn gen_enum_codec_impls(
         _ => unreachable!(),
     };
 
-    let (encode_impl, decode_impl) = (
-        quote! {
+    let codec_impls = CodecImpls {
+        encode_store,
+        decode_store,
+        encode_impl: quote! {
             match self {
                 #(#variants_encode,)*
             }
         },
         decode_impl,
-    );
+    };
 
-    gen_codec_impls::<true>(
-        is_view,
-        name,
-        generics,
-        &fields,
-        encode_store,
-        decode_store,
-        encode_impl,
-        decode_impl,
-    )
+    gen_codec_impls::<true>(is_view, name, generics, &fields, codec_impls)
 }
 
 fn gen_transparent_enum_codec_impls(
@@ -584,18 +570,20 @@ fn gen_transparent_enum_codec_impls(
         name,
         generics,
         &field_types,
-        encode_store,
-        decode_store,
-        quote! {
-            match self {
-                Self::#variant_name #destructure_fields => {
-                    #ctype_name #encode_body
+        CodecImpls {
+            encode_store,
+            decode_store,
+            encode_impl: quote! {
+                match self {
+                    Self::#variant_name #destructure_fields => {
+                        #ctype_name #encode_body
+                    }
                 }
-            }
-        },
-        quote! {
-            let #ctype_name #destructure_fields = source;
-            #decode_body
+            },
+            decode_impl: quote! {
+                let #ctype_name #destructure_fields = source;
+                #decode_body
+            },
         },
     )
 }
@@ -1076,16 +1064,27 @@ fn gen_record_conversion(
     }
 }
 
+struct CodecImpls {
+    encode_store: TokenStream,
+    decode_store: TokenStream,
+    encode_impl: TokenStream,
+    decode_impl: TokenStream,
+}
+
 fn gen_codec_impls<const ADD_COPY: bool>(
     is_view: bool,
     name: &Ident,
     generics: &syn::Generics,
     fields: &[&syn::Type],
-    encode_store: TokenStream,
-    decode_store: TokenStream,
-    encode_impl: TokenStream,
-    decode_impl: TokenStream,
+    codec_impls: CodecImpls,
 ) -> TokenStream {
+    let CodecImpls {
+        encode_store,
+        decode_store,
+        encode_impl,
+        decode_impl,
+    } = codec_impls;
+
     let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
     let predicates = where_clause.as_ref().map(|w| &w.predicates);
     let params = &generics.params;
@@ -1112,9 +1111,19 @@ fn gen_codec_impls<const ADD_COPY: bool>(
         quote!(Self: Sized,)
     };
 
+    let has_view_lifetime = is_view
+        && matches!(
+            generics.params.first(),
+            Some(syn::GenericParam::Lifetime(param)) if param.lifetime.ident == "_dšč"
+        );
+
     let (decode_lifetime, borrow_cast_bounds, cast_eq_bounds) = if is_view {
         (
-            quote! {},
+            if !has_view_lifetime {
+                quote! { '_dšč, }
+            } else {
+                quote! {}
+            },
             gen_borrow_cast_view_bounds::<ADD_COPY>(generics, fields),
             gen_borrow_cast_eq_bounds(fields),
         )
@@ -1129,7 +1138,10 @@ fn gen_codec_impls<const ADD_COPY: bool>(
     };
 
     let ctype_ty_generics = if is_view {
-        let ty_generics = generic_param_idents(generics.params.iter().skip(1)).collect::<Vec<_>>();
+        let ty_generics =
+            generic_param_idents(generics.params.iter().skip(has_view_lifetime as usize))
+                .collect::<Vec<_>>();
+
         quote! { <#(#ty_generics),*> }
     } else {
         quote! { #ty_generics }

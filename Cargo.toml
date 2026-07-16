@@ -22,6 +22,9 @@ derive = ["co3-derive"]
 # Implements conversion traits for types from the `alloc` crate (e.g. `Box<T>` or `Vec<T>`).
 alloc = []
 
+# Enables [allocator API](https://github.com/rust-lang/rust/issues/32838)
+allocator-api = ["alloc"]
+
 [dependencies]
 co3-derive = { path = "derive", optional = true }
 

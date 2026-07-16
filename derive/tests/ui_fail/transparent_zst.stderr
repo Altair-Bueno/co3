@@ -1,5 +1,0 @@
-error: Unit structs are not supported yet
-  --> tests/ui_fail/transparent_zst.rs:11:12
-   |
-11 | pub struct UnitTransparentStruct;
-   |            ^^^^^^^^^^^^^^^^^^^^^

@@ -149,7 +149,6 @@ pub(crate) fn gen_definition_body(
         .collect::<Vec<_>>();
 
     let return_borrow_check = if let Some(return_ty) = &return_ty {
-        let out_name = format_ident!("__co3_output");
         gen_return_borrow_check(return_ty, fn_by_val)
     } else {
         quote! {}

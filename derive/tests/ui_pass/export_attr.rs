@@ -30,7 +30,7 @@ ffi! {
 
     #![symbol_prefix = "kita"]
 
-    #[dispatch(<Opaque>)]
+    #[erased(<Opaque>)]
     impl<dyn(u8) T: ToOwned = u8> Value<T> {
         move fn new(t_id: <dyn T>::ID) -> Self;
 
@@ -105,7 +105,7 @@ mod provider {
             move fn to_owned(&self) -> <Self as ToOwned>::Owned;
         }
 
-        #[dispatch(<Opaque>)]
+        #[erased(<Opaque>)]
         impl<#[erased(u8)] T: Add<Output = u8> + ToOwned<Owned = T> + ?Sized = u8> Value<T>
         where
             Box<T>: Default,

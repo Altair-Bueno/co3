@@ -1,5 +1,4 @@
 use core::num::NonZeroU8;
-use std::process::Command;
 
 use co3::{Error, ExternC, ReprC, ffi};
 
@@ -34,14 +33,6 @@ fn export_error_input(value: NonZeroU8) -> CustomStatus {
     }
 }
 
-fn export_panic_input(value: NonZeroU8) -> CustomStatus {
-    if value.get() == 11 {
-        CustomStatus::SoftSyncError
-    } else {
-        CustomStatus::Ok
-    }
-}
-
 ffi! {
     #![unsafe(export("C"))]
     #![failure = "error"]
@@ -50,21 +41,8 @@ ffi! {
     fn export_error_input(value: NonZeroU8) -> CustomStatus;
 }
 
-ffi! {
-    #![unsafe(export("C"))]
-    #![failure = "panic"]
-    #![symbol_prefix = "kita_failure"]
-
-    fn export_panic_input(value: NonZeroU8) -> CustomStatus;
-}
-
 #[unsafe(export_name = "kita_failure__extern_error_invalid_return")]
 unsafe extern "C" fn extern_error_invalid_return() -> <CustomStatus as ExternC>::CType {
-    7
-}
-
-#[unsafe(export_name = "kita_failure__extern_panic_invalid_return")]
-unsafe extern "C" fn extern_panic_invalid_return() -> <CustomStatus as ExternC>::CType {
     7
 }
 
@@ -78,22 +56,11 @@ mod import {
 
         pub fn extern_error_invalid_return() -> super::CustomStatus;
     }
-
-    ffi! {
-        #![unsafe(extern("C"))]
-        #![failure = "panic"]
-        #![symbol_prefix = "kita_failure"]
-
-        pub fn extern_panic_invalid_return() -> super::CustomStatus;
-    }
 }
 
 unsafe extern "C" {
     #[link_name = "kita_failure__export_error_input"]
     fn export_error_input_raw(value: u8) -> <CustomStatus as ExternC>::CType;
-
-    #[link_name = "kita_failure__export_panic_input"]
-    fn export_panic_input_raw(value: u8) -> <CustomStatus as ExternC>::CType;
 }
 
 fn decode_status(source: <CustomStatus as ExternC>::CType) -> CustomStatus {

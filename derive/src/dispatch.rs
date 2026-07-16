@@ -71,7 +71,7 @@ impl VisitMut for ErasedParamReplacer {
 }
 
 pub(crate) fn find_dispatch_attr(attrs: &[syn::Attribute]) -> Option<&syn::Attribute> {
-    attrs.iter().find(|&attr| attr.path().is_ident("dispatch"))
+    attrs.iter().find(|&attr| attr.path().is_ident("erased"))
 }
 
 pub(crate) fn gen_dispatch_export(

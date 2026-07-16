@@ -26,12 +26,12 @@ ffi! {
     #[id(u8)]
     type Exported2<T>;
 
-    #[dispatch(<u32>)]
+    #[erased(<u32>)]
     impl<T> Drop for dyn Exported2<T> {
         fn drop(&mut self);
     }
 
-    #[dispatch(<Exported2<u32>>)]
+    #[erased(<Exported2<u32>>)]
     impl<dyn(u8) T: Unimplemented> RefKita for T where i32: Unimplemented {
         fn kita(&self) -> u32;
     }
@@ -43,13 +43,13 @@ ffi! {
     #[id(u64)]
     type Externed2<T>;
 
-    #[dispatch]
+    #[erased]
     impl<T> Drop for dyn Externed2<T> {
         #[symbol_name = "drop"]
         fn drop(&mut self, self_id: <dyn Externed2<T>>::ID);
     }
 
-    #[dispatch(<Externed2<u32>>)]
+    #[erased(<Externed2<u32>>)]
     impl<dyn(u64) T: Unimplemented> RefKita for T where i32: Unimplemented {
         #[symbol_name = "kita"]
         fn kita(&self, self_id: <dyn Self>::ID) -> u32;

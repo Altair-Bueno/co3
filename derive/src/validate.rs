@@ -11,7 +11,7 @@ use crate::{
     utils::{has_non_lifetime_generics, is_drop_impl, is_type_erased, push_error},
 };
 
-const GENERICS_ERR: &str = "Type and const generics on impls are not supported. Use `#[dispatch]`";
+const GENERICS_ERR: &str = "Type and const generics on impls are not supported. Use `#[erased]`";
 
 pub(crate) fn validate_niche_value_sized_tail(fields: &syn::Fields) -> Result<()> {
     fn peel_type(ty: &syn::Type) -> &syn::Type {
@@ -111,8 +111,8 @@ fn validate_lifetime_opt_in(attrs: &[syn::Attribute], generics: &syn::Generics) 
 
 fn validate_no_dispatch_attrs(attrs: &[syn::Attribute], errors: &mut Option<Error>) {
     for attr in attrs {
-        if attr.path().is_ident("dispatch") {
-            let err_msg = "`#[dispatch]` is only supported on impl blocks`";
+        if attr.path().is_ident("erased") {
+            let err_msg = "`#[erased]` is only supported on impl blocks`";
             push_error(errors, Error::new_spanned(attr, err_msg));
         }
     }
@@ -263,7 +263,7 @@ fn validate_shared(decls: &[ParsedForeignItem]) -> Result<()> {
                     if is_explicit_lifetimes_attr(attr) {
                         push_error(&mut errors, unsupported_attr(attr));
                     }
-                    if attr.path().is_ident("dispatch") {
+                    if attr.path().is_ident("erased") {
                         push_error(&mut errors, unsupported_attr(attr));
                     }
                 }
@@ -284,7 +284,7 @@ fn validate_shared(decls: &[ParsedForeignItem]) -> Result<()> {
                 let is_dispatch_impl = find_dispatch_attr(&impl_.attrs).is_some();
 
                 for attr in &impl_.attrs {
-                    if !attr.path().is_ident("dispatch")
+                    if !attr.path().is_ident("erased")
                         && !is_explicit_lifetimes_attr(attr)
                         && !is_cfg_attr(attr)
                     {
@@ -346,7 +346,7 @@ fn validate_shared(decls: &[ParsedForeignItem]) -> Result<()> {
 }
 
 fn validate_dispatch_impl_targets(generics: &syn::Generics, self_ty: &syn::Type) -> Result<()> {
-    let err_msg = "`#[dispatch]` requires at least one `dyn Type` or `dyn Self`";
+    let err_msg = "`#[erased]` requires at least one `dyn Type` or `dyn Self`";
 
     let mut type_params = generics.type_params();
     if type_params.any(|p| p.attrs.iter().any(is_type_erased)) {

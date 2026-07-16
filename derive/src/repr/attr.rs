@@ -138,10 +138,7 @@ pub fn parse_repr(attrs: &[Attribute]) -> syn::Result<Option<ReprKind>> {
     };
 
     let tokens =
-        match Punctuated::<ReprToken, Token![,]>::parse_terminated.parse2(list.tokens.clone()) {
-            Ok(tokens) => tokens,
-            Err(err) => return Err(err),
-        };
+        Punctuated::<ReprToken, Token![,]>::parse_terminated.parse2(list.tokens.clone())?;
 
     for token in tokens {
         match token {

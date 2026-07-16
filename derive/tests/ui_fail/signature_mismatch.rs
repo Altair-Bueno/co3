@@ -77,7 +77,7 @@ ffi! {
         move fn to_owned(&self) -> <Self as ToOwned>::Owned;
     }
 
-    #[dispatch(<Opaque1>, <Opaque2>)]
+    #[erased(<Opaque1>, <Opaque2>)]
     impl<dyn(u32) T: ToOwned = CVoid> Kita for T {
         type MySelf = <T as ToOwned>::Owned;
 

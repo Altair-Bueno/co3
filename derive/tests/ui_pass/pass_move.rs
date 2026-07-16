@@ -31,10 +31,8 @@ mod provider {
 }
 
 ffi! {
-    #![unsafe(extern("C"))]
-
-    #![expect(unused_doc_comments)]
     //! Documentation
+    #![unsafe(extern("C"))]
 
     impl Value {
         /// Documentation

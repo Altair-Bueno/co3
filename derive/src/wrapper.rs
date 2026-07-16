@@ -372,15 +372,11 @@ fn gen_input_conversion_stmts(inputs: &Punctuated<FnArg, syn::Token![,]>) -> Tok
     let mut stmts = quote! {};
 
     for input in inputs {
-        let (attrs, arg_name, arg_ty) = match input {
-            FnArg::Typed(syn::PatType { attrs, pat, ty, .. }) => {
-                (attrs, item_fn_input_ident(pat).clone(), (**ty).clone())
+        let (attrs, arg_name) = match input {
+            FnArg::Typed(syn::PatType { attrs, pat, .. }) => {
+                (attrs, item_fn_input_ident(pat).clone())
             }
-            FnArg::Receiver(receiver) => (
-                &receiver.attrs,
-                format_ident!("__co3_self"),
-                (*receiver.ty).clone(),
-            ),
+            FnArg::Receiver(receiver) => (&receiver.attrs, format_ident!("__co3_self")),
         };
 
         let store_name = gen_store_name(&arg_name);

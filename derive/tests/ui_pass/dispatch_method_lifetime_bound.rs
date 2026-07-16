@@ -45,7 +45,7 @@ mod provider {
         #![unsafe(export("C"))]
 
         #[explicit_lifetimes]
-        #[dispatch(<&CustomAttribute>)]
+        #[erased(<&CustomAttribute>)]
         impl<'a, dyn(u8) T: 'a + 'a> Dispatch for T
         where
             T: Attribute + 'a + 'a
@@ -60,7 +60,7 @@ ffi! {
     #![unsafe(extern("C"))]
 
     #[explicit_lifetimes]
-    #[dispatch(<&CustomAttribute>)]
+    #[erased(<&CustomAttribute>)]
     impl<'a, dyn(u8) T: Attribute + 'a> Dispatch for T {
         #[symbol_name = "len"]
         fn len(handle_id: <dyn T>::ID, values: &[u32], attr: &T) -> usize;

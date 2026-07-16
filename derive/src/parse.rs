@@ -360,7 +360,7 @@ pub(crate) fn parse_dispatch_attr(
     let Some(attr) = impl_
         .attrs
         .iter()
-        .find(|attr| attr.path().is_ident("dispatch"))
+        .find(|attr| attr.path().is_ident("erased"))
     else {
         return Ok(Punctuated::default());
     };
@@ -373,7 +373,7 @@ pub(crate) fn parse_dispatch_attr(
         .collect::<Vec<_>>();
 
     let err_msg = format!(
-        "dispatch must provide {} generic argument{}",
+        "erased must provide {} generic argument{}",
         params.len(),
         if params.len() == 1 { "" } else { "s" }
     );
@@ -423,7 +423,7 @@ pub(crate) fn parse_dispatch_attr(
     for entry in &generic_args {
         for arg in &entry.args {
             if matches!(arg, syn::GenericArgument::Lifetime(_)) {
-                let err_msg = "lifetime arguments not required in #[dispatch]";
+                let err_msg = "lifetime arguments not required in #[erased]";
                 lifetime_validator.push(syn::Error::new_spanned(arg, err_msg));
                 continue;
             }
@@ -592,7 +592,7 @@ fn preprocess_impl_header(header: TokenStream) -> syn::Result<TokenStream> {
             proc_macro2::TokenTree::Ident(ident)
                 if angle_depth == 1 && at_param_start && ident == "dyn" =>
             {
-                let err_msg = "`#[dispatch]` impl type parameters must use `dyn(id_repr) T`";
+                let err_msg = "`#[erased]` impl type parameters must use `dyn(id_repr) T`";
 
                 let Some(proc_macro2::TokenTree::Group(group)) = tokens.get(idx + 1) else {
                     return Err(syn::Error::new(ident.span(), err_msg));

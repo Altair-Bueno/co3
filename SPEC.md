@@ -38,7 +38,7 @@ Each mode makes explicit tradeoffs and is selected through compile-time configur
 - Uses intermediate owned/cloned values and store synchronization for mutable writeback paths.
 - Pointer identity is not preserved and pointer equality for these types **MUST NOT** be relied on.
 
-3. **`#[tag_dispatch<Type1, ...>]` (opt-in, on impl blocks)**
+3. **`#[erased(<Type1, ...>)]` (opt-in, on impl blocks)**
 - Enables tagged generic dispatch where type's C-compatible representation is erased into a shared type and reinterpreted back via the tag value.
 - Dispatched impl block generics are defined by `<dyn({int}) T = {ErasedTy}>` where `ErasedTy` has the same size and alignment as the erased type.
 - Concrete tag dispatched types are declared AOT and have a tag type, derived with `#[reprC(id(int))]`/`#[id(int)]`, passed alongside erased type.
@@ -76,7 +76,7 @@ It must always start with a declaration of direction and ABI (e.g. `#![unsafe(ex
 - `#![failure = "panic" | "error"]` controls whether internal failures panic(default) or are returned.
 - `type Type;` declares an opaque type (it's representation is unknown). This type should not be dereferenced.
 - `#[id(int)]` on a type declaration defines the tag type that identifies the type when it is erased by dynamic dispatch.
-- `#[dispatch(<Type1, ...>)]` opts-into a kind of polymorphic dispatch where concrete types are known at compile time but erased at runtime.
+- `#[erased(<Type1, ...>)]` opts-into a kind of polymorphic dispatch where concrete types are known at compile time but erased at runtime.
 - `..` splits a wide companion type into separate data and metadata arguments at the ABI boundary.
 - `#[explicit_lifetimes]` opts into declarations with explicit lifetimes inside `ffi`.
 - `cfg_attr` is fully supported in all attribute positions inside the `ffi` macro.

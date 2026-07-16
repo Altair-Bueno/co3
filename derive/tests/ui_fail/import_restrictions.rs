@@ -63,7 +63,7 @@ ffi! {
     #![symbol_prefix = "kita"]
 
     impl Kita for u32 {
-        #[dispatch]
+        #[erased]
         fn kita(self);
     }
 }
@@ -73,7 +73,7 @@ ffi! {
 
     #![symbol_prefix = "kita"]
 
-    #[dispatch(<u32>)]
+    #[erased(<u32>)]
     impl<dyn(u32) U, dyn(u8) T> Kita for (T, U) {
         fn kita(self, t_id: <dyn T>::ID, u_id: <dyn U>::ID);
     }
@@ -82,7 +82,7 @@ ffi! {
 ffi! {
     #![unsafe(extern("C"))]
 
-    #[dispatch]
+    #[erased]
     impl Kita {
         fn kita() {}
     }
@@ -106,12 +106,12 @@ ffi! {
     #[id(u8)]
     type Handle<T>;
 
-    #[dispatch(<u32>)]
+    #[erased(<u32>)]
     impl<T> Drop for dyn Handle<T> {
         fn drop(self_id: <dyn Self>::ID, &mut self);
     }
 
-    #[dispatch]
+    #[erased]
     impl<dyn(u8) T> Clone for Handle<T> {
         fn clone(self_id: <dyn T>::ID, &self) -> Self;
     }
@@ -123,12 +123,12 @@ ffi! {
     #[id(u8)]
     type Handle<T>;
 
-    #[dispatch]
+    #[erased]
     impl<T> Drop for dyn Handle<T> {
         fn drop(self_id: <dyn Self>::ID, &mut self);
     }
 
-    #[dispatch(<u8, i8>)]
+    #[erased(<u8, i8>)]
     impl<dyn(u8) T> Clone for Handle<T> {
         fn clone(self_id: <dyn T>::ID, &self) -> Self;
     }

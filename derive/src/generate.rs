@@ -523,7 +523,7 @@ fn gen_drop_impl_check(item: &syn::ForeignItemType, impl_: &ItemImpl) -> TokenSt
     let item_attrs = impl_
         .attrs
         .iter()
-        .filter(|attr| !attr.path().is_ident("dispatch"));
+        .filter(|attr| !attr.path().is_ident("erased"));
 
     let marker_fields = item.generics.params.iter().map(|param| match param {
         syn::GenericParam::Lifetime(param) => {

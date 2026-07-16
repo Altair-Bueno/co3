@@ -117,7 +117,7 @@ mod provider {
     ffi! {
         #![unsafe(export("C"))]
 
-        #[dispatch(<Handle>)]
+        #[erased(<Handle>)]
         impl<dyn(usize) T = Array> Dispatch for T {
             fn me(self);
         }
@@ -125,7 +125,7 @@ mod provider {
     ffi! {
         #![unsafe(export("C"))]
 
-        #[dispatch(<Handle2>)]
+        #[erased(<Handle2>)]
         impl<dyn(usize) T = Array2> Dispatch for T {
             fn me(self);
         }
@@ -191,7 +191,7 @@ ffi! {
 
     #![symbol_prefix = "kita"]
 
-    #[dispatch(<Array>)]
+    #[erased(<Array>)]
     impl<dyn(usize) T = Handle> Dispatch for T {
         fn me(id: <dyn T>::ID, self);
     }
@@ -202,7 +202,7 @@ ffi! {
 
     #![symbol_prefix = "kita"]
 
-    #[dispatch(<Array2>)]
+    #[erased(<Array2>)]
     impl<dyn(usize) T = Handle2> Dispatch for T {
         fn me(id: <dyn T>::ID, self);
     }

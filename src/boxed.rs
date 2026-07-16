@@ -5,7 +5,6 @@ use core::ptr::NonNull;
 
 use crate::{
     CFnArg, Decode, Encode, ExternC, RobustReprC,
-    alloc::{Allocator, Global},
     borrow::{Borrow, BorrowCast, BorrowCastMut, ToOwned},
     ir::ReprFamily,
     niche::{NicheFamily, WithoutNiche},
@@ -15,26 +14,24 @@ use crate::{
     transmute::CheckedTransmute,
 };
 
-/// Owned pointer `Box<C>` with a deallocate function.
+/// Owned pointer `Box<C>`.
 ///
 /// If the data pointer is set to `null`, the struct represents `Option<Box<C>>`.
 #[repr(C)]
-pub struct CBox<C, A: Allocator = Global> {
+pub struct CBox<C> {
     pub(crate) data: *mut C,
-    allocator: A,
 }
 
 /// Owned slice `Box<[C]>` with a defined C ABI layout. Consists of a data pointer and a length.
 /// Used in place of a function out-pointer to transfer ownership of the slice to the caller.
 /// If the data pointer is set to `null`, the struct represents `Option<Box<[C]>>`.
 #[repr(C)]
-pub struct CBoxedSlice<C, A: Allocator = Global> {
+pub struct CBoxedSlice<C> {
     pub(crate) data: *mut C,
     len: usize,
-    allocator: A,
 }
 
-impl<C, A: Allocator> core::fmt::Debug for CBox<C, A> {
+impl<C> core::fmt::Debug for CBox<C> {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         f.debug_struct(stringify!(CBox))
             .field("data", &self.data)
@@ -42,7 +39,7 @@ impl<C, A: Allocator> core::fmt::Debug for CBox<C, A> {
     }
 }
 
-impl<C, A: Allocator> core::fmt::Debug for CBoxedSlice<C, A> {
+impl<C> core::fmt::Debug for CBoxedSlice<C> {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         if self.data.is_null() {
             f.debug_struct(stringify!(CBoxedSlice))
@@ -57,13 +54,13 @@ impl<C, A: Allocator> core::fmt::Debug for CBoxedSlice<C, A> {
     }
 }
 
-impl<C, A: Allocator> PartialEq for CBox<C, A> {
+impl<C> PartialEq for CBox<C> {
     fn eq(&self, other: &Self) -> bool {
         self.data == other.data
     }
 }
 
-impl<C, A: Allocator> PartialEq for CBoxedSlice<C, A> {
+impl<C> PartialEq for CBoxedSlice<C> {
     fn eq(&self, other: &Self) -> bool {
         match (self.data.is_null(), other.data.is_null()) {
             (true, true) => true,
@@ -79,26 +76,26 @@ impl<C, A: Allocator> PartialEq for CBoxedSlice<C, A> {
     }
 }
 
-impl<C, A: Allocator> Eq for CBox<C, A> {}
-impl<C, A: Allocator> Eq for CBoxedSlice<C, A> {}
+impl<C> Eq for CBox<C> {}
+impl<C> Eq for CBoxedSlice<C> {}
 
-impl<C, A: Allocator> PartialOrd for CBox<C, A> {
+impl<C> PartialOrd for CBox<C> {
     fn partial_cmp(&self, other: &Self) -> Option<core::cmp::Ordering> {
         Some(self.cmp(other))
     }
 }
-impl<C, A: Allocator> PartialOrd for CBoxedSlice<C, A> {
+impl<C> PartialOrd for CBoxedSlice<C> {
     fn partial_cmp(&self, other: &Self) -> Option<core::cmp::Ordering> {
         Some(self.cmp(other))
     }
 }
 
-impl<C, A: Allocator> Ord for CBox<C, A> {
+impl<C> Ord for CBox<C> {
     fn cmp(&self, other: &Self) -> core::cmp::Ordering {
         self.data.cmp(&other.data)
     }
 }
-impl<C, A: Allocator> Ord for CBoxedSlice<C, A> {
+impl<C> Ord for CBoxedSlice<C> {
     fn cmp(&self, other: &Self) -> core::cmp::Ordering {
         use core::cmp::Ordering;
         match (self.data.is_null(), other.data.is_null()) {
@@ -119,26 +116,25 @@ impl<C, A: Allocator> Ord for CBoxedSlice<C, A> {
     }
 }
 
-impl<C, A: Allocator> Clone for CBox<C, A> {
+impl<C> Clone for CBox<C> {
     fn clone(&self) -> Self {
         *self
     }
 }
-impl<C, A: Allocator> Clone for CBoxedSlice<C, A> {
+impl<C> Clone for CBoxedSlice<C> {
     fn clone(&self) -> Self {
         *self
     }
 }
 
-impl<C, A: Allocator> Copy for CBox<C, A> {}
-impl<C, A: Allocator> Copy for CBoxedSlice<C, A> {}
+impl<C> Copy for CBox<C> {}
+impl<C> Copy for CBoxedSlice<C> {}
 
 impl<C> CBox<C> {
     /// Create [`Self`] from a [`Box<C>`].
     pub fn from_box(source: Box<C>) -> Self {
         Self {
             data: Box::into_raw(source),
-            allocator: Global,
         }
     }
 
@@ -146,18 +142,14 @@ impl<C> CBox<C> {
     pub(crate) const fn from_raw_parts(data: NonNull<C>) -> Self {
         Self {
             data: data.as_ptr(),
-            allocator: Global,
         }
     }
 }
 
-impl<C, A: Allocator> CBox<C, A> {
+impl<C> CBox<C> {
     /// Set the pointer to null.
     pub(crate) const NICHE_VALUE: Self = Self {
         data: core::ptr::null_mut(),
-        // TODO: Figure out if this is correct
-        // SAFETY: allocator will never be used
-        allocator: unsafe { core::mem::zeroed() },
     };
 
     pub(crate) unsafe fn read(self) -> C {
@@ -193,7 +185,6 @@ impl<C> CBoxedSlice<C> {
         Self {
             data: boxed_slice.as_mut_ptr(),
             len: boxed_slice.len(),
-            allocator: Global,
         }
     }
 
@@ -202,7 +193,6 @@ impl<C> CBoxedSlice<C> {
         Self {
             data: data.as_ptr(),
             len,
-            allocator: Global,
         }
     }
 
@@ -220,31 +210,12 @@ impl<C> CBoxedSlice<C> {
     }
 }
 
-impl<C, A: Allocator> CBoxedSlice<C, A> {
+impl<C> CBoxedSlice<C> {
     /// Set the slice's data pointer to null
     pub(crate) const NICHE_VALUE: Self = Self {
         data: core::ptr::null_mut(),
         len: 0,
-        // SAFETY: allocator will never be used
-        allocator: unsafe { core::mem::zeroed() },
     };
-
-    pub(crate) unsafe fn deallocate(&self) -> bool {
-        if self.data.is_null() || self.len == 0 {
-            return true;
-        }
-
-        if let Ok(layout) = core::alloc::Layout::array::<C>(self.len) {
-            unsafe {
-                self.allocator
-                    .deallocate(NonNull::new_unchecked(self.data.cast()), layout);
-            }
-
-            return true;
-        }
-
-        false
-    }
 
     pub(crate) const fn is_niche(&self) -> bool {
         self.data.is_null()
@@ -261,17 +232,17 @@ impl<C, A: Allocator> CBoxedSlice<C, A> {
 
 macro_rules! impl_boxed_carrier {
     ($ty:ident) => {
-        impl<C: ReprFamily, A: Allocator> ReprFamily for $ty<C, A> {
+        impl<C: ReprFamily> ReprFamily for $ty<C> {
             type Kind = C::Kind;
         }
-        unsafe impl<C, A: Allocator> SizeFamily for $ty<C, A> {
+        unsafe impl<C> SizeFamily for $ty<C> {
             type Kind = crate::size::Sized<crate::size::NonZst>;
         }
-        impl<C, A: Allocator> NicheFamily for $ty<C, A> {
+        impl<C> NicheFamily for $ty<C> {
             type Kind = WithoutNiche;
         }
 
-        unsafe impl<C, A: Allocator> Borrow for $ty<C, A> {
+        unsafe impl<C> Borrow for $ty<C> {
             type Borrowed<'itm>
                 = Self
             where
@@ -287,17 +258,17 @@ macro_rules! impl_boxed_carrier {
                 self
             }
         }
-        impl<'itm, C, A: Allocator> ToOwned<'itm> for $ty<C, A> {
+        impl<'itm, C> ToOwned<'itm> for $ty<C> {
             #[inline(always)]
             fn to_owned(source: Self) -> Self {
                 source
             }
         }
 
-        impl<C: RobustReprC, A: Allocator> ExternC for $ty<C, A> {
+        impl<C: RobustReprC> ExternC for $ty<C> {
             type CType = Self;
         }
-        unsafe impl<C: RobustReprC, A: Allocator> EncodeOwned for $ty<C, A> {
+        unsafe impl<C: RobustReprC> EncodeOwned for $ty<C> {
             type Store = ();
 
             #[inline(always)]
@@ -308,7 +279,7 @@ macro_rules! impl_boxed_carrier {
                 self
             }
         }
-        unsafe impl<'d, C: RobustReprC, A: Allocator> DecodeOwned<'d> for $ty<C, A> {
+        unsafe impl<'d, C: RobustReprC> DecodeOwned<'d> for $ty<C> {
             type Store = ();
 
             #[inline(always)]
@@ -317,39 +288,39 @@ macro_rules! impl_boxed_carrier {
             }
         }
 
-        impl<C: RobustReprC, A: Allocator> Encode for $ty<C, A> {}
-        impl<'d, C: RobustReprC, A: Allocator> Decode<'d> for $ty<C, A> {}
+        impl<C: RobustReprC> Encode for $ty<C> {}
+        impl<'d, C: RobustReprC> Decode<'d> for $ty<C> {}
 
-        unsafe impl<C: RobustReprC, A: Allocator> CheckedTransmute for $ty<C, A> {
+        unsafe impl<C: RobustReprC> CheckedTransmute for $ty<C> {
             #[inline(always)]
             unsafe fn is_valid(_: &Self::CType) -> bool {
                 true
             }
         }
 
-        unsafe impl<C: RobustReprC, A: Allocator> RobustReprC for $ty<C, A> {}
-        unsafe impl<C: RobustReprC, A: Allocator> CFnArg for $ty<C, A> {}
+        unsafe impl<C: RobustReprC> RobustReprC for $ty<C> {}
+        unsafe impl<C: RobustReprC> CFnArg for $ty<C> {}
     };
 }
 
 impl_boxed_carrier! { CBox }
 impl_boxed_carrier! { CBoxedSlice }
 
-unsafe impl<C: RobustReprC, A: Allocator> BorrowCast for CBox<C, A> {
+unsafe impl<C: RobustReprC> BorrowCast for CBox<C> {
     type AsConst = *const C;
 }
-unsafe impl<C: RobustReprC, A: Allocator> BorrowCastMut for CBox<C, A> {
+unsafe impl<C: RobustReprC> BorrowCastMut for CBox<C> {
     type AsMut = *mut C;
 }
 
-unsafe impl<C: RobustReprC, A: Allocator> BorrowCast for CBoxedSlice<C, A> {
+unsafe impl<C: RobustReprC> BorrowCast for CBoxedSlice<C> {
     type AsConst = CSlice<C>;
 }
-unsafe impl<C: RobustReprC, A: Allocator> BorrowCastMut for CBoxedSlice<C, A> {
+unsafe impl<C: RobustReprC> BorrowCastMut for CBoxedSlice<C> {
     type AsMut = CSliceMut<C>;
 }
 
-impl<C: RobustReprC, A: Allocator> Spread for CBoxedSlice<C, A> {
+impl<C: RobustReprC> Spread for CBoxedSlice<C> {
     type Part1 = *mut C;
     type Part2 = usize;
 
@@ -360,12 +331,6 @@ impl<C: RobustReprC, A: Allocator> Spread for CBoxedSlice<C, A> {
 
     #[inline(always)]
     fn from_parts(data: Self::Part1, len: Self::Part2) -> Self {
-        Self {
-            data,
-            len,
-            // SAFETY: this matches the existing niche construction. The allocator is only
-            // meaningful for carriers that came from co3-owned allocations.
-            allocator: unsafe { core::mem::zeroed() },
-        }
+        Self { data, len }
     }
 }

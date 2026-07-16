@@ -104,6 +104,10 @@ fn calculate_tuple_depth(n: usize) -> usize {
 }
 
 pub fn build_extern_c_type_tuple(types: &[&Type]) -> (TokenStream, TokenStream, Vec<TokenStream>) {
+    if types.is_empty() {
+        return (quote!(()), quote!(()), Vec::new());
+    }
+
     let depth = calculate_tuple_depth(types.len());
     build_type_tuple_at_depth(types, depth)
 }
@@ -152,37 +156,6 @@ fn build_type_tuple_at_depth(
         quote!(co3::tuple::#c_tuple_ident<#(#sub_c_tuples),*>),
         all_accessors,
     )
-}
-
-fn path_matches(path: &syn::Path, expected: &[&str]) -> bool {
-    path.segments
-        .iter()
-        .map(|segment| segment.ident.to_string())
-        .eq(expected.iter().copied())
-}
-
-fn impl_trait_type_arg(args: &syn::PathArguments) -> Option<Type> {
-    let syn::PathArguments::AngleBracketed(args) = args else {
-        return None;
-    };
-
-    args.args.iter().find_map(|arg| match arg {
-        syn::GenericArgument::Type(ty) => Some(ty.clone()),
-        _ => None,
-    })
-}
-
-fn impl_trait_assoc_type_arg(args: &syn::PathArguments, name: &str) -> Option<Type> {
-    let syn::PathArguments::AngleBracketed(args) = args else {
-        return None;
-    };
-
-    args.args.iter().find_map(|arg| match arg {
-        syn::GenericArgument::AssocType(binding) if binding.ident == name => {
-            Some(binding.ty.clone())
-        }
-        _ => None,
-    })
 }
 
 pub(crate) struct DispatchMonomorphizer<'a> {
