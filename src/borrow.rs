@@ -12,7 +12,7 @@ trait NonExternTypeLike {}
 #[cfg(feature = "alloc")]
 impl<K> NonExternTypeLike for MetaSized<K> {}
 #[cfg(feature = "alloc")]
-impl NonExternTypeLike for crate::size::Sized {}
+impl<K> NonExternTypeLike for crate::size::Sized<K> {}
 
 /// A layout-compatible borrowed view of a robust C representation.
 ///

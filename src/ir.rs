@@ -79,11 +79,11 @@ disjoint_impls! {
     }
 
     #[cfg(feature = "alloc")]
-    impl<R: ReprFamily<Kind = ReprC<Robust>> + SizeFamily<Kind = crate::size::Sized>> ReprFamily for Box<R> {
+    impl<R: ReprFamily<Kind = ReprC<Robust>> + SizeFamily<Kind = crate::size::Sized<S>>, S> ReprFamily for Box<R> {
         type Kind = ReprC<NonRobust>;
     }
     #[cfg(feature = "alloc")]
-    impl<R: ReprFamily<Kind = ReprC<NonRobust>> + SizeFamily<Kind = crate::size::Sized>> ReprFamily for Box<R> {
+    impl<R: ReprFamily<Kind = ReprC<NonRobust>> + SizeFamily<Kind = crate::size::Sized<S>>, S> ReprFamily for Box<R> {
         type Kind = ReprC<NonRobust>;
     }
     #[cfg(feature = "alloc")]

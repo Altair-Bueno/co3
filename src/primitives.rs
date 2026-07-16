@@ -15,8 +15,8 @@ macro_rules! primitive_derive {
         impl ReprFamily for $primitive {
             type Kind = ReprC<Robust>;
         }
-        impl SizeFamily for $primitive {
-            type Kind = crate::size::Sized;
+        unsafe impl SizeFamily for $primitive {
+            type Kind = crate::size::Sized<crate::size::NonZst>;
         }
         impl NicheFamily for $primitive {
             type Kind = WithoutNiche;
@@ -95,8 +95,8 @@ macro_rules! raw_pointer_derive {
         impl<R: ReprFamily + ?Sized> ReprFamily for *$mutability R {
             type Kind = R::Kind;
         }
-        impl<R: ?Sized> SizeFamily for *$mutability R {
-            type Kind = crate::size::Sized;
+        unsafe impl<R: ?Sized> SizeFamily for *$mutability R {
+            type Kind = crate::size::Sized<crate::size::NonZst>;
         }
         impl<R: ?Sized> NicheFamily for *$mutability R {
             type Kind = WithoutNiche;
@@ -178,7 +178,7 @@ macro_rules! impl_fn_types {
             type Kind = ();
         }
         //impl<$($arg,)* R> SizeFamily for extern "C" fn($($arg),*) -> R {
-        //    type Kind = crate::size::Sized;
+        //    type Kind = crate::size::Sized<crate::size::NonZst>;
         //}
         //impl<$($arg,)* R> NicheFamily for extern "C" fn($($arg),*) -> R {
         //    type Kind = WithStableNiche;
@@ -193,8 +193,8 @@ macro_rules! fieldless_enum_derive {
         impl ReprFamily for $src {
             type Kind = ReprC<NonRobust>;
         }
-        impl SizeFamily for $src {
-            type Kind = crate::size::Sized;
+        unsafe impl SizeFamily for $src {
+            type Kind = crate::size::Sized<crate::size::NonZst>;
         }
         impl NicheFamily for $src {
             type Kind = WithCustomNiche;
@@ -279,7 +279,7 @@ raw_pointer_derive! { mut }
 impl<R: ReprFamily> ReprFamily for [R] {
     type Kind = R::Kind;
 }
-impl<R> SizeFamily for [R] {
+unsafe impl<R> SizeFamily for [R] {
     type Kind = MetaSized<SliceLike>;
 }
 
@@ -298,8 +298,8 @@ unsafe impl<R: BorrowCastMut<AsMut: Copy>> BorrowCastMut for [R] {
 impl<R: ReprFamily, const N: usize> ReprFamily for [R; N] {
     type Kind = R::Kind;
 }
-impl<T, const N: usize> SizeFamily for [T; N] {
-    type Kind = crate::size::Sized;
+unsafe impl<R: SizeFamily, const N: usize> SizeFamily for [R; N] {
+    type Kind = R::Kind;
 }
 
 impl<R: ExternC<CType: Sized>, const N: usize> ExternC for [R; N] {

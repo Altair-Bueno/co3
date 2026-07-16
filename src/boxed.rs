@@ -264,8 +264,8 @@ macro_rules! impl_boxed_carrier {
         impl<C: ReprFamily, A: Allocator> ReprFamily for $ty<C, A> {
             type Kind = C::Kind;
         }
-        impl<C, A: Allocator> SizeFamily for $ty<C, A> {
-            type Kind = crate::size::Sized;
+        unsafe impl<C, A: Allocator> SizeFamily for $ty<C, A> {
+            type Kind = crate::size::Sized<crate::size::NonZst>;
         }
         impl<C, A: Allocator> NicheFamily for $ty<C, A> {
             type Kind = WithoutNiche;

@@ -62,9 +62,9 @@ mod provider {
     }
 
     #[derive(Clone)]
-    pub struct Opaque1;
+    pub struct Opaque1(u8);
     #[derive(Clone)]
-    pub struct Opaque2;
+    pub struct Opaque2(u8);
 
     handles! {
         unsafe {
@@ -75,13 +75,13 @@ mod provider {
 
     impl Default for Box<Opaque1> {
         fn default() -> Self {
-            Box::new(Opaque1)
+            Box::new(Opaque1(0))
         }
     }
 
     impl Default for Opaque2 {
         fn default() -> Self {
-            Self
+            Self(0)
         }
     }
 

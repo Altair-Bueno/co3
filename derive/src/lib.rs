@@ -4,7 +4,7 @@
 //!
 //! ```rust
 //! #![cfg(not(feature = "ffi-extern"))]
-//! struct Local;
+//! struct Local(u8);
 //!
 //! #[cfg(not(feature = "ffi-extern"))]
 //! type LocalType = Box<Local>;

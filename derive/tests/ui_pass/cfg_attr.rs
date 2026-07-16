@@ -73,7 +73,7 @@ ffi! {
     fn imported_value_soft(#[cfg_attr(all(), soft)] value: &(u8,)) -> u8;
 }
 
-struct ExportOpaque;
+struct ExportOpaque(u8);
 
 ffi! {
     #![unsafe(export("C"))]

@@ -136,6 +136,7 @@ mod tests {
         Decode, Encode, RobustReprC,
         ir::{NonRobust, ReprC, ReprFamily, ReprRust},
         niche::{Niche, NicheFamily, WithCustomNiche, WithStableNiche, WithoutNiche},
+        size::{NonZst, SizeFamily, Sized as Co3Sized},
         slice::{CSlice, CSliceMut},
     };
 
@@ -143,6 +144,7 @@ mod tests {
     fn transparent_type() {
         assert_impl_all!(bool:
             ReprFamily<Kind = ReprC<NonRobust>>,
+            SizeFamily<Kind = Co3Sized<NonZst>>,
             NicheFamily<Kind = WithCustomNiche>,
             Niche<CType = u8>,
             Decode<'static>,
@@ -150,6 +152,7 @@ mod tests {
         );
         assert_impl_all!(&bool:
             ReprFamily<Kind = ReprC<NonRobust>>,
+            SizeFamily<Kind = Co3Sized<NonZst>>,
             NicheFamily<Kind = WithStableNiche>,
             StableNiche<CType = *const u8>,
             Decode<'static>,
@@ -157,6 +160,7 @@ mod tests {
         );
         assert_impl_all!(&mut bool:
             ReprFamily<Kind = ReprC<NonRobust>>,
+            SizeFamily<Kind = Co3Sized<NonZst>>,
             NicheFamily<Kind = WithStableNiche>,
             StableNiche<CType = *mut u8>,
             Decode<'static>,
@@ -165,6 +169,7 @@ mod tests {
         #[cfg(feature = "alloc")]
         assert_impl_all!(Box<bool>:
             ReprFamily<Kind = ReprC<NonRobust>>,
+            SizeFamily<Kind = Co3Sized<NonZst>>,
             NicheFamily<Kind = WithStableNiche>,
             StableNiche<CType = CBox<u8>>,
             Decode<'static>,
@@ -172,6 +177,7 @@ mod tests {
         );
         assert_impl_all!(&[bool]:
             ReprFamily<Kind = ReprRust>,
+            SizeFamily<Kind = Co3Sized<NonZst>>,
             NicheFamily<Kind = WithCustomNiche>,
             Niche<CType = CSlice<u8>>,
             Decode<'static>,
@@ -180,6 +186,7 @@ mod tests {
         #[cfg(feature = "alloc")]
         assert_impl_all!(&mut [bool]:
             ReprFamily<Kind = ReprRust>,
+            SizeFamily<Kind = Co3Sized<NonZst>>,
             NicheFamily<Kind = WithCustomNiche>,
             Niche<CType = CSliceMut<u8>>,
             Decode<'static>,
@@ -188,6 +195,7 @@ mod tests {
         #[cfg(feature = "alloc")]
         assert_impl_all!(Box<[bool]>:
             ReprFamily<Kind = ReprRust>,
+            SizeFamily<Kind = Co3Sized<NonZst>>,
             NicheFamily<Kind = WithCustomNiche>,
             Niche<CType = CBoxedSlice<u8>>,
             Decode<'static>,
@@ -196,6 +204,7 @@ mod tests {
         #[cfg(feature = "alloc")]
         assert_impl_all!(Vec<bool>:
             ReprFamily<Kind = ReprRust>,
+            SizeFamily<Kind = Co3Sized<NonZst>>,
             NicheFamily<Kind = WithCustomNiche>,
             Niche<CType = CBoxedSlice<u8>>,
             Decode<'static>,
@@ -203,6 +212,7 @@ mod tests {
         );
         assert_impl_all!([bool; 2]:
             ReprFamily<Kind = ReprC<NonRobust>>,
+            SizeFamily<Kind = Co3Sized<NonZst>>,
             NicheFamily<Kind = WithCustomNiche>,
             Niche<CType = [u8; 2]>,
             Decode<'static>,
@@ -210,6 +220,7 @@ mod tests {
         );
         assert_impl_all!(Option<bool>:
             ReprFamily<Kind = ReprRust>,
+            SizeFamily<Kind = Co3Sized<NonZst>>,
             NicheFamily<Kind = WithCustomNiche>,
             Niche<CType = u8>,
             Decode<'static>,
@@ -221,6 +232,7 @@ mod tests {
     fn robust_ref() {
         assert_impl_all!(&&u8:
             ReprFamily<Kind = ReprC<NonRobust>>,
+            SizeFamily<Kind = Co3Sized<NonZst>>,
             NicheFamily<Kind = WithStableNiche>,
             StableNiche<CType = *const *const u8>,
             Decode<'static>,
@@ -228,6 +240,7 @@ mod tests {
         );
         assert_impl_all!(&mut &u8:
             ReprFamily<Kind = ReprC<NonRobust>>,
+            SizeFamily<Kind = Co3Sized<NonZst>>,
             NicheFamily<Kind = WithStableNiche>,
             StableNiche<CType = *mut *const u8>,
             Decode<'static>,
@@ -236,6 +249,7 @@ mod tests {
         #[cfg(feature = "alloc")]
         assert_impl_all!(Box<&bool>:
             ReprFamily<Kind = ReprC<NonRobust>>,
+            SizeFamily<Kind = Co3Sized<NonZst>>,
             NicheFamily<Kind = WithStableNiche>,
             StableNiche<CType = CBox<*const u8>>,
             Decode<'static>,
@@ -243,6 +257,7 @@ mod tests {
         );
         assert_impl_all!(&[&u8]:
             ReprFamily<Kind = ReprRust>,
+            SizeFamily<Kind = Co3Sized<NonZst>>,
             NicheFamily<Kind = WithCustomNiche>,
             Niche<CType = CSlice<*const u8>>,
             Decode<'static>,
@@ -250,6 +265,7 @@ mod tests {
         );
         assert_impl_all!(&mut [&u8]:
             ReprFamily<Kind = ReprRust>,
+            SizeFamily<Kind = Co3Sized<NonZst>>,
             NicheFamily<Kind = WithCustomNiche>,
             Niche<CType = CSliceMut<*const u8>>,
             Decode<'static>,
@@ -257,6 +273,7 @@ mod tests {
         #[cfg(feature = "alloc")]
         assert_impl_all!(Box<[&u8]>:
             ReprFamily<Kind = ReprRust>,
+            SizeFamily<Kind = Co3Sized<NonZst>>,
             NicheFamily<Kind = WithCustomNiche>,
             Niche<CType = CBoxedSlice<*const u8>>,
             Decode<'static>,
@@ -265,6 +282,7 @@ mod tests {
         #[cfg(feature = "alloc")]
         assert_impl_all!(Vec<&u8>:
             ReprFamily<Kind = ReprRust>,
+            SizeFamily<Kind = Co3Sized<NonZst>>,
             NicheFamily<Kind = WithCustomNiche>,
             Niche<CType = CBoxedSlice<*const u8>>,
             Decode<'static>,
@@ -272,6 +290,7 @@ mod tests {
         );
         assert_impl_all!([&u8; 2]:
             ReprFamily<Kind = ReprC<NonRobust>>,
+            SizeFamily<Kind = Co3Sized<NonZst>>,
             NicheFamily<Kind = WithCustomNiche>,
             Niche<CType = [*const u8; 2]>,
             Decode<'static>,
@@ -281,6 +300,7 @@ mod tests {
             // FIXME:
             //ReprFamily<Kind = ReprC<Robust>>,
             ReprFamily<Kind = ReprC<NonRobust>>,
+            SizeFamily<Kind = Co3Sized<NonZst>>,
             NicheFamily<Kind = WithoutNiche>,
             ExternC<CType = *const u8>,
             Decode<'static>,
@@ -294,6 +314,7 @@ mod tests {
     fn transparent_ref() {
         assert_impl_all!(&&bool:
             ReprFamily<Kind = ReprC<NonRobust>>,
+            SizeFamily<Kind = Co3Sized<NonZst>>,
             NicheFamily<Kind = WithStableNiche>,
             StableNiche<CType = *const *const u8>,
             Decode<'static>,
@@ -301,6 +322,7 @@ mod tests {
         );
         assert_impl_all!(&mut &bool:
             ReprFamily<Kind = ReprC<NonRobust>>,
+            SizeFamily<Kind = Co3Sized<NonZst>>,
             NicheFamily<Kind = WithStableNiche>,
             StableNiche<CType = *mut *const u8>,
             Decode<'static>,
@@ -309,6 +331,7 @@ mod tests {
         #[cfg(feature = "alloc")]
         assert_impl_all!(Box<&bool>:
             ReprFamily<Kind = ReprC<NonRobust>>,
+            SizeFamily<Kind = Co3Sized<NonZst>>,
             NicheFamily<Kind = WithStableNiche>,
             StableNiche<CType = CBox<*const u8>>,
             Decode<'static>,
@@ -316,6 +339,7 @@ mod tests {
         );
         assert_impl_all!(&[&bool]:
             ReprFamily<Kind = ReprRust>,
+            SizeFamily<Kind = Co3Sized<NonZst>>,
             NicheFamily<Kind = WithCustomNiche>,
             Niche<CType = CSlice<*const u8>>,
             Decode<'static>,
@@ -324,6 +348,7 @@ mod tests {
         #[cfg(feature = "alloc")]
         assert_impl_all!(&mut [&bool]:
             ReprFamily<Kind = ReprRust>,
+            SizeFamily<Kind = Co3Sized<NonZst>>,
             NicheFamily<Kind = WithCustomNiche>,
             Niche<CType = CSliceMut<*const u8>>,
             Decode<'static>,
@@ -332,6 +357,7 @@ mod tests {
         #[cfg(feature = "alloc")]
         assert_impl_all!(Box<[&bool]>:
             ReprFamily<Kind = ReprRust>,
+            SizeFamily<Kind = Co3Sized<NonZst>>,
             NicheFamily<Kind = WithCustomNiche>,
             Niche<CType = CBoxedSlice<*const u8>>,
             Decode<'static>,
@@ -340,6 +366,7 @@ mod tests {
         #[cfg(feature = "alloc")]
         assert_impl_all!(Vec<&bool>:
             ReprFamily<Kind = ReprRust>,
+            SizeFamily<Kind = Co3Sized<NonZst>>,
             NicheFamily<Kind = WithCustomNiche>,
             Niche<CType = CBoxedSlice<*const u8>>,
             Decode<'static>,
@@ -347,6 +374,7 @@ mod tests {
         );
         assert_impl_all!([&bool; 2]:
             ReprFamily<Kind = ReprC<NonRobust>>,
+            SizeFamily<Kind = Co3Sized<NonZst>>,
             NicheFamily<Kind = WithCustomNiche>,
             Niche<CType = [*const u8; 2]>,
             Decode<'static>,
@@ -354,6 +382,7 @@ mod tests {
         );
         assert_impl_all!(Option<&bool>:
             ReprFamily<Kind = ReprC<NonRobust>>,
+            SizeFamily<Kind = Co3Sized<NonZst>>,
             NicheFamily<Kind = WithoutNiche>,
             ExternC<CType = *const u8>,
             Decode<'static>,
@@ -365,6 +394,7 @@ mod tests {
     fn robust_ref_mut() {
         assert_impl_all!(&&mut u8:
             ReprFamily<Kind = ReprC<NonRobust>>,
+            SizeFamily<Kind = Co3Sized<NonZst>>,
             NicheFamily<Kind = WithStableNiche>,
             StableNiche<CType = *const *mut u8>,
             Decode<'static>,
@@ -372,6 +402,7 @@ mod tests {
         );
         assert_impl_all!(&mut &mut u8:
             ReprFamily<Kind = ReprC<NonRobust>>,
+            SizeFamily<Kind = Co3Sized<NonZst>>,
             NicheFamily<Kind = WithStableNiche>,
             StableNiche<CType = *mut *mut u8>,
             Decode<'static>,
@@ -379,6 +410,7 @@ mod tests {
         #[cfg(feature = "alloc")]
         assert_impl_all!(Box<&mut u8>:
             ReprFamily<Kind = ReprC<NonRobust>>,
+            SizeFamily<Kind = Co3Sized<NonZst>>,
             NicheFamily<Kind = WithStableNiche>,
             StableNiche<CType = CBox<*mut u8>>,
             Decode<'static>,
@@ -386,6 +418,7 @@ mod tests {
         );
         assert_impl_all!(&[&mut u8]:
             ReprFamily<Kind = ReprRust>,
+            SizeFamily<Kind = Co3Sized<NonZst>>,
             NicheFamily<Kind = WithCustomNiche>,
             Niche<CType = CSlice<*mut u8>>,
             Decode<'static>,
@@ -393,6 +426,7 @@ mod tests {
         );
         assert_impl_all!(&mut [&mut u8]:
             ReprFamily<Kind = ReprRust>,
+            SizeFamily<Kind = Co3Sized<NonZst>>,
             NicheFamily<Kind = WithCustomNiche>,
             Niche<CType = CSliceMut<*mut u8>>,
             Decode<'static>,
@@ -400,6 +434,7 @@ mod tests {
         #[cfg(feature = "alloc")]
         assert_impl_all!(Box<[&mut u8]>:
             ReprFamily<Kind = ReprRust>,
+            SizeFamily<Kind = Co3Sized<NonZst>>,
             NicheFamily<Kind = WithCustomNiche>,
             Niche<CType = CBoxedSlice<*mut u8>>,
             Decode<'static>,
@@ -408,6 +443,7 @@ mod tests {
         #[cfg(feature = "alloc")]
         assert_impl_all!(Vec<&mut u8>:
             ReprFamily<Kind = ReprRust>,
+            SizeFamily<Kind = Co3Sized<NonZst>>,
             NicheFamily<Kind = WithCustomNiche>,
             Niche<CType = CBoxedSlice<*mut u8>>,
             Decode<'static>,
@@ -415,6 +451,7 @@ mod tests {
         );
         assert_impl_all!([&mut u8; 2]:
             ReprFamily<Kind = ReprC<NonRobust>>,
+            SizeFamily<Kind = Co3Sized<NonZst>>,
             NicheFamily<Kind = WithCustomNiche>,
             Niche<CType = [*mut u8; 2]>,
             Decode<'static>,
@@ -424,6 +461,7 @@ mod tests {
             // FIXME:
             //ReprFamily<Kind = ReprC<Robust>>,
             ReprFamily<Kind = ReprC<NonRobust>>,
+            SizeFamily<Kind = Co3Sized<NonZst>>,
             NicheFamily<Kind = WithoutNiche>,
             ExternC<CType = *mut u8>,
             Decode<'static>,
@@ -437,6 +475,7 @@ mod tests {
     fn transparent_ref_mut() {
         assert_impl_all!(&&mut bool:
             ReprFamily<Kind = ReprC<NonRobust>>,
+            SizeFamily<Kind = Co3Sized<NonZst>>,
             NicheFamily<Kind = WithStableNiche>,
             StableNiche<CType = *const *mut u8>,
             Decode<'static>,
@@ -444,6 +483,7 @@ mod tests {
         );
         assert_impl_all!(&mut &mut bool:
             ReprFamily<Kind = ReprC<NonRobust>>,
+            SizeFamily<Kind = Co3Sized<NonZst>>,
             NicheFamily<Kind = WithStableNiche>,
             StableNiche<CType = *mut *mut u8>,
             Decode<'static>,
@@ -451,6 +491,7 @@ mod tests {
         #[cfg(feature = "alloc")]
         assert_impl_all!(Box<&mut bool>:
             ReprFamily<Kind = ReprC<NonRobust>>,
+            SizeFamily<Kind = Co3Sized<NonZst>>,
             NicheFamily<Kind = WithStableNiche>,
             StableNiche<CType = CBox<*mut u8>>,
             Decode<'static>,
@@ -458,6 +499,7 @@ mod tests {
         );
         assert_impl_all!(&[&mut bool]:
             ReprFamily<Kind = ReprRust>,
+            SizeFamily<Kind = Co3Sized<NonZst>>,
             NicheFamily<Kind = WithCustomNiche>,
             Niche<CType = CSlice<*mut u8>>,
             Decode<'static>,
@@ -465,6 +507,7 @@ mod tests {
         );
         assert_impl_all!(&mut [&mut bool]:
             ReprFamily<Kind = ReprRust>,
+            SizeFamily<Kind = Co3Sized<NonZst>>,
             NicheFamily<Kind = WithCustomNiche>,
             Niche<CType = CSliceMut<*mut u8>>,
             Decode<'static>,
@@ -472,6 +515,7 @@ mod tests {
         #[cfg(feature = "alloc")]
         assert_impl_all!(Box<[&mut bool]>:
             ReprFamily<Kind = ReprRust>,
+            SizeFamily<Kind = Co3Sized<NonZst>>,
             NicheFamily<Kind = WithCustomNiche>,
             Niche<CType = CBoxedSlice<*mut u8>>,
             Decode<'static>,
@@ -480,6 +524,7 @@ mod tests {
         #[cfg(feature = "alloc")]
         assert_impl_all!(Vec<&mut bool>:
             ReprFamily<Kind = ReprRust>,
+            SizeFamily<Kind = Co3Sized<NonZst>>,
             NicheFamily<Kind = WithCustomNiche>,
             Niche<CType = CBoxedSlice<*mut u8>>,
             Decode<'static>,
@@ -487,6 +532,7 @@ mod tests {
         );
         assert_impl_all!([&mut bool; 2]:
             ReprFamily<Kind = ReprC<NonRobust>>,
+            SizeFamily<Kind = Co3Sized<NonZst>>,
             NicheFamily<Kind = WithCustomNiche>,
             Niche<CType = [*mut u8; 2]>,
             Decode<'static>,
@@ -494,6 +540,7 @@ mod tests {
         );
         assert_impl_all!(Option<&mut bool>:
             ReprFamily<Kind = ReprC<NonRobust>>,
+            SizeFamily<Kind = Co3Sized<NonZst>>,
             NicheFamily<Kind = WithoutNiche>,
             ExternC<CType = *mut u8>,
             Decode<'static>,

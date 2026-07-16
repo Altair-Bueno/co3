@@ -153,7 +153,7 @@ disjoint_impls! {
         type Kind = WithCustomNiche;
     }
     #[cfg(feature = "alloc")]
-    impl<R: SizeFamily<Kind = crate::size::Sized>> NicheFamily for Box<R> {
+    impl<R: SizeFamily<Kind = crate::size::Sized<S>>, S> NicheFamily for Box<R> {
         type Kind = WithStableNiche;
     }
 

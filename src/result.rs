@@ -167,8 +167,8 @@ impl<T: ReprFamily<Kind: Add<E::Kind>> + Copy, E: ReprFamily + Copy> ReprFamily
     type Kind = <T::Kind as Add<E::Kind>>::Output;
 }
 
-impl<T: Copy, E: Copy> SizeFamily for ReprCResult<T, E> {
-    type Kind = crate::size::Sized;
+unsafe impl<T: Copy, E: Copy> SizeFamily for ReprCResult<T, E> {
+    type Kind = crate::size::Sized<crate::size::NonZst>;
 }
 
 impl<T: Copy, E: Copy> NicheFamily for ReprCResult<T, E> {

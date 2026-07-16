@@ -109,7 +109,7 @@ disjoint_impls! {
             CSlice::from_raw_parts(ptr, len)
         }
     }
-    unsafe impl<R: ReprFamily<Kind = ReprRust> + SizeFamily<Kind = crate::size::Sized>> EncodeOwned for &R
+    unsafe impl<R: ReprFamily<Kind = ReprRust> + SizeFamily<Kind = crate::size::Sized<S>>, S> EncodeOwned for &R
     where
         Self: ReprFamily<Kind = ReprRust>,
         R: Clone + EncodeOwned,
@@ -181,7 +181,7 @@ disjoint_impls! {
         }
     }
     // TODO: The following 2 unsafe impls are duplicated. This is likely a deficiency in disjoint_impls!. Fix it there
-    unsafe impl<'a, R: ReprFamily<Kind: ReprRustOrTransmutedNonRobust> + SizeFamily<Kind = crate::size::Sized>>
+    unsafe impl<'a, R: ReprFamily<Kind: ReprRustOrTransmutedNonRobust> + SizeFamily<Kind = crate::size::Sized<S>>, S>
         EncodeOwned for &'a mut R
     where
         Self: ReprFamily<Kind = ReprC<NonRobust>> + ExternC<CType = *mut <R as ExternC>::CType>,
@@ -199,7 +199,7 @@ disjoint_impls! {
             store.ctype.insert(ctype)
         }
     }
-    unsafe impl<'a, R: ReprFamily<Kind: ReprRustOrTransmutedNonRobust> + SizeFamily<Kind = crate::size::Sized>>
+    unsafe impl<'a, R: ReprFamily<Kind: ReprRustOrTransmutedNonRobust> + SizeFamily<Kind = crate::size::Sized<S>>, S>
         EncodeOwned for &'a mut R
     where
         Self: ReprFamily<Kind = ReprRust> + ExternC<CType = *mut <R as ExternC>::CType>,
@@ -287,7 +287,7 @@ disjoint_impls! {
         }
     }
     #[cfg(feature = "alloc")]
-    unsafe impl<R: ReprFamily<Kind = ReprRust> + SizeFamily<Kind = crate::size::Sized>> EncodeOwned for Box<R>
+    unsafe impl<R: ReprFamily<Kind = ReprRust> + SizeFamily<Kind = crate::size::Sized<S>>, S> EncodeOwned for Box<R>
     where
         Self: ReprFamily<Kind = ReprRust>,
         R: EncodeOwned,
@@ -481,7 +481,7 @@ disjoint_impls! {
             Some(unsafe { R::from_raw_parts(data, len) })
         }
     }
-    unsafe impl<'d, R: ReprFamily<Kind = ReprRust> + SizeFamily<Kind = crate::size::Sized> + ToOwned<'d>> DecodeOwned<'d>
+    unsafe impl<'d, R: ReprFamily<Kind = ReprRust> + SizeFamily<Kind = crate::size::Sized<S>> + ToOwned<'d>, S> DecodeOwned<'d>
         for &'d R
     where
         Self: ReprFamily<Kind = ReprRust>,
@@ -585,7 +585,7 @@ disjoint_impls! {
             Some(unsafe { R::from_raw_parts_mut(data, len) })
         }
     }
-    unsafe impl<'d, R: ReprFamily<Kind = ReprRust> + SizeFamily<Kind = crate::size::Sized> + ToOwned<'d>> DecodeOwned<'d>
+    unsafe impl<'d, R: ReprFamily<Kind = ReprRust> + SizeFamily<Kind = crate::size::Sized<S>> + ToOwned<'d>, S> DecodeOwned<'d>
         for &'d mut R
     where
         Self: ReprFamily<Kind = ReprRust>,
@@ -674,7 +674,7 @@ disjoint_impls! {
         }
     }
     #[cfg(feature = "alloc")]
-    unsafe impl<'d, R: ReprFamily<Kind = ReprRust> + SizeFamily<Kind = crate::size::Sized>> DecodeOwned<'d>
+    unsafe impl<'d, R: ReprFamily<Kind = ReprRust> + SizeFamily<Kind = crate::size::Sized<S>>, S> DecodeOwned<'d>
         for Box<R>
     where
         Self: ReprFamily<Kind = ReprRust>,

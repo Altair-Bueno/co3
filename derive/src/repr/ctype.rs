@@ -5,8 +5,8 @@ use quote::{format_ident, quote};
 use syn::{parse_quote, visit::Visit};
 
 use crate::repr::{
-    attr::ReprKind, enum_tag_type, gen_size_family_impl, gen_sized_family_impl,
-    is_type_parameterized, wide::gen_transparent_wide_impl,
+    attr::ReprKind, enum_tag_type, gen_non_zst_sized_family_impl, gen_size_family_impl,
+    is_transparent_enum_repr, is_type_parameterized, wide::gen_transparent_wide_impl,
 };
 
 fn lowered_field_ty(field_ty: &syn::Type) -> TokenStream {
@@ -22,7 +22,7 @@ pub(super) fn gen_item_ctype(repr: Option<&ReprKind>, input: &syn::DeriveInput) 
         syn::Data::Struct(data) => {
             derive_ctype_struct::<false>(repr, vis, name, generics, &data.fields)
         }
-        syn::Data::Enum(data) if matches!(repr, Some(&ReprKind::Transparent)) => {
+        syn::Data::Enum(data) if is_transparent_enum_repr(repr, &data.variants) => {
             let Some(first_variant) = data.variants.first() else {
                 return quote! {};
             };
@@ -334,7 +334,7 @@ fn gen_union_ctype_impls(ctype: &syn::ItemUnion) -> TokenStream {
     let copy_impls = gen_copy_impls::<true>(&ctype.ident, &ctype.generics, &fields);
     let default_impl = gen_default_impl::<true>(&ctype.ident, &ctype.generics, &fields);
     let robust_impls = gen_robust_impls::<true>(&ctype.ident, &ctype.generics, &fields);
-    let size_family_impl = gen_sized_family_impl(&ctype.ident, &ctype.generics);
+    let size_family_impl = gen_non_zst_sized_family_impl(&ctype.ident, &ctype.generics);
 
     let const_view = gen_ctype_union_view(ctype.clone(), false);
     let mut_view = gen_ctype_union_view(ctype.clone(), true);
@@ -365,6 +365,15 @@ fn gen_robust_impls<const ADD_COPY: bool>(
     let copy_bounds = gen_copy_bounds::<ADD_COPY>(generics, fields);
     let codec_impls = gen_identity_codec_impls::<ADD_COPY>(ident, generics, fields);
 
+    let for_dummy = generics
+        .params
+        .is_empty()
+        .then_some(quote! { for<'_dummy> });
+
+    let size_family_bound = (!ADD_COPY).then(|| {
+        quote! { #for_dummy Self: co3::size::SizeFamily<Kind = co3::size::Sized<co3::size::NonZst>>, }
+    });
+
     quote! {
         impl #impl_generics co3::ir::ReprFamily for #ident #ty_generics #where_clause {
             type Kind = co3::ir::ReprC<co3::ir::Robust>;
@@ -374,20 +383,16 @@ fn gen_robust_impls<const ADD_COPY: bool>(
             type Kind = co3::niche::WithoutNiche;
         }
 
-        unsafe impl #impl_generics co3::RobustReprC for #ident #ty_generics
-        where
-            #predicates
-        {}
+        unsafe impl #impl_generics co3::RobustReprC for #ident #ty_generics #where_clause {}
+
         unsafe impl #impl_generics co3::CFnArg for #ident #ty_generics
         where
+            #size_family_bound
             #(#copy_bounds,)*
             #predicates
         {}
 
-        unsafe impl #impl_generics co3::transmute::CheckedTransmute for #ident #ty_generics
-        where
-            #predicates
-        {
+        unsafe impl #impl_generics co3::transmute::CheckedTransmute for #ident #ty_generics #where_clause {
             #[inline(always)]
             unsafe fn is_valid(_: &Self::CType) -> bool {
                 true
@@ -537,7 +542,7 @@ fn gen_ctype_union_view(mut ctype: syn::ItemUnion, is_mut: bool) -> TokenStream 
     let copy_impls = gen_copy_impls::<true>(&ctype.ident, &ctype.generics, &fields);
     let default_impl = gen_default_impl::<true>(&ctype.ident, &ctype.generics, &fields);
     let robust_impls = gen_robust_impls::<true>(&ctype.ident, &ctype.generics, &fields);
-    let size_family_impl = gen_sized_family_impl(&ctype.ident, &ctype.generics);
+    let size_family_impl = gen_non_zst_sized_family_impl(&ctype.ident, &ctype.generics);
 
     quote! {
         #ctype

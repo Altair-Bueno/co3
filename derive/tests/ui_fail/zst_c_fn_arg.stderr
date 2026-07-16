@@ -1,0 +1,392 @@
+error[E0271]: type mismatch resolving `<CReprCZst as SizeFamily>::Kind == Sized<NonZst>`
+  --> tests/ui_fail/zst_c_fn_arg.rs:61:19
+   |
+61 |     require_arg::<<ReprCZst as ExternC>::CType>();
+   |                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^ type mismatch resolving `<CReprCZst as SizeFamily>::Kind == Sized<NonZst>`
+   |
+note: expected this to be `co3::size::Sized<NonZst>`
+  --> tests/ui_fail/zst_c_fn_arg.rs:38:23
+   |
+38 | #[derive(Clone, Copy, ReprC)]
+   |                       ^^^^^
+   = note: expected struct `co3::size::Sized<NonZst>`
+              found struct `co3::size::Sized<Zst>`
+note: required for `CReprCZst` to implement `CFnArg`
+  --> tests/ui_fail/zst_c_fn_arg.rs:38:23
+   |
+38 | #[derive(Clone, Copy, ReprC)]
+   |                       ^^^^^ type parameter would need to implement `CFnArg`
+   = help: consider manually implementing `CFnArg` to avoid undesired bounds
+   = note: associated types for the current `impl` cannot be restricted in `where` clauses
+   = note: associated types for the current `impl` cannot be restricted in `where` clauses
+note: required by a bound in `require_arg`
+  --> tests/ui_fail/zst_c_fn_arg.rs:57:19
+   |
+57 | fn require_arg<T: CFnArg>() {}
+   |                   ^^^^^^ required by this bound in `require_arg`
+   = note: this error originates in the derive macro `ReprC` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error[E0271]: type mismatch resolving `<CReprCZst as SizeFamily>::Kind == Sized<NonZst>`
+  --> tests/ui_fail/zst_c_fn_arg.rs:62:22
+   |
+62 |     require_return::<<ReprCZst as ExternC>::CType>();
+   |                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^ type mismatch resolving `<CReprCZst as SizeFamily>::Kind == Sized<NonZst>`
+   |
+note: expected this to be `co3::size::Sized<NonZst>`
+  --> tests/ui_fail/zst_c_fn_arg.rs:38:23
+   |
+38 | #[derive(Clone, Copy, ReprC)]
+   |                       ^^^^^
+   = note: expected struct `co3::size::Sized<NonZst>`
+              found struct `co3::size::Sized<Zst>`
+note: required for `CReprCZst` to implement `CFnArg`
+  --> tests/ui_fail/zst_c_fn_arg.rs:38:23
+   |
+38 | #[derive(Clone, Copy, ReprC)]
+   |                       ^^^^^ type parameter would need to implement `CFnArg`
+   = help: consider manually implementing `CFnArg` to avoid undesired bounds
+   = note: associated types for the current `impl` cannot be restricted in `where` clauses
+   = note: associated types for the current `impl` cannot be restricted in `where` clauses
+   = note: required for `CReprCZst` to implement `CFnReturn`
+note: required by a bound in `require_return`
+  --> tests/ui_fail/zst_c_fn_arg.rs:58:22
+   |
+58 | fn require_return<T: CFnReturn>() {}
+   |                      ^^^^^^^^^ required by this bound in `require_return`
+   = note: this error originates in the derive macro `ReprC` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error[E0271]: type mismatch resolving `<CTransparentZst as SizeFamily>::Kind == Sized<NonZst>`
+  --> tests/ui_fail/zst_c_fn_arg.rs:64:19
+   |
+64 |     require_arg::<<TransparentZst as ExternC>::CType>();
+   |                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ type mismatch resolving `<CTransparentZst as SizeFamily>::Kind == Sized<NonZst>`
+   |
+note: expected this to be `co3::size::Sized<NonZst>`
+  --> tests/ui_fail/zst_c_fn_arg.rs:45:23
+   |
+45 | #[derive(Clone, Copy, ReprC)]
+   |                       ^^^^^
+   = note: expected struct `co3::size::Sized<NonZst>`
+              found struct `co3::size::Sized<Zst>`
+note: required for `CTransparentZst` to implement `CFnArg`
+  --> tests/ui_fail/zst_c_fn_arg.rs:45:23
+   |
+45 | #[derive(Clone, Copy, ReprC)]
+   |                       ^^^^^ type parameter would need to implement `CFnArg`
+   = help: consider manually implementing `CFnArg` to avoid undesired bounds
+   = note: associated types for the current `impl` cannot be restricted in `where` clauses
+   = note: associated types for the current `impl` cannot be restricted in `where` clauses
+note: required by a bound in `require_arg`
+  --> tests/ui_fail/zst_c_fn_arg.rs:57:19
+   |
+57 | fn require_arg<T: CFnArg>() {}
+   |                   ^^^^^^ required by this bound in `require_arg`
+   = note: this error originates in the derive macro `ReprC` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error[E0271]: type mismatch resolving `<CTransparentZst as SizeFamily>::Kind == Sized<NonZst>`
+  --> tests/ui_fail/zst_c_fn_arg.rs:65:22
+   |
+65 |     require_return::<<TransparentZst as ExternC>::CType>();
+   |                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ type mismatch resolving `<CTransparentZst as SizeFamily>::Kind == Sized<NonZst>`
+   |
+note: expected this to be `co3::size::Sized<NonZst>`
+  --> tests/ui_fail/zst_c_fn_arg.rs:45:23
+   |
+45 | #[derive(Clone, Copy, ReprC)]
+   |                       ^^^^^
+   = note: expected struct `co3::size::Sized<NonZst>`
+              found struct `co3::size::Sized<Zst>`
+note: required for `CTransparentZst` to implement `CFnArg`
+  --> tests/ui_fail/zst_c_fn_arg.rs:45:23
+   |
+45 | #[derive(Clone, Copy, ReprC)]
+   |                       ^^^^^ type parameter would need to implement `CFnArg`
+   = help: consider manually implementing `CFnArg` to avoid undesired bounds
+   = note: associated types for the current `impl` cannot be restricted in `where` clauses
+   = note: associated types for the current `impl` cannot be restricted in `where` clauses
+   = note: required for `CTransparentZst` to implement `CFnReturn`
+note: required by a bound in `require_return`
+  --> tests/ui_fail/zst_c_fn_arg.rs:58:22
+   |
+58 | fn require_return<T: CFnReturn>() {}
+   |                      ^^^^^^^^^ required by this bound in `require_return`
+   = note: this error originates in the derive macro `ReprC` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error[E0271]: type mismatch resolving `<CNoReprZst as SizeFamily>::Kind == Sized<NonZst>`
+  --> tests/ui_fail/zst_c_fn_arg.rs:67:19
+   |
+67 |     require_arg::<<NoReprZst as ExternC>::CType>();
+   |                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ type mismatch resolving `<CNoReprZst as SizeFamily>::Kind == Sized<NonZst>`
+   |
+note: expected this to be `co3::size::Sized<NonZst>`
+  --> tests/ui_fail/zst_c_fn_arg.rs:51:23
+   |
+51 | #[derive(Clone, Copy, ReprC)]
+   |                       ^^^^^
+   = note: expected struct `co3::size::Sized<NonZst>`
+              found struct `co3::size::Sized<Zst>`
+note: required for `CNoReprZst` to implement `CFnArg`
+  --> tests/ui_fail/zst_c_fn_arg.rs:51:23
+   |
+51 | #[derive(Clone, Copy, ReprC)]
+   |                       ^^^^^ type parameter would need to implement `CFnArg`
+   = help: consider manually implementing `CFnArg` to avoid undesired bounds
+   = note: associated types for the current `impl` cannot be restricted in `where` clauses
+   = note: associated types for the current `impl` cannot be restricted in `where` clauses
+note: required by a bound in `require_arg`
+  --> tests/ui_fail/zst_c_fn_arg.rs:57:19
+   |
+57 | fn require_arg<T: CFnArg>() {}
+   |                   ^^^^^^ required by this bound in `require_arg`
+   = note: this error originates in the derive macro `ReprC` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error[E0271]: type mismatch resolving `<CNoReprZst as SizeFamily>::Kind == Sized<NonZst>`
+  --> tests/ui_fail/zst_c_fn_arg.rs:68:22
+   |
+68 |     require_return::<<NoReprZst as ExternC>::CType>();
+   |                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ type mismatch resolving `<CNoReprZst as SizeFamily>::Kind == Sized<NonZst>`
+   |
+note: expected this to be `co3::size::Sized<NonZst>`
+  --> tests/ui_fail/zst_c_fn_arg.rs:51:23
+   |
+51 | #[derive(Clone, Copy, ReprC)]
+   |                       ^^^^^
+   = note: expected struct `co3::size::Sized<NonZst>`
+              found struct `co3::size::Sized<Zst>`
+note: required for `CNoReprZst` to implement `CFnArg`
+  --> tests/ui_fail/zst_c_fn_arg.rs:51:23
+   |
+51 | #[derive(Clone, Copy, ReprC)]
+   |                       ^^^^^ type parameter would need to implement `CFnArg`
+   = help: consider manually implementing `CFnArg` to avoid undesired bounds
+   = note: associated types for the current `impl` cannot be restricted in `where` clauses
+   = note: associated types for the current `impl` cannot be restricted in `where` clauses
+   = note: required for `CNoReprZst` to implement `CFnReturn`
+note: required by a bound in `require_return`
+  --> tests/ui_fail/zst_c_fn_arg.rs:58:22
+   |
+58 | fn require_return<T: CFnReturn>() {}
+   |                      ^^^^^^^^^ required by this bound in `require_return`
+   = note: this error originates in the derive macro `ReprC` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error[E0271]: type mismatch resolving `<CParamReprCZst<()> as SizeFamily>::Kind == Sized<NonZst>`
+  --> tests/ui_fail/zst_c_fn_arg.rs:70:19
+   |
+70 |     require_arg::<<ParamReprCZst<()> as ExternC>::CType>();
+   |                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ type mismatch resolving `<CParamReprCZst<()> as SizeFamily>::Kind == Sized<NonZst>`
+   |
+note: expected this to be `co3::size::Sized<NonZst>`
+  --> tests/ui_fail/zst_c_fn_arg.rs:3:23
+   |
+ 3 | #[derive(Clone, Copy, ReprC)]
+   |                       ^^^^^
+   = note: expected struct `co3::size::Sized<NonZst>`
+              found struct `co3::size::Sized<Zst>`
+note: required for `CParamReprCZst<()>` to implement `CFnArg`
+  --> tests/ui_fail/zst_c_fn_arg.rs:3:23
+   |
+ 3 | #[derive(Clone, Copy, ReprC)]
+   |                       ^^^^^ type parameter would need to implement `CFnArg`
+   = help: consider manually implementing `CFnArg` to avoid undesired bounds
+   = note: associated types for the current `impl` cannot be restricted in `where` clauses
+   = note: associated types for the current `impl` cannot be restricted in `where` clauses
+   = note: associated types for the current `impl` cannot be restricted in `where` clauses
+note: required by a bound in `require_arg`
+  --> tests/ui_fail/zst_c_fn_arg.rs:57:19
+   |
+57 | fn require_arg<T: CFnArg>() {}
+   |                   ^^^^^^ required by this bound in `require_arg`
+   = note: this error originates in the derive macro `ReprC` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error[E0271]: type mismatch resolving `<CParamReprCZst<()> as SizeFamily>::Kind == Sized<NonZst>`
+  --> tests/ui_fail/zst_c_fn_arg.rs:71:22
+   |
+71 |     require_return::<<ParamReprCZst<()> as ExternC>::CType>();
+   |                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ type mismatch resolving `<CParamReprCZst<()> as SizeFamily>::Kind == Sized<NonZst>`
+   |
+note: expected this to be `co3::size::Sized<NonZst>`
+  --> tests/ui_fail/zst_c_fn_arg.rs:3:23
+   |
+ 3 | #[derive(Clone, Copy, ReprC)]
+   |                       ^^^^^
+   = note: expected struct `co3::size::Sized<NonZst>`
+              found struct `co3::size::Sized<Zst>`
+note: required for `CParamReprCZst<()>` to implement `CFnArg`
+  --> tests/ui_fail/zst_c_fn_arg.rs:3:23
+   |
+ 3 | #[derive(Clone, Copy, ReprC)]
+   |                       ^^^^^ type parameter would need to implement `CFnArg`
+   = help: consider manually implementing `CFnArg` to avoid undesired bounds
+   = note: associated types for the current `impl` cannot be restricted in `where` clauses
+   = note: associated types for the current `impl` cannot be restricted in `where` clauses
+   = note: associated types for the current `impl` cannot be restricted in `where` clauses
+   = note: required for `CParamReprCZst<()>` to implement `CFnReturn`
+note: required by a bound in `require_return`
+  --> tests/ui_fail/zst_c_fn_arg.rs:58:22
+   |
+58 | fn require_return<T: CFnReturn>() {}
+   |                      ^^^^^^^^^ required by this bound in `require_return`
+   = note: this error originates in the derive macro `ReprC` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error[E0271]: type mismatch resolving `<CParamTransparentZst<()> as SizeFamily>::Kind == Sized<NonZst>`
+  --> tests/ui_fail/zst_c_fn_arg.rs:73:19
+   |
+73 |     require_arg::<<ParamTransparentZst<()> as ExternC>::CType>();
+   |                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ type mismatch resolving `<CParamTransparentZst<()> as SizeFamily>::Kind == Sized<NonZst>`
+   |
+note: expected this to be `co3::size::Sized<NonZst>`
+  --> tests/ui_fail/zst_c_fn_arg.rs:10:23
+   |
+10 | #[derive(Clone, Copy, ReprC)]
+   |                       ^^^^^
+   = note: expected struct `co3::size::Sized<NonZst>`
+              found struct `co3::size::Sized<Zst>`
+note: required for `CParamTransparentZst<()>` to implement `CFnArg`
+  --> tests/ui_fail/zst_c_fn_arg.rs:10:23
+   |
+10 | #[derive(Clone, Copy, ReprC)]
+   |                       ^^^^^ type parameter would need to implement `CFnArg`
+   = help: consider manually implementing `CFnArg` to avoid undesired bounds
+   = note: associated types for the current `impl` cannot be restricted in `where` clauses
+   = note: associated types for the current `impl` cannot be restricted in `where` clauses
+   = note: associated types for the current `impl` cannot be restricted in `where` clauses
+note: required by a bound in `require_arg`
+  --> tests/ui_fail/zst_c_fn_arg.rs:57:19
+   |
+57 | fn require_arg<T: CFnArg>() {}
+   |                   ^^^^^^ required by this bound in `require_arg`
+   = note: this error originates in the derive macro `ReprC` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error[E0271]: type mismatch resolving `<CParamTransparentZst<()> as SizeFamily>::Kind == Sized<NonZst>`
+  --> tests/ui_fail/zst_c_fn_arg.rs:74:22
+   |
+74 |     require_return::<<ParamTransparentZst<()> as ExternC>::CType>();
+   |                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ type mismatch resolving `<CParamTransparentZst<()> as SizeFamily>::Kind == Sized<NonZst>`
+   |
+note: expected this to be `co3::size::Sized<NonZst>`
+  --> tests/ui_fail/zst_c_fn_arg.rs:10:23
+   |
+10 | #[derive(Clone, Copy, ReprC)]
+   |                       ^^^^^
+   = note: expected struct `co3::size::Sized<NonZst>`
+              found struct `co3::size::Sized<Zst>`
+note: required for `CParamTransparentZst<()>` to implement `CFnArg`
+  --> tests/ui_fail/zst_c_fn_arg.rs:10:23
+   |
+10 | #[derive(Clone, Copy, ReprC)]
+   |                       ^^^^^ type parameter would need to implement `CFnArg`
+   = help: consider manually implementing `CFnArg` to avoid undesired bounds
+   = note: associated types for the current `impl` cannot be restricted in `where` clauses
+   = note: associated types for the current `impl` cannot be restricted in `where` clauses
+   = note: associated types for the current `impl` cannot be restricted in `where` clauses
+   = note: required for `CParamTransparentZst<()>` to implement `CFnReturn`
+note: required by a bound in `require_return`
+  --> tests/ui_fail/zst_c_fn_arg.rs:58:22
+   |
+58 | fn require_return<T: CFnReturn>() {}
+   |                      ^^^^^^^^^ required by this bound in `require_return`
+   = note: this error originates in the derive macro `ReprC` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error[E0271]: type mismatch resolving `<CParamNoReprZst<()> as SizeFamily>::Kind == Sized<NonZst>`
+  --> tests/ui_fail/zst_c_fn_arg.rs:76:19
+   |
+76 |     require_arg::<<ParamNoReprZst<()> as ExternC>::CType>();
+   |                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ type mismatch resolving `<CParamNoReprZst<()> as SizeFamily>::Kind == Sized<NonZst>`
+   |
+note: expected this to be `co3::size::Sized<NonZst>`
+  --> tests/ui_fail/zst_c_fn_arg.rs:32:23
+   |
+32 | #[derive(Clone, Copy, ReprC)]
+   |                       ^^^^^
+   = note: expected struct `co3::size::Sized<NonZst>`
+              found struct `co3::size::Sized<Zst>`
+note: required for `CParamNoReprZst<()>` to implement `CFnArg`
+  --> tests/ui_fail/zst_c_fn_arg.rs:32:23
+   |
+32 | #[derive(Clone, Copy, ReprC)]
+   |                       ^^^^^ type parameter would need to implement `CFnArg`
+   = help: consider manually implementing `CFnArg` to avoid undesired bounds
+   = note: associated types for the current `impl` cannot be restricted in `where` clauses
+   = note: associated types for the current `impl` cannot be restricted in `where` clauses
+   = note: associated types for the current `impl` cannot be restricted in `where` clauses
+note: required by a bound in `require_arg`
+  --> tests/ui_fail/zst_c_fn_arg.rs:57:19
+   |
+57 | fn require_arg<T: CFnArg>() {}
+   |                   ^^^^^^ required by this bound in `require_arg`
+   = note: this error originates in the derive macro `ReprC` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error[E0271]: type mismatch resolving `<CParamNoReprZst<()> as SizeFamily>::Kind == Sized<NonZst>`
+  --> tests/ui_fail/zst_c_fn_arg.rs:77:22
+   |
+77 |     require_return::<<ParamNoReprZst<()> as ExternC>::CType>();
+   |                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ type mismatch resolving `<CParamNoReprZst<()> as SizeFamily>::Kind == Sized<NonZst>`
+   |
+note: expected this to be `co3::size::Sized<NonZst>`
+  --> tests/ui_fail/zst_c_fn_arg.rs:32:23
+   |
+32 | #[derive(Clone, Copy, ReprC)]
+   |                       ^^^^^
+   = note: expected struct `co3::size::Sized<NonZst>`
+              found struct `co3::size::Sized<Zst>`
+note: required for `CParamNoReprZst<()>` to implement `CFnArg`
+  --> tests/ui_fail/zst_c_fn_arg.rs:32:23
+   |
+32 | #[derive(Clone, Copy, ReprC)]
+   |                       ^^^^^ type parameter would need to implement `CFnArg`
+   = help: consider manually implementing `CFnArg` to avoid undesired bounds
+   = note: associated types for the current `impl` cannot be restricted in `where` clauses
+   = note: associated types for the current `impl` cannot be restricted in `where` clauses
+   = note: associated types for the current `impl` cannot be restricted in `where` clauses
+   = note: required for `CParamNoReprZst<()>` to implement `CFnReturn`
+note: required by a bound in `require_return`
+  --> tests/ui_fail/zst_c_fn_arg.rs:58:22
+   |
+58 | fn require_return<T: CFnReturn>() {}
+   |                      ^^^^^^^^^ required by this bound in `require_return`
+   = note: this error originates in the derive macro `ReprC` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error[E0277]: the trait bound `(): CFnArg` is not satisfied
+  --> tests/ui_fail/zst_c_fn_arg.rs:85:19
+   |
+85 |     require_arg::<<ParamFieldlessEnum as ExternC>::CType>();
+   |                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ the trait `CFnArg` is not implemented for `()`
+   |
+   = help: the following other types implement trait `CFnArg`:
+             *const R
+             *mut R
+             CBox<C, A>
+             CBoxedSlice<C, A>
+             CNoReprZst
+             CNoReprZstConstView
+             CNoReprZstMutView
+             CParamNoReprZst<T>
+           and $N others
+note: required by a bound in `require_arg`
+  --> tests/ui_fail/zst_c_fn_arg.rs:57:19
+   |
+57 | fn require_arg<T: CFnArg>() {}
+   |                   ^^^^^^ required by this bound in `require_arg`
+
+error[E0277]: the trait bound `(): CFnReturn` is not satisfied
+  --> tests/ui_fail/zst_c_fn_arg.rs:86:22
+   |
+86 |     require_return::<<ParamFieldlessEnum as ExternC>::CType>();
+   |                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ the trait `CFnArg` is not implemented for `()`
+   |
+   = help: the following other types implement trait `CFnArg`:
+             *const R
+             *mut R
+             CBox<C, A>
+             CBoxedSlice<C, A>
+             CNoReprZst
+             CNoReprZstConstView
+             CNoReprZstMutView
+             CParamNoReprZst<T>
+           and $N others
+   = note: required for `()` to implement `CFnReturn`
+note: required by a bound in `require_return`
+  --> tests/ui_fail/zst_c_fn_arg.rs:58:22
+   |
+58 | fn require_return<T: CFnReturn>() {}
+   |                      ^^^^^^^^^ required by this bound in `require_return`

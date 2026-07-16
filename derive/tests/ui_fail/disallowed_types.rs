@@ -39,7 +39,7 @@ mod provider {
     use super::*;
 
     #[derive(Clone)]
-    struct MyType;
+    struct OpaqueZst;
 
     impl Dispatch for Handle {
         fn me(self) {}
@@ -65,17 +65,17 @@ mod provider {
     }
 
     #[expect(unused_variables)]
-    pub extern "C" fn disallowed_opaque_args(arg1: Box<MyType>) {}
-    pub extern "C" fn disallowed_opaque_return() -> Box<MyType> {
-        Box::new(MyType)
+    pub extern "C" fn disallowed_opaque_args(arg1: Box<OpaqueZst>) {}
+    pub extern "C" fn disallowed_opaque_return() -> Box<OpaqueZst> {
+        Box::new(OpaqueZst)
     }
 
     ffi! {
         #![unsafe(export("C"))]
 
-        type MyType;
+        type OpaqueZst;
 
-        impl ToOwned for Box<MyType> {
+        impl ToOwned for Box<OpaqueZst> {
             #[symbol_name = "my_type_new"]
             fn to_owned(&self) -> <Self as ToOwned>::Owned;
         }
@@ -106,12 +106,12 @@ mod provider {
     ffi! {
         #![unsafe(export("C"))]
 
-        pub extern "C" fn disallowed_opaque_args(arg1: Box<MyType>);
+        pub extern "C" fn disallowed_opaque_args(arg1: Box<OpaqueZst>);
     }
     ffi! {
         #![unsafe(export("C"))]
 
-        pub extern "C" fn disallowed_opaque_return() -> Box<MyType>;
+        pub extern "C" fn disallowed_opaque_return() -> Box<OpaqueZst>;
     }
 
     ffi! {

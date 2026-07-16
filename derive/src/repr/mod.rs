@@ -340,12 +340,15 @@ fn is_type_parameterized(ty: &syn::Type, generics: &syn::Generics) -> bool {
     visitor.is_generic
 }
 
-pub(crate) fn gen_sized_family_impl(type_name: &Ident, generics: &syn::Generics) -> TokenStream {
+pub(crate) fn gen_non_zst_sized_family_impl(
+    type_name: &Ident,
+    generics: &syn::Generics,
+) -> TokenStream {
     let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
 
     quote! {
-        impl #impl_generics co3::size::SizeFamily for #type_name #ty_generics #where_clause {
-            type Kind = co3::size::Sized;
+        unsafe impl #impl_generics co3::size::SizeFamily for #type_name #ty_generics #where_clause {
+            type Kind = co3::size::Sized<co3::size::NonZst>;
         }
     }
 }
@@ -424,6 +427,13 @@ pub(super) fn enum_tag_type(repr: Option<&ReprKind>, variants_len: usize) -> Opt
     }
 }
 
+pub(super) fn is_transparent_enum_repr(
+    repr: Option<&ReprKind>,
+    variants: &syn::punctuated::Punctuated<syn::Variant, syn::Token![,]>,
+) -> bool {
+    matches!(repr, Some(ReprKind::Transparent)) || repr.is_none() && variants.len() == 1
+}
+
 /// Checks if an enum exhausts all possible values of its repr type
 fn is_exhaustive_enum(num_variants: usize, repr: &syn::Type) -> bool {
     fn repr_type_bit_width(repr: &syn::Type) -> Option<u32> {
@@ -455,19 +465,32 @@ pub fn gen_size_family_impl(
     let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
     let predicates = where_clause.as_ref().map(|w| &w.predicates);
 
-    let field_bounds = fields
+    let (parametrized_fields, non_parametrized_fields): (Vec<&syn::Type>, Vec<_>) = fields
         .iter()
-        .filter(|ty| is_type_parameterized(ty, generics))
-        .map(|ty| quote! { #ty: co3::size::SizeFamily, });
+        .partition(|ty| is_type_parameterized(ty, generics));
 
-    let size_kind = fields
-        .last()
-        .map(|field| quote! { <#field as co3::size::SizeFamily>::Kind })
-        .unwrap_or_else(|| quote! { co3::size::Sized });
+    let mut size_kind = quote! { co3::size::Sized<co3::size::Zst> };
+    let field_bounds = parametrized_fields.iter().map(|ty| {
+        quote! { #ty: co3::size::SizeFamily }
+    });
+
+    let mut aggregate_bounds = Vec::new();
+    for &field in &non_parametrized_fields {
+        let kind = quote! { <#field as co3::size::SizeFamily>::Kind };
+        size_kind = quote! { <#size_kind as core::ops::Add<#kind>>::Output };
+    }
+
+    for &field in &parametrized_fields {
+        let kind = quote! { <#field as co3::size::SizeFamily>::Kind };
+
+        aggregate_bounds.push(quote! { #kind: core::ops::Add<#size_kind> });
+        size_kind = quote! { <#kind as core::ops::Add<#size_kind>>::Output };
+    }
 
     quote! {
-        impl #impl_generics co3::size::SizeFamily for #name #ty_generics where
-            #(#field_bounds)*
+        unsafe impl #impl_generics co3::size::SizeFamily for #name #ty_generics where
+            #(#field_bounds,)*
+            #(#aggregate_bounds,)*
             #predicates
         {
             type Kind = #size_kind;

@@ -228,6 +228,17 @@ error[E0277]: the trait bound `[u8; 2]: CFnReturn` is not satisfied
     = note: required for `[u8; 2]` to implement `CFnReturn`
     = note: this error originates in the macro `ffi` (in Nightly builds, run with -Z macro-backtrace for more info)
 
+error[E0080]: evaluation panicked: assertion failed: core::mem::size_of::<OpaqueZst>() != 0
+  --> tests/ui_fail/disallowed_types.rs:73:5
+   |
+73 | /     ffi! {
+74 | |         #![unsafe(export("C"))]
+75 | |
+76 | |         type OpaqueZst;
+...  |
+82 | |     }
+   | |_____^ evaluation of `provider::_::_::_::_` failed here
+
 error[E0080]: evaluation panicked: erased argument size mismatch
    --> tests/ui_fail/disallowed_types.rs:117:5
     |
@@ -539,7 +550,7 @@ error[E0080]: evaluation panicked: Use `move fn` to transfer ownership
 73 | /     ffi! {
 74 | |         #![unsafe(export("C"))]
 75 | |
-76 | |         type MyType;
+76 | |         type OpaqueZst;
 ...  |
 82 | |     }
    | |_____^ evaluation of `provider::_::_::to_owned::<'_>::{closure#0}::{constant#0}` failed here
@@ -550,7 +561,7 @@ note: erroneous constant encountered
 73 | /     ffi! {
 74 | |         #![unsafe(export("C"))]
 75 | |
-76 | |         type MyType;
+76 | |         type OpaqueZst;
 ...  |
 82 | |     }
    | |_____^
@@ -585,7 +596,7 @@ error[E0080]: evaluation panicked: Use `move fn` to transfer ownership
 111 | /     ffi! {
 112 | |         #![unsafe(export("C"))]
 113 | |
-114 | |         pub extern "C" fn disallowed_opaque_return() -> Box<MyType>;
+114 | |         pub extern "C" fn disallowed_opaque_return() -> Box<OpaqueZst>;
 115 | |     }
     | |_____^ evaluation of `provider::_::disallowed_opaque_return::{closure#0}::{constant#0}` failed here
 
@@ -595,7 +606,7 @@ note: erroneous constant encountered
 111 | /     ffi! {
 112 | |         #![unsafe(export("C"))]
 113 | |
-114 | |         pub extern "C" fn disallowed_opaque_return() -> Box<MyType>;
+114 | |         pub extern "C" fn disallowed_opaque_return() -> Box<OpaqueZst>;
 115 | |     }
     | |_____^
     |

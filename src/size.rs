@@ -1,8 +1,8 @@
 #[cfg(feature = "alloc")]
 use alloc_crate::{boxed::Box, vec::Vec};
-use core::convert::Infallible;
 #[cfg(feature = "alloc")]
 use core::ptr::NonNull;
+use core::{convert::Infallible, ops::Add};
 
 use crate::RobustReprC;
 
@@ -16,7 +16,13 @@ pub struct MetaSized<K>(core::marker::PhantomData<K>, Infallible);
 /// Marker for types with a constant size known at compile time.
 ///
 /// See [`core::marker::Sized`].
-pub enum Sized {}
+pub struct Sized<K>(core::marker::PhantomData<K>, Infallible);
+
+/// Marker for types that do not contribute storage to an ABI layout.
+pub enum Zst {}
+
+/// Marker for types that contribute storage to an ABI layout.
+pub enum NonZst {}
 
 /// Marker for [Slices](https://doc.rust-lang.org/core/primitive.slice.html) or DSTs whose last field is a slice.
 ///
@@ -35,18 +41,27 @@ pub enum ExternTypeLike {}
 ///
 /// See [`core::ptr::Thin`]
 pub(crate) trait Thin {}
-impl Thin for Sized {}
+impl<K> Thin for Sized<K> {}
 impl Thin for ExternTypeLike {}
 
-#[cfg(feature = "alloc")]
 pub(crate) trait Dst {}
-#[cfg(feature = "alloc")]
 impl Dst for ExternTypeLike {}
-#[cfg(feature = "alloc")]
 impl<K> Dst for MetaSized<K> {}
 
 /// Classifies whether a type has statically known or metadata-dependent layout.
-pub trait SizeFamily {
+///
+/// # Safety
+///
+/// Implementors must classify `Self` truthfully:
+///
+/// - `Sized<Zst>` may only be used for statically sized types with zero size.
+/// - `Sized<NonZst>` may only be used for statically sized types with nonzero size.
+/// - `ExternTypeLike` may only be used for unsized extern-type-like layouts with thin pointers.
+/// - `MetaSized<SliceLike>` may only be used for DST layouts whose last element is a Rust slice.
+/// - `MetaSized<DynTraitLike>` may only be used for DST layouts whose last element is a trait object.
+///
+/// Implementations of [`crate::CFnArg`] depend on this.
+pub unsafe trait SizeFamily {
     /// Size classification marker for this type.
     ///
     /// - Set to [`Sized`] when values of the type have a known layout.
@@ -119,27 +134,27 @@ pub trait Wide {
     unsafe fn from_non_null(data: NonNull<Self::Data>, metadata: Self::Metadata) -> Box<Self>;
 }
 
-impl<T: ?core::marker::Sized> SizeFamily for &T {
-    type Kind = Sized;
+unsafe impl<T: ?core::marker::Sized> SizeFamily for &T {
+    type Kind = Sized<NonZst>;
 }
 
-impl<T: ?core::marker::Sized> SizeFamily for &mut T {
-    type Kind = Sized;
-}
-
-#[cfg(feature = "alloc")]
-impl<T: ?core::marker::Sized> SizeFamily for Box<T> {
-    type Kind = Sized;
+unsafe impl<T: ?core::marker::Sized> SizeFamily for &mut T {
+    type Kind = Sized<NonZst>;
 }
 
 #[cfg(feature = "alloc")]
-impl<T> SizeFamily for Vec<T> {
-    type Kind = Sized;
+unsafe impl<T: ?core::marker::Sized> SizeFamily for Box<T> {
+    type Kind = Sized<NonZst>;
+}
+
+#[cfg(feature = "alloc")]
+unsafe impl<T> SizeFamily for Vec<T> {
+    type Kind = Sized<NonZst>;
 }
 
 // TODO: Option<Uninhabited> is ZST
-impl<T> SizeFamily for Option<T> {
-    type Kind = Sized;
+unsafe impl<T> SizeFamily for Option<T> {
+    type Kind = Sized<NonZst>;
 }
 impl<R> Wide for [R] {
     type Data = R;
@@ -217,5 +232,53 @@ impl Wide for str {
         let str = unsafe { core::str::from_utf8_unchecked_mut(&mut *slice) };
 
         unsafe { Box::from_raw(str) }
+    }
+}
+
+impl Add<Sized<Zst>> for Sized<Zst> {
+    type Output = Self;
+
+    fn add(self, _: Sized<Zst>) -> Self::Output {
+        unreachable!()
+    }
+}
+
+impl Add<Sized<Zst>> for Sized<NonZst> {
+    type Output = Sized<NonZst>;
+
+    fn add(self, _: Sized<Zst>) -> Self::Output {
+        unreachable!()
+    }
+}
+
+impl<U> Add<Sized<NonZst>> for Sized<U> {
+    type Output = Sized<NonZst>;
+
+    fn add(self, _: Sized<NonZst>) -> Self::Output {
+        unreachable!()
+    }
+}
+
+impl<K: Dst, U> Add<K> for Sized<U> {
+    type Output = K;
+
+    fn add(self, _: K) -> Self::Output {
+        unreachable!()
+    }
+}
+
+impl<K, U> Add<Sized<U>> for MetaSized<K> {
+    type Output = Self;
+
+    fn add(self, _: Sized<U>) -> Self::Output {
+        unreachable!()
+    }
+}
+
+impl<U> Add<Sized<U>> for ExternTypeLike {
+    type Output = Self;
+
+    fn add(self, _: Sized<U>) -> Self::Output {
+        unreachable!()
     }
 }

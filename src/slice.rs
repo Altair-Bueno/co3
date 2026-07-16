@@ -167,8 +167,8 @@ macro_rules! impl_slice_carrier {
         impl<C: ReprFamily> ReprFamily for $ty<C> {
             type Kind = C::Kind;
         }
-        impl<C: RobustReprC> SizeFamily for $ty<C> {
-            type Kind = crate::size::Sized;
+        unsafe impl<C: RobustReprC> SizeFamily for $ty<C> {
+            type Kind = crate::size::Sized<crate::size::NonZst>;
         }
         impl<C: RobustReprC> NicheFamily for $ty<C> {
             type Kind = WithoutNiche;

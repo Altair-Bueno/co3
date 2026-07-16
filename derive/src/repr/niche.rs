@@ -5,7 +5,7 @@ use crate::{
     repr::{
         attr::ReprKind,
         ctype::{gen_ctype_name, gen_extern_c_bounds_for_ctype},
-        enum_tag_type, is_exhaustive_enum,
+        enum_tag_type, is_exhaustive_enum, is_transparent_enum_repr,
     },
     utils::build_extern_c_type_tuple,
 };
@@ -77,7 +77,7 @@ pub fn gen_enum_niche_ir(
 ) -> TokenStream {
     let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
 
-    if matches!(repr, Some(ReprKind::Transparent)) {
+    if is_transparent_enum_repr(repr, variants) {
         let Some(variant) = variants.first() else {
             return quote! {};
         };

@@ -139,8 +139,8 @@ impl<T> TryFrom<ReprCOption<T>> for Option<T> {
 impl<T: ReprFamily> ReprFamily for ReprCOption<T> {
     type Kind = T::Kind;
 }
-impl<T> SizeFamily for ReprCOption<T> {
-    type Kind = crate::size::Sized;
+unsafe impl<T> SizeFamily for ReprCOption<T> {
+    type Kind = crate::size::Sized<crate::size::NonZst>;
 }
 impl<T> NicheFamily for ReprCOption<T> {
     type Kind = WithoutNiche;

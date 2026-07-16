@@ -8,7 +8,7 @@ trait RefKita {
     fn kita(&self) -> u32;
 }
 
-struct Exported0;
+struct Exported0(u8);
 impl Kita for Exported0 {
     fn kita(self) -> u32 {
         unimplemented!()
@@ -20,7 +20,7 @@ impl RefKita for Exported0 {
     }
 }
 
-struct Exported1;
+struct Exported1(u8);
 impl Kita for Exported1 {
     fn kita(self) -> u32 {
         unimplemented!()

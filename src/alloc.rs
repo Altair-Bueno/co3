@@ -1,7 +1,10 @@
 use alloc_crate::alloc::{self, alloc_zeroed, dealloc};
 use core::{alloc::Layout, error::Error, num::NonZeroUsize, ptr::NonNull};
 
-use crate::stored::EmptyStore;
+use crate::{
+    size::{SizeFamily, Sized, Zst},
+    stored::EmptyStore,
+};
 
 // TODO: Use allocator-api2?
 
@@ -11,7 +14,7 @@ use crate::stored::EmptyStore;
 ///
 /// Refer to [`alloc_crate::alloc::Allocator`]
 // FIXME: Don't require Allocator be EmptyStore + Copy?
-pub unsafe trait Allocator: EmptyStore + Copy {
+pub unsafe trait Allocator: EmptyStore + Copy + SizeFamily<Kind = Sized<Zst>> {
     /// [`alloc_crate::alloc::Allocator::allocate`]
     fn allocate(&self, layout: Layout) -> Result<NonNull<[u8]>, AllocError>;
 
@@ -30,6 +33,14 @@ pub struct AllocError;
 /// [`alloc_crate::alloc::Global`]
 #[derive(Copy, Clone, Default, Debug)]
 pub struct Global;
+
+unsafe impl SizeFamily for AllocError {
+    type Kind = Sized<Zst>;
+}
+
+unsafe impl SizeFamily for Global {
+    type Kind = Sized<Zst>;
+}
 
 impl Error for AllocError {}
 impl core::fmt::Display for AllocError {

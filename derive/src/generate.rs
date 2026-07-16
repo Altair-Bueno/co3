@@ -2,9 +2,7 @@ use std::collections::BTreeSet;
 
 use proc_macro2::TokenStream;
 use quote::{format_ident, quote};
-use syn::{
-    FnArg, ImplItem, ImplItemFn, ItemImpl, parse_quote, punctuated::Punctuated, visit_mut::VisitMut,
-};
+use syn::{FnArg, ImplItem, ImplItemFn, ItemImpl, punctuated::Punctuated, visit_mut::VisitMut};
 
 use crate::{
     DropImpl, DynImpl, ForeignItem, ForeignItemType,
@@ -13,11 +11,11 @@ use crate::{
         gen_dispatch_export, gen_dispatch_id_uniqueness_checks, inject_unnamed_lifetimes,
     },
     ffi_fn::{
-        self, emit_extern_definition, fn_return_ty, gen_extern_fn_signature, merge_generics,
+        self, emit_extern_definition, gen_extern_fn_signature, merge_generics,
         normalize_fn_signature, strip_erased_type_params,
     },
     parse::{FailureMode, MacroFeatures},
-    repr::gen_sized_family_impl,
+    repr::gen_non_zst_sized_family_impl,
     symbol_name_value,
     utils::{
         DispatchMonomorphizer, ParamUseDetector, has_non_lifetime_generics, is_type_erased,
@@ -77,7 +75,9 @@ pub(crate) fn expand_export_decls(
             });
 
             let opaque = derive_opaque_item(id.as_deref(), ident, &ty.generics);
-            let size_impl = gen_sized_family_impl(ident, &ty.generics);
+            // TODO: This is not correct, but I don't think it matters whether it's ZST or not
+            let size_impl = gen_non_zst_sized_family_impl(ident, &ty.generics);
+            let size_check = gen_non_zst_sized_check(ident, &ty.generics);
 
             quote! {
                 #(#type_cfg_attrs)*
@@ -85,6 +85,7 @@ pub(crate) fn expand_export_decls(
                     #opaque
 
                     #drop
+                    #size_check
                     #size_impl
                     #drop_check
 
@@ -309,6 +310,34 @@ pub(crate) fn gen_handle_family_impl(
         impl #impl_generics co3::handle::HandleFamily for #ident #ty_generics #where_clause {
             type Kind = #id;
         }
+    }
+}
+
+fn gen_non_zst_sized_check(ident: &syn::Ident, generics: &syn::Generics) -> TokenStream {
+    let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
+
+    let static_ty_generics = (!generics.params.is_empty() && !has_non_lifetime_generics(generics))
+        .then(|| {
+            let args = generics.params.iter().map(|param| match param {
+                syn::GenericParam::Lifetime(_) => quote! { 'static },
+                syn::GenericParam::Type(_) | syn::GenericParam::Const(_) => unreachable!(),
+            });
+
+            quote! { <#(#args),*> }
+        });
+
+    let non_zst_check = (!has_non_lifetime_generics(generics)).then(|| {
+        quote! { const _: () = assert!(core::mem::size_of::<#ident #static_ty_generics>() != 0); }
+    });
+
+    quote! {
+        const _: () = {
+            trait __Co3AssertSized: core::marker::Sized {}
+
+            impl #impl_generics __Co3AssertSized for #ident #ty_generics #where_clause {}
+
+            #non_zst_check
+        };
     }
 }
 
@@ -643,7 +672,7 @@ fn gen_extern_type_impls(
     quote! {
         #opaque_impls
 
-        impl #impl_generics co3::size::SizeFamily for #ident #ty_generics #where_clause {
+        unsafe impl #impl_generics co3::size::SizeFamily for #ident #ty_generics #where_clause {
             type Kind = co3::size::ExternTypeLike;
         }
 
@@ -660,7 +689,7 @@ fn gen_owned_repr_c_impls(ident: &syn::Ident, generics: &syn::Generics) -> Token
     let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
     let params = &generics.params;
     let owned_repr_c_name = gen_owned_repr_c_name(ident);
-    let size_impl = gen_sized_family_impl(&owned_repr_c_name, generics);
+    let size_impl = gen_non_zst_sized_family_impl(&owned_repr_c_name, generics);
 
     quote! {
         impl #impl_generics #owned_repr_c_name #ty_generics #where_clause {
@@ -734,7 +763,7 @@ fn gen_owned_extern_type_impls(ident: &syn::Ident, generics: &syn::Generics) -> 
     let owned_ident = gen_owned_extern_type_name(ident);
     let owned_repr_c_name = gen_owned_repr_c_name(ident);
 
-    let size_impl = gen_sized_family_impl(&owned_ident, generics);
+    let size_impl = gen_non_zst_sized_family_impl(&owned_ident, generics);
 
     quote! {
         #size_impl

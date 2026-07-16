@@ -475,7 +475,7 @@ pub fn gen_view_delegate_impls(name: &Ident, generics: &syn::Generics) -> TokenS
             type Kind = <#owner_ty as co3::ir::ReprFamily>::Kind;
         }
 
-        impl #impl_generics co3::size::SizeFamily for #name #ty_generics
+        unsafe impl #impl_generics co3::size::SizeFamily for #name #ty_generics
         where
             #owner_ty: co3::size::SizeFamily,
             #predicates

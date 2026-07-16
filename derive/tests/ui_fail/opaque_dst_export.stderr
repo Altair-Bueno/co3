@@ -1,0 +1,228 @@
+warning: type parameter `u8` should have an upper camel case name
+  --> tests/ui_fail/opaque_dst_export.rs:12:26
+   |
+12 |         type OpaqueSlice<u8>;
+   |                          ^^ help: convert the identifier to upper camel case (notice the capitalization): `U8`
+   |
+   = note: `#[warn(non_camel_case_types)]` (part of `#[warn(nonstandard_style)]`) on by default
+
+error[E0277]: the trait bound `u8: co3::ExternC` is not satisfied
+  --> tests/ui_fail/opaque_dst_export.rs:11:14
+   |
+11 |         #[id(u8)]
+   |              ^^ the trait `co3::ExternC` is not implemented for `u8`
+   |
+help: consider restricting type parameter `u8` with trait `ExternC`
+   |
+12 |         type OpaqueSlice<u8: co3::ExternC>;
+   |                            ++++++++++++++
+
+error[E0277]: the size for values of type `[u8]` cannot be known at compilation time
+  --> tests/ui_fail/opaque_dst_export.rs:12:14
+   |
+12 |         type OpaqueSlice<u8>;
+   |              ^^^^^^^^^^^^^^^ doesn't have a size known at compile-time
+   |
+   = help: within `provider::OpaqueSlice<u8>`, the trait `std::marker::Sized` is not implemented for `[u8]`
+note: required because it appears within the type `provider::OpaqueSlice<u8>`
+  --> tests/ui_fail/opaque_dst_export.rs:6:12
+   |
+ 6 |     struct OpaqueSlice<T>([T]);
+   |            ^^^^^^^^^^^
+note: required by an implicit `Sized` bound in `__Co3AssertSized`
+  --> tests/ui_fail/opaque_dst_export.rs:8:5
+   |
+ 8 | /     ffi! {
+ 9 | |         #![unsafe(export("C"))]
+10 | |
+11 | |         #[id(u8)]
+...  |
+17 | |     }
+   | |_____^ required by the implicit `Sized` requirement on this type parameter in `__Co3AssertSized`
+   = note: this error originates in the macro `ffi` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error[E0366]: `Drop` impls cannot be specialized
+  --> tests/ui_fail/opaque_dst_export.rs:8:5
+   |
+ 8 | /     ffi! {
+ 9 | |         #![unsafe(export("C"))]
+10 | |
+11 | |         #[id(u8)]
+...  |
+14 | |         impl Drop for OpaqueSlice<u8> {
+   | |_____________________________________^
+   |
+   = note: `u8` is not a generic parameter
+note: use the same sequence of generic lifetime, type and const parameters as the struct definition
+  --> tests/ui_fail/opaque_dst_export.rs:8:5
+   |
+ 8 | /     ffi! {
+ 9 | |         #![unsafe(export("C"))]
+10 | |
+11 | |         #[id(u8)]
+12 | |         type OpaqueSlice<u8>;
+   | |________________________^
+   = note: this error originates in the macro `ffi` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error[E0277]: the size for values of type `[u8]` cannot be known at compilation time
+  --> tests/ui_fail/opaque_dst_export.rs:12:14
+   |
+12 |         type OpaqueSlice<u8>;
+   |              ^^^^^^^^^^^^^^^ doesn't have a size known at compile-time
+   |
+   = help: within `provider::OpaqueSlice<u8>`, the trait `std::marker::Sized` is not implemented for `[u8]`
+note: required because it appears within the type `provider::OpaqueSlice<u8>`
+  --> tests/ui_fail/opaque_dst_export.rs:6:12
+   |
+ 6 |     struct OpaqueSlice<T>([T]);
+   |            ^^^^^^^^^^^
+note: required by a bound in `EncodeOwned`
+  --> $WORKSPACE/src/stored.rs
+   |
+   |     pub unsafe trait EncodeOwned: ExternC<CType: Sized> + Sized {
+   |                                                  ^^^^^ required by this bound in `EncodeOwned`
+
+error[E0277]: the size for values of type `[u8]` cannot be known at compilation time
+  --> tests/ui_fail/opaque_dst_export.rs:8:5
+   |
+ 8 | /     ffi! {
+ 9 | |         #![unsafe(export("C"))]
+10 | |
+11 | |         #[id(u8)]
+...  |
+17 | |     }
+   | |_____^ doesn't have a size known at compile-time
+   |
+   = help: within `provider::OpaqueSlice<u8>`, the trait `std::marker::Sized` is not implemented for `[u8]`
+note: required because it appears within the type `provider::OpaqueSlice<u8>`
+  --> tests/ui_fail/opaque_dst_export.rs:6:12
+   |
+ 6 |     struct OpaqueSlice<T>([T]);
+   |            ^^^^^^^^^^^
+note: required by an implicit `Sized` bound in `Option`
+  --> $RUST/core/src/option.rs
+   |
+   | pub enum Option<T> {
+   |                 ^ required by the implicit `Sized` requirement on this type parameter in `Option`
+   = note: this error originates in the macro `ffi` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error[E0277]: the size for values of type `[u8]` cannot be known at compilation time
+  --> tests/ui_fail/opaque_dst_export.rs:12:14
+   |
+12 |         type OpaqueSlice<u8>;
+   |              ^^^^^^^^^^^^^^^ doesn't have a size known at compile-time
+   |
+   = help: within `provider::OpaqueSlice<u8>`, the trait `std::marker::Sized` is not implemented for `[u8]`
+note: required because it appears within the type `provider::OpaqueSlice<u8>`
+  --> tests/ui_fail/opaque_dst_export.rs:6:12
+   |
+ 6 |     struct OpaqueSlice<T>([T]);
+   |            ^^^^^^^^^^^
+note: required by a bound in `DecodeOwned`
+  --> $WORKSPACE/src/stored.rs
+   |
+   |     pub unsafe trait DecodeOwned<'d>: ExternC<CType: Sized> + Sized {
+   |                                                      ^^^^^ required by this bound in `DecodeOwned`
+
+error[E0277]: the size for values of type `[u8]` cannot be known at compilation time
+  --> tests/ui_fail/opaque_dst_export.rs:12:14
+   |
+12 |         type OpaqueSlice<u8>;
+   |              ^^^^^^^^^^^^^^^ doesn't have a size known at compile-time
+   |
+   = help: within `provider::OpaqueSlice<u8>`, the trait `std::marker::Sized` is not implemented for `[u8]`
+help: the trait `EncodeOwned` is not implemented for `provider::OpaqueSlice<u8>`
+      but trait `EncodeOwned` is implemented for it
+  --> tests/ui_fail/opaque_dst_export.rs:8:5
+   |
+ 8 | /     ffi! {
+ 9 | |         #![unsafe(export("C"))]
+10 | |
+11 | |         #[id(u8)]
+12 | |         type OpaqueSlice<u8>;
+   | |____________________________^
+note: required because it appears within the type `provider::OpaqueSlice<u8>`
+  --> tests/ui_fail/opaque_dst_export.rs:6:12
+   |
+ 6 |     struct OpaqueSlice<T>([T]);
+   |            ^^^^^^^^^^^
+   = note: required for `provider::OpaqueSlice<u8>` to implement `EncodeOwned`
+note: required by a bound in `Encode`
+  --> $WORKSPACE/src/lib.rs
+   |
+   |     pub trait Encode: EncodeOwned {}
+   |                       ^^^^^^^^^^^ required by this bound in `Encode`
+   = note: this error originates in the macro `ffi` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error[E0277]: the size for values of type `[u8]` cannot be known at compilation time
+  --> tests/ui_fail/opaque_dst_export.rs:12:14
+   |
+12 |         type OpaqueSlice<u8>;
+   |              ^^^^^^^^^^^^^^^ doesn't have a size known at compile-time
+   |
+   = help: within `provider::OpaqueSlice<u8>`, the trait `std::marker::Sized` is not implemented for `[u8]`
+help: the trait `DecodeOwned<'_>` is not implemented for `provider::OpaqueSlice<u8>`
+      but trait `DecodeOwned<'_>` is implemented for it
+  --> tests/ui_fail/opaque_dst_export.rs:8:5
+   |
+ 8 | /     ffi! {
+ 9 | |         #![unsafe(export("C"))]
+10 | |
+11 | |         #[id(u8)]
+12 | |         type OpaqueSlice<u8>;
+   | |____________________________^
+note: required because it appears within the type `provider::OpaqueSlice<u8>`
+  --> tests/ui_fail/opaque_dst_export.rs:6:12
+   |
+ 6 |     struct OpaqueSlice<T>([T]);
+   |            ^^^^^^^^^^^
+   = note: required for `provider::OpaqueSlice<u8>` to implement `DecodeOwned<'_>`
+note: required by a bound in `Decode`
+  --> $WORKSPACE/src/lib.rs
+   |
+   |     pub trait Decode<'d>: DecodeOwned<'d> {}
+   |                           ^^^^^^^^^^^^^^^ required by this bound in `Decode`
+   = note: this error originates in the macro `ffi` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error[E0277]: the size for values of type `[u8]` cannot be known at compilation time
+  --> tests/ui_fail/opaque_dst_export.rs:8:5
+   |
+ 8 | /     ffi! {
+ 9 | |         #![unsafe(export("C"))]
+10 | |
+11 | |         #[id(u8)]
+...  |
+17 | |     }
+   | |_____^ doesn't have a size known at compile-time
+   |
+   = help: within `provider::OpaqueSlice<u8>`, the trait `std::marker::Sized` is not implemented for `[u8]`
+note: required because it appears within the type `provider::OpaqueSlice<u8>`
+  --> tests/ui_fail/opaque_dst_export.rs:6:12
+   |
+ 6 |     struct OpaqueSlice<T>([T]);
+   |            ^^^^^^^^^^^
+   = note: the return type of a function must have a statically known size
+   = note: this error originates in the macro `ffi` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error[E0277]: the size for values of type `[u8]` cannot be known at compilation time
+  --> tests/ui_fail/opaque_dst_export.rs:8:5
+   |
+ 8 | /     ffi! {
+ 9 | |         #![unsafe(export("C"))]
+10 | |
+11 | |         #[id(u8)]
+...  |
+17 | |     }
+   | |_____^ doesn't have a size known at compile-time
+   |
+   = help: within `provider::OpaqueSlice<u8>`, the trait `std::marker::Sized` is not implemented for `[u8]`
+note: required because it appears within the type `provider::OpaqueSlice<u8>`
+  --> tests/ui_fail/opaque_dst_export.rs:6:12
+   |
+ 6 |     struct OpaqueSlice<T>([T]);
+   |            ^^^^^^^^^^^
+   = note: this error originates in the macro `ffi` (in Nightly builds, run with -Z macro-backtrace for more info)
+help: function arguments must have a statically known size, borrowed types always have a known size
+   |
+ 8 |     &ffi! {
+   |     +

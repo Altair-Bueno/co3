@@ -104,9 +104,9 @@ pub unsafe trait CFnArg: RobustReprC + Copy {}
 pub unsafe trait CFnReturn: RobustReprC + Copy {}
 
 unsafe impl<T: CFnArg> CStatic for T {}
-unsafe impl<T: CFnArg, const N: usize> CStatic for [T; N] {}
-
 unsafe impl<T: CFnArg> CFnReturn for T {}
+
+unsafe impl<T: CFnArg, const N: usize> CStatic for [T; N] {}
 
 disjoint_impls! {
     /// A Rust type that has an `extern "C"` ABI
@@ -162,7 +162,7 @@ disjoint_impls! {
     }
 
     #[cfg(feature = "alloc")]
-    impl<R: ReprFamily + SizeFamily<Kind = crate::size::Sized> + ExternC> ExternC for Box<R>
+    impl<R: ReprFamily + SizeFamily<Kind = size::Sized<S>> + ExternC, S> ExternC for Box<R>
     where
         Self: ReprFamily<Kind: ReprRustOrTransmutedNonRobust>,
         <R as ExternC>::CType: Sized,
@@ -269,7 +269,7 @@ pub fn encode<T: Encode<Store: EmptyStore>>(item: T) -> T::CType {
     stored::encode_owned(item)
 }
 
-/// Perform the conversion from [`T::CType`](crate::ExternC::CType) into `T` using external storage.
+/// Perform the conversion from [`T::CType`](ExternC::CType) into `T` using external storage.
 ///
 /// Prefer using [`decode`] whenever possible
 ///
@@ -283,7 +283,7 @@ pub unsafe fn soft_decode<'d, T: Decode<'d>>(
     unsafe { T::soft_decode(source, store) }
 }
 
-/// Perform the conversion from [`T::CType`](crate::ExternC::CType) into `T`.
+/// Perform the conversion from [`T::CType`](ExternC::CType) into `T`.
 ///
 /// # Safety
 ///
@@ -333,7 +333,7 @@ mod tests {
         let value_mut_ref: &mut Option<u8> = &mut value;
         {
             let mut store = Box::default();
-            let encoded = crate::soft_encode(value_mut_ref, &mut *store);
+            let encoded = soft_encode(value_mut_ref, &mut *store);
             unsafe {
                 *encoded = ReprCOption::Some(other);
             }
@@ -345,7 +345,7 @@ mod tests {
         let ref_mut: &mut [_] = &mut slice;
         {
             let mut store = Box::default();
-            let encoded = crate::soft_encode(ref_mut, &mut *store);
+            let encoded = soft_encode(ref_mut, &mut *store);
             let c_slice = unsafe { encoded.into_rust().unwrap() };
             c_slice[0] = ReprCOption::Some(other);
             store.sync().unwrap();
@@ -360,7 +360,7 @@ mod tests {
         let new_val: u8 = 42;
         {
             let mut store = Box::default();
-            let decoded = unsafe { crate::soft_decode::<&mut _>(c_ptr, &mut *store) }.unwrap();
+            let decoded = unsafe { soft_decode::<&mut _>(c_ptr, &mut *store) }.unwrap();
 
             *decoded = Some(new_val);
             store.sync().unwrap();
@@ -372,7 +372,7 @@ mod tests {
         let x: u8 = 10;
         {
             let mut store = Box::default();
-            let decoded = unsafe { crate::soft_decode::<&mut [_]>(c_slice, &mut *store) }.unwrap();
+            let decoded = unsafe { soft_decode::<&mut [_]>(c_slice, &mut *store) }.unwrap();
 
             decoded[0] = Some(x);
             store.sync().unwrap();
@@ -383,7 +383,7 @@ mod tests {
     #[test]
     #[cfg(feature = "alloc")]
     fn encode_stored_ref_mut_slice() {
-        use crate::tuple::ReprCTuple1;
+        use tuple::ReprCTuple1;
 
         let mut tuples = [(1_u32,)];
         let slice_ref: &mut [_] = &mut tuples;
@@ -391,7 +391,7 @@ mod tests {
         {
             let mut store = Box::default();
 
-            let encoded = crate::soft_encode(slice_ref, &mut store);
+            let encoded = soft_encode(slice_ref, &mut store);
             let c_slice = unsafe { encoded.into_rust().unwrap() };
 
             c_slice[0] = ReprCTuple1(100);
@@ -406,13 +406,14 @@ mod tests {
     // FIXME: This test demonstrates that ownership of &mut Box<(u32,)> is leaked
     // from one side to the other: https://github.com/mversic/co3/issues/182
     fn encode_stored_mut_box_allows_pointer_replacement() {
-        use crate::{boxed::CBox, tuple::ReprCTuple1};
+        use boxed::CBox;
+        use tuple::ReprCTuple1;
 
         let mut value = Box::new((1_u32,));
 
         {
             let mut store = Box::default();
-            let encoded = crate::soft_encode(&mut value, &mut *store);
+            let encoded = soft_encode(&mut value, &mut *store);
             let original_data = unsafe { (*encoded).data };
             let replacement = CBox::from_box(Box::new(ReprCTuple1(100)));
             let replacement_data = replacement.data;
@@ -431,15 +432,14 @@ mod tests {
     #[test]
     #[cfg(feature = "alloc")]
     fn decode_stored_ref_mut_slice() {
-        use crate::tuple::ReprCTuple1;
+        use tuple::ReprCTuple1;
 
         let mut tuples = [ReprCTuple1(10)];
         let c_slice = CSliceMut::from_slice(&mut tuples);
 
         {
             let mut store = Box::default();
-            let decoded =
-                unsafe { crate::soft_decode::<&mut [(_,)]>(c_slice, &mut store) }.unwrap();
+            let decoded = unsafe { soft_decode::<&mut [(_,)]>(c_slice, &mut store) }.unwrap();
 
             decoded[0].0 = 100;
             store.sync().unwrap();
