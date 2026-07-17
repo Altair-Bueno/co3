@@ -1,10 +1,10 @@
-use co3::{ReprC, ffi, handles};
+use co3::{family::TypeFamily, ReprC, ffi, handles};
 
-#[derive(Clone, Debug, PartialEq, Eq, ReprC)]
+#[derive(Clone, Debug, PartialEq, Eq, TypeFamily, ReprC)]
 #[repr(transparent)]
 struct Value<T: ToOwned + ?Sized>(T::Owned);
 
-#[derive(ReprC)]
+#[derive(TypeFamily, ReprC)]
 #[repr(transparent)]
 struct TransparentCTuple1<T: ?Sized>(T);
 
@@ -14,7 +14,7 @@ handles! {
     }
 }
 
-#[derive(Debug, Clone, Copy, ReprC)]
+#[derive(Debug, Clone, Copy, TypeFamily, ReprC)]
 #[reprC(id(u8))]
 #[repr(C)]
 struct Opaque(u8);

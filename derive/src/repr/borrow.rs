@@ -27,7 +27,7 @@ pub(super) fn gen_item_view(
     rewrite_view_fields(&mut view_def.data);
 
     quote! {
-        #[derive(co3::ReprC)]
+        #[derive(co3::family::TypeFamily, co3::ReprC)]
         #[reprC(view)]
         #[doc(hidden)]
         #view_def
@@ -458,66 +458,6 @@ pub fn gen_borrow_cast_eq_bounds(fields: &[&syn::Type]) -> TokenStream {
     });
 
     quote! { #(#bounds,)* }
-}
-
-pub fn gen_view_delegate_impls(name: &Ident, generics: &syn::Generics) -> TokenStream {
-    let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
-    let predicates = where_clause.as_ref().map(|w| &w.predicates);
-
-    let has_view_lifetime = matches!(
-        generics.params.first(),
-        Some(syn::GenericParam::Lifetime(param)) if param.lifetime.ident == "_dšč"
-    );
-    let owner_ty_generics =
-        generic_param_idents(generics.params.iter().skip(has_view_lifetime as usize))
-            .collect::<Vec<_>>();
-
-    let owner_name = gen_view_owner_name(name);
-    let owner_ty = quote! { #owner_name<#(#owner_ty_generics),*> };
-
-    let (for_dummy, sized_bound) = if owner_ty_generics.is_empty() {
-        (quote! { for<'_dummy> }, quote! {})
-    } else {
-        (quote! {}, quote! { Self: Sized, })
-    };
-
-    quote! {
-        impl #impl_generics co3::ir::ReprFamily for #name #ty_generics
-        where
-            #owner_ty: co3::ir::ReprFamily,
-            #predicates
-        {
-            type Kind = <#owner_ty as co3::ir::ReprFamily>::Kind;
-        }
-
-        unsafe impl #impl_generics co3::size::SizeFamily for #name #ty_generics
-        where
-            #owner_ty: co3::size::SizeFamily,
-            #predicates
-        {
-            type Kind = <#owner_ty as co3::size::SizeFamily>::Kind;
-        }
-
-        impl #impl_generics co3::niche::NicheFamily for #name #ty_generics
-        where
-            #for_dummy #owner_ty: co3::niche::NicheFamily,
-            #predicates
-        {
-            type Kind = <#owner_ty as co3::niche::NicheFamily>::Kind;
-        }
-
-        impl #impl_generics co3::niche::Niche for #name #ty_generics
-        where
-            #for_dummy #owner_ty: co3::niche::Niche<CType: co3::borrow::BorrowCast<AsConst: Copy> + Copy>,
-            Self: co3::ExternC<CType = <<#owner_ty as co3::ExternC>::CType as co3::borrow::BorrowCast>::AsConst>,
-            #sized_bound
-            #predicates
-        {
-            const NICHE_VALUE: Self::CType = co3::borrow::borrow_cast(
-                <#owner_ty as co3::niche::Niche>::NICHE_VALUE
-            );
-        }
-    }
 }
 
 fn gen_field_trait_bounds<'a>(

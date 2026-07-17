@@ -72,8 +72,8 @@ help: the trait `co3::ExternC` is not implemented for `MultiVariantEnumView<'_dÅ
 note: required by a bound in `CheckedTransmute`
  --> $WORKSPACE/src/transmute.rs
   |
-  | pub unsafe trait CheckedTransmute: ExternC {
-  |                                    ^^^^^^^ required by this bound in `CheckedTransmute`
+  |     pub unsafe trait CheckedTransmute: ExternC {
+  |                                        ^^^^^^^ required by this bound in `CheckedTransmute`
   = note: this error originates in the derive macro `ReprC` (in Nightly builds, run with -Z macro-backtrace for more info)
 
 error[E0277]: the trait bound `MultiVariantEnum<T>: co3::ExternC` is not satisfied
@@ -123,8 +123,8 @@ help: the trait `co3::ExternC` is not implemented for `MultiVariantEnum<T>`
 note: required by a bound in `CheckedTransmute`
  --> $WORKSPACE/src/transmute.rs
   |
-  | pub unsafe trait CheckedTransmute: ExternC {
-  |                                    ^^^^^^^ required by this bound in `CheckedTransmute`
+  |     pub unsafe trait CheckedTransmute: ExternC {
+  |                                        ^^^^^^^ required by this bound in `CheckedTransmute`
 
 error[E0690]: the variant of a transparent enum needs at most one field with non-trivial size or alignment, but has 2
   --> tests/ui_fail/multiple_fields_transparent.rs:12:1

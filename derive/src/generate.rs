@@ -672,8 +672,8 @@ fn gen_extern_type_impls(
     quote! {
         #opaque_impls
 
-        unsafe impl #impl_generics co3::size::SizeFamily for #ident #ty_generics #where_clause {
-            type Kind = co3::size::ExternTypeLike;
+        unsafe impl #impl_generics co3::family::size::SizeFamily for #ident #ty_generics #where_clause {
+            type Kind = co3::family::size::ExternTypeLike;
         }
 
         unsafe impl #impl_generics co3::borrow::BorrowCast for #ident #ty_generics #where_clause {
@@ -704,11 +704,11 @@ fn gen_owned_repr_c_impls(ident: &syn::Ident, generics: &syn::Generics) -> Token
         impl #impl_generics Copy for #owned_repr_c_name #ty_generics #where_clause {}
 
         #size_impl
-        impl #impl_generics co3::ir::ReprFamily for #owned_repr_c_name #ty_generics #where_clause {
-            type Kind = co3::ir::ReprC<co3::ir::Robust>;
+        impl #impl_generics co3::family::repr::ReprFamily for #owned_repr_c_name #ty_generics #where_clause {
+            type Kind = co3::family::repr::ReprC<co3::family::repr::Robust>;
         }
-        impl #impl_generics co3::niche::NicheFamily for #owned_repr_c_name #ty_generics #where_clause {
-            type Kind = co3::niche::WithoutNiche;
+        impl #impl_generics co3::family::niche::NicheFamily for #owned_repr_c_name #ty_generics #where_clause {
+            type Kind = co3::family::niche::WithoutNiche;
         }
 
         impl #impl_generics co3::ExternC for #owned_repr_c_name #ty_generics #where_clause {
@@ -768,11 +768,11 @@ fn gen_owned_extern_type_impls(ident: &syn::Ident, generics: &syn::Generics) -> 
     quote! {
         #size_impl
 
-        impl #impl_generics co3::ir::ReprFamily for #owned_ident #ty_generics #where_clause {
-            type Kind = co3::ir::ReprC<co3::ir::NonRobust>;
+        impl #impl_generics co3::family::repr::ReprFamily for #owned_ident #ty_generics #where_clause {
+            type Kind = co3::family::repr::ReprC<co3::family::repr::NonRobust>;
         }
-        impl #impl_generics co3::niche::NicheFamily for #owned_ident #ty_generics #where_clause {
-            type Kind = co3::niche::WithStableNiche;
+        impl #impl_generics co3::family::niche::NicheFamily for #owned_ident #ty_generics #where_clause {
+            type Kind = co3::family::niche::WithStableNiche;
         }
 
         unsafe impl #impl_generics co3::transmute::CheckedTransmute for #owned_ident #ty_generics #where_clause {
@@ -865,8 +865,8 @@ fn derive_opaque_item(
     quote! {
         #handle_family_impl
 
-        impl #impl_generics co3::ir::ReprFamily for #ident #ty_generics #where_clause {
-            type Kind = co3::ir::ReprC<co3::ir::Robust>;
+        impl #impl_generics co3::family::repr::ReprFamily for #ident #ty_generics #where_clause {
+            type Kind = co3::family::repr::ReprC<co3::family::repr::Robust>;
         }
 
         unsafe impl #impl_generics co3::RobustReprC for #ident #ty_generics #where_clause {}

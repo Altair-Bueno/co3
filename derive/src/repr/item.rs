@@ -10,13 +10,13 @@ use crate::repr::{
     borrow::{
         either_variant_name, gen_borrow_cast_eq_bounds, gen_const_view_name, gen_either_name,
         gen_identity_borrow_impls, gen_item_borrow_impls, gen_item_view, gen_view_ctype_name,
-        gen_view_delegate_impls, gen_view_owner_name,
+        gen_view_owner_name,
     },
     ctype::{
         gen_ctype_name, gen_extern_c_bounds_for_ctype, gen_item_ctype, gen_variant_struct_name,
     },
-    enum_tag_type, gen_non_zst_sized_family_impl, gen_size_family_impl, generic_param_idents,
-    is_exhaustive_enum, is_transparent_enum_repr, is_type_parameterized,
+    enum_tag_type, generic_param_idents, is_exhaustive_enum, is_transparent_enum_repr,
+    is_type_parameterized,
     niche::{gen_enum_niche_ir, gen_struct_niche_ir},
     repr_type_is_signed,
     wide::gen_transparent_wide_impl,
@@ -32,18 +32,6 @@ pub(super) fn derive_item(
 
     let ctype_def = (!is_view).then(|| gen_item_ctype(repr, input));
     let view_def = (!is_view).then(|| gen_item_view(input, attrs, variant_attrs));
-
-    let family_impls = if is_view {
-        gen_view_delegate_impls(&input.ident, &input.generics)
-    } else {
-        gen_item_family_impls(
-            repr,
-            input,
-            attrs.niche_value.as_ref(),
-            attrs.is_valid.as_ref(),
-            variant_attrs,
-        )
-    };
 
     let wide_impl = if !is_view && let syn::Data::Struct(data) = &input.data {
         gen_transparent_wide_impl(&input.ident, &input.generics, &data.fields)
@@ -63,7 +51,6 @@ pub(super) fn derive_item(
         #ctype_def
         #view_def
 
-        #family_impls
         #borrow_impls
         #wide_impl
         #codec_impls
@@ -87,47 +74,6 @@ fn gen_item_niche_impls(
         ),
         syn::Data::Enum(data) => {
             gen_enum_niche_ir(repr, &input.ident, &input.generics, &data.variants)
-        }
-        syn::Data::Union(_) => unreachable!(),
-    }
-}
-
-fn gen_item_family_impls(
-    repr: Option<&ReprKind>,
-    input: &syn::DeriveInput,
-    niche_value: Option<&syn::Expr>,
-    is_valid: Option<&syn::ExprClosure>,
-    variant_attrs: &[VariantReprCAttrs],
-) -> TokenStream {
-    match &input.data {
-        syn::Data::Struct(data) => gen_struct_family_impls(
-            repr,
-            &input.ident,
-            &input.generics,
-            &data.fields,
-            is_valid.is_some(),
-            niche_value.is_some(),
-        ),
-        syn::Data::Enum(data) if is_transparent_enum_repr(repr, &data.variants) => {
-            let Some(variant) = data.variants.first() else {
-                return quote! {};
-            };
-
-            let has_trap_values = variant_attrs
-                .first()
-                .is_some_and(|attrs| attrs.is_valid.is_some());
-
-            gen_struct_family_impls(
-                repr,
-                &input.ident,
-                &input.generics,
-                &variant.fields,
-                has_trap_values,
-                false,
-            )
-        }
-        syn::Data::Enum(data) => {
-            gen_enum_family_impls(repr, &input.ident, &input.generics, &data.variants)
         }
         syn::Data::Union(_) => unreachable!(),
     }
@@ -200,71 +146,6 @@ fn gen_item_repr_c_impls(
             variant_attrs,
         ),
         syn::Data::Union(_) => unreachable!(),
-    }
-}
-
-fn gen_struct_family_impls(
-    repr: Option<&ReprKind>,
-    name: &Ident,
-    generics: &syn::Generics,
-    fields: &syn::Fields,
-    has_trap_values: bool,
-    has_custom_niche: bool,
-) -> TokenStream {
-    let fields = fields.iter().map(|f| &f.ty).collect::<Vec<_>>();
-
-    let repr_family_impl = if repr.is_some() {
-        gen_repr_family_impl(name, generics, &fields, has_trap_values)
-    } else {
-        gen_rust_repr_family_impl(name, generics)
-    };
-
-    let size_family_impl = gen_size_family_impl(name, generics, &fields);
-    let niche_family_impl = if has_custom_niche {
-        gen_niche_family_impl_with_kind(name, generics, quote! {co3::niche::WithCustomNiche })
-    } else {
-        gen_niche_family_impl(name, generics, &fields)
-    };
-
-    quote! {
-        #repr_family_impl
-        #size_family_impl
-        #niche_family_impl
-    }
-}
-
-fn gen_enum_family_impls(
-    repr: Option<&ReprKind>,
-    name: &Ident,
-    generics: &syn::Generics,
-    variants: &syn::punctuated::Punctuated<syn::Variant, syn::Token![,]>,
-) -> TokenStream {
-    let fields = variants
-        .iter()
-        .flat_map(|variant| variant.fields.iter().map(|field| &field.ty))
-        .collect::<Vec<_>>();
-
-    let repr_family_impl = if repr.is_some() {
-        let has_trap_values = enum_tag_type(repr, variants.len())
-            .is_some_and(|tag| !is_exhaustive_enum(variants.len(), &tag));
-
-        gen_repr_family_impl(name, generics, &fields, has_trap_values)
-    } else {
-        gen_rust_repr_family_impl(name, generics)
-    };
-
-    let size_family_impl = {
-        // FIXME: Sometimes enums with variants are ZSTs and don't have a tag
-        // This happens if all variants are uninhabited but one is ZST/fieldless.
-        gen_non_zst_sized_family_impl(name, generics)
-    };
-
-    let niche_family_impl = gen_enum_niche_family_impl(repr, name, generics, variants);
-
-    quote! {
-        #repr_family_impl
-        #size_family_impl
-        #niche_family_impl
     }
 }
 
@@ -827,40 +708,10 @@ pub(super) fn derive_fieldless_enum(
     let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
     let params = &generics.params;
 
-    let repr_family = match repr {
-        None => quote! { co3::ir::ReprRust },
-        Some(ReprKind::C(None)) => unreachable!(),
-        // NOTE: Fieldless enum with one variant is a ZST
-        Some(ReprKind::Transparent) => quote!(co3::ir::Robust),
-        Some(ReprKind::C(Some(tag)) | ReprKind::Primitive(tag)) => {
-            let robustness = if is_exhaustive_enum(variants.len(), tag) {
-                quote! { co3::ir::Robust }
-            } else {
-                quote! { co3::ir::NonRobust }
-            };
-
-            quote! { co3::ir::ReprC<#robustness> }
-        }
-    };
-
     let tag_type = if repr.is_none() && variants.len() == 1 {
         None
     } else {
         enum_tag_type(repr, variants.len())
-    };
-
-    let size_family_impl = if tag_type.is_none() {
-        gen_size_family_impl(name, generics, &[])
-    } else if variants.is_empty() {
-        unimplemented!("uninhabited types are not yet supported")
-    } else {
-        gen_non_zst_sized_family_impl(name, generics)
-    };
-
-    let niche_family_impl = if tag_type.is_none() {
-        gen_niche_family_impl_with_kind(name, generics, quote! { co3::niche::WithoutNiche })
-    } else {
-        gen_enum_niche_family_impl(repr, name, generics, variants)
     };
 
     let checked_transmute_method = match repr {
@@ -938,13 +789,6 @@ pub(super) fn derive_fieldless_enum(
     quote! {
         #niche_impl
         #borrow_impls
-
-        impl #impl_generics co3::ir::ReprFamily for #name #ty_generics #where_clause {
-            type Kind = #repr_family;
-        }
-
-        #size_family_impl
-        #niche_family_impl
 
         impl #impl_generics co3::ExternC for #name #ty_generics #where_clause {
             type CType = #ctype;
@@ -1238,137 +1082,6 @@ fn decode_store_type(fields: &syn::Fields) -> TokenStream {
     });
 
     quote!((#(#fields,)*))
-}
-
-fn gen_rust_repr_family_impl(name: &Ident, generics: &syn::Generics) -> TokenStream {
-    let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
-
-    quote! {
-        impl #impl_generics co3::ir::ReprFamily for #name #ty_generics #where_clause {
-            type Kind = co3::ir::ReprRust;
-        }
-    }
-}
-
-fn gen_repr_family_impl(
-    name: &Ident,
-    generics: &syn::Generics,
-    fields: &[&syn::Type],
-    has_trap_values: bool,
-) -> TokenStream {
-    let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
-    let predicates = where_clause.as_ref().map(|w| &w.predicates);
-
-    let (parametrized_fields, non_parametrized_fields): (Vec<&syn::Type>, Vec<_>) = fields
-        .iter()
-        .partition(|ty| is_type_parameterized(ty, generics));
-
-    let init = if has_trap_values {
-        quote! { co3::ir::NonRobust }
-    } else {
-        quote! { co3::ir::Robust }
-    };
-
-    let mut repr_kind = quote! { co3::ir::ReprC<#init> };
-    let field_bounds = parametrized_fields.iter().map(|ty| {
-        quote! { #ty: co3::ir::ReprFamily }
-    });
-
-    let mut aggregate_bounds = Vec::new();
-    for &field in &non_parametrized_fields {
-        let kind = quote! { <#field as co3::ir::ReprFamily>::Kind };
-        repr_kind = quote! { <#repr_kind as core::ops::Add<#kind>>::Output };
-    }
-
-    for &field in &parametrized_fields {
-        let kind = quote! { <#field as co3::ir::ReprFamily>::Kind };
-        aggregate_bounds.push(quote! { #kind: core::ops::Add<#repr_kind> });
-        repr_kind = quote! { <#kind as core::ops::Add<#repr_kind>>::Output };
-    }
-
-    quote! {
-        impl #impl_generics co3::ir::ReprFamily for #name #ty_generics where
-            #(#field_bounds,)*
-            #(#aggregate_bounds,)*
-            #predicates
-        {
-            type Kind = #repr_kind;
-        }
-    }
-}
-
-fn gen_niche_family_impl(
-    name: &Ident,
-    generics: &syn::Generics,
-    fields: &[&syn::Type],
-) -> TokenStream {
-    let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
-    let predicates = where_clause.as_ref().map(|w| &w.predicates);
-
-    let (parametrized_fields, non_parametrized_fields): (Vec<&syn::Type>, Vec<_>) = fields
-        .iter()
-        .partition(|ty| is_type_parameterized(ty, generics));
-
-    // TODO: We're just using WithoutNiche for the ease of implementation. Remove it?
-    let mut niche_kind = quote!(co3::niche::WithoutNiche);
-    let field_bounds = parametrized_fields.iter().map(|ty| {
-        quote! { #ty: co3::niche::NicheFamily }
-    });
-
-    let mut aggregate_bounds = Vec::new();
-    for &field in &non_parametrized_fields {
-        let kind = quote! { <#field as co3::niche::NicheFamily>::Kind };
-        niche_kind = quote! { <#niche_kind as core::ops::Add<#kind>>::Output };
-    }
-
-    for &field in &parametrized_fields {
-        let kind = quote! { <#field as co3::niche::NicheFamily>::Kind };
-
-        aggregate_bounds.push(quote! { #kind: core::ops::Add<#niche_kind> });
-        niche_kind = quote! { <#kind as core::ops::Add<#niche_kind>>::Output };
-    }
-
-    quote! {
-        impl #impl_generics co3::niche::NicheFamily for #name #ty_generics where
-            #(#field_bounds,)*
-            #(#aggregate_bounds,)*
-            #predicates
-        {
-            type Kind = #niche_kind;
-        }
-    }
-}
-
-fn gen_niche_family_impl_with_kind(
-    item_name: &Ident,
-    generics: &syn::Generics,
-    kind: TokenStream,
-) -> TokenStream {
-    let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
-
-    quote! {
-        impl #impl_generics co3::niche::NicheFamily for #item_name #ty_generics #where_clause {
-            type Kind = #kind;
-        }
-    }
-}
-
-fn gen_enum_niche_family_impl(
-    repr: Option<&ReprKind>,
-    name: &Ident,
-    generics: &syn::Generics,
-    variants: &syn::punctuated::Punctuated<syn::Variant, syn::Token![,]>,
-) -> TokenStream {
-    let is_exhaustive = enum_tag_type(repr, variants.len())
-        .is_none_or(|tag| is_exhaustive_enum(variants.len(), &tag));
-
-    let niche_kind = if is_exhaustive {
-        quote! { co3::niche::WithoutNiche }
-    } else {
-        quote! { co3::niche::WithCustomNiche }
-    };
-
-    gen_niche_family_impl_with_kind(name, generics, niche_kind)
 }
 
 fn gen_borrow_cast_view_bounds<const ADD_COPY: bool>(

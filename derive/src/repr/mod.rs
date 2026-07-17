@@ -243,7 +243,6 @@ pub(crate) fn derive_repr_c(input: &syn::DeriveInput) -> syn::Result<TokenStream
             .handle_id
             .as_ref()
             .map(|id| gen_handle_family_impl(&input.ident, &generics, id));
-
         Ok(quote! {
             #handle_family_impl
             #drop_impl_assert
@@ -342,8 +341,8 @@ pub(crate) fn gen_non_zst_sized_family_impl(
     let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
 
     quote! {
-        unsafe impl #impl_generics co3::size::SizeFamily for #type_name #ty_generics #where_clause {
-            type Kind = co3::size::Sized<co3::size::NonZst>;
+        unsafe impl #impl_generics co3::family::size::SizeFamily for #type_name #ty_generics #where_clause {
+            type Kind = co3::family::size::Sized<co3::family::size::NonZst>;
         }
     }
 }
@@ -450,47 +449,6 @@ fn is_exhaustive_enum(num_variants: usize, repr: &syn::Type) -> bool {
     };
 
     num_variants as u64 == max_values
-}
-
-pub fn gen_size_family_impl(
-    name: &Ident,
-    generics: &syn::Generics,
-    fields: &[&syn::Type],
-) -> TokenStream {
-    let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
-    let predicates = where_clause.as_ref().map(|w| &w.predicates);
-
-    let (parametrized_fields, non_parametrized_fields): (Vec<&syn::Type>, Vec<_>) = fields
-        .iter()
-        .partition(|ty| is_type_parameterized(ty, generics));
-
-    let mut size_kind = quote! { co3::size::Sized<co3::size::Zst> };
-    let field_bounds = parametrized_fields.iter().map(|ty| {
-        quote! { #ty: co3::size::SizeFamily }
-    });
-
-    let mut aggregate_bounds = Vec::new();
-    for &field in &non_parametrized_fields {
-        let kind = quote! { <#field as co3::size::SizeFamily>::Kind };
-        size_kind = quote! { <#size_kind as core::ops::Add<#kind>>::Output };
-    }
-
-    for &field in &parametrized_fields {
-        let kind = quote! { <#field as co3::size::SizeFamily>::Kind };
-
-        aggregate_bounds.push(quote! { #kind: core::ops::Add<#size_kind> });
-        size_kind = quote! { <#kind as core::ops::Add<#size_kind>>::Output };
-    }
-
-    quote! {
-        unsafe impl #impl_generics co3::size::SizeFamily for #name #ty_generics where
-            #(#field_bounds,)*
-            #(#aggregate_bounds,)*
-            #predicates
-        {
-            type Kind = #size_kind;
-        }
-    }
 }
 
 fn generic_param_idents<'a>(

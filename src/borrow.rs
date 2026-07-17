@@ -1,9 +1,9 @@
 #[cfg(feature = "alloc")]
-use alloc_crate::{borrow::ToOwned as StdToOwned, boxed::Box, vec::Vec};
+use alloc::{borrow::ToOwned as StdToOwned, boxed::Box, vec::Vec};
 
-#[cfg(feature = "alloc")]
-use crate::size::{MetaSized, SizeFamily};
 use crate::{RobustReprC, stored::ArrayStore};
+#[cfg(feature = "alloc")]
+use co3_types::size::{MetaSized, SizeFamily};
 
 // TODO: Remove this once extern types are stable
 // https://github.com/rust-lang/rust/issues/43467
@@ -12,7 +12,7 @@ trait NonExternTypeLike {}
 #[cfg(feature = "alloc")]
 impl<K> NonExternTypeLike for MetaSized<K> {}
 #[cfg(feature = "alloc")]
-impl<K> NonExternTypeLike for crate::size::Sized<K> {}
+impl<K> NonExternTypeLike for co3_types::size::Sized<K> {}
 
 /// A layout-compatible borrowed view of a robust C representation.
 ///

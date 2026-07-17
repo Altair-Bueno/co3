@@ -1,5 +1,5 @@
 #[cfg(feature = "alloc")]
-use alloc_crate::{borrow::ToOwned as StdToOwned, boxed::Box, vec::Vec};
+use alloc::{borrow::ToOwned as StdToOwned, boxed::Box, vec::Vec};
 #[cfg(feature = "alloc")]
 use core::ptr::NonNull;
 
@@ -7,20 +7,20 @@ use disjoint_impls::disjoint_impls;
 
 #[cfg(feature = "alloc")]
 use crate::borrow::borrow_cast_mut;
+#[cfg(feature = "alloc")]
+use crate::boxed::{CBox, CBoxedSlice};
 use crate::{
-    ExternC,
+    Dst, ExternC,
     borrow::{Borrow, BorrowCast, BorrowCastMut, ToOwned, borrow_cast},
-    ir::{NonRobust, ReprC, ReprFamily, ReprRust, Robust},
-    niche::{Niche, NicheFamily, WithNiche, WithoutNiche},
+    niche::{Niche, WithNiche},
     result::ReprCResult,
-    size::{MetaSized, NonZst, SizeFamily, SliceLike, Wide, Zst},
     slice::{CSlice, CSliceMut},
     transmute::CheckedTransmute,
 };
-#[cfg(feature = "alloc")]
-use crate::{
-    boxed::{CBox, CBoxedSlice},
-    size::Dst,
+use co3_types::{
+    niche::{NicheFamily, WithoutNiche},
+    repr::{NonRobust, ReprC, ReprFamily, ReprRust, Robust},
+    size::{MetaSized, NonZst, SizeFamily, SliceLike, Wide, Zst},
 };
 
 // TODO: Could the store just be synced on drop?
@@ -109,7 +109,7 @@ disjoint_impls! {
             CSlice::from_raw_parts(ptr, len)
         }
     }
-    unsafe impl<R: ReprFamily<Kind = ReprRust> + SizeFamily<Kind = crate::size::Sized<S>>, S> EncodeOwned for &R
+    unsafe impl<R: ReprFamily<Kind = ReprRust> + SizeFamily<Kind = co3_types::size::Sized<S>>, S> EncodeOwned for &R
     where
         Self: ReprFamily<Kind = ReprRust>,
         R: Clone + EncodeOwned,
@@ -181,7 +181,7 @@ disjoint_impls! {
             CSliceMut::from_raw_parts_mut(ptr, len)
         }
     }
-    unsafe impl<'a, R: SizeFamily<Kind = crate::size::Sized<S>> + ReprFamily<Kind: ReprRustOrNonRobust>, S>
+    unsafe impl<'a, R: SizeFamily<Kind = co3_types::size::Sized<S>> + ReprFamily<Kind: ReprRustOrNonRobust>, S>
         EncodeOwned for &'a mut R
     where
         Self: ReprFamily<Kind: ReprRustOrNonRobust>,
@@ -270,7 +270,7 @@ disjoint_impls! {
         }
     }
     #[cfg(feature = "alloc")]
-    unsafe impl<R: ReprFamily<Kind = ReprRust> + SizeFamily<Kind = crate::size::Sized<S>>, S> EncodeOwned for Box<R>
+    unsafe impl<R: ReprFamily<Kind = ReprRust> + SizeFamily<Kind = co3_types::size::Sized<S>>, S> EncodeOwned for Box<R>
     where
         Self: ReprFamily<Kind = ReprRust>,
         R: EncodeOwned,
@@ -366,8 +366,8 @@ disjoint_impls! {
     }
 
     unsafe impl<
-        R: SizeFamily<Kind = crate::size::Sized<K>> + EncodeOwned<CType: Copy>,
-        E: SizeFamily<Kind = crate::size::Sized<K>> + EncodeOwned<CType: Copy>,
+        R: SizeFamily<Kind = co3_types::size::Sized<K>> + EncodeOwned<CType: Copy>,
+        E: SizeFamily<Kind = co3_types::size::Sized<K>> + EncodeOwned<CType: Copy>,
         K
     > EncodeOwned for Result<R, E>
     {
@@ -396,8 +396,8 @@ disjoint_impls! {
         }
     }
     unsafe impl<
-        R: SizeFamily<Kind = crate::size::Sized<NonZst>> + NicheFamily<Kind: WithNiche> + EncodeOwned + Niche,
-        E: SizeFamily<Kind = crate::size::Sized<Zst>>,
+        R: SizeFamily<Kind = co3_types::size::Sized<NonZst>> + NicheFamily<Kind: WithNiche> + EncodeOwned + Niche,
+        E: SizeFamily<Kind = co3_types::size::Sized<Zst>>,
     > EncodeOwned for Result<R, E>
     where
         Self: ExternC<CType = <R as ExternC>::CType>,
@@ -415,8 +415,8 @@ disjoint_impls! {
         }
     }
     unsafe impl<
-        R: SizeFamily<Kind = crate::size::Sized<Zst>>,
-        E: SizeFamily<Kind = crate::size::Sized<NonZst>> + NicheFamily<Kind: WithNiche> + EncodeOwned + Niche,
+        R: SizeFamily<Kind = co3_types::size::Sized<Zst>>,
+        E: SizeFamily<Kind = co3_types::size::Sized<NonZst>> + NicheFamily<Kind: WithNiche> + EncodeOwned + Niche,
     > EncodeOwned for Result<R, E>
     where
         Self: ExternC<CType = <E as ExternC>::CType>,
@@ -502,7 +502,7 @@ disjoint_impls! {
             Some(unsafe { R::from_raw_parts(data, len) })
         }
     }
-    unsafe impl<'d, R: ReprFamily<Kind = ReprRust> + SizeFamily<Kind = crate::size::Sized<S>> + ToOwned<'d>, S> DecodeOwned<'d>
+    unsafe impl<'d, R: ReprFamily<Kind = ReprRust> + SizeFamily<Kind = co3_types::size::Sized<S>> + ToOwned<'d>, S> DecodeOwned<'d>
         for &'d R
     where
         Self: ReprFamily<Kind = ReprRust>,
@@ -606,7 +606,7 @@ disjoint_impls! {
             Some(unsafe { R::from_raw_parts_mut(data, len) })
         }
     }
-    unsafe impl<'d, R: ReprFamily<Kind = ReprRust> + SizeFamily<Kind = crate::size::Sized<S>> + ToOwned<'d>, S> DecodeOwned<'d>
+    unsafe impl<'d, R: ReprFamily<Kind = ReprRust> + SizeFamily<Kind = co3_types::size::Sized<S>> + ToOwned<'d>, S> DecodeOwned<'d>
         for &'d mut R
     where
         Self: ReprFamily<Kind = ReprRust>,
@@ -695,7 +695,7 @@ disjoint_impls! {
         }
     }
     #[cfg(feature = "alloc")]
-    unsafe impl<'d, R: ReprFamily<Kind = ReprRust> + SizeFamily<Kind = crate::size::Sized<S>>, S> DecodeOwned<'d>
+    unsafe impl<'d, R: ReprFamily<Kind = ReprRust> + SizeFamily<Kind = co3_types::size::Sized<S>>, S> DecodeOwned<'d>
         for Box<R>
     where
         Self: ReprFamily<Kind = ReprRust>,
@@ -813,8 +813,8 @@ disjoint_impls! {
 
     unsafe impl<
         'd,
-        R: SizeFamily<Kind = crate::size::Sized<K>> + DecodeOwned<'d, CType: Copy>,
-        E: SizeFamily<Kind = crate::size::Sized<K>> + DecodeOwned<'d, CType: Copy>,
+        R: SizeFamily<Kind = co3_types::size::Sized<K>> + DecodeOwned<'d, CType: Copy>,
+        E: SizeFamily<Kind = co3_types::size::Sized<K>> + DecodeOwned<'d, CType: Copy>,
         K
     >
         DecodeOwned<'d> for Result<R, E>
@@ -840,8 +840,8 @@ disjoint_impls! {
     }
     unsafe impl<
         'd,
-        R: SizeFamily<Kind = crate::size::Sized<NonZst>> + NicheFamily<Kind: WithNiche> + DecodeOwned<'d> + Niche<CType: PartialEq>,
-        E: SizeFamily<Kind = crate::size::Sized<Zst>> + Default,
+        R: SizeFamily<Kind = co3_types::size::Sized<NonZst>> + NicheFamily<Kind: WithNiche> + DecodeOwned<'d> + Niche<CType: PartialEq>,
+        E: SizeFamily<Kind = co3_types::size::Sized<Zst>> + Default,
     >
         DecodeOwned<'d> for Result<R, E>
     where
@@ -859,8 +859,8 @@ disjoint_impls! {
     }
     unsafe impl<
         'd,
-        R: SizeFamily<Kind = crate::size::Sized<Zst>> + Default,
-        E: SizeFamily<Kind = crate::size::Sized<NonZst>> + NicheFamily<Kind: WithNiche> + DecodeOwned<'d> + Niche<CType: PartialEq>,
+        R: SizeFamily<Kind = co3_types::size::Sized<Zst>> + Default,
+        E: SizeFamily<Kind = co3_types::size::Sized<NonZst>> + NicheFamily<Kind: WithNiche> + DecodeOwned<'d> + Niche<CType: PartialEq>,
     >
         DecodeOwned<'d> for Result<R, E>
     where

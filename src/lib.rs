@@ -19,14 +19,20 @@
 #![no_std]
 
 #[cfg(feature = "alloc")]
-extern crate alloc as alloc_crate;
+extern crate alloc;
 extern crate self as co3;
 
 #[cfg(feature = "alloc")]
-use alloc_crate::{borrow::ToOwned, boxed::Box, vec::Vec};
+use alloc::{borrow::ToOwned, boxed::Box, vec::Vec};
 
 #[cfg(feature = "derive")]
 pub use co3_derive::*;
+pub use co3_types as family;
+use co3_types::{
+    niche::{NicheFamily, WithoutNiche},
+    repr::{ReprC, ReprFamily, ReprRust},
+    size::{ExternTypeLike, MetaSized, NonZst, SizeFamily, SliceLike, Wide, Zst},
+};
 use disjoint_impls::disjoint_impls;
 // TODO: I don't like having to reexport macros from other crates
 #[doc(hidden)]
@@ -38,14 +44,20 @@ use crate::{
     boxed::{CBox, CBoxedSlice},
 };
 use crate::{
-    ir::{NonRobust, ReprC, ReprFamily, ReprRust},
-    niche::{NicheFamily, WithNiche, WithoutNiche},
+    niche::WithNiche,
     option::ReprCOption,
     result::ReprCResult,
-    size::{MetaSized, NonZst, SizeFamily, SliceLike, Thin, Wide, Zst},
     slice::{CSlice, CSliceMut},
     stored::{DecodeOwned, EmptyStore, EncodeOwned, ReprRustOrNonRobust, Store},
 };
+
+trait Thin {}
+impl<K> Thin for co3_types::size::Sized<K> {}
+impl Thin for ExternTypeLike {}
+
+trait Dst {}
+impl Dst for ExternTypeLike {}
+impl<K> Dst for MetaSized<K> {}
 
 pub mod borrow;
 #[cfg(feature = "alloc")]
@@ -53,13 +65,12 @@ pub mod boxed;
 #[doc(hidden)]
 pub mod either;
 pub mod handle;
-pub mod ir;
 pub mod niche;
 pub mod option;
 mod primitives;
 pub mod result;
-pub mod size;
 pub mod slice;
+pub mod spread;
 mod std_impls;
 pub mod stored;
 pub mod transmute;
@@ -161,7 +172,7 @@ disjoint_impls! {
     }
 
     #[cfg(feature = "alloc")]
-    impl<R: ReprFamily + SizeFamily<Kind = size::Sized<S>> + ExternC, S> ExternC for Box<R>
+    impl<R: ReprFamily + SizeFamily<Kind = co3_types::size::Sized<S>> + ExternC, S> ExternC for Box<R>
     where
         Self: ReprFamily<Kind: ReprRustOrNonRobust>,
         <R as ExternC>::CType: Sized,
@@ -197,8 +208,8 @@ disjoint_impls! {
     }
 
     impl<
-        R: SizeFamily<Kind = crate::size::Sized<K>> + ExternC,
-        E: SizeFamily<Kind = crate::size::Sized<K>> + ExternC,
+        R: SizeFamily<Kind = co3_types::size::Sized<K>> + ExternC,
+        E: SizeFamily<Kind = co3_types::size::Sized<K>> + ExternC,
         K
     >
         ExternC for Result<R, E>
@@ -211,16 +222,16 @@ disjoint_impls! {
         type CType = ReprCResult<R::CType, E::CType>;
     }
     impl<
-        R: SizeFamily<Kind = crate::size::Sized<NonZst>> + NicheFamily<Kind: WithNiche> + ExternC,
-        E: SizeFamily<Kind = crate::size::Sized<Zst>>,
+        R: SizeFamily<Kind = co3_types::size::Sized<NonZst>> + NicheFamily<Kind: WithNiche> + ExternC,
+        E: SizeFamily<Kind = co3_types::size::Sized<Zst>>,
     >
         ExternC for Result<R, E>
     {
         type CType = R::CType;
     }
     impl<
-        R: SizeFamily<Kind = crate::size::Sized<Zst>>,
-        E: SizeFamily<Kind = crate::size::Sized<NonZst>> + NicheFamily<Kind: WithNiche> + ExternC,
+        R: SizeFamily<Kind = co3_types::size::Sized<Zst>>,
+        E: SizeFamily<Kind = co3_types::size::Sized<NonZst>> + NicheFamily<Kind: WithNiche> + ExternC,
     >
         ExternC for Result<R, E>
     {

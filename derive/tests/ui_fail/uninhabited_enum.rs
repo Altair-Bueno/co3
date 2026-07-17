@@ -1,6 +1,6 @@
-use co3::ReprC;
+use co3::{family::TypeFamily, ReprC};
 
-#[derive(ReprC)]
+#[derive(TypeFamily, ReprC)]
 pub enum FfiStruct2 {}
 
 fn main() {}

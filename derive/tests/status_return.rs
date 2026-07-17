@@ -1,8 +1,8 @@
 use core::num::NonZeroU8;
 
-use co3::{Error, ExternC, ReprC, ffi};
+use co3::{Error, ExternC, ReprC, family::TypeFamily, ffi};
 
-#[derive(Debug, PartialEq, Eq, ReprC)]
+#[derive(Debug, PartialEq, Eq, TypeFamily, ReprC)]
 #[repr(u8)]
 enum CustomStatus {
     Ok,

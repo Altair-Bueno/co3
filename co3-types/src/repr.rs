@@ -4,7 +4,7 @@
 //! preferable to map it into IR by implementing [`Ir`]. This approach gives you
 //! automatic, correct, and zero-cost conversions from IR to the equivalent C type.
 #[cfg(feature = "alloc")]
-use alloc_crate::{boxed::Box, vec::Vec};
+use alloc::{boxed::Box, vec::Vec};
 use core::{convert::Infallible, ops::Add};
 
 use disjoint_impls::disjoint_impls;

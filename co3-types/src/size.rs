@@ -1,10 +1,8 @@
 #[cfg(feature = "alloc")]
-use alloc_crate::{boxed::Box, vec::Vec};
+use alloc::{boxed::Box, vec::Vec};
 #[cfg(feature = "alloc")]
 use core::ptr::NonNull;
 use core::{convert::Infallible, ops::Add};
-
-use crate::RobustReprC;
 
 /// Marker for types with a size that can be determined from pointer metadata.
 ///
@@ -68,17 +66,6 @@ pub unsafe trait SizeFamily {
     /// - For DSTs whose last field is an extern type set to [`ExternTypeLike`].
     /// - For DSTs with metadata, set to [`MetaSized<SliceLike>`] / [`MetaSized<DynTraitLike>`].
     type Kind;
-}
-
-pub trait Spread: RobustReprC + core::marker::Sized {
-    type Part1: RobustReprC;
-    type Part2: RobustReprC;
-
-    /// Consumes the spreadable type, returning its constituents.
-    fn into_parts(self) -> (Self::Part1, Self::Part2);
-
-    /// Forms the spreadable type from its constituents.
-    fn from_parts(part1: Self::Part1, part2: Self::Part2) -> Self;
 }
 
 /// Pointer that consists of data and metadata (also called a `fat` pointer).

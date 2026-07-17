@@ -1,15 +1,18 @@
 //! Logic related to the conversion of boxed values to and from FFI-compatible representation.
 
-use alloc_crate::boxed::Box;
+use alloc::boxed::Box;
+use co3_types::{
+    niche::{NicheFamily, WithoutNiche},
+    repr::ReprFamily,
+    size::SizeFamily,
+};
 use core::ptr::NonNull;
 
 use crate::{
     CFnArg, Decode, Encode, ExternC, RobustReprC,
     borrow::{Borrow, BorrowCast, BorrowCastMut, ToOwned},
-    ir::ReprFamily,
-    niche::{NicheFamily, WithoutNiche},
-    size::{SizeFamily, Spread},
     slice::{CSlice, CSliceMut},
+    spread::Spread,
     stored::{DecodeOwned, EncodeOwned},
     transmute::CheckedTransmute,
 };
@@ -236,7 +239,7 @@ macro_rules! impl_boxed_carrier {
             type Kind = C::Kind;
         }
         unsafe impl<C> SizeFamily for $ty<C> {
-            type Kind = crate::size::Sized<crate::size::NonZst>;
+            type Kind = co3_types::size::Sized<co3_types::size::NonZst>;
         }
         impl<C> NicheFamily for $ty<C> {
             type Kind = WithoutNiche;

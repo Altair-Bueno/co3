@@ -24,8 +24,8 @@ help: the following other types implement trait `Spread`
    |
   ::: $WORKSPACE/src/boxed.rs
    |
-   | impl<C: RobustReprC, A: Allocator> Spread for CBoxedSlice<C, A> {
-   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `CBoxedSlice<C, A>`
+   | impl<C: RobustReprC> Spread for CBoxedSlice<C> {
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `CBoxedSlice<C>`
    = note: this error originates in the macro `ffi` (in Nightly builds, run with -Z macro-backtrace for more info)
 
 error[E0277]: the trait bound `u32: Spread` is not satisfied
@@ -54,8 +54,8 @@ help: the following other types implement trait `Spread`
    |
   ::: $WORKSPACE/src/boxed.rs
    |
-   | impl<C: RobustReprC, A: Allocator> Spread for CBoxedSlice<C, A> {
-   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `CBoxedSlice<C, A>`
+   | impl<C: RobustReprC> Spread for CBoxedSlice<C> {
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `CBoxedSlice<C>`
    = note: this error originates in the macro `ffi` (in Nightly builds, run with -Z macro-backtrace for more info)
 
 error[E0277]: the trait bound `u32: Spread` is not satisfied
@@ -85,5 +85,5 @@ help: the following other types implement trait `Spread`
    |
   ::: $WORKSPACE/src/boxed.rs
    |
-   | impl<C: RobustReprC, A: Allocator> Spread for CBoxedSlice<C, A> {
-   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `CBoxedSlice<C, A>`
+   | impl<C: RobustReprC> Spread for CBoxedSlice<C> {
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `CBoxedSlice<C>`

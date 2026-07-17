@@ -1,4 +1,4 @@
-use co3::{ReprC, ffi, handles};
+use co3::{family::TypeFamily, ReprC, ffi, handles};
 
 trait Kita {
     type MySelf;
@@ -6,7 +6,7 @@ trait Kita {
     fn kita2(a: &u32);
 }
 
-#[derive(ReprC)]
+#[derive(TypeFamily, ReprC)]
 #[repr(transparent)]
 struct CVoid(core::ffi::c_void);
 

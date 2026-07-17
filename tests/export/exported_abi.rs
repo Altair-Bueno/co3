@@ -1,6 +1,8 @@
 use std::{mem::MaybeUninit, ptr::NonNull};
 
-use co3::{Decode, EncodeWithStore, FfiReturn, ReprC, export, external::Extern, ffi};
+use co3::{
+    Decode, EncodeWithStore, FfiReturn, ReprC, export, external::Extern, family::TypeFamily, ffi,
+};
 
 trait AmbiguousX<T, const N: usize> {
     type U;
@@ -16,7 +18,7 @@ trait CustomExports {
     fn xor(&self, by: u8) -> Self;
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, ReprC)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, TypeFamily, ReprC)]
 #[repr(u8)]
 pub enum Ambiguous {
     AmbiguousX,
@@ -41,7 +43,7 @@ pub(crate) struct OpaqueStructBool(bool);
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub(crate) struct OpaqueStructI32(i32);
 
-#[derive(Debug, Clone, Copy, PartialEq, ReprC)]
+#[derive(Debug, Clone, Copy, PartialEq, TypeFamily, ReprC)]
 #[repr(transparent)]
 pub enum NonOpaqueStruct<T> {
     A(T),

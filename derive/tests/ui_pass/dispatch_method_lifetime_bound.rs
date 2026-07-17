@@ -1,4 +1,4 @@
-use co3::{ReprC, ffi, handle::HandleFamily, handles};
+use co3::{family::TypeFamily, ReprC, ffi, handle::HandleFamily, handles};
 
 trait Attribute {}
 
@@ -6,11 +6,11 @@ trait Dispatch {
     fn len(values: &[u32], attr: &Self) -> usize;
 }
 
-#[derive(ReprC)]
+#[derive(TypeFamily, ReprC)]
 #[repr(transparent)]
 struct CustomAttribute(u32);
 
-#[derive(ReprC)]
+#[derive(TypeFamily, ReprC)]
 #[reprC(id(u8))]
 #[repr(transparent)]
 struct CustomAttributeRef<'a>(&'a u32);

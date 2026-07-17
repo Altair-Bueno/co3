@@ -1,67 +1,67 @@
-use co3::{CFnArg, CFnReturn, ExternC, ReprC};
+use co3::{family::TypeFamily, CFnArg, CFnReturn, ExternC, ReprC};
 
-#[derive(Clone, Copy, ReprC)]
+#[derive(Clone, Copy, TypeFamily, ReprC)]
 #[repr(C)]
 struct ParamReprCZst<T: ?Sized> {
     a: (),
     b: T,
 }
 
-#[derive(Clone, Copy, ReprC)]
+#[derive(Clone, Copy, TypeFamily, ReprC)]
 #[repr(transparent)]
 struct ParamTransparentZst<T: ?Sized> {
     b: T,
 }
 
-#[derive(Clone, Copy, ReprC)]
+#[derive(Clone, Copy, TypeFamily, ReprC)]
 #[repr(transparent)]
 enum ParamTransparentEnum<T> {
     A(T),
 }
 
-#[derive(Clone, Copy, ReprC)]
+#[derive(Clone, Copy, TypeFamily, ReprC)]
 enum ParamFieldlessEnum {
     A,
 }
 
 // FIXME: This should fail
-#[derive(Clone, Copy, ReprC)]
+#[derive(Clone, Copy, TypeFamily, ReprC)]
 struct ZeroLenArrayZst {
     field: [u8; 0],
 }
 
-#[derive(Clone, Copy, ReprC)]
+#[derive(Clone, Copy, TypeFamily, ReprC)]
 struct ParamNoReprZst<T: ?Sized> {
     a: (),
     b: T,
 }
 
-#[derive(Clone, Copy, ReprC)]
+#[derive(Clone, Copy, TypeFamily, ReprC)]
 #[repr(C)]
 struct ReprCZst {
     a: (),
     b: (),
 }
 
-#[derive(Clone, Copy, ReprC)]
+#[derive(Clone, Copy, TypeFamily, ReprC)]
 #[repr(transparent)]
 struct TransparentZst {
     b: (),
 }
 
-#[derive(Clone, Copy, ReprC)]
+#[derive(Clone, Copy, TypeFamily, ReprC)]
 struct NoReprZst {
     a: (),
     b: (),
 }
 
-#[derive(Debug, Clone, Copy, ReprC)]
+#[derive(Debug, Clone, Copy, TypeFamily, ReprC)]
 #[repr(transparent)]
 pub enum FieldlessTransparentEnum {
     A,
 }
 
-#[derive(Debug, Clone, Copy, ReprC)]
+#[derive(Debug, Clone, Copy, TypeFamily, ReprC)]
 #[repr(transparent)]
 pub struct UnitTransparentStruct;
 

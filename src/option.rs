@@ -5,11 +5,13 @@ use core::mem::MaybeUninit;
 use crate::{
     CFnArg, Decode, Encode, ExternC, RobustReprC,
     borrow::{Borrow, BorrowCast, BorrowCastMut, ToOwned},
-    ir::ReprFamily,
-    niche::{NicheFamily, WithoutNiche},
-    size::SizeFamily,
     stored::{DecodeOwned, EmptyStore, EncodeOwned},
     transmute::CheckedTransmute,
+};
+use co3_types::{
+    niche::{NicheFamily, WithoutNiche},
+    repr::ReprFamily,
+    size::SizeFamily,
 };
 
 /// FFI-safe equivalent of [`core::option::Option`] for [`crate::RobustReprC`] types
@@ -140,7 +142,7 @@ impl<T: ReprFamily> ReprFamily for ReprCOption<T> {
     type Kind = T::Kind;
 }
 unsafe impl<T> SizeFamily for ReprCOption<T> {
-    type Kind = crate::size::Sized<crate::size::NonZst>;
+    type Kind = co3_types::size::Sized<co3_types::size::NonZst>;
 }
 impl<T> NicheFamily for ReprCOption<T> {
     type Kind = WithoutNiche;

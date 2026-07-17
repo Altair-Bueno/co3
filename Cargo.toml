@@ -17,16 +17,17 @@ default = ["alloc"]
 # Enables:
 # - deriving C-compatible representations with `#[derive(ReprC)]`
 # - writing exports/extern FFI declarations via `ffi!`
-derive = ["co3-derive"]
+derive = ["co3-derive", "co3-types/derive"]
 
 # Implements conversion traits for types from the `alloc` crate (e.g. `Box<T>` or `Vec<T>`).
-alloc = []
+alloc = ["co3-types/alloc"]
 
 # Enables [allocator API](https://github.com/rust-lang/rust/issues/32838)
 allocator-api = ["alloc"]
 
 [dependencies]
 co3-derive = { path = "derive", optional = true }
+co3-types = { path = "co3-types", default-features = false }
 
 # TODO: Should this get removed, it is not widely used
 derive_more = { version = "2.1.1", features = ["display"] }
@@ -39,7 +40,7 @@ static_assertions = "1.1.0"
 
 [workspace]
 resolver = "2"
-members = ["derive"]
+members = ["derive", "co3-types", "co3-types/derive"]
 
 [[test]]
 name = "abi"

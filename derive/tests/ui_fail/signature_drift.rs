@@ -1,6 +1,6 @@
 use std::ops::Deref;
 
-use co3::{ReprC, ffi, handles};
+use co3::{family::TypeFamily, ReprC, ffi, handles};
 
 trait ExternImplTrait {
     fn method(arg: &u32);
@@ -17,7 +17,7 @@ trait ExternDispatchTrait {
 struct ExportImpl;
 struct ExternImpl;
 
-#[derive(ReprC)]
+#[derive(TypeFamily, ReprC)]
 #[reprC(id(u8))]
 #[repr(transparent)]
 struct DriftHandle(u32);

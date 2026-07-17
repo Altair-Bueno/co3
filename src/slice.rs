@@ -3,11 +3,14 @@
 use crate::{
     CFnArg, Decode, Encode, ExternC, RobustReprC,
     borrow::{Borrow, BorrowCast, BorrowCastMut, ToOwned},
-    ir::ReprFamily,
-    niche::{NicheFamily, WithoutNiche},
-    size::{SizeFamily, Spread},
+    spread::Spread,
     stored::{DecodeOwned, EncodeOwned},
     transmute::CheckedTransmute,
+};
+use co3_types::{
+    niche::{NicheFamily, WithoutNiche},
+    repr::ReprFamily,
+    size::SizeFamily,
 };
 
 /// Immutable slice `&[C]` with a defined C ABI layout. Consists of a data pointer and a length.
@@ -168,7 +171,7 @@ macro_rules! impl_slice_carrier {
             type Kind = C::Kind;
         }
         unsafe impl<C: RobustReprC> SizeFamily for $ty<C> {
-            type Kind = crate::size::Sized<crate::size::NonZst>;
+            type Kind = co3_types::size::Sized<co3_types::size::NonZst>;
         }
         impl<C: RobustReprC> NicheFamily for $ty<C> {
             type Kind = WithoutNiche;

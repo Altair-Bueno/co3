@@ -5,11 +5,13 @@ use core::{mem::MaybeUninit, ops::Add};
 use crate::{
     CFnArg, Decode, Encode, ExternC, RobustReprC,
     borrow::{Borrow, BorrowCast, BorrowCastMut, ToOwned},
-    ir::ReprFamily,
-    niche::{NicheFamily, WithoutNiche},
-    size::SizeFamily,
-    stored::{DecodeOwned, EncodeOwned},
+    stored::{DecodeOwned, EmptyStore, EncodeOwned},
     transmute::CheckedTransmute,
+};
+use co3_types::{
+    niche::{NicheFamily, WithoutNiche},
+    repr::ReprFamily,
+    size::SizeFamily,
 };
 
 /// FFI-safe equivalent of [`core::result::Result`]
@@ -168,7 +170,7 @@ impl<T: ReprFamily<Kind: Add<E::Kind>> + Copy, E: ReprFamily + Copy> ReprFamily
 }
 
 unsafe impl<T: Copy, E: Copy> SizeFamily for ReprCResult<T, E> {
-    type Kind = crate::size::Sized<crate::size::NonZst>;
+    type Kind = co3_types::size::Sized<co3_types::size::NonZst>;
 }
 
 impl<T: Copy, E: Copy> NicheFamily for ReprCResult<T, E> {
@@ -326,5 +328,4 @@ unsafe impl<T: BorrowCastMut<AsMut: Copy> + Copy, E: BorrowCastMut<AsMut: Copy> 
     type AsMut = ReprCResult<T::AsMut, E::AsMut>;
 }
 
-// TODO: Only if one is uninhabited and the other ZST?
-//unsafe impl<T: EmptyStore, E: EmptyStore> EmptyStore for Result<T, E> {}
+unsafe impl<T: EmptyStore, E: EmptyStore> EmptyStore for Result<T, E> {}

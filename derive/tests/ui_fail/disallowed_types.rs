@@ -1,25 +1,25 @@
-use co3::{ReprC, ffi, handles};
+use co3::{family::TypeFamily, ReprC, ffi, handles};
 
 trait Dispatch {
     fn me(self);
 }
 
-#[derive(ReprC)]
+#[derive(TypeFamily, ReprC)]
 #[repr(transparent)]
 #[reprC(id(usize))]
 struct Handle(usize);
 
-#[derive(ReprC)]
+#[derive(TypeFamily, ReprC)]
 #[repr(transparent)]
 #[reprC(id(usize))]
 struct Handle2(u64);
 
-#[derive(ReprC)]
+#[derive(TypeFamily, ReprC)]
 #[repr(transparent)]
 #[reprC(id(usize))]
 struct Array([u8; 2]);
 
-#[derive(ReprC)]
+#[derive(TypeFamily, ReprC)]
 #[repr(transparent)]
 #[reprC(id(usize))]
 struct Array2([u8; 8]);

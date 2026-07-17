@@ -1,6 +1,6 @@
-use co3::{ReprC, ffi};
+use co3::{family::TypeFamily, ReprC, ffi};
 
-#[derive(Clone, ReprC)]
+#[derive(Clone, TypeFamily, ReprC)]
 pub struct Hello {
     a: i32,
     b: i32,

@@ -1,4 +1,4 @@
-use co3::{ReprC, ffi, handles};
+use co3::{family::TypeFamily, ReprC, ffi, handles};
 
 trait Attribute {}
 
@@ -7,15 +7,15 @@ trait ByteValue {
     fn add_ref(&self, rhs: &Self) -> u8;
 }
 
-#[derive(ReprC)]
+#[derive(TypeFamily, ReprC)]
 #[repr(transparent)]
 struct EnvAttr(usize);
 
-#[derive(Clone, ReprC)]
+#[derive(Clone, TypeFamily, ReprC)]
 #[reprC(id(u16))]
 struct Custom1(usize);
 
-#[derive(ReprC)]
+#[derive(TypeFamily, ReprC)]
 #[reprC(id(u16))]
 #[repr(transparent)]
 struct Custom2<'a>(&'a u8);
@@ -35,11 +35,11 @@ mod provider {
 
     use super::*;
 
-    #[derive(ReprC)]
+    #[derive(TypeFamily, ReprC)]
     #[reprC(id(u16))]
     struct Custom1(usize);
 
-    #[derive(ReprC)]
+    #[derive(TypeFamily, ReprC)]
     #[reprC(id(u16))]
     #[repr(transparent)]
     struct Custom2<'a>(&'a u8);

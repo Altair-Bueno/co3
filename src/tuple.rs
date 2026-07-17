@@ -62,14 +62,18 @@
 
 use core::ops::Add;
 
+use co3_types::{
+    niche::{NicheFamily, WithoutNiche},
+    repr::ReprFamily,
+    size::{NonZst, SizeFamily},
+};
 use disjoint_impls::disjoint_impls;
 
 use crate::{
     CFnArg, Decode, Encode, ExternC, RobustReprC, Store,
     borrow::{Borrow, BorrowCast, BorrowCastMut, ToOwned},
-    ir::{ReprFamily, ReprRust},
-    niche::{Niche, NicheFamily, WithNiche, WithoutNiche},
-    size::{NonZst, SizeFamily, Spread},
+    niche::{Niche, WithNiche},
+    spread::Spread,
     stored::{DecodeOwned, EncodeOwned},
     transmute::CheckedTransmute,
 };
@@ -214,7 +218,7 @@ macro_rules! impl_tuple {
 
         unsafe impl<$($ty: RobustReprC + Copy),*> CFnArg for $ffi_ty<$($ty),*>
         where
-            Self: SizeFamily<Kind = crate::size::Sized<NonZst>>,
+            Self: SizeFamily<Kind = co3_types::size::Sized<NonZst>>,
         {}
 
         impl<$($ty),*> From<($( $ty, )*)> for $ffi_ty<$($ty),*> {
@@ -235,10 +239,6 @@ macro_rules! impl_tuple {
         #[repr(C)]
         #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
         pub struct $ffi_ty<$($head,)* $last: ?Sized>($(pub $head,)* pub $last);
-
-        impl<$($head,)* $last: ?Sized> ReprFamily for ($($head,)* $last,) {
-            type Kind = ReprRust;
-        }
 
         impl<$($head: ExternC<CType: Sized>,)* $last: ExternC + ?Sized> ExternC for ($($head,)* $last,) {
             type CType = $ffi_ty<$($head::CType,)* $last::CType>;
@@ -417,9 +417,6 @@ macro_rules! impl_tuple_families {
     };
 
     ($(($($ty:ident),+) => $ffi_ty:ident),+ $(,)?) => { $(
-        impl_tuple_families!(@impl NicheFamily for ($($ty,)+); $($ty),+);
-        impl_tuple_families!(@impl SizeFamily for ($($ty,)+); $($ty),+);
-
         impl_tuple_families!(@impl ReprFamily for $ffi_ty<$($ty),+>; $($ty),+);
         impl_tuple_families!(@impl SizeFamily for $ffi_ty<$($ty),+>; $($ty),+);
         impl_tuple_families!(@impl NicheFamily for $ffi_ty<$($ty),+>; $($ty),+); )+
@@ -444,128 +441,92 @@ impl_tuple_families! {
 #[cfg(test)]
 mod tests {
     #[cfg(feature = "alloc")]
-    use alloc_crate::{boxed::Box, vec::Vec};
+    use alloc::{boxed::Box, vec::Vec};
+    use co3_types::size::{Sized as Co3Sized, Zst};
     use core::num::NonZero;
 
     use static_assertions::{assert_impl_all, assert_not_impl_any};
 
     use super::*;
-    #[cfg(feature = "alloc")]
-    use crate::boxed::{CBox, CBoxedSlice};
-    #[cfg(feature = "alloc")]
-    use crate::{CSlice, CSliceMut};
     use crate::{
         Decode, Encode,
-        niche::{StableNiche, WithCustomNiche, WithStableNiche},
+        niche::StableNiche,
         option::ReprCOption,
-        size::{Sized as Co3Sized, Zst},
         stored::{DecodeOwned, EncodeOwned},
+    };
+    #[cfg(feature = "alloc")]
+    use crate::{
+        boxed::{CBox, CBoxedSlice},
+        slice::{CSlice, CSliceMut},
     };
 
     #[test]
     fn tuple_size_family_tracks_zst_fields() {
-        assert_impl_all!(((), ()): SizeFamily<Kind = Co3Sized<Zst>>);
         assert_impl_all!(ReprCTuple2<(), ()>: SizeFamily<Kind = Co3Sized<Zst>>);
-
-        assert_impl_all!(((), (), ()): SizeFamily<Kind = Co3Sized<Zst>>);
         assert_impl_all!(ReprCTuple3<(), (), ()>: SizeFamily<Kind = Co3Sized<Zst>>);
     }
 
     #[test]
     fn tuple_size_family_tracks_non_zst_fields() {
-        assert_impl_all!(((), u8): SizeFamily<Kind = crate::size::Sized<NonZst>>);
-        assert_impl_all!((u8, ()): SizeFamily<Kind = crate::size::Sized<NonZst>>);
-        assert_impl_all!(((), u8, ()): SizeFamily<Kind = crate::size::Sized<NonZst>>);
-
-        assert_impl_all!(ReprCTuple2<(), u8>: SizeFamily<Kind = crate::size::Sized<NonZst>>);
-        assert_impl_all!(ReprCTuple2<u8, ()>: SizeFamily<Kind = crate::size::Sized<NonZst>>);
-        assert_impl_all!(ReprCTuple3<(), u8, ()>: SizeFamily<Kind = crate::size::Sized<NonZst>>);
+        assert_impl_all!(ReprCTuple2<(), u8>: SizeFamily<Kind = co3_types::size::Sized<NonZst>>);
+        assert_impl_all!(ReprCTuple2<u8, ()>: SizeFamily<Kind = co3_types::size::Sized<NonZst>>);
+        assert_impl_all!(ReprCTuple3<(), u8, ()>: SizeFamily<Kind = co3_types::size::Sized<NonZst>>);
     }
 
     #[test]
     fn stored_tuple_3_without_niche() {
         assert_impl_all!((u8, u8, u8):
-            ReprFamily<Kind = ReprRust>,
-            SizeFamily<Kind = Co3Sized<NonZst>>,
-            NicheFamily<Kind = WithoutNiche>,
             ExternC<CType = ReprCTuple3<u8, u8, u8>>,
             Decode<'static>,
             Encode,
         );
 
         assert_impl_all!(&(u8, u8, u8):
-            ReprFamily<Kind = ReprRust>,
-            SizeFamily<Kind = Co3Sized<NonZst>>,
-            NicheFamily<Kind = WithStableNiche>,
             StableNiche<CType = *const ReprCTuple3<u8, u8, u8>>,
             Decode<'static>,
             Encode,
         );
         assert_impl_all!(&mut (u8, u8, u8):
-            ReprFamily<Kind = ReprRust>,
-            SizeFamily<Kind = Co3Sized<NonZst>>,
-            NicheFamily<Kind = WithStableNiche>,
             StableNiche<CType = *mut ReprCTuple3<u8, u8, u8>>,
             Decode<'static>,
             Encode,
         );
         #[cfg(feature = "alloc")]
         assert_impl_all!(Box<(u8, u8, u8)>:
-            ReprFamily<Kind = ReprRust>,
-            SizeFamily<Kind = Co3Sized<NonZst>>,
-            NicheFamily<Kind = WithStableNiche>,
             StableNiche<CType = CBox<ReprCTuple3<u8, u8, u8>>>,
             DecodeOwned<'static>,
             EncodeOwned,
         );
         #[cfg(feature = "alloc")]
         assert_impl_all!(&[(u8, u8, u8)]:
-            ReprFamily<Kind = ReprRust>,
-            SizeFamily<Kind = Co3Sized<NonZst>>,
-            NicheFamily<Kind = WithCustomNiche>,
             Niche<CType = CSlice<ReprCTuple3<u8, u8, u8>>>,
             Decode<'static>,
             Encode,
         );
         #[cfg(feature = "alloc")]
         assert_impl_all!(&mut [(u8, u8, u8)]:
-            ReprFamily<Kind = ReprRust>,
-            SizeFamily<Kind = Co3Sized<NonZst>>,
-            NicheFamily<Kind = WithCustomNiche>,
             Niche<CType = CSliceMut<ReprCTuple3<u8, u8, u8>>>,
             Decode<'static>,
             Encode,
         );
         #[cfg(feature = "alloc")]
         assert_impl_all!(Box<[(u8, u8, u8)]>:
-            ReprFamily<Kind = ReprRust>,
-            SizeFamily<Kind = Co3Sized<NonZst>>,
-            NicheFamily<Kind = WithCustomNiche>,
             Niche<CType = CBoxedSlice<ReprCTuple3<u8, u8, u8>>>,
             DecodeOwned<'static>,
             EncodeOwned,
         );
         #[cfg(feature = "alloc")]
         assert_impl_all!(Vec<(u8, u8, u8)>:
-            ReprFamily<Kind = ReprRust>,
-            SizeFamily<Kind = Co3Sized<NonZst>>,
-            NicheFamily<Kind = WithCustomNiche>,
             Niche<CType = CBoxedSlice<ReprCTuple3<u8, u8, u8>>>,
             DecodeOwned<'static>,
             EncodeOwned,
         );
         assert_impl_all!([(u8, u8, u8); 2]:
-            ReprFamily<Kind = ReprRust>,
-            SizeFamily<Kind = Co3Sized<NonZst>>,
-            NicheFamily<Kind = WithoutNiche>,
             ExternC<CType = [ReprCTuple3<u8, u8, u8>; 2]>,
             Decode<'static>,
             Encode,
         );
         assert_impl_all!(Option<(u8, u8, u8)>:
-            ReprFamily<Kind = ReprRust>,
-            SizeFamily<Kind = Co3Sized<NonZst>>,
-            NicheFamily<Kind = WithCustomNiche>,
             Niche<CType = ReprCOption<ReprCTuple3<u8, u8, u8>>>,
             Decode<'static>,
             Encode,
@@ -583,88 +544,58 @@ mod tests {
         assert_eq!(<(u8, NonZero<u8>, bool)>::NICHE_VALUE, ReprCTuple3(0, 0, 0));
 
         assert_impl_all!((u8, NonZero<u8>, bool):
-            ReprFamily<Kind = ReprRust>,
-            SizeFamily<Kind = Co3Sized<NonZst>>,
-            NicheFamily<Kind = WithCustomNiche>,
             Niche<CType = ReprCTuple3<u8, u8, u8>>,
             Decode<'static>,
             Encode,
         );
 
         assert_impl_all!(&(u8, NonZero<u8>, bool):
-            ReprFamily<Kind = ReprRust>,
-            SizeFamily<Kind = Co3Sized<NonZst>>,
-            NicheFamily<Kind = WithStableNiche>,
             StableNiche<CType = *const ReprCTuple3<u8, u8, u8>>,
             Decode<'static>,
             Encode,
         );
         assert_impl_all!(&mut (u8, NonZero<u8>, bool):
-            ReprFamily<Kind = ReprRust>,
-            SizeFamily<Kind = Co3Sized<NonZst>>,
-            NicheFamily<Kind = WithStableNiche>,
             StableNiche<CType = *mut ReprCTuple3<u8, u8, u8>>,
             Decode<'static>,
             Encode,
         );
         #[cfg(feature = "alloc")]
         assert_impl_all!(Box<(u8, NonZero<u8>, bool)>:
-            ReprFamily<Kind = ReprRust>,
-            SizeFamily<Kind = Co3Sized<NonZst>>,
-            NicheFamily<Kind = WithStableNiche>,
             StableNiche<CType = CBox<ReprCTuple3<u8, u8, u8>>>,
             DecodeOwned<'static>,
             EncodeOwned,
         );
         #[cfg(feature = "alloc")]
         assert_impl_all!(&[(u8, NonZero<u8>, bool)]:
-            ReprFamily<Kind = ReprRust>,
-            SizeFamily<Kind = Co3Sized<NonZst>>,
-            NicheFamily<Kind = WithCustomNiche>,
             Niche<CType = CSlice<ReprCTuple3<u8, u8, u8>>>,
             Decode<'static>,
             Encode,
         );
         #[cfg(feature = "alloc")]
         assert_impl_all!(&mut [(u8, NonZero<u8>, bool)]:
-            ReprFamily<Kind = ReprRust>,
-            SizeFamily<Kind = Co3Sized<NonZst>>,
-            NicheFamily<Kind = WithCustomNiche>,
             Niche<CType = CSliceMut<ReprCTuple3<u8, u8, u8>>>,
             Decode<'static>,
             Encode,
         );
         #[cfg(feature = "alloc")]
         assert_impl_all!(Box<[(u8, NonZero<u8>, bool)]>:
-            ReprFamily<Kind = ReprRust>,
-            SizeFamily<Kind = Co3Sized<NonZst>>,
-            NicheFamily<Kind = WithCustomNiche>,
             Niche<CType = CBoxedSlice<ReprCTuple3<u8, u8, u8>>>,
             DecodeOwned<'static>,
             EncodeOwned,
         );
         #[cfg(feature = "alloc")]
         assert_impl_all!(Vec<(u8, NonZero<u8>, bool)>:
-            ReprFamily<Kind = ReprRust>,
-            SizeFamily<Kind = Co3Sized<NonZst>>,
-            NicheFamily<Kind = WithCustomNiche>,
             Niche<CType = CBoxedSlice<ReprCTuple3<u8, u8, u8>>>,
             DecodeOwned<'static>,
             EncodeOwned,
         );
         assert_impl_all!([(u8, NonZero<u8>, bool); 2]:
-            ReprFamily<Kind = ReprRust>,
-            SizeFamily<Kind = Co3Sized<NonZst>>,
-            NicheFamily<Kind = WithCustomNiche>,
             Niche<CType = [ReprCTuple3<u8, u8, u8>; 2]>,
             Decode<'static>,
             Encode,
         );
         assert_impl_all!(Option<(u8, NonZero<u8>, bool)>:
-            ReprFamily<Kind = ReprRust>,
-            SizeFamily<Kind = Co3Sized<NonZst>>,
             // TODO: Depends on: https://github.com/mversic/co3/issues/33
-            //NicheFamily<Kind = WithCustomNiche>,
             //Niche<CType = ReprCTuple3<u8, u8, u8>>,
             Decode<'static>,
             Encode,
