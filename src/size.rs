@@ -81,8 +81,6 @@ pub trait Spread: RobustReprC + core::marker::Sized {
     fn from_parts(part1: Self::Part1, part2: Self::Part2) -> Self;
 }
 
-// TODO: Implement for Result
-
 /// Pointer that consists of data and metadata (also called a `fat` pointer).
 ///
 /// This includes slices, trait objects, and DSTs whose last field is one of aformentioned.
@@ -156,6 +154,12 @@ unsafe impl<T> SizeFamily for Vec<T> {
 unsafe impl<T> SizeFamily for Option<T> {
     type Kind = Sized<NonZst>;
 }
+
+// TODO: It can also be Zst sometimes
+unsafe impl<T, E> SizeFamily for Result<T, E> {
+    type Kind = Sized<NonZst>;
+}
+
 impl<R> Wide for [R] {
     type Data = R;
     type Metadata = usize;

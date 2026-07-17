@@ -42,9 +42,9 @@ use crate::{
     niche::{NicheFamily, WithNiche, WithoutNiche},
     option::ReprCOption,
     result::ReprCResult,
-    size::{MetaSized, SizeFamily, SliceLike, Thin, Wide},
+    size::{MetaSized, NonZst, SizeFamily, SliceLike, Thin, Wide, Zst},
     slice::{CSlice, CSliceMut},
-    stored::{DecodeOwned, EmptyStore, EncodeOwned, ReprRustOrTransmutedNonRobust, Store},
+    stored::{DecodeOwned, EmptyStore, EncodeOwned, ReprRustOrNonRobust, Store},
 };
 
 pub mod borrow;
@@ -116,7 +116,7 @@ disjoint_impls! {
 
     impl<R: ReprFamily + SizeFamily<Kind: Thin> + ExternC + ?Sized> ExternC for &R
     where
-        Self: ReprFamily<Kind: ReprRustOrTransmutedNonRobust>,
+        Self: ReprFamily<Kind: ReprRustOrNonRobust>,
     {
         type CType = *const R::CType;
     }
@@ -139,7 +139,7 @@ disjoint_impls! {
 
     impl<R: ReprFamily + SizeFamily<Kind: Thin> + ExternC + ?Sized> ExternC for &mut R
     where
-        Self: ReprFamily<Kind: ReprRustOrTransmutedNonRobust>,
+        Self: ReprFamily<Kind: ReprRustOrNonRobust>,
     {
         type CType = *mut R::CType;
     }
@@ -163,7 +163,7 @@ disjoint_impls! {
     #[cfg(feature = "alloc")]
     impl<R: ReprFamily + SizeFamily<Kind = size::Sized<S>> + ExternC, S> ExternC for Box<R>
     where
-        Self: ReprFamily<Kind: ReprRustOrTransmutedNonRobust>,
+        Self: ReprFamily<Kind: ReprRustOrNonRobust>,
         <R as ExternC>::CType: Sized,
     {
         type CType = CBox<R::CType>;
@@ -197,19 +197,35 @@ disjoint_impls! {
     }
 
     impl<
-        // TODO: Something breaks in disjoint_impls if I use ExternC<CType: Copy>
-        R: NicheFamily<Kind = WithoutNiche> + ExternC,
-        E: NicheFamily<Kind = WithoutNiche> + ExternC,
+        R: SizeFamily<Kind = crate::size::Sized<K>> + ExternC,
+        E: SizeFamily<Kind = crate::size::Sized<K>> + ExternC,
+        K
     >
         ExternC for Result<R, E>
     where
-        Self: ReprFamily<Kind = ReprRust>,
+        // TODO: There is an error in disjoint_impls! that doesn't allow to use
+        // `Extern<CType: Copy>` constraint. Fix that! Check other Result sites
         <R as ExternC>::CType: Copy,
         <E as ExternC>::CType: Copy,
     {
         type CType = ReprCResult<R::CType, E::CType>;
     }
-    // TODO: Implement for niche optimized Results
+    impl<
+        R: SizeFamily<Kind = crate::size::Sized<NonZst>> + NicheFamily<Kind: WithNiche> + ExternC,
+        E: SizeFamily<Kind = crate::size::Sized<Zst>>,
+    >
+        ExternC for Result<R, E>
+    {
+        type CType = R::CType;
+    }
+    impl<
+        R: SizeFamily<Kind = crate::size::Sized<Zst>>,
+        E: SizeFamily<Kind = crate::size::Sized<NonZst>> + NicheFamily<Kind: WithNiche> + ExternC,
+    >
+        ExternC for Result<R, E>
+    {
+        type CType = E::CType;
+    }
 }
 
 disjoint_impls! {
@@ -256,6 +272,9 @@ impl<'d, R: Decode<'d>, const N: usize> Decode<'d> for [R; N] where Self: Decode
 impl<R: Encode> Encode for Option<R> where Self: EncodeOwned {}
 impl<'d, R: Decode<'d>> Decode<'d> for Option<R> where Self: DecodeOwned<'d> {}
 
+impl<R: Encode, E: Encode> Encode for Result<R, E> where Self: EncodeOwned {}
+impl<'d, R: Decode<'d>, E: Decode<'d>> Decode<'d> for Result<R, E> where Self: DecodeOwned<'d> {}
+
 /// Perform the conversion from `T` into [`T::CType`] using external storage.
 ///
 /// Prefer using [`encode`] whenever possible
@@ -290,9 +309,6 @@ pub unsafe fn soft_decode<'d, T: Decode<'d>>(
 pub unsafe fn decode<'d, T: Decode<'d, Store: EmptyStore> + 'd>(source: T::CType) -> Option<T> {
     unsafe { stored::decode_owned(source) }
 }
-
-impl<R: Encode, E: Encode> Encode for Result<R, E> where Self: EncodeOwned {}
-impl<'d, R: Decode<'d>, E: Decode<'d>> Decode<'d> for Result<R, E> where Self: DecodeOwned<'d> {}
 
 #[cfg(feature = "alloc")]
 impl<R: ExternC<CType: Sized>> ExternC for Vec<R> {

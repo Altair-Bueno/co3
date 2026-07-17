@@ -11,7 +11,7 @@ use disjoint_impls::disjoint_impls;
 
 use crate::{
     niche::{NicheFamily, WithCustomNiche, WithStableNiche, WithoutNiche},
-    size::{MetaSized, SizeFamily, Thin},
+    size::{MetaSized, NonZst, SizeFamily, Thin, Zst},
 };
 
 /// Marker for a type that don't have a guaranteed representation and requires explicit conversion.
@@ -44,89 +44,111 @@ disjoint_impls! {
         type Kind;
     }
 
-    // FIXME: The following 2 impls should be compressible into 1, but disjoint_impls can't do it?
-    // and then further compressed so only 3 impls remain in total
-    impl<R: ReprFamily<Kind = ReprC<Robust>> + SizeFamily<Kind: Thin> + ?Sized> ReprFamily for &R {
-        type Kind = ReprC<NonRobust>;
-    }
-    impl<R: ReprFamily<Kind = ReprC<NonRobust>> + SizeFamily<Kind: Thin> + ?Sized> ReprFamily for &R {
-        type Kind = ReprC<NonRobust>;
-    }
-    impl<R: ReprFamily<Kind = ReprC<Robust>> + SizeFamily<Kind = MetaSized<U>> + ?Sized, U> ReprFamily for &R {
-        type Kind = ReprRust;
-    }
-    impl<R: ReprFamily<Kind = ReprC<NonRobust>> + SizeFamily<Kind = MetaSized<U>> + ?Sized, U> ReprFamily for &R {
-        type Kind = ReprRust;
-    }
     impl<R: ReprFamily<Kind = ReprRust> + ?Sized> ReprFamily for &R {
         type Kind = ReprRust;
     }
+    impl<R: ReprFamily<Kind = ReprC<K>> + SizeFamily<Kind: Thin> + ?Sized, K> ReprFamily for &R {
+        type Kind = ReprC<NonRobust>;
+    }
+    impl<R: ReprFamily<Kind = ReprC<K>> + SizeFamily<Kind = MetaSized<U>> + ?Sized, U, K> ReprFamily for &R {
+        type Kind = ReprRust;
+    }
 
-    impl<R: ReprFamily<Kind = ReprC<Robust>> + SizeFamily<Kind: Thin> + ?Sized> ReprFamily for &mut R {
-        type Kind = ReprC<NonRobust>;
-    }
-    impl<R: ReprFamily<Kind = ReprC<NonRobust>> + SizeFamily<Kind: Thin> + ?Sized> ReprFamily for &mut R {
-        type Kind = ReprC<NonRobust>;
-    }
-    impl<R: ReprFamily<Kind = ReprC<Robust>> + SizeFamily<Kind = MetaSized<U>> + ?Sized, U> ReprFamily for &mut R {
-        type Kind = ReprRust;
-    }
-    impl<R: ReprFamily<Kind = ReprC<NonRobust>> + SizeFamily<Kind = MetaSized<U>> + ?Sized, U> ReprFamily for &mut R {
-        type Kind = ReprRust;
-    }
     impl<R: ReprFamily<Kind = ReprRust> + ?Sized> ReprFamily for &mut R {
         type Kind = ReprRust;
     }
+    impl<R: ReprFamily<Kind = ReprC<K>> + SizeFamily<Kind: Thin> + ?Sized, K> ReprFamily for &mut R {
+        type Kind = ReprC<NonRobust>;
+    }
+    impl<R: ReprFamily<Kind = ReprC<K>> + SizeFamily<Kind = MetaSized<U>> + ?Sized, U, K> ReprFamily for &mut R {
+        type Kind = ReprRust;
+    }
 
-    #[cfg(feature = "alloc")]
-    impl<R: ReprFamily<Kind = ReprC<Robust>> + SizeFamily<Kind = crate::size::Sized<S>>, S> ReprFamily for Box<R> {
-        type Kind = ReprC<NonRobust>;
-    }
-    #[cfg(feature = "alloc")]
-    impl<R: ReprFamily<Kind = ReprC<NonRobust>> + SizeFamily<Kind = crate::size::Sized<S>>, S> ReprFamily for Box<R> {
-        type Kind = ReprC<NonRobust>;
-    }
-    #[cfg(feature = "alloc")]
-    impl<R: ReprFamily<Kind = ReprC<Robust>> + SizeFamily<Kind = MetaSized<U>> + ?Sized, U> ReprFamily for Box<R> {
-        type Kind = ReprRust;
-    }
-    #[cfg(feature = "alloc")]
-    impl<R: ReprFamily<Kind = ReprC<NonRobust>> + SizeFamily<Kind = MetaSized<U>> + ?Sized, U> ReprFamily for Box<R> {
-        type Kind = ReprRust;
-    }
     #[cfg(feature = "alloc")]
     impl<R: ReprFamily<Kind = ReprRust> + ?Sized> ReprFamily for Box<R> {
         type Kind = ReprRust;
     }
+    #[cfg(feature = "alloc")]
+    impl<R: ReprFamily<Kind = ReprC<K>> + SizeFamily<Kind = crate::size::Sized<S>>, S, K> ReprFamily for Box<R> {
+        type Kind = ReprC<NonRobust>;
+    }
+    #[cfg(feature = "alloc")]
+    impl<R: ReprFamily<Kind = ReprC<K>> + SizeFamily<Kind = MetaSized<U>> + ?Sized, U, K> ReprFamily for Box<R> {
+        type Kind = ReprRust;
+    }
 
-    // TODO: impls here can also be compressed
-    impl<R: ReprFamily<Kind = ReprC<Robust>>> ReprFamily for Option<R> {
+    impl<R: NicheFamily<Kind = WithoutNiche>> ReprFamily for Option<R> {
         type Kind = ReprRust;
     }
-    impl<R: ReprFamily<Kind = ReprC<NonRobust>> + NicheFamily<Kind = WithoutNiche>> ReprFamily for Option<R> {
+    impl<R: NicheFamily<Kind = WithCustomNiche>> ReprFamily for Option<R> {
         type Kind = ReprRust;
     }
-    impl<R: ReprFamily<Kind = ReprC<NonRobust>> + NicheFamily<Kind = WithCustomNiche>> ReprFamily for Option<R> {
+    impl<R: NicheFamily<Kind = WithStableNiche> + ReprFamily<Kind = ReprRust>> ReprFamily for Option<R> {
         type Kind = ReprRust;
     }
-    impl<R: ReprFamily<Kind = ReprC<NonRobust>> + NicheFamily<Kind = WithStableNiche>> ReprFamily for Option<R> {
-        // TODO: Sometimes it should be mapped to Robust when R has 1 niche
+    impl<R: NicheFamily<Kind = WithStableNiche> + ReprFamily<Kind = ReprC<NonRobust>>> ReprFamily for Option<R> {
+        // FIXME: Sometimes it should be mapped to Robust when R has 1 niche. Also for Result
         // https://github.com/mversic/co3/issues/33
         type Kind = ReprC<NonRobust>;
     }
-    impl<R: ReprFamily<Kind = ReprRust>> ReprFamily for Option<R> {
-        type Kind = ReprRust;
-    }
-    // TODO: Make a test. I think the example type is &Box<u8>
-    // Should it become Stored in this case? Likewise for Result
-    //impl<R: ReprFamily<Kind = ReprRust> + NicheFamily<Kind = WithStableNiche>> ReprFamily for Option<R> {
-    //    type Kind = ReprRust;
-    //}
 
-    impl<R: NicheFamily<Kind = WithoutNiche>, E: NicheFamily<Kind = WithoutNiche>> ReprFamily for Result<R, E> {
+    impl<
+        R: SizeFamily<Kind = crate::size::Sized<K>>,
+        E: SizeFamily<Kind = crate::size::Sized<K>>,
+        K
+    > ReprFamily for Result<R, E> {
         type Kind = ReprRust;
     }
-    // TODO: Implement for niche optimized Results
+
+    impl<
+        R: SizeFamily<Kind = crate::size::Sized<NonZst>> + NicheFamily<Kind = WithoutNiche>,
+        E: SizeFamily<Kind = crate::size::Sized<Zst>>,
+    > ReprFamily for Result<R, E> {
+        type Kind = ReprRust;
+    }
+    impl<
+        R: SizeFamily<Kind = crate::size::Sized<NonZst>> + NicheFamily<Kind = WithCustomNiche>,
+        E: SizeFamily<Kind = crate::size::Sized<Zst>>,
+    > ReprFamily for Result<R, E> {
+        type Kind = ReprRust;
+    }
+    impl<
+        R: SizeFamily<Kind = crate::size::Sized<NonZst>> + NicheFamily<Kind = WithStableNiche> + ReprFamily<Kind = ReprRust>,
+        E: SizeFamily<Kind = crate::size::Sized<Zst>>,
+    > ReprFamily for Result<R, E> {
+        type Kind = ReprRust;
+    }
+    impl<
+        R: SizeFamily<Kind = crate::size::Sized<NonZst>> + NicheFamily<Kind = WithStableNiche> + ReprFamily<Kind = ReprC<NonRobust>>,
+        E: SizeFamily<Kind = crate::size::Sized<Zst>>,
+    > ReprFamily for Result<R, E> {
+        type Kind = ReprC<NonRobust>;
+    }
+
+    impl<
+        R: SizeFamily<Kind = crate::size::Sized<Zst>>,
+        E: SizeFamily<Kind = crate::size::Sized<NonZst>> + NicheFamily<Kind = WithoutNiche>,
+    > ReprFamily for Result<R, E> {
+        type Kind = ReprRust;
+    }
+    impl<
+        R: SizeFamily<Kind = crate::size::Sized<Zst>>,
+        E: SizeFamily<Kind = crate::size::Sized<NonZst>> + NicheFamily<Kind = WithCustomNiche>,
+    > ReprFamily for Result<R, E> {
+        type Kind = ReprRust;
+    }
+    impl<
+        R: SizeFamily<Kind = crate::size::Sized<Zst>>,
+        E: SizeFamily<Kind = crate::size::Sized<NonZst>> + NicheFamily<Kind = WithStableNiche> + ReprFamily<Kind = ReprRust>,
+    > ReprFamily for Result<R, E> {
+        type Kind = ReprRust;
+    }
+    impl<
+        R: SizeFamily<Kind = crate::size::Sized<Zst>>,
+        E: SizeFamily<Kind = crate::size::Sized<NonZst>> + NicheFamily<Kind = WithStableNiche> + ReprFamily<Kind = ReprC<NonRobust>>,
+    > ReprFamily for Result<R, E> {
+        type Kind = ReprC<NonRobust>;
+    }
 }
 
 #[cfg(feature = "alloc")]

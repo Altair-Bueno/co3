@@ -13,7 +13,7 @@ use crate::{
     ExternC, RobustReprC, assert_arr_has_non_zero_len,
     option::ReprCOption,
     result::ReprCResult,
-    size::{MetaSized, SizeFamily, Thin},
+    size::{MetaSized, NonZst, SizeFamily, Thin, Zst},
     slice::{CSlice, CSliceMut},
 };
 
@@ -183,10 +183,26 @@ disjoint_impls! {
         type Kind = WithCustomNiche;
     }
 
-    impl<R: NicheFamily<Kind = WithoutNiche>, E: NicheFamily<Kind = WithoutNiche>> NicheFamily for Result<R, E> {
+    impl<
+        R: NicheFamily<Kind = WithoutNiche>,
+        E: NicheFamily<Kind = WithoutNiche>,
+    > NicheFamily for Result<R, E> {
         type Kind = WithCustomNiche;
     }
-    // TODO: Implement for niche optimized Results
+    impl<
+        R: SizeFamily<Kind = crate::size::Sized<NonZst>> + NicheFamily<Kind = WithStableNiche>,
+        E: SizeFamily<Kind = crate::size::Sized<Zst>> + NicheFamily,
+    > NicheFamily for Result<R, E> {
+        type Kind = WithoutNiche;
+    }
+    // FIXME:
+    //impl<
+    //    R: SizeFamily<Kind = crate::size::Sized<Zst>> + NicheFamily,
+    //    E: SizeFamily<Kind = crate::size::Sized<NonZst>> + NicheFamily<Kind = WithStableNiche>,
+    //> NicheFamily for Result<R, E> {
+    //    type Kind = WithoutNiche;
+    //}
+    // TODO: Implement for all niche optimized Results
 }
 
 #[cfg(feature = "alloc")]
@@ -218,11 +234,9 @@ where
 {
     const NICHE_VALUE: Self::CType = ReprCOption::NICHE_VALUE;
 }
-impl<T: ExternC<CType: Copy>, E: ExternC<CType: Copy>> Niche for Result<T, E>
+impl<R, E, C: RobustReprC + Copy, D: RobustReprC + Copy> Niche for Result<R, E>
 where
-    Self: ExternC<CType = ReprCResult<T::CType, E::CType>>,
-    T: NicheFamily<Kind = crate::niche::WithoutNiche>,
-    E: NicheFamily<Kind = crate::niche::WithoutNiche>,
+    Self: ExternC<CType = ReprCResult<C, D>>,
 {
     const NICHE_VALUE: Self::CType = ReprCResult::NICHE_VALUE;
 }

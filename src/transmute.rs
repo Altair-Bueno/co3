@@ -1,25 +1,56 @@
 #[cfg(feature = "alloc")]
 use alloc_crate::boxed::Box;
+use disjoint_impls::disjoint_impls;
 
 #[cfg(feature = "alloc")]
 use crate::boxed::CBox;
-use crate::{ExternC, assert_arr_has_non_zero_len, niche::StableNiche};
+use crate::{
+    ExternC, assert_arr_has_non_zero_len,
+    niche::StableNiche,
+    size::{NonZst, SizeFamily, Zst},
+};
 
-/// Type that can be **safely transmuted** into another type.
-///
-/// # Safety
-///
-/// - `Self` and `Self::CType` must be mutually transmutable (this includes [`Drop`] semantics)
-/// - `Self::is_valid` must not return false positives, i.e. return `true` for trap representations
-pub unsafe trait CheckedTransmute: ExternC {
-    /// Called when transmuting [`Self::CType`] back into [`Self`] to check for trap representations.
-    ///
-    /// This function must never return false positives, i.e. return `true` for a trap representation.
+disjoint_impls! {
+    /// Type that can be **safely transmuted** into another type.
     ///
     /// # Safety
     ///
-    /// pointers in `Self::Target` must be valid for reads
-    unsafe fn is_valid(target: &Self::CType) -> bool;
+    /// - `Self` and `Self::CType` must be mutually transmutable (this includes [`Drop`] semantics)
+    /// - `Self::is_valid` must not return false positives, i.e. return `true` for trap representations
+    pub unsafe trait CheckedTransmute: ExternC {
+        /// Called when transmuting [`Self::CType`] back into [`Self`] to check for trap representations.
+        ///
+        /// This function must never return false positives, i.e. return `true` for a trap representation.
+        ///
+        /// # Safety
+        ///
+        /// pointers in `Self::Target` must be valid for reads
+        unsafe fn is_valid(target: &Self::CType) -> bool;
+    }
+
+    unsafe impl<R: CheckedTransmute<CType: Copy> + StableNiche, E> CheckedTransmute for Result<R, E>
+    where
+        R: SizeFamily<Kind = crate::size::Sized<NonZst>>,
+        E: SizeFamily<Kind = crate::size::Sized<Zst>>,
+        Self: ExternC<CType = <R as ExternC>::CType>,
+    {
+        #[inline(always)]
+        unsafe fn is_valid(target: &Self::CType) -> bool {
+            unsafe { R::is_valid(target) }
+        }
+    }
+    // FIXME: disjoint_impls! is broken
+    //unsafe impl<R, E: CheckedTransmute<CType: Copy> + StableNiche> CheckedTransmute for Result<R, E>
+    //where
+    //    R: SizeFamily<Kind = crate::size::Sized<Zst>>,
+    //    E: SizeFamily<Kind = crate::size::Sized<NonZst>>,
+    //    Self: ExternC<CType = <E as ExternC>::CType>,
+    //{
+    //    #[inline(always)]
+    //    unsafe fn is_valid(target: &Self::CType) -> bool {
+    //        unsafe { E::is_valid(target) }
+    //    }
+    //}
 }
 
 unsafe impl<R: CheckedTransmute + ?Sized> CheckedTransmute for &R
@@ -37,7 +68,7 @@ where
 }
 
 // FIXME: Should it be implemented for non-robust R?
-// at we say yes, this is transmutable but don't misuse it.
+// atm we say yes, this is transmutable but don't misuse it.
 // Either require ReprC<Robust> or write this in the documentation
 // If Repr<Robust> then also consider how it affects Box<&mut R>
 unsafe impl<R: CheckedTransmute + ?Sized> CheckedTransmute for &mut R

@@ -13,7 +13,7 @@ use crate::{
     ir::{NonRobust, ReprC, ReprFamily, ReprRust, Robust},
     niche::{Niche, NicheFamily, WithNiche, WithoutNiche},
     result::ReprCResult,
-    size::{MetaSized, SizeFamily, SliceLike, Wide},
+    size::{MetaSized, NonZst, SizeFamily, SliceLike, Wide, Zst},
     slice::{CSlice, CSliceMut},
     transmute::CheckedTransmute,
 };
@@ -41,9 +41,9 @@ unsafe impl<T: EmptyStore> EmptyStore for Box<T> {}
 unsafe impl<T: EmptyStore> EmptyStore for Box<[T]> {}
 unsafe impl<T: EmptyStore> EmptyStore for Vec<T> {}
 
-pub(crate) trait ReprRustOrTransmutedNonRobust {}
-impl ReprRustOrTransmutedNonRobust for ReprRust {}
-impl ReprRustOrTransmutedNonRobust for ReprC<NonRobust> {}
+pub(crate) trait ReprRustOrNonRobust {}
+impl ReprRustOrNonRobust for ReprRust {}
+impl ReprRustOrNonRobust for ReprC<NonRobust> {}
 
 disjoint_impls! {
     /// Facilitates conversion from a Rust type into a corresponding C-compatible representation.
@@ -144,7 +144,8 @@ disjoint_impls! {
         }
     }
 
-    unsafe impl<R: ReprFamily<Kind = ReprC<Robust>> + ExternC + ?Sized> EncodeOwned for &mut R
+    // TODO: SizeFamily should not be required here. That is a bug in disjoint_impls! Should be fixed soon
+    unsafe impl<R: SizeFamily + ReprFamily<Kind = ReprC<Robust>> + ExternC + ?Sized> EncodeOwned for &mut R
     where
         Self: ReprFamily<Kind = ReprC<NonRobust>>,
         Self: CheckedTransmute<CType = *mut <R as ExternC>::CType>,
@@ -163,7 +164,7 @@ disjoint_impls! {
             unsafe { core::mem::transmute_copy::<*mut R, *mut R::CType>(&ptr) }
         }
     }
-    unsafe impl<R: ReprFamily<Kind = ReprC<Robust>> + SizeFamily<Kind = MetaSized<SliceLike>> + ?Sized>
+    unsafe impl<R: SizeFamily<Kind = MetaSized<SliceLike>> + ReprFamily<Kind = ReprC<Robust>> + ?Sized>
         EncodeOwned for &mut R
     where
         Self: ReprFamily<Kind = ReprRust>,
@@ -180,29 +181,11 @@ disjoint_impls! {
             CSliceMut::from_raw_parts_mut(ptr, len)
         }
     }
-    // TODO: The following 2 unsafe impls are duplicated. This is likely a deficiency in disjoint_impls!. Fix it there
-    unsafe impl<'a, R: ReprFamily<Kind: ReprRustOrTransmutedNonRobust> + SizeFamily<Kind = crate::size::Sized<S>>, S>
+    unsafe impl<'a, R: SizeFamily<Kind = crate::size::Sized<S>> + ReprFamily<Kind: ReprRustOrNonRobust>, S>
         EncodeOwned for &'a mut R
     where
-        Self: ReprFamily<Kind = ReprC<NonRobust>> + ExternC<CType = *mut <R as ExternC>::CType>,
-        R: Clone + EncodeOwned + DecodeOwned<'a>,
-    {
-        type Store = RefMutSizedEncodeStore<'a, R>;
-
-        fn soft_encode<'itm>(self, store: &'itm mut Self::Store) -> Self::CType
-        where
-            Self: 'itm,
-        {
-            let original = store.original.insert(self);
-            let owned = original.clone();
-            let ctype = owned.soft_encode(&mut store.store);
-            store.ctype.insert(ctype)
-        }
-    }
-    unsafe impl<'a, R: ReprFamily<Kind: ReprRustOrTransmutedNonRobust> + SizeFamily<Kind = crate::size::Sized<S>>, S>
-        EncodeOwned for &'a mut R
-    where
-        Self: ReprFamily<Kind = ReprRust> + ExternC<CType = *mut <R as ExternC>::CType>,
+        Self: ReprFamily<Kind: ReprRustOrNonRobust>,
+        Self: ExternC<CType = *mut <R as ExternC>::CType>,
         R: Clone + EncodeOwned + DecodeOwned<'a>,
     {
         type Store = RefMutSizedEncodeStore<'a, R>;
@@ -219,7 +202,7 @@ disjoint_impls! {
     }
     // TODO: We should prevent Sized opaque types here because they can't be decoded
     #[cfg(feature = "alloc")]
-    unsafe impl<'a, R: ReprFamily<Kind: ReprRustOrTransmutedNonRobust> + SizeFamily<Kind: Dst> + ?Sized>
+    unsafe impl<'a, R: SizeFamily<Kind: Dst> + ReprFamily<Kind: ReprRustOrNonRobust> + ?Sized>
         EncodeOwned for &'a mut R
     where
         Self: ReprFamily<Kind = ReprRust>,
@@ -383,8 +366,9 @@ disjoint_impls! {
     }
 
     unsafe impl<
-        R: NicheFamily<Kind = WithoutNiche> + EncodeOwned<CType: Copy>,
-        E: NicheFamily<Kind = WithoutNiche> + EncodeOwned<CType: Copy>,
+        R: SizeFamily<Kind = crate::size::Sized<K>> + EncodeOwned<CType: Copy>,
+        E: SizeFamily<Kind = crate::size::Sized<K>> + EncodeOwned<CType: Copy>,
+        K
     > EncodeOwned for Result<R, E>
     {
         type Store = Option<Result<R::Store, E::Store>>;
@@ -411,7 +395,44 @@ disjoint_impls! {
             }
         }
     }
-    // TODO: Implement for niche optimized Results
+    unsafe impl<
+        R: SizeFamily<Kind = crate::size::Sized<NonZst>> + NicheFamily<Kind: WithNiche> + EncodeOwned + Niche,
+        E: SizeFamily<Kind = crate::size::Sized<Zst>>,
+    > EncodeOwned for Result<R, E>
+    where
+        Self: ExternC<CType = <R as ExternC>::CType>,
+    {
+        type Store = R::Store;
+
+        fn soft_encode<'itm>(self, store: &'itm mut Self::Store) -> Self::CType
+        where
+            Self: 'itm,
+        {
+            match self {
+                Ok(ok) => ok.soft_encode(store),
+                Err(_) => R::NICHE_VALUE,
+            }
+        }
+    }
+    unsafe impl<
+        R: SizeFamily<Kind = crate::size::Sized<Zst>>,
+        E: SizeFamily<Kind = crate::size::Sized<NonZst>> + NicheFamily<Kind: WithNiche> + EncodeOwned + Niche,
+    > EncodeOwned for Result<R, E>
+    where
+        Self: ExternC<CType = <E as ExternC>::CType>,
+    {
+        type Store = E::Store;
+
+        fn soft_encode<'itm>(self, store: &'itm mut Self::Store) -> Self::CType
+        where
+            Self: 'itm,
+        {
+            match self {
+                Ok(_) => E::NICHE_VALUE,
+                Err(err) => err.soft_encode(store),
+            }
+        }
+    }
 }
 
 disjoint_impls! {
@@ -792,8 +813,9 @@ disjoint_impls! {
 
     unsafe impl<
         'd,
-        R: NicheFamily<Kind = WithoutNiche> + DecodeOwned<'d, CType: Copy>,
-        E: NicheFamily<Kind = WithoutNiche> + DecodeOwned<'d, CType: Copy>,
+        R: SizeFamily<Kind = crate::size::Sized<K>> + DecodeOwned<'d, CType: Copy>,
+        E: SizeFamily<Kind = crate::size::Sized<K>> + DecodeOwned<'d, CType: Copy>,
+        K
     >
         DecodeOwned<'d> for Result<R, E>
     {
@@ -816,7 +838,44 @@ disjoint_impls! {
             Some(value)
         }
     }
-    // TODO: Implement for niche optimized Results
+    unsafe impl<
+        'd,
+        R: SizeFamily<Kind = crate::size::Sized<NonZst>> + NicheFamily<Kind: WithNiche> + DecodeOwned<'d> + Niche<CType: PartialEq>,
+        E: SizeFamily<Kind = crate::size::Sized<Zst>> + Default,
+    >
+        DecodeOwned<'d> for Result<R, E>
+    where
+        Self: ExternC<CType = <R as ExternC>::CType>,
+    {
+        type Store = R::Store;
+
+        unsafe fn soft_decode<'itm: 'd>(source: Self::CType, store: &'itm mut Self::Store) -> Option<Self> {
+            if source == R::NICHE_VALUE {
+                return Some(Err(E::default()));
+            }
+
+            unsafe { R::soft_decode(source, store) }.map(Ok)
+        }
+    }
+    unsafe impl<
+        'd,
+        R: SizeFamily<Kind = crate::size::Sized<Zst>> + Default,
+        E: SizeFamily<Kind = crate::size::Sized<NonZst>> + NicheFamily<Kind: WithNiche> + DecodeOwned<'d> + Niche<CType: PartialEq>,
+    >
+        DecodeOwned<'d> for Result<R, E>
+    where
+        Self: ExternC<CType = <E as ExternC>::CType>,
+    {
+        type Store = E::Store;
+
+        unsafe fn soft_decode<'itm: 'd>(source: Self::CType, store: &'itm mut Self::Store) -> Option<Self> {
+            if source == E::NICHE_VALUE {
+                return Some(Ok(R::default()));
+            }
+
+            unsafe { E::soft_decode(source, store) }.map(Err)
+        }
+    }
 }
 
 /// Perform the conversion from `T` into [`T::CType`] using external storage.
@@ -924,7 +983,6 @@ pub struct RefMutDstDecodeStore<R: StdToOwned + ?Sized, S> {
 /// This struct exists only because [arrays don't yet implement Default](https://github.com/rust-lang/rust/issues/61415)
 pub struct ArrayStore<D, const N: usize>(pub(crate) [D; N]);
 
-// TODO: derive Default if macro is improved
 impl<R: EncodeOwned> Default for RefSizedEncodeStore<R> {
     fn default() -> Self {
         Self {
