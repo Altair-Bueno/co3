@@ -2,14 +2,14 @@ use core::ops::Add;
 
 use crate::{
     niche::NicheFamily,
-    repr::{ReprFamily, ReprRust},
+    repr::{ReprFamily, Unstable},
     size::SizeFamily,
 };
 
 macro_rules! impl_tuple_repr_family {
     (@split [$($head:ident,)*] $last:ident) => {
         impl<$($head,)* $last: ?Sized> ReprFamily for ($($head,)* $last,) {
-            type Kind = ReprRust;
+            type Kind = Unstable;
         }
     };
 
@@ -125,58 +125,58 @@ mod tests {
     #[test]
     fn stored_tuple_3_without_niche() {
         assert_impl_all!((u8, u8, u8):
-            ReprFamily<Kind = ReprRust>,
+            ReprFamily<Kind = Unstable>,
             SizeFamily<Kind = Co3Sized<NonZst>>,
             NicheFamily<Kind = WithoutNiche>,
         );
 
         assert_impl_all!(&(u8, u8, u8):
-            ReprFamily<Kind = ReprRust>,
+            ReprFamily<Kind = Unstable>,
             SizeFamily<Kind = Co3Sized<NonZst>>,
             NicheFamily<Kind = WithStableNiche>,
         );
         assert_impl_all!(&mut (u8, u8, u8):
-            ReprFamily<Kind = ReprRust>,
+            ReprFamily<Kind = Unstable>,
             SizeFamily<Kind = Co3Sized<NonZst>>,
             NicheFamily<Kind = WithStableNiche>,
         );
         #[cfg(feature = "alloc")]
         assert_impl_all!(Box<(u8, u8, u8)>:
-            ReprFamily<Kind = ReprRust>,
+            ReprFamily<Kind = Unstable>,
             SizeFamily<Kind = Co3Sized<NonZst>>,
             NicheFamily<Kind = WithStableNiche>,
         );
         #[cfg(feature = "alloc")]
         assert_impl_all!(&[(u8, u8, u8)]:
-            ReprFamily<Kind = ReprRust>,
+            ReprFamily<Kind = Unstable>,
             SizeFamily<Kind = Co3Sized<NonZst>>,
             NicheFamily<Kind = WithCustomNiche>,
         );
         #[cfg(feature = "alloc")]
         assert_impl_all!(&mut [(u8, u8, u8)]:
-            ReprFamily<Kind = ReprRust>,
+            ReprFamily<Kind = Unstable>,
             SizeFamily<Kind = Co3Sized<NonZst>>,
             NicheFamily<Kind = WithCustomNiche>,
         );
         #[cfg(feature = "alloc")]
         assert_impl_all!(Box<[(u8, u8, u8)]>:
-            ReprFamily<Kind = ReprRust>,
+            ReprFamily<Kind = Unstable>,
             SizeFamily<Kind = Co3Sized<NonZst>>,
             NicheFamily<Kind = WithCustomNiche>,
         );
         #[cfg(feature = "alloc")]
         assert_impl_all!(Vec<(u8, u8, u8)>:
-            ReprFamily<Kind = ReprRust>,
+            ReprFamily<Kind = Unstable>,
             SizeFamily<Kind = Co3Sized<NonZst>>,
             NicheFamily<Kind = WithCustomNiche>,
         );
         assert_impl_all!([(u8, u8, u8); 2]:
-            ReprFamily<Kind = ReprRust>,
+            ReprFamily<Kind = Unstable>,
             SizeFamily<Kind = Co3Sized<NonZst>>,
             NicheFamily<Kind = WithoutNiche>,
         );
         assert_impl_all!(Option<(u8, u8, u8)>:
-            ReprFamily<Kind = ReprRust>,
+            ReprFamily<Kind = Unstable>,
             SizeFamily<Kind = Co3Sized<NonZst>>,
             NicheFamily<Kind = WithCustomNiche>,
         );
@@ -185,58 +185,58 @@ mod tests {
     #[test]
     fn stored_tuple_3_with_niche() {
         assert_impl_all!((u8, NonZero<u8>, bool):
-            ReprFamily<Kind = ReprRust>,
+            ReprFamily<Kind = Unstable>,
             SizeFamily<Kind = Co3Sized<NonZst>>,
             NicheFamily<Kind = WithCustomNiche>,
         );
 
         assert_impl_all!(&(u8, NonZero<u8>, bool):
-            ReprFamily<Kind = ReprRust>,
+            ReprFamily<Kind = Unstable>,
             SizeFamily<Kind = Co3Sized<NonZst>>,
             NicheFamily<Kind = WithStableNiche>,
         );
         assert_impl_all!(&mut (u8, NonZero<u8>, bool):
-            ReprFamily<Kind = ReprRust>,
+            ReprFamily<Kind = Unstable>,
             SizeFamily<Kind = Co3Sized<NonZst>>,
             NicheFamily<Kind = WithStableNiche>,
         );
         #[cfg(feature = "alloc")]
         assert_impl_all!(Box<(u8, NonZero<u8>, bool)>:
-            ReprFamily<Kind = ReprRust>,
+            ReprFamily<Kind = Unstable>,
             SizeFamily<Kind = Co3Sized<NonZst>>,
             NicheFamily<Kind = WithStableNiche>,
         );
         #[cfg(feature = "alloc")]
         assert_impl_all!(&[(u8, NonZero<u8>, bool)]:
-            ReprFamily<Kind = ReprRust>,
+            ReprFamily<Kind = Unstable>,
             SizeFamily<Kind = Co3Sized<NonZst>>,
             NicheFamily<Kind = WithCustomNiche>,
         );
         #[cfg(feature = "alloc")]
         assert_impl_all!(&mut [(u8, NonZero<u8>, bool)]:
-            ReprFamily<Kind = ReprRust>,
+            ReprFamily<Kind = Unstable>,
             SizeFamily<Kind = Co3Sized<NonZst>>,
             NicheFamily<Kind = WithCustomNiche>,
         );
         #[cfg(feature = "alloc")]
         assert_impl_all!(Box<[(u8, NonZero<u8>, bool)]>:
-            ReprFamily<Kind = ReprRust>,
+            ReprFamily<Kind = Unstable>,
             SizeFamily<Kind = Co3Sized<NonZst>>,
             NicheFamily<Kind = WithCustomNiche>,
         );
         #[cfg(feature = "alloc")]
         assert_impl_all!(Vec<(u8, NonZero<u8>, bool)>:
-            ReprFamily<Kind = ReprRust>,
+            ReprFamily<Kind = Unstable>,
             SizeFamily<Kind = Co3Sized<NonZst>>,
             NicheFamily<Kind = WithCustomNiche>,
         );
         assert_impl_all!([(u8, NonZero<u8>, bool); 2]:
-            ReprFamily<Kind = ReprRust>,
+            ReprFamily<Kind = Unstable>,
             SizeFamily<Kind = Co3Sized<NonZst>>,
             NicheFamily<Kind = WithCustomNiche>,
         );
         assert_impl_all!(Option<(u8, NonZero<u8>, bool)>:
-            ReprFamily<Kind = ReprRust>,
+            ReprFamily<Kind = Unstable>,
             SizeFamily<Kind = Co3Sized<NonZst>>,
             // TODO: Depends on: https://github.com/mversic/co3/issues/33
             //NicheFamily<Kind = WithCustomNiche>,

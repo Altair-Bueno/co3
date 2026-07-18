@@ -30,7 +30,7 @@ pub use co3_derive::*;
 pub use co3_types as family;
 use co3_types::{
     niche::{NicheFamily, WithoutNiche},
-    repr::{ReprC, ReprFamily, ReprRust},
+    repr::{Stable, ReprFamily, Unstable},
     size::{ExternTypeLike, MetaSized, NonZst, SizeFamily, SliceLike, Wide, Zst},
 };
 use disjoint_impls::disjoint_impls;
@@ -48,7 +48,7 @@ use crate::{
     option::ReprCOption,
     result::ReprCResult,
     slice::{CSlice, CSliceMut},
-    stored::{DecodeOwned, EmptyStore, EncodeOwned, ReprRustOrNonRobust, Store},
+    stored::{DecodeOwned, EmptyStore, EncodeOwned, Store, UnstableOrNonRobust},
 };
 
 trait Thin {}
@@ -85,33 +85,33 @@ pub trait Error {
 /// Robust type that conforms to C ABI and can be safely shared across FFI boundaries.
 ///
 /// Note that, for raw pointers, ABI compatibility of referent is not guaranteed. Dereferencing
-/// opaque/extern type pointers which don't also implement `RobustReprC` is very likely to cause UB.
+/// opaque/extern type pointers which don't also implement `ReprC` is very likely to cause UB.
 ///
 /// # Safety
 ///
 /// Type implementing the trait must have a guaranteed C ABI.
-pub unsafe trait RobustReprC {}
+pub unsafe trait ReprC {}
 
-/// `RobustReprC` type that is allowed as a C static.
+/// `ReprC` type that is allowed as a C static.
 ///
 /// # Safety
 ///
 /// Type must be allowed as a C static.
-pub unsafe trait CStatic: RobustReprC + Copy {}
+pub unsafe trait CStatic: ReprC + Copy {}
 
-/// `RobustReprC` type that is allowed as a C function argument.
+/// `ReprC` type that is allowed as a C function argument.
 ///
 /// # Safety
 ///
 /// Type must be allowed as a C function argument type.
-pub unsafe trait CFnArg: RobustReprC + Copy {}
+pub unsafe trait CFnArg: ReprC + Copy {}
 
-/// `RobustReprC` type that is allowed as a C function return value.
+/// `ReprC` type that is allowed as a C function return value.
 ///
 /// # Safety
 ///
 /// Type must be allowed as a C function return type.
-pub unsafe trait CFnReturn: RobustReprC + Copy {}
+pub unsafe trait CFnReturn: ReprC + Copy {}
 
 unsafe impl<T: CFnArg> CStatic for T {}
 unsafe impl<T: CFnArg> CFnReturn for T {}
@@ -122,27 +122,27 @@ disjoint_impls! {
     /// A Rust type that has an `extern "C"` ABI
     pub trait ExternC {
         /// The C-compatible representation of this Rust type.
-        type CType: RobustReprC + ?Sized;
+        type CType: ReprC + ?Sized;
     }
 
     impl<R: ReprFamily + SizeFamily<Kind: Thin> + ExternC + ?Sized> ExternC for &R
     where
-        Self: ReprFamily<Kind: ReprRustOrNonRobust>,
+        Self: ReprFamily<Kind: UnstableOrNonRobust>,
     {
         type CType = *const R::CType;
     }
-    impl<R: ReprFamily<Kind = ReprC<K>> + SizeFamily<Kind = MetaSized<SliceLike>> + ?Sized, K> ExternC for &R
+    impl<R: ReprFamily<Kind = Stable<K>> + SizeFamily<Kind = MetaSized<SliceLike>> + ?Sized, K> ExternC for &R
     where
-        Self: ReprFamily<Kind = ReprRust>,
+        Self: ReprFamily<Kind = Unstable>,
         R: Wide<Data: ExternC, Metadata = usize>,
         <<R as Wide>::Data as ExternC>::CType: Sized,
     {
         type CType = CSlice<<R::Data as ExternC>::CType>;
     }
     #[cfg(feature = "alloc")]
-    impl<R: ReprFamily<Kind = ReprRust> + SizeFamily<Kind = MetaSized<K>> + ?Sized, K> ExternC for &R
+    impl<R: ReprFamily<Kind = Unstable> + SizeFamily<Kind = MetaSized<K>> + ?Sized, K> ExternC for &R
     where
-        Self: ReprFamily<Kind = ReprRust>,
+        Self: ReprFamily<Kind = Unstable>,
         R: ToOwned<Owned: ExternC<CType: BorrowCast>>,
     {
         type CType = <<R::Owned as ExternC>::CType as BorrowCast>::AsConst;
@@ -150,22 +150,22 @@ disjoint_impls! {
 
     impl<R: ReprFamily + SizeFamily<Kind: Thin> + ExternC + ?Sized> ExternC for &mut R
     where
-        Self: ReprFamily<Kind: ReprRustOrNonRobust>,
+        Self: ReprFamily<Kind: UnstableOrNonRobust>,
     {
         type CType = *mut R::CType;
     }
-    impl<R: ReprFamily<Kind = ReprC<K>> + SizeFamily<Kind = MetaSized<SliceLike>> + ?Sized, K> ExternC for &mut R
+    impl<R: ReprFamily<Kind = Stable<K>> + SizeFamily<Kind = MetaSized<SliceLike>> + ?Sized, K> ExternC for &mut R
     where
-        Self: ReprFamily<Kind = ReprRust>,
+        Self: ReprFamily<Kind = Unstable>,
         R: Wide<Data: ExternC, Metadata = usize>,
         <<R as Wide>::Data as ExternC>::CType: Sized,
     {
         type CType = CSliceMut<<R::Data as ExternC>::CType>;
     }
     #[cfg(feature = "alloc")]
-    impl<R: ReprFamily<Kind = ReprRust> + SizeFamily<Kind = MetaSized<K>> + ?Sized, K> ExternC for &mut R
+    impl<R: ReprFamily<Kind = Unstable> + SizeFamily<Kind = MetaSized<K>> + ?Sized, K> ExternC for &mut R
     where
-        Self: ReprFamily<Kind = ReprRust>,
+        Self: ReprFamily<Kind = Unstable>,
         R: ToOwned<Owned: ExternC<CType: BorrowCastMut>>,
     {
         type CType = <<R::Owned as ExternC>::CType as BorrowCastMut>::AsMut;
@@ -174,24 +174,24 @@ disjoint_impls! {
     #[cfg(feature = "alloc")]
     impl<R: ReprFamily + SizeFamily<Kind = co3_types::size::Sized<S>> + ExternC, S> ExternC for Box<R>
     where
-        Self: ReprFamily<Kind: ReprRustOrNonRobust>,
+        Self: ReprFamily<Kind: UnstableOrNonRobust>,
         <R as ExternC>::CType: Sized,
     {
         type CType = CBox<R::CType>;
     }
     #[cfg(feature = "alloc")]
-    impl<R: ReprFamily<Kind = ReprC<K>> + SizeFamily<Kind = MetaSized<SliceLike>> + ?Sized, K> ExternC for Box<R>
+    impl<R: ReprFamily<Kind = Stable<K>> + SizeFamily<Kind = MetaSized<SliceLike>> + ?Sized, K> ExternC for Box<R>
     where
-        Self: ReprFamily<Kind = ReprRust>,
+        Self: ReprFamily<Kind = Unstable>,
         R: Wide<Data: ExternC, Metadata = usize>,
         <<R as Wide>::Data as ExternC>::CType: Sized,
     {
         type CType = CBoxedSlice<<R::Data as ExternC>::CType>;
     }
     #[cfg(feature = "alloc")]
-    impl<R: ReprFamily<Kind = ReprRust> + SizeFamily<Kind = MetaSized<K>> + ?Sized, K> ExternC for Box<R>
+    impl<R: ReprFamily<Kind = Unstable> + SizeFamily<Kind = MetaSized<K>> + ?Sized, K> ExternC for Box<R>
     where
-        Self: ReprFamily<Kind = ReprRust>,
+        Self: ReprFamily<Kind = Unstable>,
         R: ToOwned<Owned: ExternC>,
     {
         type CType = <R::Owned as ExternC>::CType;
@@ -246,12 +246,12 @@ disjoint_impls! {
     #[cfg(feature = "alloc")]
     impl<R: ?Sized, K> Encode for Box<R>
     where
-        Self: ReprFamily<Kind = ReprC<K>> + EncodeOwned,
+        Self: ReprFamily<Kind = Stable<K>> + EncodeOwned,
     {}
     #[cfg(feature = "alloc")]
-    impl<R: ReprFamily<Kind = ReprC<K>> + ?Sized, K> Encode for Box<R>
+    impl<R: ReprFamily<Kind = Stable<K>> + ?Sized, K> Encode for Box<R>
     where
-        Self: ReprFamily<Kind = ReprRust> + EncodeOwned,
+        Self: ReprFamily<Kind = Unstable> + EncodeOwned,
     {}
 }
 
@@ -262,12 +262,12 @@ disjoint_impls! {
     #[cfg(feature = "alloc")]
     impl<'d, R: ?Sized, K> Decode<'d> for Box<R>
     where
-        Self: ReprFamily<Kind = ReprC<K>> + DecodeOwned<'d>,
+        Self: ReprFamily<Kind = Stable<K>> + DecodeOwned<'d>,
     {}
     #[cfg(feature = "alloc")]
-    impl<'d, R: ReprFamily<Kind = ReprC<K>> + ?Sized, K> Decode<'d> for Box<R>
+    impl<'d, R: ReprFamily<Kind = Stable<K>> + ?Sized, K> Decode<'d> for Box<R>
     where
-        Self: ReprFamily<Kind = ReprRust> + DecodeOwned<'d>,
+        Self: ReprFamily<Kind = Unstable> + DecodeOwned<'d>,
     {}
 }
 

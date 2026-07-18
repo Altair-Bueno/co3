@@ -12,7 +12,7 @@ use crate::size::{MetaSized, NonZst, SizeFamily, Thin, Zst};
 /// Marker trait for an [`NicheFamily`] type of a Rust type that has a niche value (stable or custom)
 ///
 /// There are only 2 notable implementations of this trait:
-/// 1. [`RobustReprC`] types have a single stable (compiler guaranteed) niche value (e.g. `&u32`)
+/// 1. [`ReprC`] types have a single stable (compiler guaranteed) niche value (e.g. `&u32`)
 /// 2. [`Stored`] types have a custom defined (by this crate) niche value (e.g. `[NonZeroU32; 2]`)
 pub(crate) trait WithNiche {}
 
@@ -36,7 +36,7 @@ disjoint_impls! {
         ///   `Option<T>` will be serialized as [`crate::option::ReprCOption`]
         ///
         /// - If `Self` has a compiler guaranteed niche value, set [`NicheFamily::Kind`] to [`WithStableNiche`].
-        ///   `Option<T>` will be blindly transmuted into the underlying [`RobustReprC`] type
+        ///   `Option<T>` will be blindly transmuted into the underlying [`ReprC`] type
         ///
         /// - Otherwise, if `Self` has at least one trap, set [`NicheFamily::Kind`] to [`WithCustomNiche`].
         ///   `Option<T>` will be serialized into a [`T::CType`] with a manually set niche value
@@ -92,7 +92,7 @@ disjoint_impls! {
     //impl<R: NicheFamily<Kind = WithCustomNiche>> NicheFamily for Option<R> where Option<Self>: ReprFamily<Kind: ReprRustOrTransmutedNonRobust> {
     //    type Kind = WithCustomNiche;
     //}
-    //impl<R: NicheFamily<Kind = WithCustomNiche>> NicheFamily for Option<R> where Option<Self>: ReprFamily<Kind = ReprRust> {
+    //impl<R: NicheFamily<Kind = WithCustomNiche>> NicheFamily for Option<R> where Option<Self>: ReprFamily<Kind = Unstable> {
     //    type Kind = WithoutNiche;
     //}
     //impl<R: NicheFamily<Kind = WithCustomNiche>> NicheFamily for Option<R> where Self: Niche {
@@ -200,22 +200,22 @@ mod tests {
     use static_assertions::assert_impl_all;
 
     use super::*;
-    use crate::repr::{ReprFamily, ReprRust};
+    use crate::repr::{ReprFamily, Unstable};
 
     #[test]
     fn nested_option_niche_family() {
         assert_impl_all!(Option<bool>:
-            ReprFamily<Kind = ReprRust>,
+            ReprFamily<Kind = Unstable>,
             NicheFamily<Kind = WithCustomNiche>,
         );
 
         assert_impl_all!(Option<Option<bool>>:
             NicheFamily<Kind = WithCustomNiche>,
-            ReprFamily<Kind = ReprRust>,
+            ReprFamily<Kind = Unstable>,
         );
 
         assert_impl_all!(Option<(u8, NonZero<u8>)>:
-            ReprFamily<Kind = ReprRust>,
+            ReprFamily<Kind = Unstable>,
             // TODO: Depends on: https://github.com/mversic/co3/issues/33
             //NicheFamily<Kind = WithoutNiche>,
             //Niche<CType = ReprCTuple2<u8, u8>>,

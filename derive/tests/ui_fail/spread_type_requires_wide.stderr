@@ -11,20 +11,20 @@ error[E0277]: the trait bound `u32: Spread` is not satisfied
 help: the following other types implement trait `Spread`
   --> $WORKSPACE/src/tuple.rs
    |
-   | impl<A: RobustReprC, B: RobustReprC> Spread for ReprCTuple2<A, B> {
+   | impl<A: ReprC, B: ReprC> Spread for ReprCTuple2<A, B> {
    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `ReprCTuple2<A, B>`
    |
   ::: $WORKSPACE/src/slice.rs
    |
-   | impl<C: RobustReprC> Spread for CSlice<C> {
+   | impl<C: ReprC> Spread for CSlice<C> {
    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `CSlice<C>`
 ...
-   | impl<C: RobustReprC> Spread for CSliceMut<C> {
+   | impl<C: ReprC> Spread for CSliceMut<C> {
    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `CSliceMut<C>`
    |
   ::: $WORKSPACE/src/boxed.rs
    |
-   | impl<C: RobustReprC> Spread for CBoxedSlice<C> {
+   | impl<C: ReprC> Spread for CBoxedSlice<C> {
    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `CBoxedSlice<C>`
    = note: this error originates in the macro `ffi` (in Nightly builds, run with -Z macro-backtrace for more info)
 
@@ -41,20 +41,20 @@ error[E0277]: the trait bound `u32: Spread` is not satisfied
 help: the following other types implement trait `Spread`
   --> $WORKSPACE/src/tuple.rs
    |
-   | impl<A: RobustReprC, B: RobustReprC> Spread for ReprCTuple2<A, B> {
+   | impl<A: ReprC, B: ReprC> Spread for ReprCTuple2<A, B> {
    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `ReprCTuple2<A, B>`
    |
   ::: $WORKSPACE/src/slice.rs
    |
-   | impl<C: RobustReprC> Spread for CSlice<C> {
+   | impl<C: ReprC> Spread for CSlice<C> {
    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `CSlice<C>`
 ...
-   | impl<C: RobustReprC> Spread for CSliceMut<C> {
+   | impl<C: ReprC> Spread for CSliceMut<C> {
    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `CSliceMut<C>`
    |
   ::: $WORKSPACE/src/boxed.rs
    |
-   | impl<C: RobustReprC> Spread for CBoxedSlice<C> {
+   | impl<C: ReprC> Spread for CBoxedSlice<C> {
    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `CBoxedSlice<C>`
    = note: this error originates in the macro `ffi` (in Nightly builds, run with -Z macro-backtrace for more info)
 
@@ -72,18 +72,18 @@ error[E0277]: the trait bound `u32: Spread` is not satisfied
 help: the following other types implement trait `Spread`
   --> $WORKSPACE/src/tuple.rs
    |
-   | impl<A: RobustReprC, B: RobustReprC> Spread for ReprCTuple2<A, B> {
+   | impl<A: ReprC, B: ReprC> Spread for ReprCTuple2<A, B> {
    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `ReprCTuple2<A, B>`
    |
   ::: $WORKSPACE/src/slice.rs
    |
-   | impl<C: RobustReprC> Spread for CSlice<C> {
+   | impl<C: ReprC> Spread for CSlice<C> {
    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `CSlice<C>`
 ...
-   | impl<C: RobustReprC> Spread for CSliceMut<C> {
+   | impl<C: ReprC> Spread for CSliceMut<C> {
    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `CSliceMut<C>`
    |
   ::: $WORKSPACE/src/boxed.rs
    |
-   | impl<C: RobustReprC> Spread for CBoxedSlice<C> {
+   | impl<C: ReprC> Spread for CBoxedSlice<C> {
    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `CBoxedSlice<C>`

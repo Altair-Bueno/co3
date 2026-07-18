@@ -1,7 +1,7 @@
 //! Logic related to the conversion of slices to and from FFI-compatible representation
 
 use crate::{
-    CFnArg, Decode, Encode, ExternC, RobustReprC,
+    CFnArg, Decode, Encode, ExternC, ReprC,
     borrow::{Borrow, BorrowCast, BorrowCastMut, ToOwned},
     spread::Spread,
     stored::{DecodeOwned, EncodeOwned},
@@ -170,10 +170,10 @@ macro_rules! impl_slice_carrier {
         impl<C: ReprFamily> ReprFamily for $ty<C> {
             type Kind = C::Kind;
         }
-        unsafe impl<C: RobustReprC> SizeFamily for $ty<C> {
+        unsafe impl<C: ReprC> SizeFamily for $ty<C> {
             type Kind = co3_types::size::Sized<co3_types::size::NonZst>;
         }
-        impl<C: RobustReprC> NicheFamily for $ty<C> {
+        impl<C: ReprC> NicheFamily for $ty<C> {
             type Kind = WithoutNiche;
         }
 
@@ -200,10 +200,10 @@ macro_rules! impl_slice_carrier {
             }
         }
 
-        impl<C: RobustReprC> ExternC for $ty<C> {
+        impl<C: ReprC> ExternC for $ty<C> {
             type CType = Self;
         }
-        unsafe impl<C: RobustReprC> EncodeOwned for $ty<C> {
+        unsafe impl<C: ReprC> EncodeOwned for $ty<C> {
             type Store = ();
 
             #[inline(always)]
@@ -214,7 +214,7 @@ macro_rules! impl_slice_carrier {
                 self
             }
         }
-        unsafe impl<'d, C: RobustReprC> DecodeOwned<'d> for $ty<C> {
+        unsafe impl<'d, C: ReprC> DecodeOwned<'d> for $ty<C> {
             type Store = ();
 
             #[inline(always)]
@@ -223,22 +223,22 @@ macro_rules! impl_slice_carrier {
             }
         }
 
-        impl<C: RobustReprC> Encode for $ty<C> {}
-        impl<'d, C: RobustReprC> Decode<'d> for $ty<C> {}
+        impl<C: ReprC> Encode for $ty<C> {}
+        impl<'d, C: ReprC> Decode<'d> for $ty<C> {}
 
-        unsafe impl<C: RobustReprC> CheckedTransmute for $ty<C> {
+        unsafe impl<C: ReprC> CheckedTransmute for $ty<C> {
             #[inline(always)]
             unsafe fn is_valid(_: &Self::CType) -> bool {
                 true
             }
         }
 
-        unsafe impl<C: RobustReprC> RobustReprC for $ty<C> {}
-        unsafe impl<C: RobustReprC> CFnArg for $ty<C> {}
-        unsafe impl<C: RobustReprC> BorrowCast for $ty<C> {
+        unsafe impl<C: ReprC> ReprC for $ty<C> {}
+        unsafe impl<C: ReprC> CFnArg for $ty<C> {}
+        unsafe impl<C: ReprC> BorrowCast for $ty<C> {
             type AsConst = Self;
         }
-        unsafe impl<C: RobustReprC> BorrowCastMut for $ty<C> {
+        unsafe impl<C: ReprC> BorrowCastMut for $ty<C> {
             type AsMut = Self;
         }
     };
@@ -247,7 +247,7 @@ macro_rules! impl_slice_carrier {
 impl_slice_carrier! { CSlice }
 impl_slice_carrier! { CSliceMut }
 
-impl<C: RobustReprC> Spread for CSlice<C> {
+impl<C: ReprC> Spread for CSlice<C> {
     type Part1 = *const C;
     type Part2 = usize;
 
@@ -262,7 +262,7 @@ impl<C: RobustReprC> Spread for CSlice<C> {
     }
 }
 
-impl<C: RobustReprC> Spread for CSliceMut<C> {
+impl<C: ReprC> Spread for CSliceMut<C> {
     type Part1 = *mut C;
     type Part2 = usize;
 

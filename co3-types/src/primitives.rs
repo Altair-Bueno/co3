@@ -2,14 +2,14 @@
 
 use crate::{
     niche::{NicheFamily, WithCustomNiche, WithoutNiche},
-    repr::{NonRobust, ReprC, ReprFamily, Robust},
+    repr::{NonRobust, Stable, ReprFamily, Robust},
     size::{MetaSized, SizeFamily, SliceLike},
 };
 
 macro_rules! primitive_derive {
     ( $primitive:ty ) => {
         impl ReprFamily for $primitive {
-            type Kind = ReprC<Robust>;
+            type Kind = Stable<Robust>;
         }
         unsafe impl SizeFamily for $primitive {
             type Kind = crate::size::Sized<crate::size::NonZst>;
@@ -54,7 +54,7 @@ macro_rules! impl_fn_types {
 macro_rules! fieldless_enum_derive {
     ( $src:ty => $dst:ty: {$niche_val:expr}: $validity_fn:expr ) => {
         impl ReprFamily for $src {
-            type Kind = ReprC<NonRobust>;
+            type Kind = Stable<NonRobust>;
         }
         unsafe impl SizeFamily for $src {
             type Kind = crate::size::Sized<crate::size::NonZst>;
@@ -131,52 +131,52 @@ mod tests {
     use super::*;
     use crate::{
         niche::WithStableNiche,
-        repr::{ReprRust, Robust},
+        repr::{Unstable, Robust},
     };
 
     #[test]
     fn robust_u8() {
         assert_impl_all!(u8:
-            ReprFamily<Kind = ReprC<Robust>>,
+            ReprFamily<Kind = Stable<Robust>>,
             NicheFamily<Kind = WithoutNiche>,
         );
         assert_impl_all!(&u8:
-            ReprFamily<Kind = ReprC<NonRobust>>,
+            ReprFamily<Kind = Stable<NonRobust>>,
             NicheFamily<Kind = WithStableNiche>,
         );
         assert_impl_all!(&mut u8:
-            ReprFamily<Kind = ReprC<NonRobust>>,
+            ReprFamily<Kind = Stable<NonRobust>>,
             NicheFamily<Kind = WithStableNiche>,
         );
         #[cfg(feature = "alloc")]
         assert_impl_all!(Box<u8>:
-            ReprFamily<Kind = ReprC<NonRobust>>,
+            ReprFamily<Kind = Stable<NonRobust>>,
             NicheFamily<Kind = WithStableNiche>,
         );
         assert_impl_all!(&[u8]:
-            ReprFamily<Kind = ReprRust>,
+            ReprFamily<Kind = Unstable>,
             NicheFamily<Kind = WithCustomNiche>,
         );
         assert_impl_all!(&mut [u8]:
-            ReprFamily<Kind = ReprRust>,
+            ReprFamily<Kind = Unstable>,
             NicheFamily<Kind = WithCustomNiche>,
         );
         #[cfg(feature = "alloc")]
         assert_impl_all!(Box<[u8]>:
-            ReprFamily<Kind = ReprRust>,
+            ReprFamily<Kind = Unstable>,
             NicheFamily<Kind = WithCustomNiche>,
         );
         #[cfg(feature = "alloc")]
         assert_impl_all!(Vec<u8>:
-            ReprFamily<Kind = ReprRust>,
+            ReprFamily<Kind = Unstable>,
             NicheFamily<Kind = WithCustomNiche>,
         );
         assert_impl_all!([u8; 2]:
-            ReprFamily<Kind = ReprC<Robust>>,
+            ReprFamily<Kind = Stable<Robust>>,
             NicheFamily<Kind = WithoutNiche>,
         );
         assert_impl_all!(Option<u8>:
-            ReprFamily<Kind = ReprRust>,
+            ReprFamily<Kind = Unstable>,
             NicheFamily<Kind = WithCustomNiche>,
         );
     }

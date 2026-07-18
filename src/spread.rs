@@ -1,8 +1,8 @@
-use crate::RobustReprC;
+use crate::ReprC;
 
-pub trait Spread: RobustReprC + core::marker::Sized {
-    type Part1: RobustReprC;
-    type Part2: RobustReprC;
+pub trait Spread: ReprC + core::marker::Sized {
+    type Part1: ReprC;
+    type Part2: ReprC;
 
     /// Consumes the spreadable type, returning its constituents.
     fn into_parts(self) -> (Self::Part1, Self::Part2);

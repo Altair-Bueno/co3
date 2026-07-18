@@ -3,7 +3,7 @@
 use core::{mem::MaybeUninit, ops::Add};
 
 use crate::{
-    CFnArg, Decode, Encode, ExternC, RobustReprC,
+    CFnArg, Decode, Encode, ExternC, ReprC,
     borrow::{Borrow, BorrowCast, BorrowCastMut, ToOwned},
     stored::{DecodeOwned, EmptyStore, EncodeOwned},
     transmute::CheckedTransmute,
@@ -313,8 +313,8 @@ unsafe impl<T: CheckedTransmute<CType: Copy> + Copy, E: CheckedTransmute<CType: 
     }
 }
 
-unsafe impl<T: RobustReprC + Copy, E: RobustReprC + Copy> RobustReprC for ReprCResult<T, E> {}
-unsafe impl<T: RobustReprC + Copy, E: RobustReprC + Copy> CFnArg for ReprCResult<T, E> {}
+unsafe impl<T: ReprC + Copy, E: ReprC + Copy> ReprC for ReprCResult<T, E> {}
+unsafe impl<T: ReprC + Copy, E: ReprC + Copy> CFnArg for ReprCResult<T, E> {}
 
 unsafe impl<T: BorrowCast<AsConst: Copy> + Copy, E: BorrowCast<AsConst: Copy> + Copy> BorrowCast
     for ReprCResult<T, E>

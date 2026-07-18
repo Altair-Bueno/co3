@@ -1,7 +1,7 @@
 //! Logic related to the conversion of primitives to and from FFI-compatible representation
 
 use crate::{
-    CFnArg, Decode, Encode, ExternC, RobustReprC, assert_arr_has_non_zero_len,
+    CFnArg, Decode, Encode, ExternC, ReprC, assert_arr_has_non_zero_len,
     borrow::{Borrow, BorrowCast, BorrowCastMut, ToOwned},
     niche::Niche,
     stored::{ArrayStore, DecodeOwned, EmptyStore, EncodeOwned},
@@ -66,7 +66,7 @@ macro_rules! primitive_derive {
             }
         }
 
-        unsafe impl RobustReprC for $primitive {}
+        unsafe impl ReprC for $primitive {}
         unsafe impl CFnArg for $primitive {}
 
         unsafe impl BorrowCast for $primitive {
@@ -103,10 +103,10 @@ macro_rules! raw_pointer_derive {
             }
         }
 
-        impl<R: RobustReprC + ?Sized> ExternC for *$mutability R {
+        impl<R: ReprC + ?Sized> ExternC for *$mutability R {
             type CType = Self;
         }
-        unsafe impl<R: RobustReprC + ?Sized> EncodeOwned for *$mutability R {
+        unsafe impl<R: ReprC + ?Sized> EncodeOwned for *$mutability R {
             type Store = ();
 
             #[inline(always)]
@@ -117,7 +117,7 @@ macro_rules! raw_pointer_derive {
                 self
             }
         }
-        unsafe impl<'d, R: RobustReprC + ?Sized> DecodeOwned<'d> for *$mutability R {
+        unsafe impl<'d, R: ReprC + ?Sized> DecodeOwned<'d> for *$mutability R {
             type Store = ();
 
             #[inline(always)]
@@ -126,23 +126,23 @@ macro_rules! raw_pointer_derive {
             }
         }
 
-        impl<R: RobustReprC + ?Sized> Encode for *$mutability R {}
-        impl<R: RobustReprC + ?Sized> Decode<'_> for *$mutability R {}
+        impl<R: ReprC + ?Sized> Encode for *$mutability R {}
+        impl<R: ReprC + ?Sized> Decode<'_> for *$mutability R {}
 
-        unsafe impl<R: RobustReprC + ?Sized> CheckedTransmute for *$mutability R {
+        unsafe impl<R: ReprC + ?Sized> CheckedTransmute for *$mutability R {
             #[inline(always)]
             unsafe fn is_valid(_: &Self::CType) -> bool {
                 true
             }
         }
 
-        unsafe impl<R: RobustReprC + ?Sized> RobustReprC for *$mutability R {}
-        unsafe impl<R: RobustReprC + ?Sized> CFnArg for *$mutability R {}
+        unsafe impl<R: ReprC + ?Sized> ReprC for *$mutability R {}
+        unsafe impl<R: ReprC + ?Sized> CFnArg for *$mutability R {}
 
-        unsafe impl<R: RobustReprC + ?Sized> BorrowCast for *$mutability R {
+        unsafe impl<R: ReprC + ?Sized> BorrowCast for *$mutability R {
             type AsConst = Self;
         }
-        unsafe impl<R: RobustReprC + ?Sized> BorrowCastMut for *$mutability R {
+        unsafe impl<R: ReprC + ?Sized> BorrowCastMut for *$mutability R {
             type AsMut = Self;
         }
 
@@ -232,7 +232,7 @@ primitive_derive! { f64 }
 raw_pointer_derive! { const }
 raw_pointer_derive! { mut }
 
-unsafe impl<R: RobustReprC> RobustReprC for [R] {}
+unsafe impl<R: ReprC> ReprC for [R] {}
 
 impl<R: ExternC<CType: Sized>> ExternC for [R] {
     type CType = [R::CType];
@@ -289,7 +289,7 @@ unsafe impl<'d, R: DecodeOwned<'d, CType: Copy>, const N: usize> DecodeOwned<'d>
     }
 }
 
-unsafe impl<R: RobustReprC, const N: usize> RobustReprC for [R; N] {}
+unsafe impl<R: ReprC, const N: usize> ReprC for [R; N] {}
 
 unsafe impl<R: BorrowCast<AsConst: Copy> + Copy, const N: usize> BorrowCast for [R; N] {
     type AsConst = [R::AsConst; N];
@@ -349,7 +349,7 @@ mod tests {
             ExternC<CType = u8>,
             Decode<'static>,
             Encode,
-            RobustReprC,
+            ReprC,
         );
         assert_impl_all!(&u8:
             StableNiche<CType = *const u8>,
@@ -392,7 +392,7 @@ mod tests {
         assert_impl_all!([u8; 2]:
             Decode<'static>,
             Encode,
-            RobustReprC,
+            ReprC,
         );
         assert_impl_all!(Option<u8>:
             Niche<CType = ReprCOption<u8>>,

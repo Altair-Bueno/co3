@@ -3,7 +3,7 @@
 use core::mem::MaybeUninit;
 
 use crate::{
-    CFnArg, Decode, Encode, ExternC, RobustReprC,
+    CFnArg, Decode, Encode, ExternC, ReprC,
     borrow::{Borrow, BorrowCast, BorrowCastMut, ToOwned},
     stored::{DecodeOwned, EmptyStore, EncodeOwned},
     transmute::CheckedTransmute,
@@ -14,7 +14,7 @@ use co3_types::{
     size::SizeFamily,
 };
 
-/// FFI-safe equivalent of [`core::option::Option`] for [`crate::RobustReprC`] types
+/// FFI-safe equivalent of [`core::option::Option`] for [`crate::ReprC`] types
 #[repr(C)]
 pub struct ReprCOption<T> {
     tag: u8,
@@ -234,8 +234,8 @@ unsafe impl<T: CheckedTransmute<CType: Copy>> CheckedTransmute for ReprCOption<T
     }
 }
 
-unsafe impl<T: RobustReprC> RobustReprC for ReprCOption<T> {}
-unsafe impl<T: RobustReprC + Copy> CFnArg for ReprCOption<T> {}
+unsafe impl<T: ReprC> ReprC for ReprCOption<T> {}
+unsafe impl<T: ReprC + Copy> CFnArg for ReprCOption<T> {}
 
 unsafe impl<T: BorrowCast<AsConst: Copy> + Copy> BorrowCast for ReprCOption<T> {
     type AsConst = ReprCOption<T::AsConst>;

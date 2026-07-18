@@ -1,7 +1,7 @@
 #[cfg(feature = "alloc")]
 use alloc::{borrow::ToOwned as StdToOwned, boxed::Box, vec::Vec};
 
-use crate::{RobustReprC, stored::ArrayStore};
+use crate::{ReprC, stored::ArrayStore};
 #[cfg(feature = "alloc")]
 use co3_types::size::{MetaSized, SizeFamily};
 
@@ -20,8 +20,8 @@ impl<K> NonExternTypeLike for co3_types::size::Sized<K> {}
 ///
 /// - only owned to borrowed const pointer casting is allowed
 // TODO: Stupid trait with a stupid name
-pub unsafe trait BorrowCast: RobustReprC {
-    type AsConst: RobustReprC + ?Sized;
+pub unsafe trait BorrowCast: ReprC {
+    type AsConst: ReprC + ?Sized;
 }
 
 /// A layout-compatible mutably borrowed view of a robust C representation.
@@ -29,8 +29,8 @@ pub unsafe trait BorrowCast: RobustReprC {
 /// # Safety
 ///
 /// - only owned to borrowed mut pointer casting is allowed
-pub unsafe trait BorrowCastMut: RobustReprC {
-    type AsMut: RobustReprC + ?Sized;
+pub unsafe trait BorrowCastMut: ReprC {
+    type AsMut: ReprC + ?Sized;
 }
 
 #[inline(always)]

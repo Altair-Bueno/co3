@@ -21,15 +21,15 @@ trait ReprFamily {
 
 where `ReprFamily::Kind` is assigned one of the categories below through a marker of the same name:
 
-1. **`ReprC<Robust>`** (marker type)
+1. **`Stable<Robust>`** (marker type)
 - Types with stable C layout and no trap representations (e.g. `u32`).
 - Usually map directly to themselves in ABI (no conversion necessary).
 
-2. **`ReprC<NonRobust>`** (marker type)
+2. **`Stable<NonRobust>`** (marker type)
 - Types that can be safely transmuted into a single chosen target type.
 - IR/ABI mapping and value conversion continue through the target type.
 
-3. **`ReprRust`** (marker trait)
+3. **`Unstable`** (marker type)
 - Fallback for types that don't belong to any of the previous IR type families.
 - Conversion of references/slices piggybacks on the referent and incurs cloning.
 

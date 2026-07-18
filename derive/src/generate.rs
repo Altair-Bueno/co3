@@ -705,7 +705,7 @@ fn gen_owned_repr_c_impls(ident: &syn::Ident, generics: &syn::Generics) -> Token
 
         #size_impl
         impl #impl_generics co3::family::repr::ReprFamily for #owned_repr_c_name #ty_generics #where_clause {
-            type Kind = co3::family::repr::ReprC<co3::family::repr::Robust>;
+            type Kind = co3::family::repr::Stable<co3::family::repr::Robust>;
         }
         impl #impl_generics co3::family::niche::NicheFamily for #owned_repr_c_name #ty_generics #where_clause {
             type Kind = co3::family::niche::WithoutNiche;
@@ -744,7 +744,7 @@ fn gen_owned_repr_c_impls(ident: &syn::Ident, generics: &syn::Generics) -> Token
             }
         }
 
-        unsafe impl #impl_generics co3::RobustReprC for #owned_repr_c_name #ty_generics #where_clause {}
+        unsafe impl #impl_generics co3::ReprC for #owned_repr_c_name #ty_generics #where_clause {}
         unsafe impl #impl_generics co3::CFnArg for #owned_repr_c_name #ty_generics #where_clause {}
 
         unsafe impl #impl_generics co3::borrow::BorrowCast for #owned_repr_c_name #ty_generics #where_clause {
@@ -769,7 +769,7 @@ fn gen_owned_extern_type_impls(ident: &syn::Ident, generics: &syn::Generics) -> 
         #size_impl
 
         impl #impl_generics co3::family::repr::ReprFamily for #owned_ident #ty_generics #where_clause {
-            type Kind = co3::family::repr::ReprC<co3::family::repr::NonRobust>;
+            type Kind = co3::family::repr::Stable<co3::family::repr::NonRobust>;
         }
         impl #impl_generics co3::family::niche::NicheFamily for #owned_ident #ty_generics #where_clause {
             type Kind = co3::family::niche::WithStableNiche;
@@ -866,10 +866,10 @@ fn derive_opaque_item(
         #handle_family_impl
 
         impl #impl_generics co3::family::repr::ReprFamily for #ident #ty_generics #where_clause {
-            type Kind = co3::family::repr::ReprC<co3::family::repr::Robust>;
+            type Kind = co3::family::repr::Stable<co3::family::repr::Robust>;
         }
 
-        unsafe impl #impl_generics co3::RobustReprC for #ident #ty_generics #where_clause {}
+        unsafe impl #impl_generics co3::ReprC for #ident #ty_generics #where_clause {}
 
         unsafe impl #impl_generics co3::transmute::CheckedTransmute for #ident #ty_generics #where_clause {
             #[inline(always)]

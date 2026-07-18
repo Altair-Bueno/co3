@@ -9,7 +9,7 @@ use co3_types::{
 use core::ptr::NonNull;
 
 use crate::{
-    CFnArg, Decode, Encode, ExternC, RobustReprC,
+    CFnArg, Decode, Encode, ExternC, ReprC,
     borrow::{Borrow, BorrowCast, BorrowCastMut, ToOwned},
     slice::{CSlice, CSliceMut},
     spread::Spread,
@@ -268,10 +268,10 @@ macro_rules! impl_boxed_carrier {
             }
         }
 
-        impl<C: RobustReprC> ExternC for $ty<C> {
+        impl<C: ReprC> ExternC for $ty<C> {
             type CType = Self;
         }
-        unsafe impl<C: RobustReprC> EncodeOwned for $ty<C> {
+        unsafe impl<C: ReprC> EncodeOwned for $ty<C> {
             type Store = ();
 
             #[inline(always)]
@@ -282,7 +282,7 @@ macro_rules! impl_boxed_carrier {
                 self
             }
         }
-        unsafe impl<'d, C: RobustReprC> DecodeOwned<'d> for $ty<C> {
+        unsafe impl<'d, C: ReprC> DecodeOwned<'d> for $ty<C> {
             type Store = ();
 
             #[inline(always)]
@@ -291,39 +291,39 @@ macro_rules! impl_boxed_carrier {
             }
         }
 
-        impl<C: RobustReprC> Encode for $ty<C> {}
-        impl<'d, C: RobustReprC> Decode<'d> for $ty<C> {}
+        impl<C: ReprC> Encode for $ty<C> {}
+        impl<'d, C: ReprC> Decode<'d> for $ty<C> {}
 
-        unsafe impl<C: RobustReprC> CheckedTransmute for $ty<C> {
+        unsafe impl<C: ReprC> CheckedTransmute for $ty<C> {
             #[inline(always)]
             unsafe fn is_valid(_: &Self::CType) -> bool {
                 true
             }
         }
 
-        unsafe impl<C: RobustReprC> RobustReprC for $ty<C> {}
-        unsafe impl<C: RobustReprC> CFnArg for $ty<C> {}
+        unsafe impl<C: ReprC> ReprC for $ty<C> {}
+        unsafe impl<C: ReprC> CFnArg for $ty<C> {}
     };
 }
 
 impl_boxed_carrier! { CBox }
 impl_boxed_carrier! { CBoxedSlice }
 
-unsafe impl<C: RobustReprC> BorrowCast for CBox<C> {
+unsafe impl<C: ReprC> BorrowCast for CBox<C> {
     type AsConst = *const C;
 }
-unsafe impl<C: RobustReprC> BorrowCastMut for CBox<C> {
+unsafe impl<C: ReprC> BorrowCastMut for CBox<C> {
     type AsMut = *mut C;
 }
 
-unsafe impl<C: RobustReprC> BorrowCast for CBoxedSlice<C> {
+unsafe impl<C: ReprC> BorrowCast for CBoxedSlice<C> {
     type AsConst = CSlice<C>;
 }
-unsafe impl<C: RobustReprC> BorrowCastMut for CBoxedSlice<C> {
+unsafe impl<C: ReprC> BorrowCastMut for CBoxedSlice<C> {
     type AsMut = CSliceMut<C>;
 }
 
-impl<C: RobustReprC> Spread for CBoxedSlice<C> {
+impl<C: ReprC> Spread for CBoxedSlice<C> {
     type Part1 = *mut C;
     type Part2 = usize;
 

@@ -378,7 +378,7 @@ fn gen_robust_impls<const ADD_COPY: bool>(
     });
 
     quote! {
-        unsafe impl #impl_generics co3::RobustReprC for #ident #ty_generics #where_clause {}
+        unsafe impl #impl_generics co3::ReprC for #ident #ty_generics #where_clause {}
 
         unsafe impl #impl_generics co3::CFnArg for #ident #ty_generics
         where
@@ -403,7 +403,7 @@ fn gen_repr_c_robust_family_impl(ident: &syn::Ident, generics: &syn::Generics) -
 
     quote! {
         impl #impl_generics co3::family::repr::ReprFamily for #ident #ty_generics #where_clause {
-            type Kind = co3::family::repr::ReprC<co3::family::repr::Robust>;
+            type Kind = co3::family::repr::Stable<co3::family::repr::Robust>;
         }
     }
 }

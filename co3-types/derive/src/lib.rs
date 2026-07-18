@@ -425,7 +425,7 @@ fn gen_fieldless_enum_family_impls(
     variants: &Punctuated<syn::Variant, Token![,]>,
 ) -> proc_macro2::TokenStream {
     let repr_family = match repr {
-        None => quote! { #family::repr::ReprRust },
+        None => quote! { #family::repr::Unstable },
         Some(ReprKind::C(None)) => unreachable!(),
         Some(ReprKind::Transparent) => quote! { #family::repr::Robust },
         Some(ReprKind::C(Some(tag)) | ReprKind::Primitive(tag)) => {
@@ -435,7 +435,7 @@ fn gen_fieldless_enum_family_impls(
                 quote! { #family::repr::NonRobust }
             };
 
-            quote! { #family::repr::ReprC<#robustness> }
+            quote! { #family::repr::Stable<#robustness> }
         }
     };
     let tag_type = if repr.is_none() && variants.len() == 1 {
@@ -479,7 +479,7 @@ fn gen_rust_repr_family_impl(
 
     quote! {
         impl #impl_generics #family::repr::ReprFamily for #name #ty_generics #where_clause {
-            type Kind = #family::repr::ReprRust;
+            type Kind = #family::repr::Unstable;
         }
     }
 }
@@ -501,7 +501,7 @@ fn gen_repr_family_impl(
     } else {
         quote! { #family::repr::Robust }
     };
-    let mut repr_kind = quote! { #family::repr::ReprC<#init> };
+    let mut repr_kind = quote! { #family::repr::Stable<#init> };
     let field_bounds = parametrized_fields
         .iter()
         .map(|ty| quote! { #ty: #family::repr::ReprFamily });

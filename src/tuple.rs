@@ -70,7 +70,7 @@ use co3_types::{
 use disjoint_impls::disjoint_impls;
 
 use crate::{
-    CFnArg, Decode, Encode, ExternC, RobustReprC, Store,
+    CFnArg, Decode, Encode, ExternC, ReprC, Store,
     borrow::{Borrow, BorrowCast, BorrowCastMut, ToOwned},
     niche::{Niche, WithNiche},
     spread::Spread,
@@ -216,7 +216,7 @@ macro_rules! impl_tuple {
         impl<'d, $($ty: Decode<'d, CType: Copy>),*> Decode<'d> for ($($ty,)*) {}
         impl<'d, $($ty: Decode<'d, CType: Copy>),*> Decode<'d> for $ffi_ty<$($ty),*> {}
 
-        unsafe impl<$($ty: RobustReprC + Copy),*> CFnArg for $ffi_ty<$($ty),*>
+        unsafe impl<$($ty: ReprC + Copy),*> CFnArg for $ffi_ty<$($ty),*>
         where
             Self: SizeFamily<Kind = co3_types::size::Sized<NonZst>>,
         {}
@@ -264,7 +264,7 @@ macro_rules! impl_tuple {
             type AsMut = $ffi_ty<$($head::AsMut,)* $last::AsMut>;
         }
 
-        unsafe impl<$($head: RobustReprC,)* $last: RobustReprC + ?Sized> RobustReprC for $ffi_ty<$($head,)* $last> {}
+        unsafe impl<$($head: ReprC,)* $last: ReprC + ?Sized> ReprC for $ffi_ty<$($head,)* $last> {}
 
         unsafe impl<$($head: crate::stored::EmptyStore,)* $last: crate::stored::EmptyStore> crate::stored::EmptyStore for ($($head,)* $last,) {}
         unsafe impl<$($head: crate::stored::EmptyStore,)* $last: crate::stored::EmptyStore> crate::stored::EmptyStore for $ffi_ty<$($head,)* $last> {}
@@ -303,7 +303,7 @@ impl_tuple! {(A, B, C, D, E, F, G, H, I, J) -> ReprCTuple10}
 impl_tuple! {(A, B, C, D, E, F, G, H, I, J, K) -> ReprCTuple11}
 impl_tuple! {(A, B, C, D, E, F, G, H, I, J, K, L) -> ReprCTuple12}
 
-impl<A: RobustReprC, B: RobustReprC> Spread for ReprCTuple2<A, B> {
+impl<A: ReprC, B: ReprC> Spread for ReprCTuple2<A, B> {
     type Part1 = A;
     type Part2 = B;
 

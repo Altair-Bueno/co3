@@ -10,7 +10,7 @@ use disjoint_impls::disjoint_impls;
 #[cfg(feature = "alloc")]
 use crate::boxed::{CBox, CBoxedSlice};
 use crate::{
-    ExternC, RobustReprC, assert_arr_has_non_zero_len,
+    ExternC, ReprC, assert_arr_has_non_zero_len,
     option::ReprCOption,
     result::ReprCResult,
     slice::{CSlice, CSliceMut},
@@ -19,7 +19,7 @@ use crate::{
 /// Marker trait for an [`NicheFamily`] type of a Rust type that has a niche value (stable or custom)
 ///
 /// There are only 2 notable implementations of this trait:
-/// 1. [`RobustReprC`] types have a single stable (compiler guaranteed) niche value (e.g. `&u32`)
+/// 1. [`ReprC`] types have a single stable (compiler guaranteed) niche value (e.g. `&u32`)
 /// 2. [`Stored`] types have a custom defined (by this crate) niche value (e.g. `[NonZeroU32; 2]`)
 pub(crate) trait WithNiche {}
 
@@ -92,7 +92,7 @@ disjoint_impls! {
     //    const NICHE_VALUE: Self::CType = CBoxedSlice::none();
     //}
 
-    impl<R, C: RobustReprC + Copy> Niche for Option<R>
+    impl<R, C: ReprC + Copy> Niche for Option<R>
     where
         Self: ExternC<CType = ReprCOption<C>>,
     {
@@ -140,7 +140,7 @@ where
     };
 }
 
-impl<R, E, C: RobustReprC + Copy, D: RobustReprC + Copy> Niche for Result<R, E>
+impl<R, E, C: ReprC + Copy, D: ReprC + Copy> Niche for Result<R, E>
 where
     Self: ExternC<CType = ReprCResult<C, D>>,
 {
@@ -162,7 +162,7 @@ mod tests {
     use static_assertions::{assert_impl_all, assert_not_impl_any};
 
     use super::*;
-    use crate::{Decode, Encode, RobustReprC, slice::CSlice, tuple::ReprCTuple2};
+    use crate::{Decode, Encode, ReprC, slice::CSlice, tuple::ReprCTuple2};
 
     #[test]
     fn nested_option_niche_family() {
@@ -184,8 +184,8 @@ mod tests {
             Encode,
         );
 
-        assert_not_impl_any!(Option<bool>: RobustReprC);
-        assert_not_impl_any!(Option<Option<bool>>: RobustReprC);
+        assert_not_impl_any!(Option<bool>: ReprC);
+        assert_not_impl_any!(Option<Option<bool>>: ReprC);
     }
 
     #[test]

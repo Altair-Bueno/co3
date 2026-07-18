@@ -67,7 +67,7 @@ where
 
 // FIXME: Should it be implemented for non-robust R?
 // atm we say yes, this is transmutable but don't misuse it.
-// Either require ReprC<Robust> or write this in the documentation
+// Either require Stable<Robust> or write this in the documentation
 // If Repr<Robust> then also consider how it affects Box<&mut R>
 unsafe impl<R: CheckedTransmute + ?Sized> CheckedTransmute for &mut R
 where
@@ -162,7 +162,7 @@ mod tests {
     #[cfg(feature = "alloc")]
     use crate::boxed::CBoxedSlice;
     use crate::{
-        Decode, Encode, RobustReprC,
+        Decode, Encode, ReprC,
         niche::Niche,
         slice::{CSlice, CSliceMut},
     };
@@ -275,7 +275,7 @@ mod tests {
             Encode,
         );
 
-        assert_not_impl_any!(Option<&u8>: RobustReprC);
+        assert_not_impl_any!(Option<&u8>: ReprC);
     }
 
     #[test]
@@ -380,7 +380,7 @@ mod tests {
             Encode,
         );
 
-        assert_not_impl_any!(Option<&mut u8>: RobustReprC);
+        assert_not_impl_any!(Option<&mut u8>: ReprC);
     }
 
     #[test]

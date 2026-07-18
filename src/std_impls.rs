@@ -12,7 +12,7 @@ use core::{
 #[cfg(feature = "alloc")]
 use crate::boxed::CBoxedSlice;
 use crate::{
-    Decode, Encode, ExternC, RobustReprC,
+    Decode, Encode, ExternC, ReprC,
     borrow::{Borrow, BorrowCast, BorrowCastMut, ToOwned},
     niche::{Niche, StableNiche},
     stored::{DecodeOwned, EmptyStore, EncodeOwned},
@@ -93,7 +93,7 @@ non_zero_derive! {
 impl ExternC for c_void {
     type CType = Self;
 }
-unsafe impl RobustReprC for c_void {}
+unsafe impl ReprC for c_void {}
 unsafe impl BorrowCast for c_void {
     type AsConst = Self;
 }
@@ -143,7 +143,7 @@ unsafe impl<'d> DecodeOwned<'d> for () {
 impl Encode for () {}
 impl Decode<'_> for () {}
 
-unsafe impl RobustReprC for () {}
+unsafe impl ReprC for () {}
 unsafe impl BorrowCast for () {
     type AsConst = Self;
 }
@@ -202,7 +202,7 @@ unsafe impl<'d, T: ?Sized> DecodeOwned<'d> for PhantomData<T> {
 impl<T: ?Sized> Encode for PhantomData<T> {}
 impl<T: ?Sized> Decode<'_> for PhantomData<T> {}
 
-unsafe impl<T: ?Sized> RobustReprC for PhantomData<T> {}
+unsafe impl<T: ?Sized> ReprC for PhantomData<T> {}
 unsafe impl<T: ?Sized> BorrowCast for PhantomData<T> {
     type AsConst = Self;
 }
@@ -233,11 +233,11 @@ impl<'itm, T: ?Sized + 'itm> ToOwned<'itm> for NonNull<T> {
     }
 }
 
-impl<T: RobustReprC + ?Sized> ExternC for NonNull<T> {
+impl<T: ReprC + ?Sized> ExternC for NonNull<T> {
     // TODO: afaik the pointer is not necessarily mutable just non-null
     type CType = <*mut T as ExternC>::CType;
 }
-unsafe impl<T: RobustReprC + ?Sized> EncodeOwned for NonNull<T> {
+unsafe impl<T: ReprC + ?Sized> EncodeOwned for NonNull<T> {
     type Store = <*mut T as EncodeOwned>::Store;
 
     #[inline(always)]
@@ -248,7 +248,7 @@ unsafe impl<T: RobustReprC + ?Sized> EncodeOwned for NonNull<T> {
         self.as_ptr().soft_encode(store)
     }
 }
-unsafe impl<'d, T: RobustReprC + ?Sized> DecodeOwned<'d> for NonNull<T> {
+unsafe impl<'d, T: ReprC + ?Sized> DecodeOwned<'d> for NonNull<T> {
     type Store = <*mut T as DecodeOwned<'d>>::Store;
 
     #[inline(always)]
@@ -261,10 +261,10 @@ unsafe impl<'d, T: RobustReprC + ?Sized> DecodeOwned<'d> for NonNull<T> {
     }
 }
 
-impl<T: RobustReprC + ?Sized> Encode for NonNull<T> {}
-impl<T: RobustReprC + ?Sized> Decode<'_> for NonNull<T> {}
+impl<T: ReprC + ?Sized> Encode for NonNull<T> {}
+impl<T: ReprC + ?Sized> Decode<'_> for NonNull<T> {}
 
-unsafe impl<T: RobustReprC + ?Sized> CheckedTransmute for NonNull<T> {
+unsafe impl<T: ReprC + ?Sized> CheckedTransmute for NonNull<T> {
     #[inline(always)]
     unsafe fn is_valid(target: &Self::CType) -> bool {
         !target.is_null()
@@ -601,7 +601,7 @@ mod tests {
     //        Encode,
     //    );
 
-    //    assert_not_impl_any!(ManuallyDrop<u8>: RobustReprC);
+    //    assert_not_impl_any!(ManuallyDrop<u8>: ReprC);
     //}
 
     //#[cfg(feature = "alloc")]
@@ -658,7 +658,7 @@ mod tests {
     //        Decode<'static>,
     //        Encode,
     //    );
-    //    assert_not_impl_any!(ManuallyDrop<String>: RobustReprC);
+    //    assert_not_impl_any!(ManuallyDrop<String>: ReprC);
 
     //    #[cfg(feature = "alloc")]
     //    assert_not_impl_any!(Box<[ManuallyDrop<String>]>: Encode, Decode<'static>);
@@ -768,7 +768,7 @@ mod tests {
             Encode,
         );
 
-        assert_not_impl_any!(UnsafeCell<u8>: RobustReprC);
+        assert_not_impl_any!(UnsafeCell<u8>: ReprC);
     }
 
     #[test]
@@ -827,6 +827,6 @@ mod tests {
             Encode,
         );
 
-        assert_not_impl_any!(UnsafeCell<NonZero<u8>>: RobustReprC);
+        assert_not_impl_any!(UnsafeCell<NonZero<u8>>: ReprC);
     }
 }

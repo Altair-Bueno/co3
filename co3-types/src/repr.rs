@@ -15,12 +15,12 @@ use crate::{
 };
 
 /// Marker for a type that don't have a guaranteed representation and requires explicit conversion.
-pub enum ReprRust {}
+pub enum Unstable {}
 
 /// Marker for a type that is transmuted to another type and thus delegates its conversion.
-pub struct ReprC<K>(core::marker::PhantomData<K>, Infallible);
+pub struct Stable<K>(core::marker::PhantomData<K>, Infallible);
 
-/// Marker for a robust [`crate::RobustReprC`] type that does not require conversion
+/// Marker for a robust [`crate::ReprC`] type that does not require conversion
 pub enum Robust {}
 
 /// Marker for a non-robust type that is still transmuted by the ABI layer.
@@ -33,63 +33,63 @@ disjoint_impls! {
     pub trait ReprFamily {
         /// The internal representation (i.e. type family) of the type
         ///
-        /// - If `Self` is [`crate::RobustReprC`], set [`ReprFamily::Kind`] to [`ReprC<Robust>`].
+        /// - If `Self` is [`crate::ReprC`], set [`ReprFamily::Kind`] to [`Stable<Robust>`].
         ///   The type is passed to FFI functions as-is, without conversion.
         ///
-        /// - If [`ReprFamily::Kind`] is [`ReprC<NonRobust>`] the type has the same
+        /// - If [`ReprFamily::Kind`] is [`Stable<NonRobust>`] the type has the same
         ///   representation as the target [`crate::ExternC::CType`] but requires validation.
         ///
-        /// - If [`ReprFamily::Kind`] is [`ReprRust`], `Self` must provide hand-written impl of [`crate::ExternC`].
-        ///   References to [`ReprRust`] types are `soft` and conversion of the value will make use of the store.
+        /// - If [`ReprFamily::Kind`] is [`Unstable`], `Self` must provide hand-written impl of [`crate::ExternC`].
+        ///   References to [`Unstable`] types are `soft` and conversion of the value will make use of the store.
         type Kind;
     }
 
-    impl<R: ReprFamily<Kind = ReprRust> + ?Sized> ReprFamily for &R {
-        type Kind = ReprRust;
+    impl<R: ReprFamily<Kind = Unstable> + ?Sized> ReprFamily for &R {
+        type Kind = Unstable;
     }
-    impl<R: ReprFamily<Kind = ReprC<K>> + SizeFamily<Kind: Thin> + ?Sized, K> ReprFamily for &R {
-        type Kind = ReprC<NonRobust>;
+    impl<R: ReprFamily<Kind = Stable<K>> + SizeFamily<Kind: Thin> + ?Sized, K> ReprFamily for &R {
+        type Kind = Stable<NonRobust>;
     }
-    impl<R: ReprFamily<Kind = ReprC<K>> + SizeFamily<Kind = MetaSized<U>> + ?Sized, U, K> ReprFamily for &R {
-        type Kind = ReprRust;
-    }
-
-    impl<R: ReprFamily<Kind = ReprRust> + ?Sized> ReprFamily for &mut R {
-        type Kind = ReprRust;
-    }
-    impl<R: ReprFamily<Kind = ReprC<K>> + SizeFamily<Kind: Thin> + ?Sized, K> ReprFamily for &mut R {
-        type Kind = ReprC<NonRobust>;
-    }
-    impl<R: ReprFamily<Kind = ReprC<K>> + SizeFamily<Kind = MetaSized<U>> + ?Sized, U, K> ReprFamily for &mut R {
-        type Kind = ReprRust;
+    impl<R: ReprFamily<Kind = Stable<K>> + SizeFamily<Kind = MetaSized<U>> + ?Sized, U, K> ReprFamily for &R {
+        type Kind = Unstable;
     }
 
+    impl<R: ReprFamily<Kind = Unstable> + ?Sized> ReprFamily for &mut R {
+        type Kind = Unstable;
+    }
+    impl<R: ReprFamily<Kind = Stable<K>> + SizeFamily<Kind: Thin> + ?Sized, K> ReprFamily for &mut R {
+        type Kind = Stable<NonRobust>;
+    }
+    impl<R: ReprFamily<Kind = Stable<K>> + SizeFamily<Kind = MetaSized<U>> + ?Sized, U, K> ReprFamily for &mut R {
+        type Kind = Unstable;
+    }
+
     #[cfg(feature = "alloc")]
-    impl<R: ReprFamily<Kind = ReprRust> + ?Sized> ReprFamily for Box<R> {
-        type Kind = ReprRust;
+    impl<R: ReprFamily<Kind = Unstable> + ?Sized> ReprFamily for Box<R> {
+        type Kind = Unstable;
     }
     #[cfg(feature = "alloc")]
-    impl<R: ReprFamily<Kind = ReprC<K>> + SizeFamily<Kind = crate::size::Sized<S>>, S, K> ReprFamily for Box<R> {
-        type Kind = ReprC<NonRobust>;
+    impl<R: ReprFamily<Kind = Stable<K>> + SizeFamily<Kind = crate::size::Sized<S>>, S, K> ReprFamily for Box<R> {
+        type Kind = Stable<NonRobust>;
     }
     #[cfg(feature = "alloc")]
-    impl<R: ReprFamily<Kind = ReprC<K>> + SizeFamily<Kind = MetaSized<U>> + ?Sized, U, K> ReprFamily for Box<R> {
-        type Kind = ReprRust;
+    impl<R: ReprFamily<Kind = Stable<K>> + SizeFamily<Kind = MetaSized<U>> + ?Sized, U, K> ReprFamily for Box<R> {
+        type Kind = Unstable;
     }
 
     impl<R: NicheFamily<Kind = WithoutNiche>> ReprFamily for Option<R> {
-        type Kind = ReprRust;
+        type Kind = Unstable;
     }
     impl<R: NicheFamily<Kind = WithCustomNiche>> ReprFamily for Option<R> {
-        type Kind = ReprRust;
+        type Kind = Unstable;
     }
-    impl<R: NicheFamily<Kind = WithStableNiche> + ReprFamily<Kind = ReprRust>> ReprFamily for Option<R> {
-        type Kind = ReprRust;
+    impl<R: NicheFamily<Kind = WithStableNiche> + ReprFamily<Kind = Unstable>> ReprFamily for Option<R> {
+        type Kind = Unstable;
     }
-    impl<R: NicheFamily<Kind = WithStableNiche> + ReprFamily<Kind = ReprC<NonRobust>>> ReprFamily for Option<R> {
+    impl<R: NicheFamily<Kind = WithStableNiche> + ReprFamily<Kind = Stable<NonRobust>>> ReprFamily for Option<R> {
         // FIXME: Sometimes it should be mapped to Robust when R has 1 niche. Also for Result
         // https://github.com/mversic/co3/issues/33
-        type Kind = ReprC<NonRobust>;
+        type Kind = Stable<NonRobust>;
     }
 
     impl<
@@ -97,82 +97,82 @@ disjoint_impls! {
         E: SizeFamily<Kind = crate::size::Sized<K>>,
         K
     > ReprFamily for Result<R, E> {
-        type Kind = ReprRust;
+        type Kind = Unstable;
     }
 
     impl<
         R: SizeFamily<Kind = crate::size::Sized<NonZst>> + NicheFamily<Kind = WithoutNiche>,
         E: SizeFamily<Kind = crate::size::Sized<Zst>>,
     > ReprFamily for Result<R, E> {
-        type Kind = ReprRust;
+        type Kind = Unstable;
     }
     impl<
         R: SizeFamily<Kind = crate::size::Sized<NonZst>> + NicheFamily<Kind = WithCustomNiche>,
         E: SizeFamily<Kind = crate::size::Sized<Zst>>,
     > ReprFamily for Result<R, E> {
-        type Kind = ReprRust;
+        type Kind = Unstable;
     }
     impl<
-        R: SizeFamily<Kind = crate::size::Sized<NonZst>> + NicheFamily<Kind = WithStableNiche> + ReprFamily<Kind = ReprRust>,
+        R: SizeFamily<Kind = crate::size::Sized<NonZst>> + NicheFamily<Kind = WithStableNiche> + ReprFamily<Kind = Unstable>,
         E: SizeFamily<Kind = crate::size::Sized<Zst>>,
     > ReprFamily for Result<R, E> {
-        type Kind = ReprRust;
+        type Kind = Unstable;
     }
     impl<
-        R: SizeFamily<Kind = crate::size::Sized<NonZst>> + NicheFamily<Kind = WithStableNiche> + ReprFamily<Kind = ReprC<NonRobust>>,
+        R: SizeFamily<Kind = crate::size::Sized<NonZst>> + NicheFamily<Kind = WithStableNiche> + ReprFamily<Kind = Stable<NonRobust>>,
         E: SizeFamily<Kind = crate::size::Sized<Zst>>,
     > ReprFamily for Result<R, E> {
-        type Kind = ReprC<NonRobust>;
+        type Kind = Stable<NonRobust>;
     }
 
     impl<
         R: SizeFamily<Kind = crate::size::Sized<Zst>>,
         E: SizeFamily<Kind = crate::size::Sized<NonZst>> + NicheFamily<Kind = WithoutNiche>,
     > ReprFamily for Result<R, E> {
-        type Kind = ReprRust;
+        type Kind = Unstable;
     }
     impl<
         R: SizeFamily<Kind = crate::size::Sized<Zst>>,
         E: SizeFamily<Kind = crate::size::Sized<NonZst>> + NicheFamily<Kind = WithCustomNiche>,
     > ReprFamily for Result<R, E> {
-        type Kind = ReprRust;
+        type Kind = Unstable;
     }
     impl<
         R: SizeFamily<Kind = crate::size::Sized<Zst>>,
-        E: SizeFamily<Kind = crate::size::Sized<NonZst>> + NicheFamily<Kind = WithStableNiche> + ReprFamily<Kind = ReprRust>,
+        E: SizeFamily<Kind = crate::size::Sized<NonZst>> + NicheFamily<Kind = WithStableNiche> + ReprFamily<Kind = Unstable>,
     > ReprFamily for Result<R, E> {
-        type Kind = ReprRust;
+        type Kind = Unstable;
     }
     impl<
         R: SizeFamily<Kind = crate::size::Sized<Zst>>,
-        E: SizeFamily<Kind = crate::size::Sized<NonZst>> + NicheFamily<Kind = WithStableNiche> + ReprFamily<Kind = ReprC<NonRobust>>,
+        E: SizeFamily<Kind = crate::size::Sized<NonZst>> + NicheFamily<Kind = WithStableNiche> + ReprFamily<Kind = Stable<NonRobust>>,
     > ReprFamily for Result<R, E> {
-        type Kind = ReprC<NonRobust>;
+        type Kind = Stable<NonRobust>;
     }
 }
 
 #[cfg(feature = "alloc")]
 impl<R> ReprFamily for Vec<R> {
-    type Kind = ReprRust;
+    type Kind = Unstable;
 }
 
-impl<K> Add<ReprRust> for ReprC<K> {
-    type Output = ReprRust;
+impl<K> Add<Unstable> for Stable<K> {
+    type Output = Unstable;
 
-    fn add(self, _: ReprRust) -> Self::Output {
+    fn add(self, _: Unstable) -> Self::Output {
         unreachable!()
     }
 }
 
-impl<K> Add<ReprC<K>> for ReprRust {
-    type Output = ReprRust;
+impl<K> Add<Stable<K>> for Unstable {
+    type Output = Unstable;
 
-    fn add(self, _: ReprC<K>) -> Self::Output {
+    fn add(self, _: Stable<K>) -> Self::Output {
         unreachable!()
     }
 }
 
-impl Add for ReprRust {
+impl Add for Unstable {
     type Output = Self;
 
     fn add(self, _: Self) -> Self::Output {
@@ -180,7 +180,7 @@ impl Add for ReprRust {
     }
 }
 
-impl Add for ReprC<NonRobust> {
+impl Add for Stable<NonRobust> {
     type Output = Self;
 
     fn add(self, _: Self) -> Self::Output {
@@ -188,7 +188,7 @@ impl Add for ReprC<NonRobust> {
     }
 }
 
-impl Add for ReprC<Robust> {
+impl Add for Stable<Robust> {
     type Output = Self;
 
     fn add(self, _: Self) -> Self::Output {
@@ -196,18 +196,18 @@ impl Add for ReprC<Robust> {
     }
 }
 
-impl Add<ReprC<NonRobust>> for ReprC<Robust> {
-    type Output = ReprC<NonRobust>;
+impl Add<Stable<NonRobust>> for Stable<Robust> {
+    type Output = Stable<NonRobust>;
 
-    fn add(self, _: ReprC<NonRobust>) -> Self::Output {
+    fn add(self, _: Stable<NonRobust>) -> Self::Output {
         unreachable!()
     }
 }
 
-impl Add<ReprC<Robust>> for ReprC<NonRobust> {
+impl Add<Stable<Robust>> for Stable<NonRobust> {
     type Output = Self;
 
-    fn add(self, _: ReprC<Robust>) -> Self::Output {
+    fn add(self, _: Stable<Robust>) -> Self::Output {
         unreachable!()
     }
 }
