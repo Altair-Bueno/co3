@@ -690,6 +690,25 @@ fn monomorphize_predicates(
     generics: &mut syn::Generics,
     args: &Punctuated<syn::AngleBracketedGenericArguments, syn::Token![,]>,
 ) {
+    fn strip_relaxed_sized_bounds(predicate: &mut syn::WherePredicate) -> bool {
+        let syn::WherePredicate::Type(predicate) = predicate else {
+            return true;
+        };
+
+        predicate.bounds = core::mem::take(&mut predicate.bounds)
+            .into_iter()
+            .filter(|bound| {
+                !matches!(
+                    bound,
+                    syn::TypeParamBound::Trait(bound)
+                        if matches!(bound.modifier, syn::TraitBoundModifier::Maybe(_))
+                )
+            })
+            .collect();
+
+        !predicate.bounds.is_empty()
+    }
+
     let params = generics
         .params
         .iter()
@@ -728,7 +747,9 @@ fn monomorphize_predicates(
 
             let mut monomorphizer = DispatchMonomorphizer::new(generics, &entry);
             monomorphizer.visit_where_predicate_mut(&mut concrete_predicate);
-            monomorphized_predicates.push(concrete_predicate);
+            if strip_relaxed_sized_bounds(&mut concrete_predicate) {
+                monomorphized_predicates.push(concrete_predicate);
+            }
         }
     }
 

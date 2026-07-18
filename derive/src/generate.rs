@@ -710,6 +710,9 @@ fn gen_owned_repr_c_impls(ident: &syn::Ident, generics: &syn::Generics) -> Token
         impl #impl_generics co3::rust_spec::niche::NicheFamily for #owned_repr_c_name #ty_generics #where_clause {
             type Kind = co3::rust_spec::niche::WithoutNiche;
         }
+        impl #impl_generics co3::rust_spec::mutability::MutabilityFamily for #owned_repr_c_name #ty_generics #where_clause {
+            type Kind = co3::rust_spec::mutability::Exclusive;
+        }
 
         impl #impl_generics co3::ExternC for #owned_repr_c_name #ty_generics #where_clause {
             type CType = Self;
@@ -773,6 +776,9 @@ fn gen_owned_extern_type_impls(ident: &syn::Ident, generics: &syn::Generics) -> 
         }
         impl #impl_generics co3::rust_spec::niche::NicheFamily for #owned_ident #ty_generics #where_clause {
             type Kind = co3::rust_spec::niche::WithNiche<co3::rust_spec::niche::Stable>;
+        }
+        impl #impl_generics co3::rust_spec::mutability::MutabilityFamily for #owned_ident #ty_generics #where_clause {
+            type Kind = co3::rust_spec::mutability::Exclusive;
         }
 
         unsafe impl #impl_generics co3::transmute::CheckedTransmute for #owned_ident #ty_generics #where_clause {
@@ -867,6 +873,12 @@ fn derive_opaque_item(
 
         impl #impl_generics co3::rust_spec::repr::ReprFamily for #ident #ty_generics #where_clause {
             type Kind = co3::rust_spec::repr::Stable<co3::rust_spec::repr::Robust>;
+        }
+        impl #impl_generics co3::rust_spec::niche::NicheFamily for #ident #ty_generics #where_clause {
+            type Kind = co3::rust_spec::niche::WithoutNiche;
+        }
+        impl #impl_generics co3::rust_spec::mutability::MutabilityFamily for #ident #ty_generics #where_clause {
+            type Kind = co3::rust_spec::mutability::Exclusive;
         }
 
         unsafe impl #impl_generics co3::ReprC for #ident #ty_generics #where_clause {}

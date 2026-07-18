@@ -44,7 +44,7 @@ unsafe impl<T: EmptyStore> EmptyStore for Box<[T]> {}
 unsafe impl<T: EmptyStore> EmptyStore for Vec<T> {}
 
 pub(crate) trait UnstableOrNonRobust {}
-impl UnstableOrNonRobust for Unstable {}
+impl<K> UnstableOrNonRobust for Unstable<K> {}
 impl UnstableOrNonRobust for Stable<NonRobust> {}
 
 disjoint_impls! {
@@ -118,7 +118,7 @@ disjoint_impls! {
         R: TypeSpec<Repr = Stable<K>, Size = MetaSized<SliceLike>, Mutability = Exclusive>
             + Wide<Data: CheckedTransmute<CType: Sized>, Metadata = usize>
             + ?Sized,
-        Self: TypeSpec<Repr = Unstable>,
+        Self: TypeSpec<Repr = Unstable<NonRobust>>,
     {
         type Store = ();
 
@@ -136,7 +136,7 @@ disjoint_impls! {
         R: TypeSpec<Repr = Stable<K>, Size = MetaSized<SliceLike>, Mutability = Interior>
             + Wide<Data: CheckedTransmute<CType: Sized>, Metadata = usize>
             + ?Sized,
-        Self: TypeSpec<Repr = Unstable>,
+        Self: TypeSpec<Repr = Unstable<NonRobust>>,
     {
         type Store = ();
 
@@ -149,9 +149,9 @@ disjoint_impls! {
             CSliceMut::from_raw_parts_mut(ptr, len)
         }
     }
-    unsafe impl<R: TypeSpec<Repr = Unstable, Size = rust_spec::size::Sized<S>, Mutability = Exclusive>, S> EncodeOwned for &R
+    unsafe impl<R: TypeSpec<Repr = Unstable<RK>, Size = rust_spec::size::Sized<S>, Mutability = Exclusive>, S, RK> EncodeOwned for &R
     where
-        Self: TypeSpec<Repr = Unstable>,
+        Self: TypeSpec<Repr = Unstable<RK>>,
         R: Clone + EncodeOwned,
     {
         type Store = RefSizedEncodeStore<R>;
@@ -166,9 +166,9 @@ disjoint_impls! {
         }
     }
     #[cfg(feature = "alloc")]
-    unsafe impl<R: TypeSpec<Repr = Unstable, Size: Dst> + ?Sized> EncodeOwned for &R
+    unsafe impl<R: TypeSpec<Repr = Unstable<RK>, Size: Dst> + ?Sized, RK> EncodeOwned for &R
     where
-        Self: TypeSpec<Repr = Unstable>,
+        Self: TypeSpec<Repr = Unstable<RK>>,
         Self: ExternC<CType = <<<R as StdToOwned>::Owned as ExternC>::CType as BorrowCast>::AsConst>,
         R: StdToOwned<Owned: ExternC<CType: BorrowCast<AsConst: Copy> + Copy> + EncodeOwned>,
     {
@@ -184,7 +184,6 @@ disjoint_impls! {
         }
     }
 
-    // TODO: The size bound should not be required here. That is a bug in disjoint_impls! Should be fixed soon
     unsafe impl<R: TypeSpec<Repr = Stable<Robust>> + ExternC + ?Sized> EncodeOwned for &mut R
     where
         Self: TypeSpec<Repr = Stable<NonRobust>>,
@@ -207,7 +206,7 @@ disjoint_impls! {
     unsafe impl<R: TypeSpec<Repr = Stable<Robust>, Size = MetaSized<SliceLike>> + ?Sized>
         EncodeOwned for &mut R
     where
-        Self: TypeSpec<Repr = Unstable>,
+        Self: TypeSpec<Repr = Unstable<NonRobust>>,
         R: Wide<Data: CheckedTransmute<CType: Sized>, Metadata = usize>,
     {
         type Store = ();
@@ -245,7 +244,7 @@ disjoint_impls! {
     unsafe impl<'a, R: TypeSpec<Repr: UnstableOrNonRobust, Size: Dst> + ?Sized>
         EncodeOwned for &'a mut R
     where
-        Self: TypeSpec<Repr = Unstable>,
+        Self: TypeSpec<Repr: UnstableOrNonRobust>,
         Self: ExternC<CType = <<<R as StdToOwned>::Owned as ExternC>::CType as BorrowCastMut>::AsMut>,
         R: StdToOwned<Owned: ExternC<CType: BorrowCastMut<AsMut: Copy> + Copy> + EncodeOwned + DecodeOwned<'a>,
         >,
@@ -289,7 +288,7 @@ disjoint_impls! {
     unsafe impl<R: TypeSpec<Repr = Stable<K>, Size = MetaSized<SliceLike>> + ?Sized, K>
         EncodeOwned for Box<R>
     where
-        Self: TypeSpec<Repr = Unstable>,
+        Self: TypeSpec<Repr = Unstable<NonRobust>>,
         R: Wide<Data: CheckedTransmute<CType: Sized> + EncodeOwned, Metadata = usize>,
     {
         type Store = Box<<R::Data as EncodeOwned>::Store>;
@@ -310,9 +309,9 @@ disjoint_impls! {
         }
     }
     #[cfg(feature = "alloc")]
-    unsafe impl<R: TypeSpec<Repr = Unstable, Size = rust_spec::size::Sized<S>>, S> EncodeOwned for Box<R>
+    unsafe impl<R: TypeSpec<Repr = Unstable<RK>, Size = rust_spec::size::Sized<S>>, S, RK> EncodeOwned for Box<R>
     where
-        Self: TypeSpec<Repr = Unstable>,
+        Self: TypeSpec<Repr = Unstable<RK>>,
         R: EncodeOwned,
     {
         type Store = Box<R::Store>;
@@ -325,9 +324,9 @@ disjoint_impls! {
         }
     }
     #[cfg(feature = "alloc")]
-    unsafe impl<R: TypeSpec<Repr = Unstable, Size: Dst> + ?Sized> EncodeOwned for Box<R>
+    unsafe impl<R: TypeSpec<Repr = Unstable<RK>, Size: Dst> + ?Sized, RK> EncodeOwned for Box<R>
     where
-        Self: TypeSpec<Repr = Unstable>,
+        Self: TypeSpec<Repr = Unstable<RK>>,
         Self: ExternC<CType = <<R as StdToOwned>::Owned as ExternC>::CType>,
         R: StdToOwned<Owned: EncodeOwned>,
         Self: Into<<R as StdToOwned>::Owned>,
@@ -361,7 +360,7 @@ disjoint_impls! {
         }
     }
     #[cfg(feature = "alloc")]
-    unsafe impl<R: TypeSpec<Repr = Unstable> + EncodeOwned> EncodeOwned for Vec<R> {
+    unsafe impl<R: TypeSpec<Repr = Unstable<RK>> + EncodeOwned, RK> EncodeOwned for Vec<R> {
         type Store = Box<[R::Store]>;
 
         fn soft_encode<'itm>(self, store: &'itm mut Self::Store) -> Self::CType
@@ -541,7 +540,7 @@ disjoint_impls! {
             + CheckedTransmute<CType: Wide<Metadata = usize>>
             + Wide<Metadata = usize>
             + ?Sized,
-        Self: TypeSpec<Repr = Unstable>,
+        Self: TypeSpec<Repr = Unstable<NonRobust>>,
         <R as Wide>::Data: ExternC<CType = <<R as ExternC>::CType as Wide>::Data>,
     {
         type Store = ();
@@ -571,7 +570,7 @@ disjoint_impls! {
             + CheckedTransmute<CType: Wide<Metadata = usize>>
             + Wide<Metadata = usize>
             + ?Sized,
-        Self: TypeSpec<Repr = Unstable>,
+        Self: TypeSpec<Repr = Unstable<NonRobust>>,
         <R as Wide>::Data: ExternC<CType = <<R as ExternC>::CType as Wide>::Data>,
     {
         type Store = ();
@@ -593,10 +592,10 @@ disjoint_impls! {
             Some(unsafe { R::from_raw_parts(data, len) })
         }
     }
-    unsafe impl<'d, R: TypeSpec<Repr = Unstable, Size = rust_spec::size::Sized<S>, Mutability = Exclusive> + ToOwned<'d>, S> DecodeOwned<'d>
+    unsafe impl<'d, R: TypeSpec<Repr = Unstable<RK>, Size = rust_spec::size::Sized<S>, Mutability = Exclusive> + ToOwned<'d>, S, RK> DecodeOwned<'d>
         for &'d R
     where
-        Self: TypeSpec<Repr = Unstable>,
+        Self: TypeSpec<Repr = Unstable<RK>>,
         R: ExternC<CType: BorrowCast<AsConst: Copy> + Copy> + Borrow<Borrowed<'d>: DecodeOwned<'d>>,
         <R as Borrow>::Borrowed<'d>: ExternC<CType = <<R as ExternC>::CType as BorrowCast>::AsConst>,
     {
@@ -617,10 +616,10 @@ disjoint_impls! {
         }
     }
     #[cfg(feature = "alloc")]
-    unsafe impl<'d, R: TypeSpec<Repr = Unstable, Size = MetaSized<SliceLike>> + StdToOwned + ?Sized>
+    unsafe impl<'d, R: TypeSpec<Repr = Unstable<NonRobust>, Size = MetaSized<SliceLike>> + StdToOwned + ?Sized>
         DecodeOwned<'d> for &'d R
     where
-        Self: TypeSpec<Repr = Unstable> + ExternC<CType = CSlice<<<R as Wide>::Data as ExternC>::CType>>,
+        Self: TypeSpec<Repr = Unstable<NonRobust>> + ExternC<CType = CSlice<<<R as Wide>::Data as ExternC>::CType>>,
 
         // TODO: These bounds may not be necessary
         R: ExternC<CType: Wide<Metadata = usize>> + Wide<Metadata = usize>,
@@ -672,7 +671,7 @@ disjoint_impls! {
     }
     unsafe impl<'d, R: TypeSpec<Repr = Stable<K>, Size = MetaSized<SliceLike>> + ?Sized, K> DecodeOwned<'d> for &'d mut R
     where
-        Self: TypeSpec<Repr = Unstable>,
+        Self: TypeSpec<Repr = Unstable<NonRobust>>,
         R: CheckedTransmute<CType: Wide<Metadata = usize>> + Wide<Metadata = usize>,
         <R as Wide>::Data: ExternC<CType = <<R as ExternC>::CType as Wide>::Data>,
     {
@@ -697,10 +696,10 @@ disjoint_impls! {
             Some(unsafe { R::from_raw_parts_mut(data, len) })
         }
     }
-    unsafe impl<'d, R: TypeSpec<Repr = Unstable, Size = rust_spec::size::Sized<S>> + ToOwned<'d>, S> DecodeOwned<'d>
+    unsafe impl<'d, R: TypeSpec<Repr = Unstable<NonRobust>, Size = rust_spec::size::Sized<S>> + ToOwned<'d>, S> DecodeOwned<'d>
         for &'d mut R
     where
-        Self: TypeSpec<Repr = Unstable>,
+        Self: TypeSpec<Repr = Unstable<NonRobust>>,
         R: ExternC<CType: BorrowCast<AsConst: Copy> + Copy> + Borrow<Borrowed<'d>: DecodeOwned<'d>>,
         <R as Borrow>::Borrowed<'d>: ExternC<CType = <<R as ExternC>::CType as BorrowCast>::AsConst>,
     {
@@ -721,10 +720,10 @@ disjoint_impls! {
         }
     }
     #[cfg(feature = "alloc")]
-    unsafe impl<'d, R: TypeSpec<Repr = Unstable, Size = MetaSized<SliceLike>> + StdToOwned + ?Sized>
+    unsafe impl<'d, R: TypeSpec<Repr = Unstable<NonRobust>, Size = MetaSized<SliceLike>> + StdToOwned + ?Sized>
         DecodeOwned<'d> for &'d mut R
     where
-        Self: TypeSpec<Repr = Unstable> + ExternC<CType: Sized>,
+        Self: TypeSpec<Repr = Unstable<NonRobust>> + ExternC<CType: Sized>,
         R: Wide<Metadata = usize>,
         <R as Wide>::Data: DecodeOwned<'d>,
     {
@@ -760,7 +759,7 @@ disjoint_impls! {
     #[cfg(feature = "alloc")]
     unsafe impl<'d, R: TypeSpec<Repr = Stable<K>, Size = MetaSized<SliceLike>> + ?Sized, K> DecodeOwned<'d> for Box<R>
     where
-        Self: TypeSpec<Repr = Unstable>,
+        Self: TypeSpec<Repr = Unstable<NonRobust>>,
         R: CheckedTransmute<CType: Wide<Metadata = usize>> + Wide<Metadata = usize>,
         <R as Wide>::Data: ExternC<CType = <<R as ExternC>::CType as Wide>::Data>,
     {
@@ -786,10 +785,10 @@ disjoint_impls! {
         }
     }
     #[cfg(feature = "alloc")]
-    unsafe impl<'d, R: TypeSpec<Repr = Unstable, Size = rust_spec::size::Sized<S>>, S> DecodeOwned<'d>
+    unsafe impl<'d, R: TypeSpec<Repr = Unstable<NonRobust>, Size = rust_spec::size::Sized<S>>, S> DecodeOwned<'d>
         for Box<R>
     where
-        Self: TypeSpec<Repr = Unstable>,
+        Self: TypeSpec<Repr = Unstable<NonRobust>>,
         R: DecodeOwned<'d, CType: Sized>,
     {
         type Store = Box<R::Store>;
@@ -805,10 +804,10 @@ disjoint_impls! {
         }
     }
     #[cfg(feature = "alloc")]
-    unsafe impl<'d, R: TypeSpec<Repr = Unstable, Size: Dst> + StdToOwned + ?Sized>
+    unsafe impl<'d, R: TypeSpec<Repr = Unstable<NonRobust>, Size: Dst> + StdToOwned + ?Sized>
         DecodeOwned<'d> for Box<R>
     where
-        Self: TypeSpec<Repr = Unstable> + ExternC<CType = <<R as StdToOwned>::Owned as ExternC>::CType>,
+        Self: TypeSpec<Repr = Unstable<NonRobust>> + ExternC<CType = <<R as StdToOwned>::Owned as ExternC>::CType>,
         <R as StdToOwned>::Owned: DecodeOwned<'d> + Into<Self>,
     {
         type Store = <R::Owned as DecodeOwned<'d>>::Store;
@@ -845,7 +844,7 @@ disjoint_impls! {
         }
     }
     #[cfg(feature = "alloc")]
-    unsafe impl<'d, R: TypeSpec<Repr = Unstable> + DecodeOwned<'d>> DecodeOwned<'d> for Vec<R> {
+    unsafe impl<'d, R: TypeSpec<Repr = Unstable<RK>> + DecodeOwned<'d>, RK> DecodeOwned<'d> for Vec<R> {
         type Store = Box<[R::Store]>;
 
         unsafe fn soft_decode<'itm: 'd>(

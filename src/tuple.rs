@@ -498,31 +498,26 @@ mod tests {
         );
         assert_impl_all!(&mut (u8, u8, u8):
             StableNiche<CType = *mut ReprCTuple3<u8, u8, u8>>,
-            Decode<'static>,
             Encode,
         );
         #[cfg(feature = "alloc")]
         assert_impl_all!(Box<(u8, u8, u8)>:
             StableNiche<CType = CBox<ReprCTuple3<u8, u8, u8>>>,
-            DecodeOwned<'static>,
             EncodeOwned,
         );
         #[cfg(feature = "alloc")]
         assert_impl_all!(&[(u8, u8, u8)]:
             Niche<CType = CSlice<ReprCTuple3<u8, u8, u8>>>,
-            Decode<'static>,
             Encode,
         );
         #[cfg(feature = "alloc")]
         assert_impl_all!(&mut [(u8, u8, u8)]:
             Niche<CType = CSliceMut<ReprCTuple3<u8, u8, u8>>>,
-            Decode<'static>,
             Encode,
         );
         #[cfg(feature = "alloc")]
         assert_impl_all!(Box<[(u8, u8, u8)]>:
             Niche<CType = CBoxedSlice<ReprCTuple3<u8, u8, u8>>>,
-            DecodeOwned<'static>,
             EncodeOwned,
         );
         #[cfg(feature = "alloc")]

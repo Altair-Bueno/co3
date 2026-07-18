@@ -34,7 +34,7 @@ use rust_spec::{
     TypeSpec,
     mutability::{Exclusive, Interior},
     niche::{WithNiche, WithoutNiche},
-    repr::{Stable, Unstable},
+    repr::{NonRobust, Stable, Unstable},
     size::{ExternTypeLike, MetaSized, NonZst, SliceLike, Wide, Zst},
 };
 // TODO: I don't like having to reexport macros from other crates
@@ -139,12 +139,11 @@ disjoint_impls! {
     {
         type CType = *mut R::CType;
     }
-    impl<R, K> ExternC for &R
+    impl<R: ?Sized, K> ExternC for &R
     where
         R: TypeSpec<Repr = Stable<K>, Size = MetaSized<SliceLike>, Mutability = Exclusive>
-            + Wide<Data: ExternC, Metadata = usize>
-            + ?Sized,
-        Self: TypeSpec<Repr = Unstable>,
+            + Wide<Data: ExternC, Metadata = usize>,
+        Self: TypeSpec<Repr = Unstable<NonRobust>>,
         <<R as Wide>::Data as ExternC>::CType: Sized,
     {
         type CType = CSlice<<R::Data as ExternC>::CType>;
@@ -154,15 +153,16 @@ disjoint_impls! {
         R: TypeSpec<Repr = Stable<K>, Size = MetaSized<SliceLike>, Mutability = Interior>
             + Wide<Data: ExternC, Metadata = usize>
             + ?Sized,
-        Self: TypeSpec<Repr = Unstable>,
+        Self: TypeSpec<Repr = Unstable<NonRobust>>,
         <<R as Wide>::Data as ExternC>::CType: Sized,
     {
         type CType = CSliceMut<<R::Data as ExternC>::CType>;
     }
     #[cfg(feature = "alloc")]
-    impl<R: TypeSpec<Repr = Unstable, Size = MetaSized<K>> + ?Sized, K> ExternC for &R
+    impl<R, K, RK> ExternC for &R
     where
-        Self: TypeSpec<Repr = Unstable>,
+        R: TypeSpec<Repr = Unstable<RK>, Size = MetaSized<K>> + ?Sized,
+        Self: TypeSpec<Repr = Unstable<RK>>,
         R: ToOwned<Owned: ExternC<CType: BorrowCast>>,
     {
         type CType = <<R::Owned as ExternC>::CType as BorrowCast>::AsConst;
@@ -176,16 +176,17 @@ disjoint_impls! {
     }
     impl<R: TypeSpec<Repr = Stable<K>, Size = MetaSized<SliceLike>> + ?Sized, K> ExternC for &mut R
     where
-        Self: TypeSpec<Repr = Unstable>,
+        Self: TypeSpec<Repr = Unstable<NonRobust>>,
         R: Wide<Data: ExternC, Metadata = usize>,
         <<R as Wide>::Data as ExternC>::CType: Sized,
     {
         type CType = CSliceMut<<R::Data as ExternC>::CType>;
     }
     #[cfg(feature = "alloc")]
-    impl<R: TypeSpec<Repr = Unstable, Size = MetaSized<K>> + ?Sized, K> ExternC for &mut R
+    impl<R, K, RK> ExternC for &mut R
     where
-        Self: TypeSpec<Repr = Unstable>,
+        R: TypeSpec<Repr = Unstable<RK>, Size = MetaSized<K>> + ?Sized,
+        Self: TypeSpec<Repr = Unstable<RK>>,
         R: ToOwned<Owned: ExternC<CType: BorrowCastMut>>,
     {
         type CType = <<R::Owned as ExternC>::CType as BorrowCastMut>::AsMut;
@@ -202,16 +203,17 @@ disjoint_impls! {
     #[cfg(feature = "alloc")]
     impl<R: TypeSpec<Repr = Stable<K>, Size = MetaSized<SliceLike>> + ?Sized, K> ExternC for Box<R>
     where
-        Self: TypeSpec<Repr = Unstable>,
+        Self: TypeSpec<Repr = Unstable<NonRobust>>,
         R: Wide<Data: ExternC, Metadata = usize>,
         <<R as Wide>::Data as ExternC>::CType: Sized,
     {
         type CType = CBoxedSlice<<R::Data as ExternC>::CType>;
     }
     #[cfg(feature = "alloc")]
-    impl<R: TypeSpec<Repr = Unstable, Size = MetaSized<K>> + ?Sized, K> ExternC for Box<R>
+    impl<R, K, RK> ExternC for Box<R>
     where
-        Self: TypeSpec<Repr = Unstable>,
+        R: TypeSpec<Repr = Unstable<RK>, Size = MetaSized<K>> + ?Sized,
+        Self: TypeSpec<Repr = Unstable<RK>>,
         R: ToOwned<Owned: ExternC>,
     {
         type CType = <R::Owned as ExternC>::CType;
@@ -230,9 +232,8 @@ disjoint_impls! {
     impl<
         R: TypeSpec<Size = rust_spec::size::Sized<K>> + ExternC,
         E: TypeSpec<Size = rust_spec::size::Sized<K>> + ExternC,
-        K
-    >
-        ExternC for Result<R, E>
+        K,
+    > ExternC for Result<R, E>
     where
         // TODO: There is an error in disjoint_impls! that doesn't allow to use
         // `Extern<CType: Copy>` constraint. Fix that! Check other Result sites
@@ -245,8 +246,7 @@ disjoint_impls! {
         R: TypeSpec<Size = rust_spec::size::Sized<NonZst>, Niche = WithNiche<N>> + ExternC,
         E: TypeSpec<Size = rust_spec::size::Sized<Zst>>,
         N,
-    >
-        ExternC for Result<R, E>
+    > ExternC for Result<R, E>
     {
         type CType = R::CType;
     }
@@ -254,8 +254,7 @@ disjoint_impls! {
         R: TypeSpec<Size = rust_spec::size::Sized<Zst>>,
         E: TypeSpec<Size = rust_spec::size::Sized<NonZst>, Niche = WithNiche<N>> + ExternC,
         N,
-    >
-        ExternC for Result<R, E>
+    > ExternC for Result<R, E>
     {
         type CType = E::CType;
     }
@@ -273,7 +272,7 @@ disjoint_impls! {
     #[cfg(feature = "alloc")]
     impl<R: TypeSpec<Repr = Stable<K>> + ?Sized, K> Encode for Box<R>
     where
-        Self: TypeSpec<Repr = Unstable> + EncodeOwned,
+        Self: TypeSpec<Repr = Unstable<NonRobust>> + EncodeOwned,
     {}
 }
 
@@ -289,7 +288,7 @@ disjoint_impls! {
     #[cfg(feature = "alloc")]
     impl<'d, R: TypeSpec<Repr = Stable<K>> + ?Sized, K> Decode<'d> for Box<R>
     where
-        Self: TypeSpec<Repr = Unstable> + DecodeOwned<'d>,
+        Self: TypeSpec<Repr = Unstable<NonRobust>> + DecodeOwned<'d>,
     {}
 }
 
@@ -431,9 +430,9 @@ mod tests {
     #[test]
     #[cfg(feature = "alloc")]
     fn encode_stored_ref_mut_slice() {
-        use tuple::ReprCTuple1;
+        use tuple::ReprCTuple2;
 
-        let mut tuples = [(1_u32,)];
+        let mut tuples = [(1_u32, true)];
         let slice_ref: &mut [_] = &mut tuples;
 
         {
@@ -442,7 +441,7 @@ mod tests {
             let encoded = soft_encode(slice_ref, &mut store);
             let c_slice = unsafe { encoded.into_rust().unwrap() };
 
-            c_slice[0] = ReprCTuple1(100);
+            c_slice[0] = ReprCTuple2(100, 1);
             store.sync().unwrap();
         }
 
@@ -455,15 +454,15 @@ mod tests {
     // from one side to the other: https://github.com/mversic/co3/issues/182
     fn encode_stored_mut_box_allows_pointer_replacement() {
         use boxed::CBox;
-        use tuple::ReprCTuple1;
+        use tuple::ReprCTuple2;
 
-        let mut value = Box::new((1_u32,));
+        let mut value = Box::new((1_u32, true));
 
         {
             let mut store = Box::default();
             let encoded = soft_encode(&mut value, &mut *store);
             let original_data = unsafe { (*encoded).data };
-            let replacement = CBox::from_box(Box::new(ReprCTuple1(100)));
+            let replacement = CBox::from_box(Box::new(ReprCTuple2(100, 1)));
             let replacement_data = replacement.data;
 
             unsafe {
@@ -474,20 +473,21 @@ mod tests {
             store.sync().unwrap();
         }
 
-        assert_eq!(*value, (100,));
+        assert_eq!(*value, (100, true));
     }
 
     #[test]
     #[cfg(feature = "alloc")]
     fn decode_stored_ref_mut_slice() {
-        use tuple::ReprCTuple1;
+        use tuple::ReprCTuple2;
 
-        let mut tuples = [ReprCTuple1(10)];
+        let mut tuples = [ReprCTuple2(10, 1)];
         let c_slice = CSliceMut::from_slice(&mut tuples);
 
         {
             let mut store = Box::default();
-            let decoded = unsafe { soft_decode::<&mut [(_,)]>(c_slice, &mut store) }.unwrap();
+            let decoded =
+                unsafe { soft_decode::<&mut [(u32, bool)]>(c_slice, &mut store) }.unwrap();
 
             decoded[0].0 = 100;
             store.sync().unwrap();

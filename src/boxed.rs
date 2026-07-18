@@ -4,6 +4,7 @@ use alloc::boxed::Box;
 use core::ptr::NonNull;
 use rust_spec::{
     TypeSpec,
+    mutability::{Exclusive, MutabilityFamily},
     niche::{NicheFamily, WithoutNiche},
     repr::ReprFamily,
     size::SizeFamily,
@@ -244,6 +245,9 @@ macro_rules! impl_boxed_carrier {
         }
         impl<C> NicheFamily for $ty<C> {
             type Kind = WithoutNiche;
+        }
+        impl<C> MutabilityFamily for $ty<C> {
+            type Kind = Exclusive;
         }
 
         unsafe impl<C> Borrow for $ty<C> {

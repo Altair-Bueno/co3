@@ -5,17 +5,17 @@ error[E0271]: type mismatch resolving `<CReprCZst as SizeFamily>::Kind == Sized<
    |                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^ type mismatch resolving `<CReprCZst as SizeFamily>::Kind == Sized<NonZst>`
    |
 note: expected this to be `co3::rust_spec::size::Sized<NonZst>`
-  --> tests/ui_fail/zst_c_fn_arg.rs:39:35
+  --> tests/ui_fail/zst_c_fn_arg.rs:39:33
    |
 39 | #[derive(Clone, Copy, TypeSpec, ReprC)]
-   |                                   ^^^^^
+   |                                 ^^^^^
    = note: expected struct `co3::rust_spec::size::Sized<NonZst>`
               found struct `co3::rust_spec::size::Sized<Zst>`
 note: required for `CReprCZst` to implement `CFnArg`
-  --> tests/ui_fail/zst_c_fn_arg.rs:39:35
+  --> tests/ui_fail/zst_c_fn_arg.rs:39:33
    |
 39 | #[derive(Clone, Copy, TypeSpec, ReprC)]
-   |                                   ^^^^^ type parameter would need to implement `CFnArg`
+   |                                 ^^^^^ type parameter would need to implement `CFnArg`
    = help: consider manually implementing `CFnArg` to avoid undesired bounds
    = note: associated types for the current `impl` cannot be restricted in `where` clauses
    = note: associated types for the current `impl` cannot be restricted in `where` clauses
@@ -33,17 +33,17 @@ error[E0271]: type mismatch resolving `<CReprCZst as SizeFamily>::Kind == Sized<
    |                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^ type mismatch resolving `<CReprCZst as SizeFamily>::Kind == Sized<NonZst>`
    |
 note: expected this to be `co3::rust_spec::size::Sized<NonZst>`
-  --> tests/ui_fail/zst_c_fn_arg.rs:39:35
+  --> tests/ui_fail/zst_c_fn_arg.rs:39:33
    |
 39 | #[derive(Clone, Copy, TypeSpec, ReprC)]
-   |                                   ^^^^^
+   |                                 ^^^^^
    = note: expected struct `co3::rust_spec::size::Sized<NonZst>`
               found struct `co3::rust_spec::size::Sized<Zst>`
 note: required for `CReprCZst` to implement `CFnArg`
-  --> tests/ui_fail/zst_c_fn_arg.rs:39:35
+  --> tests/ui_fail/zst_c_fn_arg.rs:39:33
    |
 39 | #[derive(Clone, Copy, TypeSpec, ReprC)]
-   |                                   ^^^^^ type parameter would need to implement `CFnArg`
+   |                                 ^^^^^ type parameter would need to implement `CFnArg`
    = help: consider manually implementing `CFnArg` to avoid undesired bounds
    = note: associated types for the current `impl` cannot be restricted in `where` clauses
    = note: associated types for the current `impl` cannot be restricted in `where` clauses
@@ -62,17 +62,17 @@ error[E0271]: type mismatch resolving `<CTransparentZst as SizeFamily>::Kind == 
    |                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ type mismatch resolving `<CTransparentZst as SizeFamily>::Kind == Sized<NonZst>`
    |
 note: expected this to be `co3::rust_spec::size::Sized<NonZst>`
-  --> tests/ui_fail/zst_c_fn_arg.rs:46:35
+  --> tests/ui_fail/zst_c_fn_arg.rs:46:33
    |
 46 | #[derive(Clone, Copy, TypeSpec, ReprC)]
-   |                                   ^^^^^
+   |                                 ^^^^^
    = note: expected struct `co3::rust_spec::size::Sized<NonZst>`
               found struct `co3::rust_spec::size::Sized<Zst>`
 note: required for `CTransparentZst` to implement `CFnArg`
-  --> tests/ui_fail/zst_c_fn_arg.rs:46:35
+  --> tests/ui_fail/zst_c_fn_arg.rs:46:33
    |
 46 | #[derive(Clone, Copy, TypeSpec, ReprC)]
-   |                                   ^^^^^ type parameter would need to implement `CFnArg`
+   |                                 ^^^^^ type parameter would need to implement `CFnArg`
    = help: consider manually implementing `CFnArg` to avoid undesired bounds
    = note: associated types for the current `impl` cannot be restricted in `where` clauses
    = note: associated types for the current `impl` cannot be restricted in `where` clauses
@@ -90,17 +90,17 @@ error[E0271]: type mismatch resolving `<CTransparentZst as SizeFamily>::Kind == 
    |                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ type mismatch resolving `<CTransparentZst as SizeFamily>::Kind == Sized<NonZst>`
    |
 note: expected this to be `co3::rust_spec::size::Sized<NonZst>`
-  --> tests/ui_fail/zst_c_fn_arg.rs:46:35
+  --> tests/ui_fail/zst_c_fn_arg.rs:46:33
    |
 46 | #[derive(Clone, Copy, TypeSpec, ReprC)]
-   |                                   ^^^^^
+   |                                 ^^^^^
    = note: expected struct `co3::rust_spec::size::Sized<NonZst>`
               found struct `co3::rust_spec::size::Sized<Zst>`
 note: required for `CTransparentZst` to implement `CFnArg`
-  --> tests/ui_fail/zst_c_fn_arg.rs:46:35
+  --> tests/ui_fail/zst_c_fn_arg.rs:46:33
    |
 46 | #[derive(Clone, Copy, TypeSpec, ReprC)]
-   |                                   ^^^^^ type parameter would need to implement `CFnArg`
+   |                                 ^^^^^ type parameter would need to implement `CFnArg`
    = help: consider manually implementing `CFnArg` to avoid undesired bounds
    = note: associated types for the current `impl` cannot be restricted in `where` clauses
    = note: associated types for the current `impl` cannot be restricted in `where` clauses
@@ -119,17 +119,17 @@ error[E0271]: type mismatch resolving `<CNoReprZst as SizeFamily>::Kind == Sized
    |                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ type mismatch resolving `<CNoReprZst as SizeFamily>::Kind == Sized<NonZst>`
    |
 note: expected this to be `co3::rust_spec::size::Sized<NonZst>`
-  --> tests/ui_fail/zst_c_fn_arg.rs:52:35
+  --> tests/ui_fail/zst_c_fn_arg.rs:52:33
    |
 52 | #[derive(Clone, Copy, TypeSpec, ReprC)]
-   |                                   ^^^^^
+   |                                 ^^^^^
    = note: expected struct `co3::rust_spec::size::Sized<NonZst>`
               found struct `co3::rust_spec::size::Sized<Zst>`
 note: required for `CNoReprZst` to implement `CFnArg`
-  --> tests/ui_fail/zst_c_fn_arg.rs:52:35
+  --> tests/ui_fail/zst_c_fn_arg.rs:52:33
    |
 52 | #[derive(Clone, Copy, TypeSpec, ReprC)]
-   |                                   ^^^^^ type parameter would need to implement `CFnArg`
+   |                                 ^^^^^ type parameter would need to implement `CFnArg`
    = help: consider manually implementing `CFnArg` to avoid undesired bounds
    = note: associated types for the current `impl` cannot be restricted in `where` clauses
    = note: associated types for the current `impl` cannot be restricted in `where` clauses
@@ -147,17 +147,17 @@ error[E0271]: type mismatch resolving `<CNoReprZst as SizeFamily>::Kind == Sized
    |                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ type mismatch resolving `<CNoReprZst as SizeFamily>::Kind == Sized<NonZst>`
    |
 note: expected this to be `co3::rust_spec::size::Sized<NonZst>`
-  --> tests/ui_fail/zst_c_fn_arg.rs:52:35
+  --> tests/ui_fail/zst_c_fn_arg.rs:52:33
    |
 52 | #[derive(Clone, Copy, TypeSpec, ReprC)]
-   |                                   ^^^^^
+   |                                 ^^^^^
    = note: expected struct `co3::rust_spec::size::Sized<NonZst>`
               found struct `co3::rust_spec::size::Sized<Zst>`
 note: required for `CNoReprZst` to implement `CFnArg`
-  --> tests/ui_fail/zst_c_fn_arg.rs:52:35
+  --> tests/ui_fail/zst_c_fn_arg.rs:52:33
    |
 52 | #[derive(Clone, Copy, TypeSpec, ReprC)]
-   |                                   ^^^^^ type parameter would need to implement `CFnArg`
+   |                                 ^^^^^ type parameter would need to implement `CFnArg`
    = help: consider manually implementing `CFnArg` to avoid undesired bounds
    = note: associated types for the current `impl` cannot be restricted in `where` clauses
    = note: associated types for the current `impl` cannot be restricted in `where` clauses
@@ -176,17 +176,17 @@ error[E0271]: type mismatch resolving `<CParamReprCZst<()> as SizeFamily>::Kind 
    |                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ type mismatch resolving `<CParamReprCZst<()> as SizeFamily>::Kind == Sized<NonZst>`
    |
 note: expected this to be `co3::rust_spec::size::Sized<NonZst>`
-  --> tests/ui_fail/zst_c_fn_arg.rs:3:35
+  --> tests/ui_fail/zst_c_fn_arg.rs:3:33
    |
  3 | #[derive(Clone, Copy, TypeSpec, ReprC)]
-   |                                   ^^^^^
+   |                                 ^^^^^
    = note: expected struct `co3::rust_spec::size::Sized<NonZst>`
               found struct `co3::rust_spec::size::Sized<Zst>`
 note: required for `CParamReprCZst<()>` to implement `CFnArg`
-  --> tests/ui_fail/zst_c_fn_arg.rs:3:35
+  --> tests/ui_fail/zst_c_fn_arg.rs:3:33
    |
  3 | #[derive(Clone, Copy, TypeSpec, ReprC)]
-   |                                   ^^^^^ type parameter would need to implement `CFnArg`
+   |                                 ^^^^^ type parameter would need to implement `CFnArg`
    = help: consider manually implementing `CFnArg` to avoid undesired bounds
    = note: associated types for the current `impl` cannot be restricted in `where` clauses
    = note: associated types for the current `impl` cannot be restricted in `where` clauses
@@ -205,17 +205,17 @@ error[E0271]: type mismatch resolving `<CParamReprCZst<()> as SizeFamily>::Kind 
    |                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ type mismatch resolving `<CParamReprCZst<()> as SizeFamily>::Kind == Sized<NonZst>`
    |
 note: expected this to be `co3::rust_spec::size::Sized<NonZst>`
-  --> tests/ui_fail/zst_c_fn_arg.rs:3:35
+  --> tests/ui_fail/zst_c_fn_arg.rs:3:33
    |
  3 | #[derive(Clone, Copy, TypeSpec, ReprC)]
-   |                                   ^^^^^
+   |                                 ^^^^^
    = note: expected struct `co3::rust_spec::size::Sized<NonZst>`
               found struct `co3::rust_spec::size::Sized<Zst>`
 note: required for `CParamReprCZst<()>` to implement `CFnArg`
-  --> tests/ui_fail/zst_c_fn_arg.rs:3:35
+  --> tests/ui_fail/zst_c_fn_arg.rs:3:33
    |
  3 | #[derive(Clone, Copy, TypeSpec, ReprC)]
-   |                                   ^^^^^ type parameter would need to implement `CFnArg`
+   |                                 ^^^^^ type parameter would need to implement `CFnArg`
    = help: consider manually implementing `CFnArg` to avoid undesired bounds
    = note: associated types for the current `impl` cannot be restricted in `where` clauses
    = note: associated types for the current `impl` cannot be restricted in `where` clauses
@@ -235,17 +235,17 @@ error[E0271]: type mismatch resolving `<CParamTransparentZst<()> as SizeFamily>:
    |                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ type mismatch resolving `<CParamTransparentZst<()> as SizeFamily>::Kind == Sized<NonZst>`
    |
 note: expected this to be `co3::rust_spec::size::Sized<NonZst>`
-  --> tests/ui_fail/zst_c_fn_arg.rs:10:35
+  --> tests/ui_fail/zst_c_fn_arg.rs:10:33
    |
 10 | #[derive(Clone, Copy, TypeSpec, ReprC)]
-   |                                   ^^^^^
+   |                                 ^^^^^
    = note: expected struct `co3::rust_spec::size::Sized<NonZst>`
               found struct `co3::rust_spec::size::Sized<Zst>`
 note: required for `CParamTransparentZst<()>` to implement `CFnArg`
-  --> tests/ui_fail/zst_c_fn_arg.rs:10:35
+  --> tests/ui_fail/zst_c_fn_arg.rs:10:33
    |
 10 | #[derive(Clone, Copy, TypeSpec, ReprC)]
-   |                                   ^^^^^ type parameter would need to implement `CFnArg`
+   |                                 ^^^^^ type parameter would need to implement `CFnArg`
    = help: consider manually implementing `CFnArg` to avoid undesired bounds
    = note: associated types for the current `impl` cannot be restricted in `where` clauses
    = note: associated types for the current `impl` cannot be restricted in `where` clauses
@@ -264,17 +264,17 @@ error[E0271]: type mismatch resolving `<CParamTransparentZst<()> as SizeFamily>:
    |                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ type mismatch resolving `<CParamTransparentZst<()> as SizeFamily>::Kind == Sized<NonZst>`
    |
 note: expected this to be `co3::rust_spec::size::Sized<NonZst>`
-  --> tests/ui_fail/zst_c_fn_arg.rs:10:35
+  --> tests/ui_fail/zst_c_fn_arg.rs:10:33
    |
 10 | #[derive(Clone, Copy, TypeSpec, ReprC)]
-   |                                   ^^^^^
+   |                                 ^^^^^
    = note: expected struct `co3::rust_spec::size::Sized<NonZst>`
               found struct `co3::rust_spec::size::Sized<Zst>`
 note: required for `CParamTransparentZst<()>` to implement `CFnArg`
-  --> tests/ui_fail/zst_c_fn_arg.rs:10:35
+  --> tests/ui_fail/zst_c_fn_arg.rs:10:33
    |
 10 | #[derive(Clone, Copy, TypeSpec, ReprC)]
-   |                                   ^^^^^ type parameter would need to implement `CFnArg`
+   |                                 ^^^^^ type parameter would need to implement `CFnArg`
    = help: consider manually implementing `CFnArg` to avoid undesired bounds
    = note: associated types for the current `impl` cannot be restricted in `where` clauses
    = note: associated types for the current `impl` cannot be restricted in `where` clauses
@@ -294,17 +294,17 @@ error[E0271]: type mismatch resolving `<CParamNoReprZst<()> as SizeFamily>::Kind
    |                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ type mismatch resolving `<CParamNoReprZst<()> as SizeFamily>::Kind == Sized<NonZst>`
    |
 note: expected this to be `co3::rust_spec::size::Sized<NonZst>`
-  --> tests/ui_fail/zst_c_fn_arg.rs:33:35
+  --> tests/ui_fail/zst_c_fn_arg.rs:33:33
    |
 33 | #[derive(Clone, Copy, TypeSpec, ReprC)]
-   |                                   ^^^^^
+   |                                 ^^^^^
    = note: expected struct `co3::rust_spec::size::Sized<NonZst>`
               found struct `co3::rust_spec::size::Sized<Zst>`
 note: required for `CParamNoReprZst<()>` to implement `CFnArg`
-  --> tests/ui_fail/zst_c_fn_arg.rs:33:35
+  --> tests/ui_fail/zst_c_fn_arg.rs:33:33
    |
 33 | #[derive(Clone, Copy, TypeSpec, ReprC)]
-   |                                   ^^^^^ type parameter would need to implement `CFnArg`
+   |                                 ^^^^^ type parameter would need to implement `CFnArg`
    = help: consider manually implementing `CFnArg` to avoid undesired bounds
    = note: associated types for the current `impl` cannot be restricted in `where` clauses
    = note: associated types for the current `impl` cannot be restricted in `where` clauses
@@ -323,17 +323,17 @@ error[E0271]: type mismatch resolving `<CParamNoReprZst<()> as SizeFamily>::Kind
    |                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ type mismatch resolving `<CParamNoReprZst<()> as SizeFamily>::Kind == Sized<NonZst>`
    |
 note: expected this to be `co3::rust_spec::size::Sized<NonZst>`
-  --> tests/ui_fail/zst_c_fn_arg.rs:33:35
+  --> tests/ui_fail/zst_c_fn_arg.rs:33:33
    |
 33 | #[derive(Clone, Copy, TypeSpec, ReprC)]
-   |                                   ^^^^^
+   |                                 ^^^^^
    = note: expected struct `co3::rust_spec::size::Sized<NonZst>`
               found struct `co3::rust_spec::size::Sized<Zst>`
 note: required for `CParamNoReprZst<()>` to implement `CFnArg`
-  --> tests/ui_fail/zst_c_fn_arg.rs:33:35
+  --> tests/ui_fail/zst_c_fn_arg.rs:33:33
    |
 33 | #[derive(Clone, Copy, TypeSpec, ReprC)]
-   |                                   ^^^^^ type parameter would need to implement `CFnArg`
+   |                                 ^^^^^ type parameter would need to implement `CFnArg`
    = help: consider manually implementing `CFnArg` to avoid undesired bounds
    = note: associated types for the current `impl` cannot be restricted in `where` clauses
    = note: associated types for the current `impl` cannot be restricted in `where` clauses
