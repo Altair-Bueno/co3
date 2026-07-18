@@ -7,6 +7,7 @@ extern crate self as co3_types;
 #[cfg(feature = "derive")]
 pub use co3_types_derive::TypeFamily;
 
+pub mod mutability;
 pub mod niche;
 mod primitives;
 pub mod repr;
@@ -23,10 +24,10 @@ mod tests {
     use static_assertions::assert_impl_all;
 
     use super::*;
-    use crate::{
-        co3_types::niche::{NicheFamily, WithCustomNiche, WithStableNiche, WithoutNiche},
-        co3_types::repr::{NonRobust, Stable, ReprFamily, Unstable},
-        co3_types::size::{NonZst, SizeFamily, Sized as Co3Sized},
+    use crate::co3_types::{
+        niche::{NicheFamily, WithCustomNiche, WithStableNiche, WithoutNiche},
+        repr::{NonRobust, ReprFamily, Stable, Unstable},
+        size::{NonZst, SizeFamily, Sized as Co3Sized},
     };
 
     #[test]

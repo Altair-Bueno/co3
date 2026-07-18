@@ -10,13 +10,14 @@ use core::{
     ptr::NonNull,
 };
 
-#[cfg(feature = "alloc")]
-use crate::{niche::WithCustomNiche, repr::Unstable};
 use crate::{
+    mutability::{Exclusive, Interior, MutabilityFamily},
     niche::{NicheFamily, WithStableNiche, WithoutNiche},
-    repr::{NonRobust, Stable, ReprFamily, Robust},
+    repr::{NonRobust, ReprFamily, Robust, Stable},
     size::{MetaSized, SizeFamily, SliceLike},
 };
+#[cfg(feature = "alloc")]
+use crate::{niche::WithCustomNiche, repr::Unstable};
 
 macro_rules! non_zero_derive {
     ($($primitive:ty),+ $(,)?) => {$(
@@ -28,6 +29,9 @@ macro_rules! non_zero_derive {
         }
         impl NicheFamily for NonZero<$primitive> {
             type Kind = WithStableNiche;
+        }
+        impl MutabilityFamily for NonZero<$primitive> {
+            type Kind = Exclusive;
         })+
     }
 }
@@ -47,6 +51,9 @@ unsafe impl SizeFamily for c_void {
 impl NicheFamily for c_void {
     type Kind = WithoutNiche;
 }
+impl MutabilityFamily for c_void {
+    type Kind = Exclusive;
+}
 
 impl ReprFamily for () {
     type Kind = Stable<Robust>;
@@ -56,6 +63,9 @@ unsafe impl SizeFamily for () {
 }
 impl NicheFamily for () {
     type Kind = WithoutNiche;
+}
+impl MutabilityFamily for () {
+    type Kind = Exclusive;
 }
 
 impl<T: ?Sized> ReprFamily for PhantomData<T> {
@@ -67,6 +77,9 @@ unsafe impl<T: ?Sized> SizeFamily for PhantomData<T> {
 impl<T: ?Sized> NicheFamily for PhantomData<T> {
     type Kind = WithoutNiche;
 }
+impl<T: ?Sized> MutabilityFamily for PhantomData<T> {
+    type Kind = Exclusive;
+}
 
 impl<T: ReprFamily<Kind: Add<Stable<NonRobust>>> + ?Sized> ReprFamily for NonNull<T> {
     type Kind = <T::Kind as Add<Stable<NonRobust>>>::Output;
@@ -77,12 +90,18 @@ unsafe impl<T: ?Sized> SizeFamily for NonNull<T> {
 impl<T: ?Sized> NicheFamily for NonNull<T> {
     type Kind = WithStableNiche;
 }
+impl<T: ?Sized> MutabilityFamily for NonNull<T> {
+    type Kind = Exclusive;
+}
 
 impl ReprFamily for str {
     type Kind = Stable<NonRobust>;
 }
 unsafe impl SizeFamily for str {
     type Kind = MetaSized<SliceLike>;
+}
+impl MutabilityFamily for str {
+    type Kind = Exclusive;
 }
 
 #[cfg(feature = "alloc")]
@@ -97,6 +116,10 @@ unsafe impl SizeFamily for String {
 impl NicheFamily for String {
     type Kind = WithCustomNiche;
 }
+#[cfg(feature = "alloc")]
+impl MutabilityFamily for String {
+    type Kind = Exclusive;
+}
 
 impl<T: ReprFamily + ?Sized> ReprFamily for UnsafeCell<T> {
     type Kind = T::Kind;
@@ -106,6 +129,9 @@ unsafe impl<T: SizeFamily + ?Sized> SizeFamily for UnsafeCell<T> {
 }
 impl<T: ?Sized> NicheFamily for UnsafeCell<T> {
     type Kind = WithoutNiche;
+}
+impl<T: ?Sized> MutabilityFamily for UnsafeCell<T> {
+    type Kind = Interior;
 }
 
 impl<T: ReprFamily + ?Sized> ReprFamily for Cell<T> {
@@ -117,6 +143,9 @@ unsafe impl<T: SizeFamily + ?Sized> SizeFamily for Cell<T> {
 impl<T: ?Sized> NicheFamily for Cell<T> {
     type Kind = WithoutNiche;
 }
+impl<T: ?Sized> MutabilityFamily for Cell<T> {
+    type Kind = Interior;
+}
 
 impl<T: ReprFamily + ?Sized> ReprFamily for ManuallyDrop<T> {
     type Kind = T::Kind;
@@ -125,6 +154,9 @@ unsafe impl<T: SizeFamily + ?Sized> SizeFamily for ManuallyDrop<T> {
     type Kind = T::Kind;
 }
 impl<T: NicheFamily + ?Sized> NicheFamily for ManuallyDrop<T> {
+    type Kind = T::Kind;
+}
+impl<T: MutabilityFamily + ?Sized> MutabilityFamily for ManuallyDrop<T> {
     type Kind = T::Kind;
 }
 

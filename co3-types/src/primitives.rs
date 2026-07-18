@@ -1,8 +1,9 @@
 //! Logic related to the conversion of primitives to and from FFI-compatible representation
 
 use crate::{
+    mutability::{Exclusive, MutabilityFamily},
     niche::{NicheFamily, WithCustomNiche, WithoutNiche},
-    repr::{NonRobust, Stable, ReprFamily, Robust},
+    repr::{NonRobust, ReprFamily, Robust, Stable},
     size::{MetaSized, SizeFamily, SliceLike},
 };
 
@@ -16,6 +17,9 @@ macro_rules! primitive_derive {
         }
         impl NicheFamily for $primitive {
             type Kind = WithoutNiche;
+        }
+        impl MutabilityFamily for $primitive {
+            type Kind = Exclusive;
         }
     };
 }
@@ -31,6 +35,9 @@ macro_rules! raw_pointer_derive {
         impl<R: ?Sized> NicheFamily for *$mutability R {
             type Kind = WithoutNiche;
         }
+        impl<R: ?Sized> MutabilityFamily for *$mutability R {
+            type Kind = Exclusive;
+        }
     };
 }
 
@@ -39,6 +46,9 @@ macro_rules! impl_fn_types {
     ( $( ( $( $arg:ident ),* ) ),* $(,)? ) => {$(
         impl<$($arg: ReprFamily,)* R> ReprFamily for extern "C" fn($($arg),*) -> R {
             type Kind = ();
+        }
+        impl<$($arg,)* R> MutabilityFamily for extern "C" fn($($arg),*) -> R {
+            type Kind = Exclusive;
         }
         //impl<$($arg,)* R> SizeFamily for extern "C" fn($($arg),*) -> R {
         //    type Kind = crate::size::Sized<crate::size::NonZst>;
@@ -61,6 +71,9 @@ macro_rules! fieldless_enum_derive {
         }
         impl NicheFamily for $src {
             type Kind = WithCustomNiche;
+        }
+        impl MutabilityFamily for $src {
+            type Kind = Exclusive;
         }
     };
 }
@@ -89,11 +102,17 @@ impl<R: ReprFamily> ReprFamily for [R] {
 unsafe impl<R> SizeFamily for [R] {
     type Kind = MetaSized<SliceLike>;
 }
+impl<R: MutabilityFamily> MutabilityFamily for [R] {
+    type Kind = R::Kind;
+}
 
 impl<R: ReprFamily, const N: usize> ReprFamily for [R; N] {
     type Kind = R::Kind;
 }
 unsafe impl<R: SizeFamily, const N: usize> SizeFamily for [R; N] {
+    type Kind = R::Kind;
+}
+impl<R: MutabilityFamily, const N: usize> MutabilityFamily for [R; N] {
     type Kind = R::Kind;
 }
 
@@ -131,7 +150,7 @@ mod tests {
     use super::*;
     use crate::{
         niche::WithStableNiche,
-        repr::{Unstable, Robust},
+        repr::{Robust, Unstable},
     };
 
     #[test]

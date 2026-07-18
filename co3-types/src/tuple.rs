@@ -1,6 +1,7 @@
 use core::ops::Add;
 
 use crate::{
+    mutability::MutabilityFamily,
     niche::NicheFamily,
     repr::{ReprFamily, Unstable},
     size::SizeFamily,
@@ -57,6 +58,7 @@ macro_rules! impl_tuple_families {
     };
 
     ($(($($ty:ident),+)),+ $(,)?) => { $(
+        impl_tuple_families!(@impl MutabilityFamily for ($($ty,)+); $($ty),+);
         impl_tuple_families!(@impl NicheFamily for ($($ty,)+); $($ty),+);
         impl_tuple_families!(@impl SizeFamily for ($($ty,)+); $($ty),+); )+
     };

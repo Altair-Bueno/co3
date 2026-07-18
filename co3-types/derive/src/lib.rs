@@ -324,6 +324,14 @@ fn gen_view_delegate_impls(
         {
             type Kind = <#owner_ty as #family::niche::NicheFamily>::Kind;
         }
+
+        impl #impl_generics #family::mutability::MutabilityFamily for #name #ty_generics
+        where
+            #owner_ty: #family::mutability::MutabilityFamily,
+            #predicates
+        {
+            type Kind = <#owner_ty as #family::mutability::MutabilityFamily>::Kind;
+        }
     }
 }
 
@@ -378,11 +386,13 @@ fn gen_struct_family_impls(
     } else {
         gen_niche_family_impl(family, name, generics, &fields)
     };
+    let mutability_family_impl = gen_mutability_family_impl(family, name, generics, &fields);
 
     quote! {
         #repr_family_impl
         #size_family_impl
         #niche_family_impl
+        #mutability_family_impl
     }
 }
 
@@ -409,11 +419,13 @@ fn gen_enum_family_impls(
     // This happens if all variants are uninhabited but one is ZST/fieldless.
     let size_family_impl = gen_non_zst_sized_family_impl(family, name, generics);
     let niche_family_impl = gen_enum_niche_family_impl(family, repr, name, generics, variants);
+    let mutability_family_impl = gen_mutability_family_impl(family, name, generics, &fields);
 
     quote! {
         #repr_family_impl
         #size_family_impl
         #niche_family_impl
+        #mutability_family_impl
     }
 }
 
@@ -458,6 +470,7 @@ fn gen_fieldless_enum_family_impls(
     } else {
         gen_enum_niche_family_impl(family, repr, name, generics, variants)
     };
+    let mutability_family_impl = gen_mutability_family_impl(family, name, generics, &[]);
     let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
 
     quote! {
@@ -467,6 +480,7 @@ fn gen_fieldless_enum_family_impls(
 
         #size_family_impl
         #niche_family_impl
+        #mutability_family_impl
     }
 }
 
@@ -493,30 +507,20 @@ fn gen_repr_family_impl(
 ) -> proc_macro2::TokenStream {
     let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
     let predicates = where_clause.as_ref().map(|w| &w.predicates);
-    let (parametrized_fields, non_parametrized_fields): (Vec<&syn::Type>, Vec<_>) = fields
-        .iter()
-        .partition(|ty| is_type_parameterized(ty, generics));
     let init = if has_trap_values {
         quote! { #family::repr::NonRobust }
     } else {
         quote! { #family::repr::Robust }
     };
-    let mut repr_kind = quote! { #family::repr::Stable<#init> };
-    let field_bounds = parametrized_fields
-        .iter()
-        .map(|ty| quote! { #ty: #family::repr::ReprFamily });
-    let mut aggregate_bounds = Vec::new();
-
-    for &field in &non_parametrized_fields {
-        let kind = quote! { <#field as #family::repr::ReprFamily>::Kind };
-        repr_kind = quote! { <#repr_kind as core::ops::Add<#kind>>::Output };
-    }
-
-    for &field in &parametrized_fields {
-        let kind = quote! { <#field as #family::repr::ReprFamily>::Kind };
-        aggregate_bounds.push(quote! { #kind: core::ops::Add<#repr_kind> });
-        repr_kind = quote! { <#kind as core::ops::Add<#repr_kind>>::Output };
-    }
+    let aggregate = gen_aggregate_family(
+        quote! { #family::repr::ReprFamily },
+        quote! { #family::repr::Stable<#init> },
+        generics,
+        fields,
+    );
+    let repr_kind = aggregate.kind;
+    let field_bounds = aggregate.field_bounds;
+    let aggregate_bounds = aggregate.aggregate_bounds;
 
     quote! {
         impl #impl_generics #family::repr::ReprFamily for #name #ty_generics where
@@ -537,25 +541,15 @@ fn gen_size_family_impl(
 ) -> proc_macro2::TokenStream {
     let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
     let predicates = where_clause.as_ref().map(|w| &w.predicates);
-    let (parametrized_fields, non_parametrized_fields): (Vec<&syn::Type>, Vec<_>) = fields
-        .iter()
-        .partition(|ty| is_type_parameterized(ty, generics));
-    let mut size_kind = quote! { #family::size::Sized<#family::size::Zst> };
-    let field_bounds = parametrized_fields
-        .iter()
-        .map(|ty| quote! { #ty: #family::size::SizeFamily });
-    let mut aggregate_bounds = Vec::new();
-
-    for &field in &non_parametrized_fields {
-        let kind = quote! { <#field as #family::size::SizeFamily>::Kind };
-        size_kind = quote! { <#size_kind as core::ops::Add<#kind>>::Output };
-    }
-
-    for &field in &parametrized_fields {
-        let kind = quote! { <#field as #family::size::SizeFamily>::Kind };
-        aggregate_bounds.push(quote! { #kind: core::ops::Add<#size_kind> });
-        size_kind = quote! { <#kind as core::ops::Add<#size_kind>>::Output };
-    }
+    let aggregate = gen_aggregate_family(
+        quote! { #family::size::SizeFamily },
+        quote! { #family::size::Sized<#family::size::Zst> },
+        generics,
+        fields,
+    );
+    let size_kind = aggregate.kind;
+    let field_bounds = aggregate.field_bounds;
+    let aggregate_bounds = aggregate.aggregate_bounds;
 
     quote! {
         unsafe impl #impl_generics #family::size::SizeFamily for #name #ty_generics where
@@ -590,27 +584,16 @@ fn gen_niche_family_impl(
 ) -> proc_macro2::TokenStream {
     let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
     let predicates = where_clause.as_ref().map(|w| &w.predicates);
-    let (parametrized_fields, non_parametrized_fields): (Vec<&syn::Type>, Vec<_>) = fields
-        .iter()
-        .partition(|ty| is_type_parameterized(ty, generics));
-
-    // TODO: We're just using WithoutNiche for the ease of implementation. Remove it?
-    let mut niche_kind = quote! { #family::niche::WithoutNiche };
-    let field_bounds = parametrized_fields
-        .iter()
-        .map(|ty| quote! { #ty: #family::niche::NicheFamily });
-    let mut aggregate_bounds = Vec::new();
-
-    for &field in &non_parametrized_fields {
-        let kind = quote! { <#field as #family::niche::NicheFamily>::Kind };
-        niche_kind = quote! { <#niche_kind as core::ops::Add<#kind>>::Output };
-    }
-
-    for &field in &parametrized_fields {
-        let kind = quote! { <#field as #family::niche::NicheFamily>::Kind };
-        aggregate_bounds.push(quote! { #kind: core::ops::Add<#niche_kind> });
-        niche_kind = quote! { <#kind as core::ops::Add<#niche_kind>>::Output };
-    }
+    let aggregate = gen_aggregate_family(
+        quote! { #family::niche::NicheFamily },
+        // TODO: We're just using WithoutNiche for the ease of implementation. Remove it?
+        quote! { #family::niche::WithoutNiche },
+        generics,
+        fields,
+    );
+    let niche_kind = aggregate.kind;
+    let field_bounds = aggregate.field_bounds;
+    let aggregate_bounds = aggregate.aggregate_bounds;
 
     quote! {
         impl #impl_generics #family::niche::NicheFamily for #name #ty_generics where
@@ -635,6 +618,75 @@ fn gen_niche_family_impl_with_kind(
         impl #impl_generics #family::niche::NicheFamily for #name #ty_generics #where_clause {
             type Kind = #kind;
         }
+    }
+}
+
+fn gen_mutability_family_impl(
+    family: &proc_macro2::TokenStream,
+    name: &syn::Ident,
+    generics: &syn::Generics,
+    fields: &[&syn::Type],
+) -> proc_macro2::TokenStream {
+    let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
+    let predicates = where_clause.as_ref().map(|w| &w.predicates);
+    let aggregate = gen_aggregate_family(
+        quote! { #family::mutability::MutabilityFamily },
+        quote! { #family::mutability::Exclusive },
+        generics,
+        fields,
+    );
+    let mutability_kind = aggregate.kind;
+    let field_bounds = aggregate.field_bounds;
+    let aggregate_bounds = aggregate.aggregate_bounds;
+
+    quote! {
+        impl #impl_generics #family::mutability::MutabilityFamily for #name #ty_generics where
+            #(#field_bounds,)*
+            #(#aggregate_bounds,)*
+            #predicates
+        {
+            type Kind = #mutability_kind;
+        }
+    }
+}
+
+struct AggregateFamily {
+    kind: proc_macro2::TokenStream,
+    field_bounds: Vec<proc_macro2::TokenStream>,
+    aggregate_bounds: Vec<proc_macro2::TokenStream>,
+}
+
+fn gen_aggregate_family(
+    family_trait: proc_macro2::TokenStream,
+    init_kind: proc_macro2::TokenStream,
+    generics: &syn::Generics,
+    fields: &[&syn::Type],
+) -> AggregateFamily {
+    let (parametrized_fields, non_parametrized_fields): (Vec<&syn::Type>, Vec<_>) = fields
+        .iter()
+        .partition(|ty| is_type_parameterized(ty, generics));
+    let mut kind = init_kind;
+    let field_bounds = parametrized_fields
+        .iter()
+        .map(|ty| quote! { #ty: #family_trait })
+        .collect::<Vec<_>>();
+    let mut aggregate_bounds = Vec::new();
+
+    for &field in &non_parametrized_fields {
+        let field_kind = quote! { <#field as #family_trait>::Kind };
+        kind = quote! { <#kind as core::ops::Add<#field_kind>>::Output };
+    }
+
+    for &field in &parametrized_fields {
+        let field_kind = quote! { <#field as #family_trait>::Kind };
+        aggregate_bounds.push(quote! { #field_kind: core::ops::Add<#kind> });
+        kind = quote! { <#field_kind as core::ops::Add<#kind>>::Output };
+    }
+
+    AggregateFamily {
+        kind,
+        field_bounds,
+        aggregate_bounds,
     }
 }
 
