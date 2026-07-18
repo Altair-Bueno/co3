@@ -107,9 +107,9 @@ enum DropImpl {
 /// * `#[reprC(id($type))]` defines `co3::handle::HandleFamily::Kind`
 ///
 /// ```
-/// use co3::{family::TypeFamily, ReprC as ReprCAlias};
+/// use co3::{rust_spec::TypeSpec, ReprC as ReprCAlias};
 ///
-/// #[derive(TypeFamily, ReprCAlias)]
+/// #[derive(TypeSpec, ReprCAlias)]
 /// pub struct Hello(u32);
 /// ```
 ///

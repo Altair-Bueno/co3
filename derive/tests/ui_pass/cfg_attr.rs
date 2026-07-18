@@ -1,8 +1,8 @@
-use co3::{family::TypeFamily, ReprC, ffi, handles};
+use co3::{rust_spec::TypeSpec, ReprC, ffi, handles};
 
 trait Attr {}
 
-#[derive(Clone, TypeFamily, ReprC)]
+#[derive(Clone, TypeSpec, ReprC)]
 #[repr(transparent)]
 struct Value(u8);
 
@@ -10,11 +10,11 @@ trait ByteValue {
     fn into_byte(self) -> u8;
 }
 
-#[derive(Clone, TypeFamily, ReprC)]
+#[derive(Clone, TypeSpec, ReprC)]
 #[repr(transparent)]
 struct EnvAttr(usize);
 
-#[derive(Clone, TypeFamily, ReprC)]
+#[derive(Clone, TypeSpec, ReprC)]
 #[reprC(id(u16))]
 struct Custom(usize);
 
@@ -99,11 +99,11 @@ mod imported {
 }
 
 mod provider {
-    use co3::{family::TypeFamily, ReprC, ffi, handles};
+    use co3::{rust_spec::TypeSpec, ReprC, ffi, handles};
 
     use super::{Attr, ByteValue, EnvAttr};
 
-    #[derive(Clone, TypeFamily, ReprC)]
+    #[derive(Clone, TypeSpec, ReprC)]
     #[reprC(id(u16))]
     pub(super) struct Custom(usize);
 

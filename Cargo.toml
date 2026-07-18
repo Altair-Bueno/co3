@@ -17,20 +17,18 @@ default = ["alloc"]
 # Enables:
 # - deriving C-compatible representations with `#[derive(ReprC)]`
 # - writing exports/extern FFI declarations via `ffi!`
-derive = ["co3-derive", "co3-types/derive"]
+derive = ["co3-derive", "rust-spec/derive"]
 
 # Implements conversion traits for types from the `alloc` crate (e.g. `Box<T>` or `Vec<T>`).
-alloc = ["co3-types/alloc"]
+alloc = ["rust-spec/alloc"]
 
 # Enables [allocator API](https://github.com/rust-lang/rust/issues/32838)
 allocator-api = ["alloc"]
 
 [dependencies]
 co3-derive = { path = "derive", optional = true }
-co3-types = { path = "co3-types", default-features = false }
+rust-spec = { path = "rust-spec", default-features = false }
 
-# TODO: Should this get removed, it is not widely used
-derive_more = { version = "2.1.1", features = ["display"] }
 disjoint_impls = { path = "../disjoint_impls/" }
 #disjoint_impls = "1.3.8"
 impls = "1.0.3"
@@ -40,7 +38,7 @@ static_assertions = "1.1.0"
 
 [workspace]
 resolver = "2"
-members = ["derive", "co3-types", "co3-types/derive"]
+members = ["derive", "rust-spec", "rust-spec/derive"]
 
 [[test]]
 name = "abi"

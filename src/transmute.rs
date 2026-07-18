@@ -1,8 +1,11 @@
 #[cfg(feature = "alloc")]
 use alloc::boxed::Box;
 
-use co3_types::size::{NonZst, SizeFamily, Zst};
 use disjoint_impls::disjoint_impls;
+use rust_spec::{
+    TypeSpec,
+    size::{NonZst, Zst},
+};
 
 #[cfg(feature = "alloc")]
 use crate::boxed::CBox;
@@ -28,8 +31,8 @@ disjoint_impls! {
 
     unsafe impl<R: CheckedTransmute<CType: Copy> + StableNiche, E> CheckedTransmute for Result<R, E>
     where
-        R: SizeFamily<Kind = co3_types::size::Sized<NonZst>>,
-        E: SizeFamily<Kind = co3_types::size::Sized<Zst>>,
+        R: TypeSpec<Size = rust_spec::size::Sized<NonZst>>,
+        E: TypeSpec<Size = rust_spec::size::Sized<Zst>>,
         Self: ExternC<CType = <R as ExternC>::CType>,
     {
         #[inline(always)]
@@ -40,8 +43,8 @@ disjoint_impls! {
     // FIXME: disjoint_impls! is broken
     //unsafe impl<R, E: CheckedTransmute<CType: Copy> + StableNiche> CheckedTransmute for Result<R, E>
     //where
-    //    R: SizeFamily<Kind = co3_types::size::Sized<Zst>>,
-    //    E: SizeFamily<Kind = co3_types::size::Sized<NonZst>>,
+    //    R: TypeSpec<Size = rust_spec::size::Sized<Zst>>,
+    //    E: TypeSpec<Size = rust_spec::size::Sized<NonZst>>,
     //    Self: ExternC<CType = <E as ExternC>::CType>,
     //{
     //    #[inline(always)]
@@ -53,15 +56,17 @@ disjoint_impls! {
 
 unsafe impl<R: CheckedTransmute + ?Sized> CheckedTransmute for &R
 where
-    Self: ExternC<CType = *const R::CType>,
+    Self: ExternC<CType: Copy>,
 {
     #[inline(always)]
     unsafe fn is_valid(target: &Self::CType) -> bool {
-        if target.is_null() {
+        let ptr = unsafe { core::mem::transmute_copy::<Self::CType, *const R::CType>(target) };
+
+        if ptr.is_null() {
             return false;
         }
 
-        unsafe { R::is_valid(&**target) }
+        unsafe { R::is_valid(&*ptr) }
     }
 }
 

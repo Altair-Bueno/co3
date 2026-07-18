@@ -62,17 +62,18 @@
 
 use core::ops::Add;
 
-use co3_types::{
-    niche::{NicheFamily, WithoutNiche},
+use disjoint_impls::disjoint_impls;
+use rust_spec::{
+    TypeSpec,
+    niche::{NicheFamily, WithNiche, WithoutNiche},
     repr::ReprFamily,
     size::{NonZst, SizeFamily},
 };
-use disjoint_impls::disjoint_impls;
 
 use crate::{
     CFnArg, Decode, Encode, ExternC, ReprC, Store,
     borrow::{Borrow, BorrowCast, BorrowCastMut, ToOwned},
-    niche::{Niche, WithNiche},
+    niche::Niche,
     spread::Spread,
     stored::{DecodeOwned, EncodeOwned},
     transmute::CheckedTransmute,
@@ -218,7 +219,7 @@ macro_rules! impl_tuple {
 
         unsafe impl<$($ty: ReprC + Copy),*> CFnArg for $ffi_ty<$($ty),*>
         where
-            Self: SizeFamily<Kind = co3_types::size::Sized<NonZst>>,
+            Self: TypeSpec<Size = rust_spec::size::Sized<NonZst>>,
         {}
 
         impl<$($ty),*> From<($( $ty, )*)> for $ffi_ty<$($ty),*> {
@@ -328,17 +329,17 @@ disjoint_impls! {
         const NICHE_VALUE: Self::CType;
     }
 
-    impl<A: Niche<CType: Copy>, B: ExternC<CType: Copy>> Niche for (A, B)
+    impl<A: Niche<CType: Copy>, B: ExternC<CType: Copy>, N> Niche for (A, B)
     where
-        A: NicheFamily<Kind: WithNiche>,
+        A: TypeSpec<Niche = WithNiche<N>>,
     {
         const NICHE_VALUE: Self::CType = ReprCTuple2(A::NICHE_VALUE, unsafe { core::mem::zeroed() });
     }
 
-    impl<A: ExternC<CType: Copy>, B: Niche<CType: Copy>> Niche for (A, B)
+    impl<A: ExternC<CType: Copy>, B: Niche<CType: Copy>, N> Niche for (A, B)
     where
-        A: NicheFamily<Kind = WithoutNiche>,
-        B: NicheFamily<Kind: WithNiche>,
+        A: TypeSpec<Niche = WithoutNiche>,
+        B: TypeSpec<Niche = WithNiche<N>>,
     {
         const NICHE_VALUE: Self::CType = ReprCTuple2(unsafe { core::mem::zeroed() }, B::NICHE_VALUE);
     }
@@ -383,35 +384,44 @@ impl_tuple_niche_recursive! {
 }
 
 macro_rules! impl_tuple_families {
-    (@kind $family:ident; $ty:ident) => {
-        <$ty as $family>::Kind
+    (@layout_kind Repr; $ty:ident) => {
+        <$ty as TypeSpec>::Repr
     };
-    (@kind $family:ident; $head:ident, $($tail:ident),+) => {
-        <<$head as $family>::Kind as Add<impl_tuple_families!(@kind $family; $($tail),+)>>::Output
+    (@layout_kind Size; $ty:ident) => {
+        <$ty as TypeSpec>::Size
+    };
+    (@layout_kind Niche; $ty:ident) => {
+        <$ty as TypeSpec>::Niche
+    };
+    (@layout_kind $axis:ident; $head:ident, $($tail:ident),+) => {
+        <<$head as TypeSpec>::$axis as Add<impl_tuple_families!(@layout_kind $axis; $($tail),+)>>::Output
     };
 
+    (@impl ReprFamily for $target:ty; $($all:ident),+) => {
+        impl_tuple_families!(@layout_params safe ReprFamily Repr for $target [$($all),+] []; $($all),+);
+    };
     (@impl SizeFamily for $target:ty; $($all:ident),+) => {
-        impl_tuple_families!(@params unsafe SizeFamily for $target [$($all),+] []; $($all),+);
+        impl_tuple_families!(@layout_params unsafe SizeFamily Size for $target [$($all),+] []; $($all),+);
     };
-    (@impl $family:ident for $target:ty; $($all:ident),+) => {
-        impl_tuple_families!(@params safe $family for $target [$($all),+] []; $($all),+);
+    (@impl NicheFamily for $target:ty; $($all:ident),+) => {
+        impl_tuple_families!(@layout_params safe NicheFamily Niche for $target [$($all),+] []; $($all),+);
     };
 
-    (@params unsafe SizeFamily for $target:ty [$($all:ident),+] [$($params:tt)*]; $ty:ident) => {
-        unsafe impl<$($params)* $ty: SizeFamily + ?Sized> SizeFamily for $target {
-            type Kind = impl_tuple_families!(@kind SizeFamily; $($all),+);
+    (@layout_params unsafe SizeFamily $axis:ident for $target:ty [$($all:ident),+] [$($params:tt)*]; $ty:ident) => {
+        unsafe impl<$($params)* $ty: TypeSpec + ?Sized> SizeFamily for $target {
+            type Kind = impl_tuple_families!(@layout_kind $axis; $($all),+);
         }
     };
-    (@params safe $family:ident for $target:ty [$($all:ident),+] [$($params:tt)*]; $ty:ident) => {
-        impl<$($params)* $ty: $family + ?Sized> $family for $target {
-            type Kind = impl_tuple_families!(@kind $family; $($all),+);
+    (@layout_params safe $family:ident $axis:ident for $target:ty [$($all:ident),+] [$($params:tt)*]; $ty:ident) => {
+        impl<$($params)* $ty: TypeSpec + ?Sized> $family for $target {
+            type Kind = impl_tuple_families!(@layout_kind $axis; $($all),+);
         }
     };
-    (@params $safety:ident $family:ident for $target:ty [$($all:ident),+] [$($params:tt)*]; $head:ident, $($tail:ident),+) => {
+    (@layout_params $safety:ident $family:ident $axis:ident for $target:ty [$($all:ident),+] [$($params:tt)*]; $head:ident, $($tail:ident),+) => {
         impl_tuple_families!(
-            @params $safety $family for $target
+            @layout_params $safety $family $axis for $target
             [$($all),+]
-            [$($params)* $head: $family<Kind: Add<impl_tuple_families!(@kind $family; $($tail),+)>>,]
+            [$($params)* $head: TypeSpec<$axis: Add<impl_tuple_families!(@layout_kind $axis; $($tail),+)>>,]
             ; $($tail),+
         );
     };
@@ -442,8 +452,8 @@ impl_tuple_families! {
 mod tests {
     #[cfg(feature = "alloc")]
     use alloc::{boxed::Box, vec::Vec};
-    use co3_types::size::{Sized as Co3Sized, Zst};
     use core::num::NonZero;
+    use rust_spec::size::{Sized as Co3Sized, Zst};
 
     use static_assertions::{assert_impl_all, assert_not_impl_any};
 
@@ -468,9 +478,9 @@ mod tests {
 
     #[test]
     fn tuple_size_family_tracks_non_zst_fields() {
-        assert_impl_all!(ReprCTuple2<(), u8>: SizeFamily<Kind = co3_types::size::Sized<NonZst>>);
-        assert_impl_all!(ReprCTuple2<u8, ()>: SizeFamily<Kind = co3_types::size::Sized<NonZst>>);
-        assert_impl_all!(ReprCTuple3<(), u8, ()>: SizeFamily<Kind = co3_types::size::Sized<NonZst>>);
+        assert_impl_all!(ReprCTuple2<(), u8>: SizeFamily<Kind = rust_spec::size::Sized<NonZst>>);
+        assert_impl_all!(ReprCTuple2<u8, ()>: SizeFamily<Kind = rust_spec::size::Sized<NonZst>>);
+        assert_impl_all!(ReprCTuple3<(), u8, ()>: SizeFamily<Kind = rust_spec::size::Sized<NonZst>>);
     }
 
     #[test]

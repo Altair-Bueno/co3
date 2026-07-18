@@ -341,8 +341,8 @@ pub(crate) fn gen_non_zst_sized_family_impl(
     let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
 
     quote! {
-        unsafe impl #impl_generics co3::family::size::SizeFamily for #type_name #ty_generics #where_clause {
-            type Kind = co3::family::size::Sized<co3::family::size::NonZst>;
+        unsafe impl #impl_generics co3::rust_spec::size::SizeFamily for #type_name #ty_generics #where_clause {
+            type Kind = co3::rust_spec::size::Sized<co3::rust_spec::size::NonZst>;
         }
     }
 }

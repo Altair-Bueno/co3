@@ -1,6 +1,6 @@
-use co3::{family::TypeFamily, ReprC};
+use co3::{rust_spec::TypeSpec, ReprC};
 
-#[derive(TypeFamily, ReprC)]
+#[derive(TypeSpec, ReprC)]
 #[reprC(is_valid = |a| *a != 42)]
 #[reprC(NICHE_VALUE = Self::CType {
     field: 42
@@ -9,7 +9,7 @@ pub struct CustomStructValid {
     field: u32,
 }
 
-#[derive(TypeFamily, ReprC)]
+#[derive(TypeSpec, ReprC)]
 pub enum CustomEnumValid {
     #[reprC(is_valid = |a| *a != 0)]
     A(u32),

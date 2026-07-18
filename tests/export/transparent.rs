@@ -1,18 +1,18 @@
 use std::{alloc, marker::PhantomData, mem::MaybeUninit, num::NonZeroU64};
 
 use co3::{
-    family::TypeFamily, COption, Decode, DecodeWithStore, EncodeWithStore, ExternC, FfiReturn,
+    rust_spec::TypeSpec, COption, Decode, DecodeWithStore, EncodeWithStore, ExternC, FfiReturn,
     ReprC, export,
     slice::{CBoxedSlice, CSlice},
 };
 
 co3::def_fns! { dealloc }
 
-#[derive(Clone, Copy, PartialEq, Eq, Debug, TypeFamily, ReprC)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug, TypeSpec, ReprC)]
 #[repr(transparent)]
 pub struct TransparentWithoutNiche(u64);
 
-#[derive(Clone, Copy, PartialEq, Eq, Debug, TypeFamily, ReprC)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug, TypeSpec, ReprC)]
 #[repr(transparent)]
 pub struct GenericTransparentStruct<P>(NonZeroU64, PhantomData<P>);
 
@@ -22,7 +22,7 @@ impl<P> GenericTransparentStruct<P> {
     }
 }
 
-#[derive(Clone, Copy, PartialEq, Eq, Debug, TypeFamily, ReprC)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug, TypeSpec, ReprC)]
 #[reprC(
     unsafe(is_valid = |target: &Self::Target|
         *target != GenericTransparentStruct::new(1)
@@ -36,7 +36,7 @@ pub struct TransparentStruct {
     _zst3: PhantomData<String>,
 }
 
-#[derive(Clone, Copy, PartialEq, Eq, Debug, TypeFamily, ReprC)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug, TypeSpec, ReprC)]
 #[reprC(
     NICHE_VALUE = [0; 4],
     unsafe(is_valid = |target: &Self::Target|
@@ -46,7 +46,7 @@ pub struct TransparentStruct {
 #[repr(transparent)]
 pub struct RobustTargetTransparent([u8; 4]);
 
-#[derive(TypeFamily, ReprC)]
+#[derive(TypeSpec, ReprC)]
 #[reprC(
     unsafe(is_valid = |target: &Self::Target|
         target.iter().all(|&x| x != 0)

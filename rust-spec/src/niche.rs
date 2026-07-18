@@ -1,6 +1,6 @@
 //! Logic related to the conversion of [`Option<T>`] to and from FFI-compatible representation
 
-use core::ops::Add;
+use core::{convert::Infallible, ops::Add};
 
 #[cfg(feature = "alloc")]
 use alloc::{boxed::Box, vec::Vec};
@@ -9,20 +9,16 @@ use disjoint_impls::disjoint_impls;
 
 use crate::size::{MetaSized, NonZst, SizeFamily, Thin, Zst};
 
-/// Marker trait for an [`NicheFamily`] type of a Rust type that has a niche value (stable or custom)
-///
-/// There are only 2 notable implementations of this trait:
-/// 1. [`ReprC`] types have a single stable (compiler guaranteed) niche value (e.g. `&u32`)
-/// 2. [`Stored`] types have a custom defined (by this crate) niche value (e.g. `[NonZeroU32; 2]`)
-pub(crate) trait WithNiche {}
+/// Marker for a type that has a niche value.
+pub struct WithNiche<K>(core::marker::PhantomData<K>, Infallible);
 
-/// Marker for a type that has a single stable (compiler guaranteed) niche value (e.g. `&u32`).
+/// Marker for a single stable (compiler guaranteed) niche value (e.g. `&u32`).
 ///
 /// Only a handful of [`crate::ir::ReprC`] types have a stable niche
-pub enum WithStableNiche {}
+pub enum Stable {}
 
-/// Marker for a type that has a custom defined (by this crate) niche (e.g. `[NonZeroU8; 2]`).
-pub enum WithCustomNiche {}
+/// Marker for a custom defined (by this crate) niche (e.g. `[NonZeroU8; 2]`).
+pub enum Custom {}
 
 /// Marker for a type that has no trap representations and therefore no niche value
 pub enum WithoutNiche {}
@@ -30,15 +26,15 @@ pub enum WithoutNiche {}
 disjoint_impls! {
     /// Niche kind of the type in the internal representation [IR](`crate::ir::Repr`)
     pub trait NicheFamily {
-        /// The internal representation (i.e. type family) of the type
+        /// The niche class of the type.
         ///
         /// - If `Self` doesn't have any niche value, set [`NicheFamily::Kind`] to [`WithoutNiche`].
         ///   `Option<T>` will be serialized as [`crate::option::ReprCOption`]
         ///
-        /// - If `Self` has a compiler guaranteed niche value, set [`NicheFamily::Kind`] to [`WithStableNiche`].
+        /// - If `Self` has a compiler guaranteed niche value, set [`NicheFamily::Kind`] to [`WithNiche<crate::niche::Stable>`].
         ///   `Option<T>` will be blindly transmuted into the underlying [`ReprC`] type
         ///
-        /// - Otherwise, if `Self` has at least one trap, set [`NicheFamily::Kind`] to [`WithCustomNiche`].
+        /// - Otherwise, if `Self` has at least one trap, set [`NicheFamily::Kind`] to [`WithNiche<crate::niche::Custom>`].
         ///   `Option<T>` will be serialized into a [`T::CType`] with a manually set niche value
         type Kind;
     }
@@ -46,67 +42,67 @@ disjoint_impls! {
     impl<R: NicheFamily<Kind = WithoutNiche>> NicheFamily for [R] {
         type Kind = WithoutNiche;
     }
-    impl<R: NicheFamily<Kind: WithNiche>> NicheFamily for [R] {
-        type Kind = WithCustomNiche;
+    impl<R: NicheFamily<Kind = WithNiche<K>>, K> NicheFamily for [R] {
+        type Kind = WithNiche<crate::niche::Custom>;
     }
 
     impl<R: SizeFamily<Kind = MetaSized<K>> + ?Sized, K> NicheFamily for &R {
-        type Kind = WithCustomNiche;
+        type Kind = WithNiche<crate::niche::Custom>;
     }
     impl<R: SizeFamily<Kind: Thin> + ?Sized> NicheFamily for &R {
-        type Kind = WithStableNiche;
+        type Kind = WithNiche<crate::niche::Stable>;
     }
 
     impl<R: SizeFamily<Kind = MetaSized<K>> + ?Sized, K> NicheFamily for &mut R {
-        type Kind = WithCustomNiche;
+        type Kind = WithNiche<crate::niche::Custom>;
     }
     impl<R: SizeFamily<Kind: Thin> + ?Sized> NicheFamily for &mut R {
-        type Kind = WithStableNiche;
+        type Kind = WithNiche<crate::niche::Stable>;
     }
 
     #[cfg(feature = "alloc")]
     impl<R: SizeFamily<Kind = MetaSized<K>> + ?Sized, K> NicheFamily for Box<R> {
-        type Kind = WithCustomNiche;
+        type Kind = WithNiche<crate::niche::Custom>;
     }
     #[cfg(feature = "alloc")]
     impl<R: SizeFamily<Kind = crate::size::Sized<S>>, S> NicheFamily for Box<R> {
-        type Kind = WithStableNiche;
+        type Kind = WithNiche<crate::niche::Stable>;
     }
 
     impl<R: NicheFamily<Kind = WithoutNiche>, const N: usize> NicheFamily for [R; N] {
         type Kind = WithoutNiche;
     }
-    impl<R: NicheFamily<Kind: WithNiche>, const N: usize> NicheFamily for [R; N] {
-        type Kind = WithCustomNiche;
+    impl<R: NicheFamily<Kind = WithNiche<K>>, K, const N: usize> NicheFamily for [R; N] {
+        type Kind = WithNiche<crate::niche::Custom>;
     }
 
     impl<R: NicheFamily<Kind = WithoutNiche>> NicheFamily for Option<R> {
-        type Kind = WithCustomNiche;
+        type Kind = WithNiche<crate::niche::Custom>;
     }
-    impl<R: NicheFamily<Kind = WithStableNiche>> NicheFamily for Option<R> {
+    impl<R: NicheFamily<Kind = WithNiche<crate::niche::Stable>>> NicheFamily for Option<R> {
         type Kind = WithoutNiche;
     }
     // TODO: IMHO compiler should be able to resolve circular dependencies here, but it doesn't work for now so I've bounded previous with Niche
     // This issue could be of some help: https://github.com/mversic/co3/issues/33. This seems to be a limitation of the compiler known as
     // circular/cyclic resolution or (co)inductive cycle. The case shown here creates a cycle but only one solution is possible afaik
-    //impl<R: NicheFamily<Kind = WithCustomNiche>> NicheFamily for Option<R> where Option<Self>: ReprFamily<Kind: ReprRustOrTransmutedNonRobust> {
-    //    type Kind = WithCustomNiche;
+    //impl<R: NicheFamily<Kind = WithNiche<crate::niche::Custom>>> NicheFamily for Option<R> where Option<Self>: ReprFamily<Kind: ReprRustOrTransmutedNonRobust> {
+    //    type Kind = WithNiche<crate::niche::Custom>;
     //}
-    //impl<R: NicheFamily<Kind = WithCustomNiche>> NicheFamily for Option<R> where Option<Self>: ReprFamily<Kind = Unstable> {
+    //impl<R: NicheFamily<Kind = WithNiche<crate::niche::Custom>>> NicheFamily for Option<R> where Option<Self>: ReprFamily<Kind = Unstable> {
     //    type Kind = WithoutNiche;
     //}
-    //impl<R: NicheFamily<Kind = WithCustomNiche>> NicheFamily for Option<R> where Self: Niche {
-    //    type Kind = WithCustomNiche;
+    //impl<R: NicheFamily<Kind = WithNiche<crate::niche::Custom>>> NicheFamily for Option<R> where Self: Niche {
+    //    type Kind = WithNiche<crate::niche::Custom>;
     //}
 
     impl<
         R: NicheFamily<Kind = WithoutNiche>,
         E: NicheFamily<Kind = WithoutNiche>,
     > NicheFamily for Result<R, E> {
-        type Kind = WithCustomNiche;
+        type Kind = WithNiche<crate::niche::Custom>;
     }
     impl<
-        R: SizeFamily<Kind = crate::size::Sized<NonZst>> + NicheFamily<Kind = WithStableNiche>,
+        R: SizeFamily<Kind = crate::size::Sized<NonZst>> + NicheFamily<Kind = WithNiche<crate::niche::Stable>>,
         E: SizeFamily<Kind = crate::size::Sized<Zst>> + NicheFamily,
     > NicheFamily for Result<R, E> {
         type Kind = WithoutNiche;
@@ -114,7 +110,7 @@ disjoint_impls! {
     // FIXME:
     //impl<
     //    R: SizeFamily<Kind = crate::size::Sized<Zst>> + NicheFamily,
-    //    E: SizeFamily<Kind = crate::size::Sized<NonZst>> + NicheFamily<Kind = WithStableNiche>,
+    //    E: SizeFamily<Kind = crate::size::Sized<NonZst>> + NicheFamily<Kind = WithNiche<crate::niche::Stable>>,
     //> NicheFamily for Result<R, E> {
     //    type Kind = WithoutNiche;
     //}
@@ -123,18 +119,15 @@ disjoint_impls! {
 
 #[cfg(feature = "alloc")]
 impl<R> NicheFamily for Vec<R> {
-    type Kind = WithCustomNiche;
+    type Kind = WithNiche<crate::niche::Custom>;
 }
 
 impl NicheFamily for Option<bool> {
-    type Kind = WithCustomNiche;
+    type Kind = WithNiche<crate::niche::Custom>;
 }
 impl NicheFamily for Option<Option<bool>> {
-    type Kind = WithCustomNiche;
+    type Kind = WithNiche<crate::niche::Custom>;
 }
-
-impl WithNiche for WithStableNiche {}
-impl WithNiche for WithCustomNiche {}
 
 impl Add for WithoutNiche {
     type Output = Self;
@@ -143,52 +136,24 @@ impl Add for WithoutNiche {
         unreachable!()
     }
 }
-impl<T: WithNiche> Add<T> for WithoutNiche {
-    type Output = WithCustomNiche;
+impl<K> Add<WithNiche<K>> for WithoutNiche {
+    type Output = WithNiche<crate::niche::Custom>;
 
-    fn add(self, _: T) -> Self::Output {
+    fn add(self, _: WithNiche<K>) -> Self::Output {
         unreachable!()
     }
 }
-impl Add<WithoutNiche> for WithCustomNiche {
+impl<K> Add<WithoutNiche> for WithNiche<K> {
     type Output = Self;
 
     fn add(self, _: WithoutNiche) -> Self::Output {
         unreachable!()
     }
 }
-impl Add<WithoutNiche> for WithStableNiche {
-    type Output = WithCustomNiche;
+impl<K, U> Add<WithNiche<U>> for WithNiche<K> {
+    type Output = WithNiche<crate::niche::Custom>;
 
-    fn add(self, _: WithoutNiche) -> Self::Output {
-        unreachable!()
-    }
-}
-impl Add<WithCustomNiche> for WithStableNiche {
-    type Output = WithCustomNiche;
-
-    fn add(self, _: WithCustomNiche) -> Self::Output {
-        unreachable!()
-    }
-}
-impl Add for WithStableNiche {
-    type Output = WithCustomNiche;
-
-    fn add(self, _: Self) -> Self::Output {
-        unreachable!()
-    }
-}
-impl Add<WithStableNiche> for WithCustomNiche {
-    type Output = Self;
-
-    fn add(self, _: WithStableNiche) -> Self::Output {
-        unreachable!()
-    }
-}
-impl Add for WithCustomNiche {
-    type Output = Self;
-
-    fn add(self, _: Self) -> Self::Output {
+    fn add(self, _: WithNiche<U>) -> Self::Output {
         unreachable!()
     }
 }
@@ -206,11 +171,11 @@ mod tests {
     fn nested_option_niche_family() {
         assert_impl_all!(Option<bool>:
             ReprFamily<Kind = Unstable>,
-            NicheFamily<Kind = WithCustomNiche>,
+            NicheFamily<Kind = WithNiche<crate::niche::Custom>>,
         );
 
         assert_impl_all!(Option<Option<bool>>:
-            NicheFamily<Kind = WithCustomNiche>,
+            NicheFamily<Kind = WithNiche<crate::niche::Custom>>,
             ReprFamily<Kind = Unstable>,
         );
 

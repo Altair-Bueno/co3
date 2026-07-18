@@ -1,11 +1,11 @@
 [package]
-name = "co3-types-derive"
+name = "rust-spec-derive"
 version = "0.1.0"
 edition = "2024"
 license = "Apache-2.0"
 authors = ["Marin Veršić <marin.versic101@gmail.com>"]
-repository = "https://github.com/mversic/co3/co3-types/derive"
-description = "Derive macros for co3 type-family classification"
+repository = "https://github.com/mversic/co3/rust-spec/derive"
+description = "Derive macros for co3 TypeSpec"
 
 [lib]
 proc-macro = true

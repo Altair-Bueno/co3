@@ -8,7 +8,8 @@ use crate::{
     stored::{DecodeOwned, EmptyStore, EncodeOwned},
     transmute::CheckedTransmute,
 };
-use co3_types::{
+use rust_spec::{
+    TypeSpec,
     niche::{NicheFamily, WithoutNiche},
     repr::ReprFamily,
     size::SizeFamily,
@@ -163,14 +164,16 @@ impl<T: Copy, E: Copy> TryFrom<ReprCResult<T, E>> for Result<T, E> {
     }
 }
 
-impl<T: ReprFamily<Kind: Add<E::Kind>> + Copy, E: ReprFamily + Copy> ReprFamily
-    for ReprCResult<T, E>
+impl<T, E> ReprFamily for ReprCResult<T, E>
+where
+    T: TypeSpec<Repr: Add<<E as TypeSpec>::Repr>> + Copy,
+    E: TypeSpec + Copy,
 {
-    type Kind = <T::Kind as Add<E::Kind>>::Output;
+    type Kind = <<T as TypeSpec>::Repr as Add<<E as TypeSpec>::Repr>>::Output;
 }
 
 unsafe impl<T: Copy, E: Copy> SizeFamily for ReprCResult<T, E> {
-    type Kind = co3_types::size::Sized<co3_types::size::NonZst>;
+    type Kind = rust_spec::size::Sized<rust_spec::size::NonZst>;
 }
 
 impl<T: Copy, E: Copy> NicheFamily for ReprCResult<T, E> {

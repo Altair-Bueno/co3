@@ -16,16 +16,6 @@ use crate::{
     slice::{CSlice, CSliceMut},
 };
 
-/// Marker trait for an [`NicheFamily`] type of a Rust type that has a niche value (stable or custom)
-///
-/// There are only 2 notable implementations of this trait:
-/// 1. [`ReprC`] types have a single stable (compiler guaranteed) niche value (e.g. `&u32`)
-/// 2. [`Stored`] types have a custom defined (by this crate) niche value (e.g. `[NonZeroU32; 2]`)
-pub(crate) trait WithNiche {}
-
-impl WithNiche for co3_types::niche::WithStableNiche {}
-impl WithNiche for co3_types::niche::WithCustomNiche {}
-
 disjoint_impls! {
     /// Type that has a trap representation that can be used as a niche value.
     ///
@@ -43,11 +33,23 @@ disjoint_impls! {
     {
         const NICHE_VALUE: Self::CType = core::ptr::null();
     }
+    impl<R, C> Niche for &R
+    where
+        Self: ExternC<CType = *mut C>,
+    {
+        const NICHE_VALUE: Self::CType = core::ptr::null_mut();
+    }
     impl<R: ?Sized, C> Niche for &R
     where
         Self: ExternC<CType = CSlice<C>>,
     {
         const NICHE_VALUE: Self::CType = CSlice::NICHE_VALUE;
+    }
+    impl<R: ?Sized, C> Niche for &R
+    where
+        Self: ExternC<CType = CSliceMut<C>>,
+    {
+        const NICHE_VALUE: Self::CType = CSliceMut::NICHE_VALUE;
     }
 
     impl<R, C> Niche for &mut R
@@ -157,7 +159,7 @@ unsafe impl<R: ?Sized> StableNiche for NonNull<R> where Self: Niche {}
 mod tests {
     #[cfg(feature = "alloc")]
     use alloc::string::String;
-    use core::{mem::ManuallyDrop, num::NonZero};
+    use core::num::NonZero;
 
     use static_assertions::{assert_impl_all, assert_not_impl_any};
 

@@ -7,7 +7,8 @@ use crate::{
     stored::{DecodeOwned, EncodeOwned},
     transmute::CheckedTransmute,
 };
-use co3_types::{
+use rust_spec::{
+    TypeSpec,
     niche::{NicheFamily, WithoutNiche},
     repr::ReprFamily,
     size::SizeFamily,
@@ -167,11 +168,11 @@ impl<C> CSliceMut<C> {
 
 macro_rules! impl_slice_carrier {
     ($ty:ident) => {
-        impl<C: ReprFamily> ReprFamily for $ty<C> {
-            type Kind = C::Kind;
+        impl<C: TypeSpec> ReprFamily for $ty<C> {
+            type Kind = <C as TypeSpec>::Repr;
         }
         unsafe impl<C: ReprC> SizeFamily for $ty<C> {
-            type Kind = co3_types::size::Sized<co3_types::size::NonZst>;
+            type Kind = rust_spec::size::Sized<rust_spec::size::NonZst>;
         }
         impl<C: ReprC> NicheFamily for $ty<C> {
             type Kind = WithoutNiche;

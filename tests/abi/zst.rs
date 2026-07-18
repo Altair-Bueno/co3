@@ -1,41 +1,41 @@
-use co3::{ExternC, ReprC, family::TypeFamily, transmute::CheckedTransmute};
+use co3::{ExternC, ReprC, rust_spec::TypeSpec, transmute::CheckedTransmute};
 use static_assertions::assert_not_impl_any;
 
-#[derive(Debug, Clone, PartialEq, Eq, TypeFamily, ReprC)]
+#[derive(Debug, Clone, PartialEq, Eq, TypeSpec, ReprC)]
 pub struct NoReprStruct<T: ?Sized> {
     b: Box<T>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, TypeFamily, ReprC)]
+#[derive(Debug, Clone, PartialEq, Eq, TypeSpec, ReprC)]
 pub enum NoReprEnum<T: ?Sized> {
     A(Box<T>),
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, TypeFamily, ReprC)]
+#[derive(Debug, Clone, PartialEq, Eq, TypeSpec, ReprC)]
 #[repr(C)]
 pub struct ReprCStruct<T: ?Sized> {
     b: Box<T>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, TypeFamily, ReprC)]
+#[derive(Debug, Clone, PartialEq, Eq, TypeSpec, ReprC)]
 #[repr(u8)]
 #[allow(dead_code)]
 pub enum ReprCEnum<T: ?Sized> {
     A(Box<T>),
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, TypeFamily, ReprC)]
+#[derive(Debug, Clone, PartialEq, Eq, TypeSpec, ReprC)]
 #[repr(C, u8)]
 #[allow(dead_code)]
 pub enum ReprCDataEnum<T: ?Sized> {
     A(Box<T>),
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, TypeFamily, ReprC)]
+#[derive(Debug, Clone, PartialEq, Eq, TypeSpec, ReprC)]
 #[repr(transparent)]
 pub struct TransparentStruct<T: ?Sized>(Box<T>);
 
-#[derive(Debug, Clone, PartialEq, Eq, TypeFamily, ReprC)]
+#[derive(Debug, Clone, PartialEq, Eq, TypeSpec, ReprC)]
 #[repr(transparent)]
 #[allow(dead_code)]
 pub enum TransparentEnum<T: ?Sized> {

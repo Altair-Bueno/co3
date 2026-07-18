@@ -1,12 +1,13 @@
 //! Logic related to the conversion of boxed values to and from FFI-compatible representation.
 
 use alloc::boxed::Box;
-use co3_types::{
+use core::ptr::NonNull;
+use rust_spec::{
+    TypeSpec,
     niche::{NicheFamily, WithoutNiche},
     repr::ReprFamily,
     size::SizeFamily,
 };
-use core::ptr::NonNull;
 
 use crate::{
     CFnArg, Decode, Encode, ExternC, ReprC,
@@ -235,11 +236,11 @@ impl<C> CBoxedSlice<C> {
 
 macro_rules! impl_boxed_carrier {
     ($ty:ident) => {
-        impl<C: ReprFamily> ReprFamily for $ty<C> {
-            type Kind = C::Kind;
+        impl<C: TypeSpec> ReprFamily for $ty<C> {
+            type Kind = <C as TypeSpec>::Repr;
         }
         unsafe impl<C> SizeFamily for $ty<C> {
-            type Kind = co3_types::size::Sized<co3_types::size::NonZst>;
+            type Kind = rust_spec::size::Sized<rust_spec::size::NonZst>;
         }
         impl<C> NicheFamily for $ty<C> {
             type Kind = WithoutNiche;

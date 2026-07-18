@@ -718,9 +718,7 @@ mod tests {
             Encode,
         );
         assert_impl_all!(&UnsafeCell<u8>:
-            StableNiche<CType = *const u8>,
-            // FIXME: UnsafeCell refs are mut
-            // StableNiche<CType = *mut u8>,
+            StableNiche<CType = *mut u8>,
             Decode<'static>,
             Encode,
         );
@@ -736,7 +734,7 @@ mod tests {
             Encode,
         );
         assert_impl_all!(&[UnsafeCell<u8>]:
-            Niche<CType = CSlice<u8>>,
+            Niche<CType = CSliceMut<u8>>,
             Decode<'static>,
             Encode,
         );
@@ -779,9 +777,7 @@ mod tests {
             Encode,
         );
         assert_impl_all!(&UnsafeCell<NonZero<u8>>:
-            StableNiche<CType = *const u8>,
-            // FIXME: UnsafeCell refs are mut
-            // StableNiche<CType = *mut u8>,
+            StableNiche<CType = *mut u8>,
             Decode<'static>,
             Encode,
         );
@@ -796,7 +792,7 @@ mod tests {
             Encode,
         );
         assert_impl_all!(&[UnsafeCell<NonZero<u8>>]:
-            Niche<CType = CSlice<u8>>,
+            Niche<CType = CSliceMut<u8>>,
             Decode<'static>,
             Encode,
         );

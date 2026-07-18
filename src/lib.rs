@@ -1,6 +1,7 @@
 //! Structures and macros related to FFI and generation of FFI bindings. Any type that implements
 //! [`ExternC`] can be used in the FFI bindings generated with [`ffi!`]. It is advisable
-//! to implement [`ReprFamily`] and benefit from automatic implementation of [`ExternC`].
+//! to implement [`TypeSpec`](rust_spec::TypeSpec) and benefit from automatic
+//! implementation of [`ExternC`].
 //!
 //! ```rust,ignore
 //! # use co3::{ExternC, ffi};
@@ -27,13 +28,15 @@ use alloc::{borrow::ToOwned, boxed::Box, vec::Vec};
 
 #[cfg(feature = "derive")]
 pub use co3_derive::*;
-pub use co3_types as family;
-use co3_types::{
-    niche::{NicheFamily, WithoutNiche},
-    repr::{Stable, ReprFamily, Unstable},
-    size::{ExternTypeLike, MetaSized, NonZst, SizeFamily, SliceLike, Wide, Zst},
-};
 use disjoint_impls::disjoint_impls;
+pub use rust_spec;
+use rust_spec::{
+    TypeSpec,
+    mutability::{Exclusive, Interior},
+    niche::{WithNiche, WithoutNiche},
+    repr::{Stable, Unstable},
+    size::{ExternTypeLike, MetaSized, NonZst, SliceLike, Wide, Zst},
+};
 // TODO: I don't like having to reexport macros from other crates
 #[doc(hidden)]
 pub use impls::impls;
@@ -44,7 +47,6 @@ use crate::{
     boxed::{CBox, CBoxedSlice},
 };
 use crate::{
-    niche::WithNiche,
     option::ReprCOption,
     result::ReprCResult,
     slice::{CSlice, CSliceMut},
@@ -52,7 +54,7 @@ use crate::{
 };
 
 trait Thin {}
-impl<K> Thin for co3_types::size::Sized<K> {}
+impl<K> Thin for rust_spec::size::Sized<K> {}
 impl Thin for ExternTypeLike {}
 
 trait Dst {}
@@ -125,91 +127,109 @@ disjoint_impls! {
         type CType: ReprC + ?Sized;
     }
 
-    impl<R: ReprFamily + SizeFamily<Kind: Thin> + ExternC + ?Sized> ExternC for &R
+    impl<R: TypeSpec<Size: Thin, Mutability = Exclusive> + ExternC + ?Sized> ExternC for &R
     where
-        Self: ReprFamily<Kind: UnstableOrNonRobust>,
+        Self: TypeSpec<Repr: UnstableOrNonRobust>,
     {
         type CType = *const R::CType;
     }
-    impl<R: ReprFamily<Kind = Stable<K>> + SizeFamily<Kind = MetaSized<SliceLike>> + ?Sized, K> ExternC for &R
+    impl<R: TypeSpec<Size: Thin, Mutability = Interior> + ExternC + ?Sized> ExternC for &R
     where
-        Self: ReprFamily<Kind = Unstable>,
-        R: Wide<Data: ExternC, Metadata = usize>,
+        Self: TypeSpec<Repr: UnstableOrNonRobust>,
+    {
+        type CType = *mut R::CType;
+    }
+    impl<R, K> ExternC for &R
+    where
+        R: TypeSpec<Repr = Stable<K>, Size = MetaSized<SliceLike>, Mutability = Exclusive>
+            + Wide<Data: ExternC, Metadata = usize>
+            + ?Sized,
+        Self: TypeSpec<Repr = Unstable>,
         <<R as Wide>::Data as ExternC>::CType: Sized,
     {
         type CType = CSlice<<R::Data as ExternC>::CType>;
     }
-    #[cfg(feature = "alloc")]
-    impl<R: ReprFamily<Kind = Unstable> + SizeFamily<Kind = MetaSized<K>> + ?Sized, K> ExternC for &R
+    impl<R, K> ExternC for &R
     where
-        Self: ReprFamily<Kind = Unstable>,
+        R: TypeSpec<Repr = Stable<K>, Size = MetaSized<SliceLike>, Mutability = Interior>
+            + Wide<Data: ExternC, Metadata = usize>
+            + ?Sized,
+        Self: TypeSpec<Repr = Unstable>,
+        <<R as Wide>::Data as ExternC>::CType: Sized,
+    {
+        type CType = CSliceMut<<R::Data as ExternC>::CType>;
+    }
+    #[cfg(feature = "alloc")]
+    impl<R: TypeSpec<Repr = Unstable, Size = MetaSized<K>> + ?Sized, K> ExternC for &R
+    where
+        Self: TypeSpec<Repr = Unstable>,
         R: ToOwned<Owned: ExternC<CType: BorrowCast>>,
     {
         type CType = <<R::Owned as ExternC>::CType as BorrowCast>::AsConst;
     }
 
-    impl<R: ReprFamily + SizeFamily<Kind: Thin> + ExternC + ?Sized> ExternC for &mut R
+    impl<R: TypeSpec<Size: Thin> + ExternC + ?Sized> ExternC for &mut R
     where
-        Self: ReprFamily<Kind: UnstableOrNonRobust>,
+        Self: TypeSpec<Repr: UnstableOrNonRobust>,
     {
         type CType = *mut R::CType;
     }
-    impl<R: ReprFamily<Kind = Stable<K>> + SizeFamily<Kind = MetaSized<SliceLike>> + ?Sized, K> ExternC for &mut R
+    impl<R: TypeSpec<Repr = Stable<K>, Size = MetaSized<SliceLike>> + ?Sized, K> ExternC for &mut R
     where
-        Self: ReprFamily<Kind = Unstable>,
+        Self: TypeSpec<Repr = Unstable>,
         R: Wide<Data: ExternC, Metadata = usize>,
         <<R as Wide>::Data as ExternC>::CType: Sized,
     {
         type CType = CSliceMut<<R::Data as ExternC>::CType>;
     }
     #[cfg(feature = "alloc")]
-    impl<R: ReprFamily<Kind = Unstable> + SizeFamily<Kind = MetaSized<K>> + ?Sized, K> ExternC for &mut R
+    impl<R: TypeSpec<Repr = Unstable, Size = MetaSized<K>> + ?Sized, K> ExternC for &mut R
     where
-        Self: ReprFamily<Kind = Unstable>,
+        Self: TypeSpec<Repr = Unstable>,
         R: ToOwned<Owned: ExternC<CType: BorrowCastMut>>,
     {
         type CType = <<R::Owned as ExternC>::CType as BorrowCastMut>::AsMut;
     }
 
     #[cfg(feature = "alloc")]
-    impl<R: ReprFamily + SizeFamily<Kind = co3_types::size::Sized<S>> + ExternC, S> ExternC for Box<R>
+    impl<R: TypeSpec<Size = rust_spec::size::Sized<S>> + ExternC, S> ExternC for Box<R>
     where
-        Self: ReprFamily<Kind: UnstableOrNonRobust>,
+        Self: TypeSpec<Repr: UnstableOrNonRobust>,
         <R as ExternC>::CType: Sized,
     {
         type CType = CBox<R::CType>;
     }
     #[cfg(feature = "alloc")]
-    impl<R: ReprFamily<Kind = Stable<K>> + SizeFamily<Kind = MetaSized<SliceLike>> + ?Sized, K> ExternC for Box<R>
+    impl<R: TypeSpec<Repr = Stable<K>, Size = MetaSized<SliceLike>> + ?Sized, K> ExternC for Box<R>
     where
-        Self: ReprFamily<Kind = Unstable>,
+        Self: TypeSpec<Repr = Unstable>,
         R: Wide<Data: ExternC, Metadata = usize>,
         <<R as Wide>::Data as ExternC>::CType: Sized,
     {
         type CType = CBoxedSlice<<R::Data as ExternC>::CType>;
     }
     #[cfg(feature = "alloc")]
-    impl<R: ReprFamily<Kind = Unstable> + SizeFamily<Kind = MetaSized<K>> + ?Sized, K> ExternC for Box<R>
+    impl<R: TypeSpec<Repr = Unstable, Size = MetaSized<K>> + ?Sized, K> ExternC for Box<R>
     where
-        Self: ReprFamily<Kind = Unstable>,
+        Self: TypeSpec<Repr = Unstable>,
         R: ToOwned<Owned: ExternC>,
     {
         type CType = <R::Owned as ExternC>::CType;
     }
 
-    impl<R: NicheFamily<Kind = WithoutNiche> + ExternC> ExternC for Option<R>
+    impl<R: TypeSpec<Niche = WithoutNiche> + ExternC> ExternC for Option<R>
     where
         <R as ExternC>::CType: Sized,
     {
         type CType = ReprCOption<R::CType>;
     }
-    impl<R: NicheFamily<Kind: WithNiche> + ExternC> ExternC for Option<R> {
+    impl<R: TypeSpec<Niche = WithNiche<N>> + ExternC, N> ExternC for Option<R> {
         type CType = R::CType;
     }
 
     impl<
-        R: SizeFamily<Kind = co3_types::size::Sized<K>> + ExternC,
-        E: SizeFamily<Kind = co3_types::size::Sized<K>> + ExternC,
+        R: TypeSpec<Size = rust_spec::size::Sized<K>> + ExternC,
+        E: TypeSpec<Size = rust_spec::size::Sized<K>> + ExternC,
         K
     >
         ExternC for Result<R, E>
@@ -222,16 +242,18 @@ disjoint_impls! {
         type CType = ReprCResult<R::CType, E::CType>;
     }
     impl<
-        R: SizeFamily<Kind = co3_types::size::Sized<NonZst>> + NicheFamily<Kind: WithNiche> + ExternC,
-        E: SizeFamily<Kind = co3_types::size::Sized<Zst>>,
+        R: TypeSpec<Size = rust_spec::size::Sized<NonZst>, Niche = WithNiche<N>> + ExternC,
+        E: TypeSpec<Size = rust_spec::size::Sized<Zst>>,
+        N,
     >
         ExternC for Result<R, E>
     {
         type CType = R::CType;
     }
     impl<
-        R: SizeFamily<Kind = co3_types::size::Sized<Zst>>,
-        E: SizeFamily<Kind = co3_types::size::Sized<NonZst>> + NicheFamily<Kind: WithNiche> + ExternC,
+        R: TypeSpec<Size = rust_spec::size::Sized<Zst>>,
+        E: TypeSpec<Size = rust_spec::size::Sized<NonZst>, Niche = WithNiche<N>> + ExternC,
+        N,
     >
         ExternC for Result<R, E>
     {
@@ -246,12 +268,12 @@ disjoint_impls! {
     #[cfg(feature = "alloc")]
     impl<R: ?Sized, K> Encode for Box<R>
     where
-        Self: ReprFamily<Kind = Stable<K>> + EncodeOwned,
+        Self: TypeSpec<Repr = Stable<K>> + EncodeOwned,
     {}
     #[cfg(feature = "alloc")]
-    impl<R: ReprFamily<Kind = Stable<K>> + ?Sized, K> Encode for Box<R>
+    impl<R: TypeSpec<Repr = Stable<K>> + ?Sized, K> Encode for Box<R>
     where
-        Self: ReprFamily<Kind = Unstable> + EncodeOwned,
+        Self: TypeSpec<Repr = Unstable> + EncodeOwned,
     {}
 }
 
@@ -262,12 +284,12 @@ disjoint_impls! {
     #[cfg(feature = "alloc")]
     impl<'d, R: ?Sized, K> Decode<'d> for Box<R>
     where
-        Self: ReprFamily<Kind = Stable<K>> + DecodeOwned<'d>,
+        Self: TypeSpec<Repr = Stable<K>> + DecodeOwned<'d>,
     {}
     #[cfg(feature = "alloc")]
-    impl<'d, R: ReprFamily<Kind = Stable<K>> + ?Sized, K> Decode<'d> for Box<R>
+    impl<'d, R: TypeSpec<Repr = Stable<K>> + ?Sized, K> Decode<'d> for Box<R>
     where
-        Self: ReprFamily<Kind = Unstable> + DecodeOwned<'d>,
+        Self: TypeSpec<Repr = Unstable> + DecodeOwned<'d>,
     {}
 }
 

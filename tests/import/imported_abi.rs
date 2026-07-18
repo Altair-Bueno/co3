@@ -1,4 +1,4 @@
-use co3::{ReprC, export, family::TypeFamily, ffi};
+use co3::{ReprC, export, ffi, rust_spec::TypeSpec};
 
 trait AmbiguousX<T, const N: usize> {
     #[expect(unused)]
@@ -12,7 +12,7 @@ trait AmbiguousY {
     extern "C" fn ambiguous() -> Ambiguous;
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, TypeFamily, ReprC)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, TypeSpec, ReprC)]
 #[repr(u8)]
 enum Ambiguous {
     AmbiguousX,
@@ -20,7 +20,7 @@ enum Ambiguous {
     Fn,
 }
 
-#[derive(Debug, Clone, PartialEq, TypeFamily, ReprC)]
+#[derive(Debug, Clone, PartialEq, TypeSpec, ReprC)]
 #[repr(transparent)]
 struct MyType<T>(T);
 
@@ -86,7 +86,7 @@ mod provider {
 
     use super::*;
 
-    #[derive(Clone, Copy, TypeFamily, ReprC)]
+    #[derive(Clone, Copy, TypeSpec, ReprC)]
     #[repr(transparent)]
     struct MyType<T>(T);
 

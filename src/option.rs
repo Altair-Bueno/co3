@@ -8,7 +8,8 @@ use crate::{
     stored::{DecodeOwned, EmptyStore, EncodeOwned},
     transmute::CheckedTransmute,
 };
-use co3_types::{
+use rust_spec::{
+    TypeSpec,
     niche::{NicheFamily, WithoutNiche},
     repr::ReprFamily,
     size::SizeFamily,
@@ -138,11 +139,11 @@ impl<T> TryFrom<ReprCOption<T>> for Option<T> {
     }
 }
 
-impl<T: ReprFamily> ReprFamily for ReprCOption<T> {
-    type Kind = T::Kind;
+impl<T: TypeSpec> ReprFamily for ReprCOption<T> {
+    type Kind = <T as TypeSpec>::Repr;
 }
 unsafe impl<T> SizeFamily for ReprCOption<T> {
-    type Kind = co3_types::size::Sized<co3_types::size::NonZst>;
+    type Kind = rust_spec::size::Sized<rust_spec::size::NonZst>;
 }
 impl<T> NicheFamily for ReprCOption<T> {
     type Kind = WithoutNiche;

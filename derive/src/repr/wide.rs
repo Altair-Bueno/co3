@@ -29,33 +29,33 @@ pub(super) fn gen_transparent_wide_impl(
     };
 
     quote! {
-        impl #impl_generics co3::family::size::Wide for #name #ty_generics
+        impl #impl_generics co3::rust_spec::size::Wide for #name #ty_generics
         where
-            #for_dummy #field_ty: co3::family::size::Wide,
+            #for_dummy #field_ty: co3::rust_spec::size::Wide,
             #predicates
         {
-            type Data = <#field_ty as co3::family::size::Wide>::Data;
-            type Metadata = <#field_ty as co3::family::size::Wide>::Metadata;
+            type Data = <#field_ty as co3::rust_spec::size::Wide>::Data;
+            type Metadata = <#field_ty as co3::rust_spec::size::Wide>::Metadata;
 
             #[inline(always)]
             fn metadata(&self) -> Self::Metadata {
-                co3::family::size::Wide::metadata(&#field_ref)
+                co3::rust_spec::size::Wide::metadata(&#field_ref)
             }
 
             #[inline(always)]
             fn as_ptr(&self) -> *const Self::Data {
-                co3::family::size::Wide::as_ptr(&#field_ref)
+                co3::rust_spec::size::Wide::as_ptr(&#field_ref)
             }
 
             #[inline(always)]
             fn as_mut_ptr(&mut self) -> *mut Self::Data {
-                co3::family::size::Wide::as_mut_ptr(&mut #field_ref)
+                co3::rust_spec::size::Wide::as_mut_ptr(&mut #field_ref)
             }
 
             #[inline(always)]
             fn into_non_null(self: Box<Self>) -> core::ptr::NonNull<Self::Data> {
                 let field = Box::into_raw(self) as *mut #field_ty;
-                unsafe { <#field_ty as co3::family::size::Wide>::into_non_null(Box::from_raw(field)) }
+                unsafe { <#field_ty as co3::rust_spec::size::Wide>::into_non_null(Box::from_raw(field)) }
             }
 
             #[inline(always)]
@@ -63,7 +63,7 @@ pub(super) fn gen_transparent_wide_impl(
                 data: *const Self::Data,
                 metadata: Self::Metadata,
             ) -> &'__co3 Self {
-                let field = unsafe { <#field_ty as co3::family::size::Wide>::from_raw_parts(data, metadata) };
+                let field = unsafe { <#field_ty as co3::rust_spec::size::Wide>::from_raw_parts(data, metadata) };
                 unsafe { &*(field as *const #field_ty as *const Self) }
             }
 
@@ -72,7 +72,7 @@ pub(super) fn gen_transparent_wide_impl(
                 data: *mut Self::Data,
                 metadata: Self::Metadata,
             ) -> &'__co3 mut Self {
-                let field = unsafe { <#field_ty as co3::family::size::Wide>::from_raw_parts_mut(data, metadata) };
+                let field = unsafe { <#field_ty as co3::rust_spec::size::Wide>::from_raw_parts_mut(data, metadata) };
                 unsafe { &mut *(field as *mut #field_ty as *mut Self) }
             }
 
@@ -81,7 +81,7 @@ pub(super) fn gen_transparent_wide_impl(
                 data: core::ptr::NonNull<Self::Data>,
                 metadata: Self::Metadata,
             ) -> Box<Self> {
-                let field = unsafe { <#field_ty as co3::family::size::Wide>::from_non_null(data, metadata) };
+                let field = unsafe { <#field_ty as co3::rust_spec::size::Wide>::from_non_null(data, metadata) };
                 unsafe { Box::from_raw(Box::into_raw(field) as *mut Self) }
             }
         }

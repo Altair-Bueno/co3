@@ -1,6 +1,6 @@
-use co3::{family::TypeFamily, ReprC};
+use co3::{rust_spec::TypeSpec, ReprC};
 
-#[derive(TypeFamily, ReprC)]
+#[derive(TypeSpec, ReprC)]
 #[repr(u8)]
 pub enum EnumWithExplicitDiscriminant {
     A = 1,

@@ -1,6 +1,6 @@
 use std::{cmp::Ordering, mem::MaybeUninit};
 
-use co3::{family::TypeFamily, Decode, DecodeWithStore, EncodeWithStore, ExternC, FfiReturn, ReprC, def_fns, export};
+use co3::{rust_spec::TypeSpec, Decode, DecodeWithStore, EncodeWithStore, ExternC, FfiReturn, ReprC, def_fns, export};
 
 co3::handles! {FfiStruct1, FfiStruct2}
 
@@ -12,13 +12,13 @@ def_fns! {
 }
 
 /// Struct without a repr attribute is [`co3::Cloned`] by default
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, TypeFamily, ReprC)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, TypeSpec, ReprC)]
 pub struct FfiStruct1 {
     name: String,
 }
 
 /// Struct with a repr attribute can be forced to become opaque with `#[reprC(opaque)]`
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, TypeFamily, ReprC)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, TypeSpec, ReprC)]
 #[reprC(opaque)]
 #[repr(C)]
 pub struct FfiStruct2 {

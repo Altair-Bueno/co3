@@ -1,10 +1,10 @@
-use co3::{family::TypeFamily, ReprC, ffi, handles};
+use co3::{rust_spec::TypeSpec, ReprC, ffi, handles};
 
-#[derive(Clone, Debug, PartialEq, Eq, TypeFamily, ReprC)]
+#[derive(Clone, Debug, PartialEq, Eq, TypeSpec, ReprC)]
 #[repr(transparent)]
 struct Value<T: ToOwned + ?Sized>(T::Owned);
 
-#[derive(TypeFamily, ReprC)]
+#[derive(TypeSpec, ReprC)]
 #[repr(transparent)]
 struct TransparentCTuple1<T: ?Sized>(T);
 
@@ -14,7 +14,7 @@ handles! {
     }
 }
 
-#[derive(Debug, Clone, Copy, TypeFamily, ReprC)]
+#[derive(Debug, Clone, Copy, TypeSpec, ReprC)]
 #[reprC(id(u8))]
 #[repr(C)]
 struct Opaque(u8);

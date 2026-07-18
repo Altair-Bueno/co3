@@ -27,7 +27,7 @@ pub(super) fn gen_item_view(
     rewrite_view_fields(&mut view_def.data);
 
     quote! {
-        #[derive(co3::family::TypeFamily, co3::ReprC)]
+        #[derive(co3::rust_spec::TypeSpec, co3::ReprC)]
         #[reprC(view)]
         #[doc(hidden)]
         #view_def

@@ -177,7 +177,7 @@ fn gen_ctype_struct_item<const ADD_COPY: bool>(
 
     parse_quote! {
         #repr
-        #[derive(co3::family::TypeFamily)]
+        #[derive(co3::rust_spec::TypeSpec)]
         #[doc(hidden)]
         #vis #ctype
     }
@@ -374,7 +374,7 @@ fn gen_robust_impls<const ADD_COPY: bool>(
         .then_some(quote! { for<'_dummy> });
 
     let size_family_bound = (!ADD_COPY).then(|| {
-        quote! { #for_dummy Self: co3::family::size::SizeFamily<Kind = co3::family::size::Sized<co3::family::size::NonZst>>, }
+        quote! { #for_dummy Self: co3::rust_spec::size::SizeFamily<Kind = co3::rust_spec::size::Sized<co3::rust_spec::size::NonZst>>, }
     });
 
     quote! {
@@ -402,8 +402,8 @@ fn gen_repr_c_robust_family_impl(ident: &syn::Ident, generics: &syn::Generics) -
     let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
 
     quote! {
-        impl #impl_generics co3::family::repr::ReprFamily for #ident #ty_generics #where_clause {
-            type Kind = co3::family::repr::Stable<co3::family::repr::Robust>;
+        impl #impl_generics co3::rust_spec::repr::ReprFamily for #ident #ty_generics #where_clause {
+            type Kind = co3::rust_spec::repr::Stable<co3::rust_spec::repr::Robust>;
         }
     }
 }
@@ -412,8 +412,8 @@ fn gen_without_niche_family_impl(ident: &syn::Ident, generics: &syn::Generics) -
     let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
 
     quote! {
-        impl #impl_generics co3::family::niche::NicheFamily for #ident #ty_generics #where_clause {
-            type Kind = co3::family::niche::WithoutNiche;
+        impl #impl_generics co3::rust_spec::niche::NicheFamily for #ident #ty_generics #where_clause {
+            type Kind = co3::rust_spec::niche::WithoutNiche;
         }
     }
 }
