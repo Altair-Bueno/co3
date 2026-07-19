@@ -338,7 +338,6 @@ mod tests {
     use crate::boxed::{CBox, CBoxedSlice};
     use crate::{
         Encode,
-        niche::StableNiche,
         option::ReprCOption,
         slice::{CSlice, CSliceMut},
     };
@@ -352,18 +351,18 @@ mod tests {
             ReprC,
         );
         assert_impl_all!(&u8:
-            StableNiche<CType = *const u8>,
+            Niche<CType = *const u8>,
             Decode<'static>,
             Encode,
         );
         assert_impl_all!(&mut u8:
-            StableNiche<CType = *mut u8>,
+            Niche<CType = *mut u8>,
             Decode<'static>,
             Encode,
         );
         #[cfg(feature = "alloc")]
         assert_impl_all!(Box<u8>:
-            StableNiche<CType = CBox<u8>>,
+            Niche<CType = CBox<u8>>,
             Decode<'static>,
             Encode,
         );

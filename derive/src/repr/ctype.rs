@@ -5,8 +5,8 @@ use quote::{format_ident, quote};
 use syn::{parse_quote, visit::Visit};
 
 use crate::repr::{
-    attr::ReprKind, enum_tag_type, gen_non_zst_sized_family_impl, is_transparent_enum_repr,
-    is_type_parameterized, wide::gen_transparent_wide_impl,
+    attr::ReprKind, enum_tag_type, is_transparent_enum_repr, is_type_parameterized,
+    wide::gen_transparent_wide_impl,
 };
 
 fn lowered_field_ty(field_ty: &syn::Type) -> TokenStream {
@@ -333,9 +333,7 @@ fn gen_union_ctype_impls(ctype: &syn::ItemUnion) -> TokenStream {
     let copy_impls = gen_copy_impls::<true>(&ctype.ident, &ctype.generics, &fields);
     let default_impl = gen_default_impl::<true>(&ctype.ident, &ctype.generics, &fields);
     let robust_impls = gen_robust_impls::<true>(&ctype.ident, &ctype.generics, &fields);
-    let size_family_impl = gen_non_zst_sized_family_impl(&ctype.ident, &ctype.generics);
-    let repr_family_impl = gen_repr_c_robust_family_impl(&ctype.ident, &ctype.generics);
-    let niche_family_impl = gen_without_niche_family_impl(&ctype.ident, &ctype.generics);
+    let type_spec_impl = gen_repr_c_type_spec_impl(&ctype.ident, &ctype.generics);
 
     let const_view = gen_ctype_union_view(ctype.clone(), false);
     let mut_view = gen_ctype_union_view(ctype.clone(), true);
@@ -346,9 +344,7 @@ fn gen_union_ctype_impls(ctype: &syn::ItemUnion) -> TokenStream {
         #copy_impls
         #default_impl
         #robust_impls
-        #repr_family_impl
-        #size_family_impl
-        #niche_family_impl
+        #type_spec_impl
 
         #const_view
         #mut_view
@@ -373,8 +369,8 @@ fn gen_robust_impls<const ADD_COPY: bool>(
         .is_empty()
         .then_some(quote! { for<'_dummy> });
 
-    let size_family_bound = (!ADD_COPY).then(|| {
-        quote! { #for_dummy Self: co3::rust_spec::size::SizeFamily<Kind = co3::rust_spec::size::Sized<co3::rust_spec::size::NonZst>>, }
+    let type_spec_bound = (!ADD_COPY).then(|| {
+        quote! { #for_dummy Self: co3::rust_spec::TypeSpec<Size = co3::rust_spec::size::Sized<co3::rust_spec::size::NonZst>>, }
     });
 
     quote! {
@@ -382,7 +378,7 @@ fn gen_robust_impls<const ADD_COPY: bool>(
 
         unsafe impl #impl_generics co3::CFnArg for #ident #ty_generics
         where
-            #size_family_bound
+            #type_spec_bound
             #(#copy_bounds,)*
             #predicates
         {}
@@ -398,22 +394,15 @@ fn gen_robust_impls<const ADD_COPY: bool>(
     }
 }
 
-fn gen_repr_c_robust_family_impl(ident: &syn::Ident, generics: &syn::Generics) -> TokenStream {
+fn gen_repr_c_type_spec_impl(ident: &syn::Ident, generics: &syn::Generics) -> TokenStream {
     let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
 
     quote! {
-        impl #impl_generics co3::rust_spec::repr::ReprFamily for #ident #ty_generics #where_clause {
-            type Kind = co3::rust_spec::repr::Stable<co3::rust_spec::repr::Robust>;
-        }
-    }
-}
-
-fn gen_without_niche_family_impl(ident: &syn::Ident, generics: &syn::Generics) -> TokenStream {
-    let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
-
-    quote! {
-        impl #impl_generics co3::rust_spec::niche::NicheFamily for #ident #ty_generics #where_clause {
-            type Kind = co3::rust_spec::niche::WithoutNiche;
+        unsafe impl #impl_generics co3::rust_spec::TypeSpec for #ident #ty_generics #where_clause {
+            type Repr = co3::rust_spec::repr::Stable<co3::rust_spec::repr::Robust>;
+            type Size = co3::rust_spec::size::Sized<co3::rust_spec::size::NonZst>;
+            type Niche = co3::rust_spec::niche::WithoutNiche;
+            type Mutability = co3::rust_spec::mutability::Exclusive;
         }
     }
 }
@@ -555,18 +544,14 @@ fn gen_ctype_union_view(mut ctype: syn::ItemUnion, is_mut: bool) -> TokenStream 
     let copy_impls = gen_copy_impls::<true>(&ctype.ident, &ctype.generics, &fields);
     let default_impl = gen_default_impl::<true>(&ctype.ident, &ctype.generics, &fields);
     let robust_impls = gen_robust_impls::<true>(&ctype.ident, &ctype.generics, &fields);
-    let size_family_impl = gen_non_zst_sized_family_impl(&ctype.ident, &ctype.generics);
-    let repr_family_impl = gen_repr_c_robust_family_impl(&ctype.ident, &ctype.generics);
-    let niche_family_impl = gen_without_niche_family_impl(&ctype.ident, &ctype.generics);
+    let type_spec_impl = gen_repr_c_type_spec_impl(&ctype.ident, &ctype.generics);
 
     quote! {
         #ctype
         #copy_impls
         #default_impl
         #robust_impls
-        #repr_family_impl
-        #size_family_impl
-        #niche_family_impl
+        #type_spec_impl
     }
 }
 

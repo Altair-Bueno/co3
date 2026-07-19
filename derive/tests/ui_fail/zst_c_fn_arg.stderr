@@ -1,8 +1,8 @@
-error[E0271]: type mismatch resolving `<CReprCZst as SizeFamily>::Kind == Sized<NonZst>`
+error[E0271]: type mismatch resolving `<CReprCZst as TypeSpec>::Size == Sized<NonZst>`
   --> tests/ui_fail/zst_c_fn_arg.rs:72:19
    |
 72 |     require_arg::<<ReprCZst as ExternC>::CType>();
-   |                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^ type mismatch resolving `<CReprCZst as SizeFamily>::Kind == Sized<NonZst>`
+   |                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^ type mismatch resolving `<CReprCZst as TypeSpec>::Size == Sized<NonZst>`
    |
 note: expected this to be `co3::rust_spec::size::Sized<NonZst>`
   --> tests/ui_fail/zst_c_fn_arg.rs:39:33
@@ -26,11 +26,11 @@ note: required by a bound in `require_arg`
    |                   ^^^^^^ required by this bound in `require_arg`
    = note: this error originates in the derive macro `co3::rust_spec::TypeSpec` which comes from the expansion of the derive macro `ReprC` (in Nightly builds, run with -Z macro-backtrace for more info)
 
-error[E0271]: type mismatch resolving `<CReprCZst as SizeFamily>::Kind == Sized<NonZst>`
+error[E0271]: type mismatch resolving `<CReprCZst as TypeSpec>::Size == Sized<NonZst>`
   --> tests/ui_fail/zst_c_fn_arg.rs:73:22
    |
 73 |     require_return::<<ReprCZst as ExternC>::CType>();
-   |                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^ type mismatch resolving `<CReprCZst as SizeFamily>::Kind == Sized<NonZst>`
+   |                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^ type mismatch resolving `<CReprCZst as TypeSpec>::Size == Sized<NonZst>`
    |
 note: expected this to be `co3::rust_spec::size::Sized<NonZst>`
   --> tests/ui_fail/zst_c_fn_arg.rs:39:33
@@ -55,11 +55,11 @@ note: required by a bound in `require_return`
    |                      ^^^^^^^^^ required by this bound in `require_return`
    = note: this error originates in the derive macro `co3::rust_spec::TypeSpec` which comes from the expansion of the derive macro `ReprC` (in Nightly builds, run with -Z macro-backtrace for more info)
 
-error[E0271]: type mismatch resolving `<CTransparentZst as SizeFamily>::Kind == Sized<NonZst>`
+error[E0271]: type mismatch resolving `<CTransparentZst as TypeSpec>::Size == Sized<NonZst>`
   --> tests/ui_fail/zst_c_fn_arg.rs:75:19
    |
 75 |     require_arg::<<TransparentZst as ExternC>::CType>();
-   |                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ type mismatch resolving `<CTransparentZst as SizeFamily>::Kind == Sized<NonZst>`
+   |                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ type mismatch resolving `<CTransparentZst as TypeSpec>::Size == Sized<NonZst>`
    |
 note: expected this to be `co3::rust_spec::size::Sized<NonZst>`
   --> tests/ui_fail/zst_c_fn_arg.rs:46:33
@@ -83,11 +83,11 @@ note: required by a bound in `require_arg`
    |                   ^^^^^^ required by this bound in `require_arg`
    = note: this error originates in the derive macro `co3::rust_spec::TypeSpec` which comes from the expansion of the derive macro `ReprC` (in Nightly builds, run with -Z macro-backtrace for more info)
 
-error[E0271]: type mismatch resolving `<CTransparentZst as SizeFamily>::Kind == Sized<NonZst>`
+error[E0271]: type mismatch resolving `<CTransparentZst as TypeSpec>::Size == Sized<NonZst>`
   --> tests/ui_fail/zst_c_fn_arg.rs:76:22
    |
 76 |     require_return::<<TransparentZst as ExternC>::CType>();
-   |                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ type mismatch resolving `<CTransparentZst as SizeFamily>::Kind == Sized<NonZst>`
+   |                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ type mismatch resolving `<CTransparentZst as TypeSpec>::Size == Sized<NonZst>`
    |
 note: expected this to be `co3::rust_spec::size::Sized<NonZst>`
   --> tests/ui_fail/zst_c_fn_arg.rs:46:33
@@ -112,11 +112,11 @@ note: required by a bound in `require_return`
    |                      ^^^^^^^^^ required by this bound in `require_return`
    = note: this error originates in the derive macro `co3::rust_spec::TypeSpec` which comes from the expansion of the derive macro `ReprC` (in Nightly builds, run with -Z macro-backtrace for more info)
 
-error[E0271]: type mismatch resolving `<CNoReprZst as SizeFamily>::Kind == Sized<NonZst>`
+error[E0271]: type mismatch resolving `<CNoReprZst as TypeSpec>::Size == Sized<NonZst>`
   --> tests/ui_fail/zst_c_fn_arg.rs:78:19
    |
 78 |     require_arg::<<NoReprZst as ExternC>::CType>();
-   |                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ type mismatch resolving `<CNoReprZst as SizeFamily>::Kind == Sized<NonZst>`
+   |                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ type mismatch resolving `<CNoReprZst as TypeSpec>::Size == Sized<NonZst>`
    |
 note: expected this to be `co3::rust_spec::size::Sized<NonZst>`
   --> tests/ui_fail/zst_c_fn_arg.rs:52:33
@@ -140,11 +140,11 @@ note: required by a bound in `require_arg`
    |                   ^^^^^^ required by this bound in `require_arg`
    = note: this error originates in the derive macro `co3::rust_spec::TypeSpec` which comes from the expansion of the derive macro `ReprC` (in Nightly builds, run with -Z macro-backtrace for more info)
 
-error[E0271]: type mismatch resolving `<CNoReprZst as SizeFamily>::Kind == Sized<NonZst>`
+error[E0271]: type mismatch resolving `<CNoReprZst as TypeSpec>::Size == Sized<NonZst>`
   --> tests/ui_fail/zst_c_fn_arg.rs:79:22
    |
 79 |     require_return::<<NoReprZst as ExternC>::CType>();
-   |                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ type mismatch resolving `<CNoReprZst as SizeFamily>::Kind == Sized<NonZst>`
+   |                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ type mismatch resolving `<CNoReprZst as TypeSpec>::Size == Sized<NonZst>`
    |
 note: expected this to be `co3::rust_spec::size::Sized<NonZst>`
   --> tests/ui_fail/zst_c_fn_arg.rs:52:33
@@ -169,11 +169,11 @@ note: required by a bound in `require_return`
    |                      ^^^^^^^^^ required by this bound in `require_return`
    = note: this error originates in the derive macro `co3::rust_spec::TypeSpec` which comes from the expansion of the derive macro `ReprC` (in Nightly builds, run with -Z macro-backtrace for more info)
 
-error[E0271]: type mismatch resolving `<CParamReprCZst<()> as SizeFamily>::Kind == Sized<NonZst>`
+error[E0271]: type mismatch resolving `<CParamReprCZst<()> as TypeSpec>::Size == Sized<NonZst>`
   --> tests/ui_fail/zst_c_fn_arg.rs:81:19
    |
 81 |     require_arg::<<ParamReprCZst<()> as ExternC>::CType>();
-   |                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ type mismatch resolving `<CParamReprCZst<()> as SizeFamily>::Kind == Sized<NonZst>`
+   |                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ type mismatch resolving `<CParamReprCZst<()> as TypeSpec>::Size == Sized<NonZst>`
    |
 note: expected this to be `co3::rust_spec::size::Sized<NonZst>`
   --> tests/ui_fail/zst_c_fn_arg.rs:3:33
@@ -198,11 +198,11 @@ note: required by a bound in `require_arg`
    |                   ^^^^^^ required by this bound in `require_arg`
    = note: this error originates in the derive macro `co3::rust_spec::TypeSpec` which comes from the expansion of the derive macro `ReprC` (in Nightly builds, run with -Z macro-backtrace for more info)
 
-error[E0271]: type mismatch resolving `<CParamReprCZst<()> as SizeFamily>::Kind == Sized<NonZst>`
+error[E0271]: type mismatch resolving `<CParamReprCZst<()> as TypeSpec>::Size == Sized<NonZst>`
   --> tests/ui_fail/zst_c_fn_arg.rs:82:22
    |
 82 |     require_return::<<ParamReprCZst<()> as ExternC>::CType>();
-   |                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ type mismatch resolving `<CParamReprCZst<()> as SizeFamily>::Kind == Sized<NonZst>`
+   |                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ type mismatch resolving `<CParamReprCZst<()> as TypeSpec>::Size == Sized<NonZst>`
    |
 note: expected this to be `co3::rust_spec::size::Sized<NonZst>`
   --> tests/ui_fail/zst_c_fn_arg.rs:3:33
@@ -228,11 +228,11 @@ note: required by a bound in `require_return`
    |                      ^^^^^^^^^ required by this bound in `require_return`
    = note: this error originates in the derive macro `co3::rust_spec::TypeSpec` which comes from the expansion of the derive macro `ReprC` (in Nightly builds, run with -Z macro-backtrace for more info)
 
-error[E0271]: type mismatch resolving `<CParamTransparentZst<()> as SizeFamily>::Kind == Sized<NonZst>`
+error[E0271]: type mismatch resolving `<CParamTransparentZst<()> as TypeSpec>::Size == Sized<NonZst>`
   --> tests/ui_fail/zst_c_fn_arg.rs:84:19
    |
 84 |     require_arg::<<ParamTransparentZst<()> as ExternC>::CType>();
-   |                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ type mismatch resolving `<CParamTransparentZst<()> as SizeFamily>::Kind == Sized<NonZst>`
+   |                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ type mismatch resolving `<CParamTransparentZst<()> as TypeSpec>::Size == Sized<NonZst>`
    |
 note: expected this to be `co3::rust_spec::size::Sized<NonZst>`
   --> tests/ui_fail/zst_c_fn_arg.rs:10:33
@@ -257,11 +257,11 @@ note: required by a bound in `require_arg`
    |                   ^^^^^^ required by this bound in `require_arg`
    = note: this error originates in the derive macro `co3::rust_spec::TypeSpec` which comes from the expansion of the derive macro `ReprC` (in Nightly builds, run with -Z macro-backtrace for more info)
 
-error[E0271]: type mismatch resolving `<CParamTransparentZst<()> as SizeFamily>::Kind == Sized<NonZst>`
+error[E0271]: type mismatch resolving `<CParamTransparentZst<()> as TypeSpec>::Size == Sized<NonZst>`
   --> tests/ui_fail/zst_c_fn_arg.rs:85:22
    |
 85 |     require_return::<<ParamTransparentZst<()> as ExternC>::CType>();
-   |                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ type mismatch resolving `<CParamTransparentZst<()> as SizeFamily>::Kind == Sized<NonZst>`
+   |                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ type mismatch resolving `<CParamTransparentZst<()> as TypeSpec>::Size == Sized<NonZst>`
    |
 note: expected this to be `co3::rust_spec::size::Sized<NonZst>`
   --> tests/ui_fail/zst_c_fn_arg.rs:10:33
@@ -287,11 +287,11 @@ note: required by a bound in `require_return`
    |                      ^^^^^^^^^ required by this bound in `require_return`
    = note: this error originates in the derive macro `co3::rust_spec::TypeSpec` which comes from the expansion of the derive macro `ReprC` (in Nightly builds, run with -Z macro-backtrace for more info)
 
-error[E0271]: type mismatch resolving `<CParamNoReprZst<()> as SizeFamily>::Kind == Sized<NonZst>`
+error[E0271]: type mismatch resolving `<CParamNoReprZst<()> as TypeSpec>::Size == Sized<NonZst>`
   --> tests/ui_fail/zst_c_fn_arg.rs:87:19
    |
 87 |     require_arg::<<ParamNoReprZst<()> as ExternC>::CType>();
-   |                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ type mismatch resolving `<CParamNoReprZst<()> as SizeFamily>::Kind == Sized<NonZst>`
+   |                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ type mismatch resolving `<CParamNoReprZst<()> as TypeSpec>::Size == Sized<NonZst>`
    |
 note: expected this to be `co3::rust_spec::size::Sized<NonZst>`
   --> tests/ui_fail/zst_c_fn_arg.rs:33:33
@@ -316,11 +316,11 @@ note: required by a bound in `require_arg`
    |                   ^^^^^^ required by this bound in `require_arg`
    = note: this error originates in the derive macro `co3::rust_spec::TypeSpec` which comes from the expansion of the derive macro `ReprC` (in Nightly builds, run with -Z macro-backtrace for more info)
 
-error[E0271]: type mismatch resolving `<CParamNoReprZst<()> as SizeFamily>::Kind == Sized<NonZst>`
+error[E0271]: type mismatch resolving `<CParamNoReprZst<()> as TypeSpec>::Size == Sized<NonZst>`
   --> tests/ui_fail/zst_c_fn_arg.rs:88:22
    |
 88 |     require_return::<<ParamNoReprZst<()> as ExternC>::CType>();
-   |                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ type mismatch resolving `<CParamNoReprZst<()> as SizeFamily>::Kind == Sized<NonZst>`
+   |                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ type mismatch resolving `<CParamNoReprZst<()> as TypeSpec>::Size == Sized<NonZst>`
    |
 note: expected this to be `co3::rust_spec::size::Sized<NonZst>`
   --> tests/ui_fail/zst_c_fn_arg.rs:33:33

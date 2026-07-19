@@ -8,12 +8,7 @@ use crate::{
     stored::{DecodeOwned, EmptyStore, EncodeOwned},
     transmute::CheckedTransmute,
 };
-use rust_spec::{
-    TypeSpec,
-    niche::{NicheFamily, WithoutNiche},
-    repr::ReprFamily,
-    size::SizeFamily,
-};
+use rust_spec::{TypeSpec, niche::WithoutNiche};
 
 /// FFI-safe equivalent of [`core::option::Option`] for [`crate::ReprC`] types
 #[repr(C)]
@@ -139,14 +134,11 @@ impl<T> TryFrom<ReprCOption<T>> for Option<T> {
     }
 }
 
-impl<T: TypeSpec> ReprFamily for ReprCOption<T> {
-    type Kind = <T as TypeSpec>::Repr;
-}
-unsafe impl<T> SizeFamily for ReprCOption<T> {
-    type Kind = rust_spec::size::Sized<rust_spec::size::NonZst>;
-}
-impl<T> NicheFamily for ReprCOption<T> {
-    type Kind = WithoutNiche;
+unsafe impl<T: TypeSpec> TypeSpec for ReprCOption<T> {
+    type Repr = T::Repr;
+    type Size = rust_spec::size::Sized<rust_spec::size::NonZst>;
+    type Niche = WithoutNiche;
+    type Mutability = rust_spec::mutability::Exclusive;
 }
 
 unsafe impl<T: Borrow> Borrow for ReprCOption<T> {

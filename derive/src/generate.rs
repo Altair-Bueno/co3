@@ -15,7 +15,6 @@ use crate::{
         normalize_fn_signature, strip_erased_type_params,
     },
     parse::{FailureMode, MacroFeatures},
-    repr::gen_non_zst_sized_family_impl,
     symbol_name_value,
     utils::{
         DispatchMonomorphizer, ParamUseDetector, has_non_lifetime_generics, is_type_erased,
@@ -74,9 +73,13 @@ pub(crate) fn expand_export_decls(
                 DropImpl::Impl(impl_) => gen_drop_impl_definition(&abi, failure_mode, impl_),
             });
 
-            let opaque = derive_opaque_item(id.as_deref(), ident, &ty.generics);
-            // TODO: This is not correct, but I don't think it matters whether it's ZST or not
-            let size_impl = gen_non_zst_sized_family_impl(ident, &ty.generics);
+            let opaque = derive_opaque_item(
+                id.as_deref(),
+                ident,
+                &ty.generics,
+                // TODO: This is not correct, but I don't think it matters whether it's ZST or not
+                quote! { co3::rust_spec::size::Sized<co3::rust_spec::size::NonZst> },
+            );
             let size_check = gen_non_zst_sized_check(ident, &ty.generics);
 
             quote! {
@@ -86,7 +89,6 @@ pub(crate) fn expand_export_decls(
 
                     #drop
                     #size_check
-                    #size_impl
                     #drop_check
 
                     unsafe impl #impl_generics co3::stored::EncodeOwned for #ident #ty_generics #where_clause {
@@ -667,14 +669,15 @@ fn gen_extern_type_impls(
     generics: &syn::Generics,
 ) -> TokenStream {
     let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
-    let opaque_impls = derive_opaque_item(id, ident, generics);
+    let opaque_impls = derive_opaque_item(
+        id,
+        ident,
+        generics,
+        quote! { co3::rust_spec::size::ExternTypeLike },
+    );
 
     quote! {
         #opaque_impls
-
-        unsafe impl #impl_generics co3::rust_spec::size::SizeFamily for #ident #ty_generics #where_clause {
-            type Kind = co3::rust_spec::size::ExternTypeLike;
-        }
 
         unsafe impl #impl_generics co3::borrow::BorrowCast for #ident #ty_generics #where_clause {
             type AsConst = Self;
@@ -689,7 +692,6 @@ fn gen_owned_repr_c_impls(ident: &syn::Ident, generics: &syn::Generics) -> Token
     let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
     let params = &generics.params;
     let owned_repr_c_name = gen_owned_repr_c_name(ident);
-    let size_impl = gen_non_zst_sized_family_impl(&owned_repr_c_name, generics);
 
     quote! {
         impl #impl_generics #owned_repr_c_name #ty_generics #where_clause {
@@ -703,15 +705,11 @@ fn gen_owned_repr_c_impls(ident: &syn::Ident, generics: &syn::Generics) -> Token
         }
         impl #impl_generics Copy for #owned_repr_c_name #ty_generics #where_clause {}
 
-        #size_impl
-        impl #impl_generics co3::rust_spec::repr::ReprFamily for #owned_repr_c_name #ty_generics #where_clause {
-            type Kind = co3::rust_spec::repr::Stable<co3::rust_spec::repr::Robust>;
-        }
-        impl #impl_generics co3::rust_spec::niche::NicheFamily for #owned_repr_c_name #ty_generics #where_clause {
-            type Kind = co3::rust_spec::niche::WithoutNiche;
-        }
-        impl #impl_generics co3::rust_spec::mutability::MutabilityFamily for #owned_repr_c_name #ty_generics #where_clause {
-            type Kind = co3::rust_spec::mutability::Exclusive;
+        unsafe impl #impl_generics co3::rust_spec::TypeSpec for #owned_repr_c_name #ty_generics #where_clause {
+            type Repr = co3::rust_spec::repr::Stable<co3::rust_spec::repr::Robust>;
+            type Size = co3::rust_spec::size::Sized<co3::rust_spec::size::NonZst>;
+            type Niche = co3::rust_spec::niche::WithoutNiche;
+            type Mutability = co3::rust_spec::mutability::Exclusive;
         }
 
         impl #impl_generics co3::ExternC for #owned_repr_c_name #ty_generics #where_clause {
@@ -766,19 +764,12 @@ fn gen_owned_extern_type_impls(ident: &syn::Ident, generics: &syn::Generics) -> 
     let owned_ident = gen_owned_extern_type_name(ident);
     let owned_repr_c_name = gen_owned_repr_c_name(ident);
 
-    let size_impl = gen_non_zst_sized_family_impl(&owned_ident, generics);
-
     quote! {
-        #size_impl
-
-        impl #impl_generics co3::rust_spec::repr::ReprFamily for #owned_ident #ty_generics #where_clause {
-            type Kind = co3::rust_spec::repr::Stable<co3::rust_spec::repr::NonRobust>;
-        }
-        impl #impl_generics co3::rust_spec::niche::NicheFamily for #owned_ident #ty_generics #where_clause {
-            type Kind = co3::rust_spec::niche::WithNiche<co3::rust_spec::niche::Stable>;
-        }
-        impl #impl_generics co3::rust_spec::mutability::MutabilityFamily for #owned_ident #ty_generics #where_clause {
-            type Kind = co3::rust_spec::mutability::Exclusive;
+        unsafe impl #impl_generics co3::rust_spec::TypeSpec for #owned_ident #ty_generics #where_clause {
+            type Repr = co3::rust_spec::repr::Stable<co3::rust_spec::repr::NonRobust>;
+            type Size = co3::rust_spec::size::Sized<co3::rust_spec::size::NonZst>;
+            type Niche = co3::rust_spec::niche::WithNiche<co3::rust_spec::niche::Stable>;
+            type Mutability = co3::rust_spec::mutability::Exclusive;
         }
 
         unsafe impl #impl_generics co3::transmute::CheckedTransmute for #owned_ident #ty_generics #where_clause {
@@ -797,8 +788,6 @@ fn gen_owned_extern_type_impls(ident: &syn::Ident, generics: &syn::Generics) -> 
         impl #impl_generics co3::niche::Niche for #owned_ident #ty_generics #where_clause {
             const NICHE_VALUE: Self::CType = #owned_repr_c_name(core::ptr::null_mut());
         }
-
-        unsafe impl #impl_generics co3::niche::StableNiche for #owned_ident #ty_generics #where_clause {}
 
         unsafe impl #impl_generics co3::stored::EncodeOwned for #owned_ident #ty_generics #where_clause {
             type Store = ();
@@ -864,6 +853,7 @@ fn derive_opaque_item(
     id: Option<&syn::Type>,
     ident: &syn::Ident,
     generics: &syn::Generics,
+    size_kind: TokenStream,
 ) -> TokenStream {
     let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
     let handle_family_impl = id.map(|id| gen_handle_family_impl(ident, generics, id));
@@ -871,14 +861,11 @@ fn derive_opaque_item(
     quote! {
         #handle_family_impl
 
-        impl #impl_generics co3::rust_spec::repr::ReprFamily for #ident #ty_generics #where_clause {
-            type Kind = co3::rust_spec::repr::Stable<co3::rust_spec::repr::Robust>;
-        }
-        impl #impl_generics co3::rust_spec::niche::NicheFamily for #ident #ty_generics #where_clause {
-            type Kind = co3::rust_spec::niche::WithoutNiche;
-        }
-        impl #impl_generics co3::rust_spec::mutability::MutabilityFamily for #ident #ty_generics #where_clause {
-            type Kind = co3::rust_spec::mutability::Exclusive;
+        unsafe impl #impl_generics co3::rust_spec::TypeSpec for #ident #ty_generics #where_clause {
+            type Repr = co3::rust_spec::repr::Stable<co3::rust_spec::repr::Robust>;
+            type Size = #size_kind;
+            type Niche = co3::rust_spec::niche::WithoutNiche;
+            type Mutability = co3::rust_spec::mutability::Exclusive;
         }
 
         unsafe impl #impl_generics co3::ReprC for #ident #ty_generics #where_clause {}

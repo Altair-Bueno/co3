@@ -4,12 +4,13 @@ use alloc::boxed::Box;
 use disjoint_impls::disjoint_impls;
 use rust_spec::{
     TypeSpec,
+    niche::{Stable, WithNiche},
     size::{NonZst, Zst},
 };
 
 #[cfg(feature = "alloc")]
 use crate::boxed::CBox;
-use crate::{ExternC, assert_arr_has_non_zero_len, niche::StableNiche};
+use crate::{ExternC, assert_arr_has_non_zero_len};
 
 disjoint_impls! {
     /// Type that can be **safely transmuted** into another type.
@@ -29,29 +30,26 @@ disjoint_impls! {
         unsafe fn is_valid(target: &Self::CType) -> bool;
     }
 
-    unsafe impl<R: CheckedTransmute<CType: Copy> + StableNiche, E> CheckedTransmute for Result<R, E>
+    unsafe impl<R: CheckedTransmute<CType: Copy>, E> CheckedTransmute for Result<R, E>
     where
-        R: TypeSpec<Size = rust_spec::size::Sized<NonZst>>,
+        R: TypeSpec<Size = rust_spec::size::Sized<NonZst>, Niche = WithNiche<Stable>>,
         E: TypeSpec<Size = rust_spec::size::Sized<Zst>>,
-        Self: ExternC<CType = <R as ExternC>::CType>,
     {
         #[inline(always)]
         unsafe fn is_valid(target: &Self::CType) -> bool {
             unsafe { R::is_valid(target) }
         }
     }
-    // FIXME: disjoint_impls! is broken
-    //unsafe impl<R, E: CheckedTransmute<CType: Copy> + StableNiche> CheckedTransmute for Result<R, E>
-    //where
-    //    R: TypeSpec<Size = rust_spec::size::Sized<Zst>>,
-    //    E: TypeSpec<Size = rust_spec::size::Sized<NonZst>>,
-    //    Self: ExternC<CType = <E as ExternC>::CType>,
-    //{
-    //    #[inline(always)]
-    //    unsafe fn is_valid(target: &Self::CType) -> bool {
-    //        unsafe { E::is_valid(target) }
-    //    }
-    //}
+    unsafe impl<R, E: CheckedTransmute<CType: Copy>> CheckedTransmute for Result<R, E>
+    where
+        R: TypeSpec<Size = rust_spec::size::Sized<Zst>>,
+        E: TypeSpec<Size = rust_spec::size::Sized<NonZst>, Niche = WithNiche<Stable>>,
+    {
+        #[inline(always)]
+        unsafe fn is_valid(target: &Self::CType) -> bool {
+            unsafe { E::is_valid(target) }
+        }
+    }
 }
 
 unsafe impl<R: CheckedTransmute + ?Sized> CheckedTransmute for &R
@@ -138,8 +136,9 @@ unsafe impl CheckedTransmute for str {
     }
 }
 
-unsafe impl<R: CheckedTransmute<CType: Copy> + StableNiche> CheckedTransmute for Option<R>
+unsafe impl<R: CheckedTransmute<CType: Copy>> CheckedTransmute for Option<R>
 where
+    R: TypeSpec<Niche = WithNiche<Stable>>,
     Self: ExternC<CType = R::CType>,
 {
     #[inline(always)]
@@ -180,18 +179,18 @@ mod tests {
             Encode,
         );
         assert_impl_all!(&bool:
-            StableNiche<CType = *const u8>,
+            Niche<CType = *const u8>,
             Decode<'static>,
             Encode,
         );
         assert_impl_all!(&mut bool:
-            StableNiche<CType = *mut u8>,
+            Niche<CType = *mut u8>,
             Decode<'static>,
             Encode,
         );
         #[cfg(feature = "alloc")]
         assert_impl_all!(Box<bool>:
-            StableNiche<CType = CBox<u8>>,
+            Niche<CType = CBox<u8>>,
             Decode<'static>,
             Encode,
         );
@@ -233,18 +232,18 @@ mod tests {
     #[test]
     fn robust_ref() {
         assert_impl_all!(&&u8:
-            StableNiche<CType = *const *const u8>,
+            Niche<CType = *const *const u8>,
             Decode<'static>,
             Encode,
         );
         assert_impl_all!(&mut &u8:
-            StableNiche<CType = *mut *const u8>,
+            Niche<CType = *mut *const u8>,
             Decode<'static>,
             Encode,
         );
         #[cfg(feature = "alloc")]
         assert_impl_all!(Box<&bool>:
-            StableNiche<CType = CBox<*const u8>>,
+            Niche<CType = CBox<*const u8>>,
             Decode<'static>,
             Encode,
         );
@@ -286,18 +285,18 @@ mod tests {
     #[test]
     fn transparent_ref() {
         assert_impl_all!(&&bool:
-            StableNiche<CType = *const *const u8>,
+            Niche<CType = *const *const u8>,
             Decode<'static>,
             Encode,
         );
         assert_impl_all!(&mut &bool:
-            StableNiche<CType = *mut *const u8>,
+            Niche<CType = *mut *const u8>,
             Decode<'static>,
             Encode,
         );
         #[cfg(feature = "alloc")]
         assert_impl_all!(Box<&bool>:
-            StableNiche<CType = CBox<*const u8>>,
+            Niche<CType = CBox<*const u8>>,
             Decode<'static>,
             Encode,
         );
@@ -339,17 +338,17 @@ mod tests {
     #[test]
     fn robust_ref_mut() {
         assert_impl_all!(&&mut u8:
-            StableNiche<CType = *const *mut u8>,
+            Niche<CType = *const *mut u8>,
             Decode<'static>,
             Encode,
         );
         assert_impl_all!(&mut &mut u8:
-            StableNiche<CType = *mut *mut u8>,
+            Niche<CType = *mut *mut u8>,
             Decode<'static>,
         );
         #[cfg(feature = "alloc")]
         assert_impl_all!(Box<&mut u8>:
-            StableNiche<CType = CBox<*mut u8>>,
+            Niche<CType = CBox<*mut u8>>,
             Decode<'static>,
             Encode,
         );
@@ -391,17 +390,17 @@ mod tests {
     #[test]
     fn transparent_ref_mut() {
         assert_impl_all!(&&mut bool:
-            StableNiche<CType = *const *mut u8>,
+            Niche<CType = *const *mut u8>,
             Decode<'static>,
             Encode,
         );
         assert_impl_all!(&mut &mut bool:
-            StableNiche<CType = *mut *mut u8>,
+            Niche<CType = *mut *mut u8>,
             Decode<'static>,
         );
         #[cfg(feature = "alloc")]
         assert_impl_all!(Box<&mut bool>:
-            StableNiche<CType = CBox<*mut u8>>,
+            Niche<CType = CBox<*mut u8>>,
             Decode<'static>,
             Encode,
         );

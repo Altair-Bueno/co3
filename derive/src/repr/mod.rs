@@ -1,6 +1,6 @@
 use proc_macro2::TokenStream;
 use quote::quote;
-use syn::{Attribute, Ident, spanned::Spanned as _, visit::Visit};
+use syn::{Attribute, spanned::Spanned as _, visit::Visit};
 
 use crate::{
     generate::gen_handle_family_impl,
@@ -334,19 +334,6 @@ fn is_type_parameterized(ty: &syn::Type, generics: &syn::Generics) -> bool {
     visitor.is_generic
 }
 
-pub(crate) fn gen_non_zst_sized_family_impl(
-    type_name: &Ident,
-    generics: &syn::Generics,
-) -> TokenStream {
-    let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
-
-    quote! {
-        unsafe impl #impl_generics co3::rust_spec::size::SizeFamily for #type_name #ty_generics #where_clause {
-            type Kind = co3::rust_spec::size::Sized<co3::rust_spec::size::NonZst>;
-        }
-    }
-}
-
 fn assert_no_drop(generics: &syn::Generics, ident: &syn::Ident) -> TokenStream {
     let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
 
@@ -359,11 +346,7 @@ fn assert_no_drop(generics: &syn::Generics, ident: &syn::Ident) -> TokenStream {
 
             impl #impl_generics AssertNoDrop for #ident #ty_generics #where_clause {
                 fn assert_no_drop() {
-                    const {
-                        // TODO: This is the only place co3::impls! is used
-                        // Remove it from public API when Drop is handled
-                        assert!(co3::impls!(Self: !Drop));
-                    }
+                    const { assert!(co3::impls!(Self: !Drop)); }
                 }
             }
         };

@@ -50,16 +50,8 @@ use crate::{
     option::ReprCOption,
     result::ReprCResult,
     slice::{CSlice, CSliceMut},
-    stored::{DecodeOwned, EmptyStore, EncodeOwned, Store, UnstableOrNonRobust},
+    stored::{DecodeOwned, EmptyStore, EncodeOwned, Store},
 };
-
-trait Thin {}
-impl<K> Thin for rust_spec::size::Sized<K> {}
-impl Thin for ExternTypeLike {}
-
-trait Dst {}
-impl Dst for ExternTypeLike {}
-impl<K> Dst for MetaSized<K> {}
 
 pub mod borrow;
 #[cfg(feature = "alloc")]
@@ -77,6 +69,18 @@ mod std_impls;
 pub mod stored;
 pub mod transmute;
 pub mod tuple;
+
+trait Thin {}
+impl<K> Thin for rust_spec::size::Sized<K> {}
+impl Thin for ExternTypeLike {}
+
+trait Dst {}
+impl Dst for ExternTypeLike {}
+impl<K> Dst for MetaSized<K> {}
+
+trait UnstableOrNonRobust {}
+impl<K> UnstableOrNonRobust for Unstable<K> {}
+impl UnstableOrNonRobust for Stable<NonRobust> {}
 
 pub trait Error {
     fn trap_value() -> Self;

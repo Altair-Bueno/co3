@@ -7,13 +7,7 @@ use crate::{
     stored::{DecodeOwned, EncodeOwned},
     transmute::CheckedTransmute,
 };
-use rust_spec::{
-    TypeSpec,
-    mutability::{Exclusive, MutabilityFamily},
-    niche::{NicheFamily, WithoutNiche},
-    repr::ReprFamily,
-    size::SizeFamily,
-};
+use rust_spec::{TypeSpec, mutability::Exclusive, niche::WithoutNiche};
 
 /// Immutable slice `&[C]` with a defined C ABI layout. Consists of a data pointer and a length.
 /// If the data pointer is set to `null`, the struct represents `Option<&[C]>`.
@@ -169,17 +163,11 @@ impl<C> CSliceMut<C> {
 
 macro_rules! impl_slice_carrier {
     ($ty:ident) => {
-        impl<C: TypeSpec> ReprFamily for $ty<C> {
-            type Kind = <C as TypeSpec>::Repr;
-        }
-        unsafe impl<C: ReprC> SizeFamily for $ty<C> {
-            type Kind = rust_spec::size::Sized<rust_spec::size::NonZst>;
-        }
-        impl<C: ReprC> NicheFamily for $ty<C> {
-            type Kind = WithoutNiche;
-        }
-        impl<C: ReprC> MutabilityFamily for $ty<C> {
-            type Kind = Exclusive;
+        unsafe impl<C: TypeSpec> TypeSpec for $ty<C> {
+            type Repr = C::Repr;
+            type Size = rust_spec::size::Sized<rust_spec::size::NonZst>;
+            type Niche = WithoutNiche;
+            type Mutability = Exclusive;
         }
 
         unsafe impl<C> Borrow for $ty<C> {

@@ -115,15 +115,6 @@ disjoint_impls! {
     }
 }
 
-/// Type that has a compiler guaranteed [`Niche`] value (e.g. `Box<T>`)
-///
-/// The stable niche value is made use of when serializing [`Option<T>`].
-///
-/// # Safety
-///
-/// - the niche value must be congruent with what is guaranteed by the Rust compiler
-pub unsafe trait StableNiche: Niche {}
-
 #[cfg(feature = "alloc")]
 impl<R, C> Niche for Vec<R>
 where
@@ -148,12 +139,6 @@ where
 {
     const NICHE_VALUE: Self::CType = ReprCResult::NICHE_VALUE;
 }
-
-unsafe impl<R: ?Sized> StableNiche for &R where Self: Niche {}
-unsafe impl<R: ?Sized> StableNiche for &mut R where Self: Niche {}
-#[cfg(feature = "alloc")]
-unsafe impl<R: ?Sized> StableNiche for Box<R> where Self: Niche {}
-unsafe impl<R: ?Sized> StableNiche for NonNull<R> where Self: Niche {}
 
 #[cfg(test)]
 mod tests {

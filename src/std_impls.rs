@@ -14,7 +14,7 @@ use crate::boxed::CBoxedSlice;
 use crate::{
     Decode, Encode, ExternC, ReprC,
     borrow::{Borrow, BorrowCast, BorrowCastMut, ToOwned},
-    niche::{Niche, StableNiche},
+    niche::Niche,
     stored::{DecodeOwned, EmptyStore, EncodeOwned},
     transmute::CheckedTransmute,
 };
@@ -80,8 +80,6 @@ macro_rules! non_zero_derive {
         impl Niche for NonZero<$primitive> {
             const NICHE_VALUE: Self::CType = 0;
         }
-        unsafe impl StableNiche for NonZero<$primitive> {}
-
         )+
     }
 }
@@ -524,7 +522,6 @@ unsafe impl<T: CheckedTransmute + ?Sized> CheckedTransmute for ManuallyDrop<T> {
 impl<T: Niche> Niche for ManuallyDrop<T> {
     const NICHE_VALUE: Self::CType = T::NICHE_VALUE;
 }
-unsafe impl<T: StableNiche> StableNiche for ManuallyDrop<T> {}
 
 unsafe impl<T: EmptyStore> EmptyStore for ManuallyDrop<T> {}
 
@@ -553,18 +550,20 @@ mod tests {
     //        Encode,
     //    );
     //    assert_impl_all!(&ManuallyDrop<u8>:
-    //        StableNiche<CType = *const u8>,
+    //        Niche<CType = *const u8>,
+    //        TypeSpec<Niche = rust_spec::niche::WithNiche<rust_spec::niche::Stable>>,
     //        Decode<'static>,
     //        Encode,
     //    );
     //    assert_impl_all!(&mut ManuallyDrop<u8>:
-    //        StableNiche<CType = *mut u8>,
+    //        Niche<CType = *mut u8>,
+    //        TypeSpec<Niche = rust_spec::niche::WithNiche<rust_spec::niche::Stable>>,
     //        Decode<'static>,
     //        Encode,
     //    );
     //    #[cfg(feature = "alloc")]
     //    assert_impl_all!(Box<ManuallyDrop<u8>>:
-    //        StableNiche<CType = CBox<u8>>,
+    //        Niche<CType = CBox<u8>>,
     //        Decode<'static>,
     //        Encode,
     //    );
@@ -613,17 +612,18 @@ mod tests {
     //        Encode,
     //    );
     //    assert_impl_all!(&ManuallyDrop<String>:
-    //        StableNiche<CType = *const CBoxedSlice<u8>>,
+    //        Niche<CType = *const CBoxedSlice<u8>,
     //        Decode<'static>,
     //        Encode,
     //    );
     //    assert_impl_all!(&mut ManuallyDrop<String>:
-    //        StableNiche<CType = *mut CBoxedSlice<u8>>,
+    //        Niche<CType = *mut CBoxedSlice<u8>,
     //        Decode<'static>,
     //        Encode,
     //    );
     //    assert_impl_all!(Box<ManuallyDrop<String>>:
-    //        StableNiche<CType = CBox<CBoxedSlice<u8>>>,
+    //        Niche<CType = CBox<CBoxedSlice<u8>>,
+    //        TypeSpec<Niche = rust_spec::niche::WithNiche<rust_spec::niche::Stable>>>>,
     //        DecodeOwned<'static>,
     //        EncodeOwned,
     //    );
@@ -718,18 +718,18 @@ mod tests {
             Encode,
         );
         assert_impl_all!(&UnsafeCell<u8>:
-            StableNiche<CType = *mut u8>,
+            Niche<CType = *mut u8>,
             Decode<'static>,
             Encode,
         );
         assert_impl_all!(&mut UnsafeCell<u8>:
-            StableNiche<CType = *mut u8>,
+            Niche<CType = *mut u8>,
             Decode<'static>,
             Encode,
         );
         #[cfg(feature = "alloc")]
         assert_impl_all!(Box<UnsafeCell<u8>>:
-            StableNiche<CType = CBox<u8>>,
+            Niche<CType = CBox<u8>>,
             Decode<'static>,
             Encode,
         );
@@ -777,17 +777,17 @@ mod tests {
             Encode,
         );
         assert_impl_all!(&UnsafeCell<NonZero<u8>>:
-            StableNiche<CType = *mut u8>,
+            Niche<CType = *mut u8>,
             Decode<'static>,
             Encode,
         );
         assert_impl_all!(&mut UnsafeCell<NonZero<u8>>:
-            StableNiche<CType = *mut u8>,
+            Niche<CType = *mut u8>,
             Decode<'static>,
         );
         #[cfg(feature = "alloc")]
         assert_impl_all!(Box<UnsafeCell<NonZero<u8>>>:
-            StableNiche<CType = CBox<u8>>,
+            Niche<CType = CBox<u8>>,
             Decode<'static>,
             Encode,
         );

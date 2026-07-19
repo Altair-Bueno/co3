@@ -8,12 +8,7 @@ use crate::{
     stored::{DecodeOwned, EmptyStore, EncodeOwned},
     transmute::CheckedTransmute,
 };
-use rust_spec::{
-    TypeSpec,
-    niche::{NicheFamily, WithoutNiche},
-    repr::ReprFamily,
-    size::SizeFamily,
-};
+use rust_spec::{TypeSpec, niche::WithoutNiche};
 
 /// FFI-safe equivalent of [`core::result::Result`]
 #[repr(C)]
@@ -164,20 +159,15 @@ impl<T: Copy, E: Copy> TryFrom<ReprCResult<T, E>> for Result<T, E> {
     }
 }
 
-impl<T, E> ReprFamily for ReprCResult<T, E>
+unsafe impl<T, E> TypeSpec for ReprCResult<T, E>
 where
     T: TypeSpec<Repr: Add<<E as TypeSpec>::Repr>> + Copy,
     E: TypeSpec + Copy,
 {
-    type Kind = <<T as TypeSpec>::Repr as Add<<E as TypeSpec>::Repr>>::Output;
-}
-
-unsafe impl<T: Copy, E: Copy> SizeFamily for ReprCResult<T, E> {
-    type Kind = rust_spec::size::Sized<rust_spec::size::NonZst>;
-}
-
-impl<T: Copy, E: Copy> NicheFamily for ReprCResult<T, E> {
-    type Kind = WithoutNiche;
+    type Repr = <<T as TypeSpec>::Repr as Add<<E as TypeSpec>::Repr>>::Output;
+    type Size = rust_spec::size::Sized<rust_spec::size::NonZst>;
+    type Niche = WithoutNiche;
+    type Mutability = rust_spec::mutability::Exclusive;
 }
 
 unsafe impl<T: Borrow + Copy, E: Borrow + Copy> Borrow for ReprCResult<T, E>

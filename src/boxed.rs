@@ -2,13 +2,7 @@
 
 use alloc::boxed::Box;
 use core::ptr::NonNull;
-use rust_spec::{
-    TypeSpec,
-    mutability::{Exclusive, MutabilityFamily},
-    niche::{NicheFamily, WithoutNiche},
-    repr::ReprFamily,
-    size::SizeFamily,
-};
+use rust_spec::{TypeSpec, mutability::Exclusive, niche::WithoutNiche};
 
 use crate::{
     CFnArg, Decode, Encode, ExternC, ReprC,
@@ -237,17 +231,11 @@ impl<C> CBoxedSlice<C> {
 
 macro_rules! impl_boxed_carrier {
     ($ty:ident) => {
-        impl<C: TypeSpec> ReprFamily for $ty<C> {
-            type Kind = <C as TypeSpec>::Repr;
-        }
-        unsafe impl<C> SizeFamily for $ty<C> {
-            type Kind = rust_spec::size::Sized<rust_spec::size::NonZst>;
-        }
-        impl<C> NicheFamily for $ty<C> {
-            type Kind = WithoutNiche;
-        }
-        impl<C> MutabilityFamily for $ty<C> {
-            type Kind = Exclusive;
+        unsafe impl<C: TypeSpec> TypeSpec for $ty<C> {
+            type Repr = C::Repr;
+            type Size = rust_spec::size::Sized<rust_spec::size::NonZst>;
+            type Niche = WithoutNiche;
+            type Mutability = Exclusive;
         }
 
         unsafe impl<C> Borrow for $ty<C> {

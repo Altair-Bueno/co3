@@ -65,9 +65,8 @@ use core::ops::Add;
 use disjoint_impls::disjoint_impls;
 use rust_spec::{
     TypeSpec,
-    niche::{NicheFamily, WithNiche, WithoutNiche},
-    repr::ReprFamily,
-    size::{NonZst, SizeFamily},
+    niche::{WithNiche, WithoutNiche},
+    size::NonZst,
 };
 
 use crate::{
@@ -383,7 +382,7 @@ impl_tuple_niche_recursive! {
     (A, B, C, D, E, F, G, H, I, J, K, L) => ((A, B, C, D, E, F), (G, H, I, J, K, L)) : ReprCTuple12(0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 1.0, 1.1, 1.2, 1.3, 1.4, 1.5)
 }
 
-macro_rules! impl_tuple_families {
+macro_rules! impl_tuple_type_spec {
     (@layout_kind Repr; $ty:ident) => {
         <$ty as TypeSpec>::Repr
     };
@@ -394,46 +393,36 @@ macro_rules! impl_tuple_families {
         <$ty as TypeSpec>::Niche
     };
     (@layout_kind $axis:ident; $head:ident, $($tail:ident),+) => {
-        <<$head as TypeSpec>::$axis as Add<impl_tuple_families!(@layout_kind $axis; $($tail),+)>>::Output
+        <<$head as TypeSpec>::$axis as Add<impl_tuple_type_spec!(@layout_kind $axis; $($tail),+)>>::Output
     };
 
-    (@impl ReprFamily for $target:ty; $($all:ident),+) => {
-        impl_tuple_families!(@layout_params safe ReprFamily Repr for $target [$($all),+] []; $($all),+);
-    };
-    (@impl SizeFamily for $target:ty; $($all:ident),+) => {
-        impl_tuple_families!(@layout_params unsafe SizeFamily Size for $target [$($all),+] []; $($all),+);
-    };
-    (@impl NicheFamily for $target:ty; $($all:ident),+) => {
-        impl_tuple_families!(@layout_params safe NicheFamily Niche for $target [$($all),+] []; $($all),+);
-    };
-
-    (@layout_params unsafe SizeFamily $axis:ident for $target:ty [$($all:ident),+] [$($params:tt)*]; $ty:ident) => {
-        unsafe impl<$($params)* $ty: TypeSpec + ?Sized> SizeFamily for $target {
-            type Kind = impl_tuple_families!(@layout_kind $axis; $($all),+);
+    (@layout_params for $target:ty [$($all:ident),+] [$($params:tt)*]; $ty:ident) => {
+        unsafe impl<$($params)* $ty: TypeSpec + ?Sized> TypeSpec for $target {
+            type Repr = impl_tuple_type_spec!(@layout_kind Repr; $($all),+);
+            type Size = impl_tuple_type_spec!(@layout_kind Size; $($all),+);
+            type Niche = impl_tuple_type_spec!(@layout_kind Niche; $($all),+);
+            type Mutability = rust_spec::mutability::Exclusive;
         }
     };
-    (@layout_params safe $family:ident $axis:ident for $target:ty [$($all:ident),+] [$($params:tt)*]; $ty:ident) => {
-        impl<$($params)* $ty: TypeSpec + ?Sized> $family for $target {
-            type Kind = impl_tuple_families!(@layout_kind $axis; $($all),+);
-        }
-    };
-    (@layout_params $safety:ident $family:ident $axis:ident for $target:ty [$($all:ident),+] [$($params:tt)*]; $head:ident, $($tail:ident),+) => {
-        impl_tuple_families!(
-            @layout_params $safety $family $axis for $target
+    (@layout_params for $target:ty [$($all:ident),+] [$($params:tt)*]; $head:ident, $($tail:ident),+) => {
+        impl_tuple_type_spec!(
+            @layout_params for $target
             [$($all),+]
-            [$($params)* $head: TypeSpec<$axis: Add<impl_tuple_families!(@layout_kind $axis; $($tail),+)>>,]
+            [$($params)* $head: TypeSpec<
+                Repr: Add<impl_tuple_type_spec!(@layout_kind Repr; $($tail),+)>,
+                Size: Add<impl_tuple_type_spec!(@layout_kind Size; $($tail),+)>,
+                Niche: Add<impl_tuple_type_spec!(@layout_kind Niche; $($tail),+)>,
+            >,]
             ; $($tail),+
         );
     };
 
     ($(($($ty:ident),+) => $ffi_ty:ident),+ $(,)?) => { $(
-        impl_tuple_families!(@impl ReprFamily for $ffi_ty<$($ty),+>; $($ty),+);
-        impl_tuple_families!(@impl SizeFamily for $ffi_ty<$($ty),+>; $($ty),+);
-        impl_tuple_families!(@impl NicheFamily for $ffi_ty<$($ty),+>; $($ty),+); )+
+        impl_tuple_type_spec!(@layout_params for $ffi_ty<$($ty),+> [$($ty),+] []; $($ty),+); )+
     };
 }
 
-impl_tuple_families! {
+impl_tuple_type_spec! {
     (A) => ReprCTuple1,
     (A, B) => ReprCTuple2,
     (A, B, C) => ReprCTuple3,
@@ -460,7 +449,6 @@ mod tests {
     use super::*;
     use crate::{
         Decode, Encode,
-        niche::StableNiche,
         option::ReprCOption,
         stored::{DecodeOwned, EncodeOwned},
     };
@@ -472,15 +460,15 @@ mod tests {
 
     #[test]
     fn tuple_size_family_tracks_zst_fields() {
-        assert_impl_all!(ReprCTuple2<(), ()>: SizeFamily<Kind = Co3Sized<Zst>>);
-        assert_impl_all!(ReprCTuple3<(), (), ()>: SizeFamily<Kind = Co3Sized<Zst>>);
+        assert_impl_all!(ReprCTuple2<(), ()>: TypeSpec<Size = Co3Sized<Zst>>);
+        assert_impl_all!(ReprCTuple3<(), (), ()>: TypeSpec<Size = Co3Sized<Zst>>);
     }
 
     #[test]
     fn tuple_size_family_tracks_non_zst_fields() {
-        assert_impl_all!(ReprCTuple2<(), u8>: SizeFamily<Kind = rust_spec::size::Sized<NonZst>>);
-        assert_impl_all!(ReprCTuple2<u8, ()>: SizeFamily<Kind = rust_spec::size::Sized<NonZst>>);
-        assert_impl_all!(ReprCTuple3<(), u8, ()>: SizeFamily<Kind = rust_spec::size::Sized<NonZst>>);
+        assert_impl_all!(ReprCTuple2<(), u8>: TypeSpec<Size = rust_spec::size::Sized<NonZst>>);
+        assert_impl_all!(ReprCTuple2<u8, ()>: TypeSpec<Size = rust_spec::size::Sized<NonZst>>);
+        assert_impl_all!(ReprCTuple3<(), u8, ()>: TypeSpec<Size = rust_spec::size::Sized<NonZst>>);
     }
 
     #[test]
@@ -492,17 +480,17 @@ mod tests {
         );
 
         assert_impl_all!(&(u8, u8, u8):
-            StableNiche<CType = *const ReprCTuple3<u8, u8, u8>>,
+            Niche<CType = *const ReprCTuple3<u8, u8, u8>>,
             Decode<'static>,
             Encode,
         );
         assert_impl_all!(&mut (u8, u8, u8):
-            StableNiche<CType = *mut ReprCTuple3<u8, u8, u8>>,
-            Encode,
+        Niche<CType = *mut ReprCTuple3<u8, u8, u8>>,
+        Encode,
         );
         #[cfg(feature = "alloc")]
         assert_impl_all!(Box<(u8, u8, u8)>:
-            StableNiche<CType = CBox<ReprCTuple3<u8, u8, u8>>>,
+            Niche<CType = CBox<ReprCTuple3<u8, u8, u8>>>,
             EncodeOwned,
         );
         #[cfg(feature = "alloc")]
@@ -555,18 +543,18 @@ mod tests {
         );
 
         assert_impl_all!(&(u8, NonZero<u8>, bool):
-            StableNiche<CType = *const ReprCTuple3<u8, u8, u8>>,
+            Niche<CType = *const ReprCTuple3<u8, u8, u8>>,
             Decode<'static>,
             Encode,
         );
         assert_impl_all!(&mut (u8, NonZero<u8>, bool):
-            StableNiche<CType = *mut ReprCTuple3<u8, u8, u8>>,
+            Niche<CType = *mut ReprCTuple3<u8, u8, u8>>,
             Decode<'static>,
             Encode,
         );
         #[cfg(feature = "alloc")]
         assert_impl_all!(Box<(u8, NonZero<u8>, bool)>:
-            StableNiche<CType = CBox<ReprCTuple3<u8, u8, u8>>>,
+            Niche<CType = CBox<ReprCTuple3<u8, u8, u8>>>,
             DecodeOwned<'static>,
             EncodeOwned,
         );
