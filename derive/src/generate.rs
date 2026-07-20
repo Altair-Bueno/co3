@@ -17,8 +17,8 @@ use crate::{
     parse::{FailureMode, MacroFeatures},
     symbol_name_value,
     utils::{
-        DispatchMonomorphizer, ParamUseDetector, has_non_lifetime_generics, is_type_erased,
-        strip_internal_generic_param,
+        DispatchMonomorphizer, ParamUseDetector, co3_alias, has_non_lifetime_generics,
+        is_type_erased, strip_internal_generic_param,
     },
     wrapper::{gen_extern_decl, wrap_fn_definition, wrap_impl_definition},
 };
@@ -134,7 +134,8 @@ pub(crate) fn expand_export_decls(
         ForeignItem::DynImpl(item) => gen_dispatch_export(&abi, failure_mode, item, None),
     });
 
-    quote! { #( const _: () = { #exports }; )* }
+    let co3_alias = co3_alias();
+    quote! { #( const _: () = { #co3_alias #exports }; )* }
 }
 
 pub(crate) fn expand_extern_decls(
@@ -215,11 +216,13 @@ pub(crate) fn expand_extern_decls(
         attrs: &[syn::Attribute],
         impl_: ItemImpl,
     ) -> TokenStream {
+        let co3_alias = co3_alias();
         let import = wrap_impl_definition::<false>(failure_mode, &impl_);
         let extern_decl = gen_impl_extern_fn_decls(abi, failure_mode, attrs, impl_, None, None);
 
         quote! {
             const _: () = {
+                #co3_alias
                 #(#extern_decl)*
                 #import
             };
@@ -248,8 +251,11 @@ pub(crate) fn expand_extern_decls(
         let extern_decl =
             gen_impl_extern_fn_decls(abi, failure_mode, attrs, impl_, self_id, Some(&args));
 
+        let co3_alias = co3_alias();
+
         quote! {
             const _: () = {
+                #co3_alias
                 #dispatch_helper
 
                 #(#extern_decl)*
@@ -563,6 +569,7 @@ fn wrap_extern_type_decl(
     mut type_: syn::ForeignItemType,
 ) -> TokenStream {
     if has_non_lifetime_generics(&type_.generics) {
+        let co3 = crate::utils::co3_path();
         let ident = &type_.ident;
         let generics = &type_.generics;
         let (_, ty_generics, _) = generics.split_for_impl();
@@ -571,7 +578,7 @@ fn wrap_extern_type_decl(
             .generics
             .make_where_clause()
             .predicates
-            .push(syn::parse_quote! { #extern_type: co3::handle::Handle });
+            .push(syn::parse_quote! { #extern_type: #co3::handle::Handle });
     }
 
     let syn::ForeignItemType {
@@ -627,6 +634,8 @@ fn wrap_extern_type_decl(
         }
     };
 
+    let co3_alias = co3_alias();
+
     quote! {
         #type_decl
 
@@ -645,9 +654,13 @@ fn wrap_extern_type_decl(
             }
         }
 
-        #ident_impls
-        #owned_impls
-        #owned_repr_c_impls
+        const _: () = {
+            #co3_alias
+
+            #ident_impls
+            #owned_impls
+            #owned_repr_c_impls
+        };
     }
 }
 

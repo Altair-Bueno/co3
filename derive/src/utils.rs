@@ -1,5 +1,6 @@
 use std::collections::{BTreeMap, BTreeSet};
 
+use proc_macro_crate::{FoundCrate, crate_name};
 use proc_macro2::{Literal, TokenStream};
 use quote::{ToTokens, format_ident, quote};
 use syn::{
@@ -7,6 +8,24 @@ use syn::{
 };
 
 const MAX_TUPLE_ARITY: usize = 12;
+
+pub(crate) fn co3_path() -> TokenStream {
+    match crate_name("co3") {
+        Ok(FoundCrate::Itself) => quote!(crate),
+        Ok(FoundCrate::Name(name)) => {
+            let name = format_ident!("{name}");
+            quote!(::#name)
+        }
+        Err(_) => quote!(::co3),
+    }
+}
+
+pub(crate) fn co3_alias() -> TokenStream {
+    let co3 = co3_path();
+    quote! {
+        use #co3 as co3;
+    }
+}
 
 pub(crate) fn push_error(errors: &mut Option<syn::Error>, err: syn::Error) {
     if let Some(errors) = errors {

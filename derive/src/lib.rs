@@ -39,8 +39,8 @@ use crate::{
     layout::derive_repr_c,
     parse::{FailureMode, FfiInput, MacroFeatures, ParsedForeignItem, parse_dispatch_attr},
     utils::{
-        has_non_lifetime_generics, is_drop_impl, is_type_erased, path_symbol_name, push_error,
-        type_symbol_name,
+        co3_path, has_non_lifetime_generics, is_drop_impl, is_type_erased, path_symbol_name,
+        push_error, type_symbol_name,
     },
     validate::{validate_export_attrs, validate_export_decls, validate_extern_decls},
 };
@@ -143,8 +143,9 @@ pub fn ffi(input: TokenStream) -> Result<TokenStream> {
         });
     }
 
+    let co3 = co3_path();
     Ok(emit_macro_invocations(
-        quote!(co3::ffi),
+        quote!(#co3::ffi),
         TokenStream::new(),
         cfg_attr_variants,
     ))

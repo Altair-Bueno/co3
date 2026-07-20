@@ -14,7 +14,7 @@ use crate::{
     is_symbol_name_attr,
     parse::FailureMode,
     symbol_name_value,
-    utils::{gen_store_name, soft_for_arg, strip_internal_generic_param},
+    utils::{co3_alias, gen_store_name, soft_for_arg, strip_internal_generic_param},
 };
 
 fn strip_internal_arg_attrs(signature: &mut syn::Signature) {
@@ -64,6 +64,7 @@ pub fn wrap_fn_definition(
         None,
         &item.sig,
     );
+    let co3_alias = co3_alias();
 
     ffi_fn::normalize_fn_signature(&mut item.sig, None);
     let decl = ffi_fn::gen_extern_fn_signature(item.sig, failure_mode);
@@ -72,6 +73,7 @@ pub fn wrap_fn_definition(
     quote! {
         #(#wrapper_attrs)*
         #vis #wrapper_sig {
+            #co3_alias
             #extern_fn_decl
             #wrapper_body
         }
@@ -137,6 +139,7 @@ pub fn wrap_impl_definition<const DISPATCHED: bool>(
             Some(generics),
             &sig,
         );
+        let co3_alias = co3_alias();
 
         sig.inputs = if DISPATCHED {
             sig.inputs
@@ -152,6 +155,7 @@ pub fn wrap_impl_definition<const DISPATCHED: bool>(
         quote! {
             #(#wrapper_attrs)*
             #vis #sig {
+                #co3_alias
                 #(#id_assignments)*
                 #self_binding
                 #wrapper_body

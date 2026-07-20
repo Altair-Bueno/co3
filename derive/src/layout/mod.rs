@@ -6,7 +6,7 @@ use crate::{
     generate::gen_handle_family_impl,
     layout::attr::{ReprKind, parse_repr},
     layout::item::{derive_fieldless_enum, derive_item},
-    utils::push_error,
+    utils::{co3_alias, push_error},
     validate::validate_niche_value_sized_tail,
 };
 
@@ -236,6 +236,7 @@ pub(crate) fn derive_repr_c(input: &syn::DeriveInput) -> syn::Result<TokenStream
     if let Some(errors) = errors {
         Err(errors)
     } else {
+        let co3_alias = co3_alias();
         let drop_impl_assert = assert_no_drop(&generics, &input.ident);
 
         let handle_family_impl = repr_c_attrs
@@ -243,10 +244,14 @@ pub(crate) fn derive_repr_c(input: &syn::DeriveInput) -> syn::Result<TokenStream
             .as_ref()
             .map(|id| gen_handle_family_impl(&input.ident, &generics, id));
         Ok(quote! {
-            #handle_family_impl
-            #drop_impl_assert
+            const _: () = {
+                #co3_alias
 
-            #tokens
+                #handle_family_impl
+                #drop_impl_assert
+
+                #tokens
+            };
         })
     }
 }
