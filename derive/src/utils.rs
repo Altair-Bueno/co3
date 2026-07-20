@@ -20,13 +20,6 @@ pub(crate) fn co3_path() -> TokenStream {
     }
 }
 
-pub(crate) fn co3_alias() -> TokenStream {
-    let co3 = co3_path();
-    quote! {
-        use #co3 as co3;
-    }
-}
-
 pub(crate) fn push_error(errors: &mut Option<syn::Error>, err: syn::Error) {
     if let Some(errors) = errors {
         errors.combine(err);

@@ -194,3 +194,29 @@ error[E0690]: transparent struct needs at most one field with non-trivial size o
 17 | #[repr(transparent)]
 18 | struct MultiFieldStruct<T>(T, T);
    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ needs at most one field with non-trivial size or alignment, but has 2
+
+error[E0690]: transparent struct needs at most one field with non-trivial size or alignment, but has 2
+  --> tests/ui_fail/multiple_fields_transparent.rs:16:10
+   |
+16 | #[derive(ReprC)]
+   |          ^^^^^
+   |          |
+   |          needs at most one field with non-trivial size or alignment, but has 2
+   |          this field has non-zero size or requires alignment
+   |          this field has non-zero size or requires alignment
+   |
+   = note: this error originates in the derive macro `co3::ReprC` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error[E0690]: transparent struct needs at most one field with non-trivial size or alignment, but has 2
+  --> tests/ui_fail/multiple_fields_transparent.rs:16:10
+   |
+16 | #[derive(ReprC)]
+   |          ^^^^^
+   |          |
+   |          needs at most one field with non-trivial size or alignment, but has 2
+   |          this field has non-zero size or requires alignment
+17 | #[repr(transparent)]
+18 | struct MultiFieldStruct<T>(T, T);
+   |                            - this field has non-zero size or requires alignment
+   |
+   = note: this error originates in the derive macro `ReprC` (in Nightly builds, run with -Z macro-backtrace for more info)

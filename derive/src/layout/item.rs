@@ -941,7 +941,7 @@ fn gen_codec_impls<const ADD_COPY: bool>(
 
     let sized_bound = if is_view {
         quote! {}
-    } else if !is_view && generics.params.is_empty() {
+    } else if !is_view && generics.type_params().count() == 0 {
         quote!(for<'_dummy> Self: Sized,)
     } else {
         quote!(Self: Sized,)

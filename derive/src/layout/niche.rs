@@ -26,10 +26,7 @@ pub fn gen_struct_niche_ir(
     let ctype_name = gen_ctype_name(struct_name);
     let self_bounds = quote! { Self: co3::ExternC<CType = #ctype_name #ty_generics>, };
 
-    let for_dummy = generics
-        .params
-        .is_empty()
-        .then_some(quote! { for<'_dummy> });
+    let for_dummy = (generics.type_params().count() == 0).then_some(quote! { for<'_dummy> });
     let types = fields.iter().map(|f| &f.ty).collect::<Vec<_>>();
     let extern_c_bounds = gen_extern_c_bounds_for_ctype::<true>(generics, &types);
 

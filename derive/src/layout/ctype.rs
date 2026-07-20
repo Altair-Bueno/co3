@@ -361,10 +361,7 @@ fn gen_robust_impls<const ADD_COPY: bool>(
     let copy_bounds = gen_copy_bounds::<ADD_COPY>(generics, fields);
     let codec_impls = gen_identity_codec_impls::<ADD_COPY>(ident, generics, fields);
 
-    let for_dummy = generics
-        .params
-        .is_empty()
-        .then_some(quote! { for<'_dummy> });
+    let for_dummy = (generics.type_params().count() == 0).then_some(quote! { for<'_dummy> });
 
     let type_spec_bound = (!ADD_COPY).then(|| {
         quote! { #for_dummy Self: co3::rust_spec::RustSpec<Size = co3::rust_spec::size::Sized<co3::rust_spec::size::NonZst>>, }
@@ -400,6 +397,7 @@ fn gen_repr_c_type_spec_impl(ident: &syn::Ident, generics: &syn::Generics) -> To
             type Size = co3::rust_spec::size::Sized<co3::rust_spec::size::NonZst>;
             type Niche = co3::rust_spec::niche::WithoutNiche;
             type Mutability = co3::rust_spec::mutability::Exclusive;
+            type __IndirectLayout = co3::rust_spec::layout::Stable<co3::rust_spec::layout::Robust>;
         }
     }
 }

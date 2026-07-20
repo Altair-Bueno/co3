@@ -6,7 +6,7 @@ use crate::{
     generate::gen_handle_family_impl,
     layout::attr::{ReprKind, parse_repr},
     layout::item::{derive_fieldless_enum, derive_item},
-    utils::{co3_alias, push_error},
+    utils::{co3_path, push_error},
     validate::validate_niche_value_sized_tail,
 };
 
@@ -15,6 +15,7 @@ mod borrow;
 mod ctype;
 mod item;
 mod niche;
+mod wide;
 
 const FFI_TYPE_ATTR: &str = "reprC";
 
@@ -211,7 +212,11 @@ pub(crate) fn derive_repr_c(input: &syn::DeriveInput) -> syn::Result<TokenStream
     let mut generics = input.generics.clone();
     generics.make_where_clause();
     let tokens = match &input.data {
-        syn::Data::Struct(_) => derive_item(repr_attr.as_ref(), input, &repr_c_attrs, &[]),
+        syn::Data::Struct(_) => {
+            let item = derive_item(repr_attr.as_ref(), input, &repr_c_attrs, &[]);
+            let wide = wide::expand(input, repr_attr.as_ref())?;
+            quote! { #item #wide }
+        }
         syn::Data::Enum(data) if data.variants.is_empty() => {
             // TODO: Support uninhabited enums. yes, it is possible
             let err_msg = "Uninhabited enum is a never type. You can declare it as an opaque type in `ffi!` with `type Foo;`";
@@ -236,7 +241,7 @@ pub(crate) fn derive_repr_c(input: &syn::DeriveInput) -> syn::Result<TokenStream
     if let Some(errors) = errors {
         Err(errors)
     } else {
-        let co3_alias = co3_alias();
+        let co3 = co3_path();
         let drop_impl_assert = assert_no_drop(&generics, &input.ident);
 
         let handle_family_impl = repr_c_attrs
@@ -245,7 +250,7 @@ pub(crate) fn derive_repr_c(input: &syn::DeriveInput) -> syn::Result<TokenStream
             .map(|id| gen_handle_family_impl(&input.ident, &generics, id));
         Ok(quote! {
             const _: () = {
-                #co3_alias
+                use #co3 as co3;
 
                 #handle_family_impl
                 #drop_impl_assert

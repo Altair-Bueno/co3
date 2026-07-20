@@ -88,6 +88,26 @@ non_zero_derive! {
     u8, i8, u16, i16, u32, i32, u64, i64, u128, i128,
 }
 
+unsafe impl Borrow for c_void {
+    type Borrowed<'itm>
+        = Self
+    where
+        Self: 'itm;
+
+    type Owner = ();
+
+    #[inline(always)]
+    fn borrow<'itm>(self, (): &mut ()) -> Self::Borrowed<'itm> {
+        self
+    }
+}
+impl<'itm> ToOwned<'itm> for c_void {
+    #[inline(always)]
+    fn to_owned(source: Self) -> Self {
+        source
+    }
+}
+
 impl ExternC for c_void {
     type CType = Self;
 }
@@ -603,8 +623,8 @@ mod tests {
     //    assert_not_impl_any!(ManuallyDrop<u8>: ReprC);
     //}
 
-    //#[cfg(feature = "alloc")]
     //#[test]
+    //#[cfg(feature = "alloc")]
     //fn manually_drop_inner_with_drop() {
     //    assert_impl_all!(ManuallyDrop<String>:
     //        Niche<CType = CBoxedSlice<u8>>,

@@ -3,14 +3,25 @@
 use crate::{
     CFnArg, Decode, Encode, ExternC, ReprC,
     borrow::{Borrow, BorrowCast, BorrowCastMut, ToOwned},
-    spread::Spread,
     stored::{DecodeOwned, EncodeOwned},
     transmute::CheckedTransmute,
 };
-use rust_spec::{RustSpec, mutability::Exclusive, niche::WithoutNiche};
+use rust_spec::RustSpec;
+
+pub trait Spread: ReprC + core::marker::Sized {
+    type Part1: ReprC;
+    type Part2: ReprC;
+
+    /// Consumes the spreadable type, returning its constituents.
+    fn into_parts(self) -> (Self::Part1, Self::Part2);
+
+    /// Forms the spreadable type from its constituents.
+    fn from_parts(part1: Self::Part1, part2: Self::Part2) -> Self;
+}
 
 /// Immutable slice `&[C]` with a defined C ABI layout. Consists of a data pointer and a length.
 /// If the data pointer is set to `null`, the struct represents `Option<&[C]>`.
+#[derive(RustSpec)]
 #[repr(C)]
 pub struct CSlice<C> {
     data: *const C,
@@ -19,6 +30,7 @@ pub struct CSlice<C> {
 
 /// Mutable slice `&mut [C]` with a defined C ABI layout. Consists of a data pointer and a length.
 /// If the data pointer is set to `null`, the struct represents `Option<&mut [C]>`.
+#[derive(RustSpec)]
 #[repr(C)]
 pub struct CSliceMut<C> {
     data: *mut C,
@@ -163,13 +175,6 @@ impl<C> CSliceMut<C> {
 
 macro_rules! impl_slice_carrier {
     ($ty:ident) => {
-        unsafe impl<C: RustSpec> RustSpec for $ty<C> {
-            type Layout = C::Layout;
-            type Size = rust_spec::size::Sized<rust_spec::size::NonZst>;
-            type Niche = WithoutNiche;
-            type Mutability = Exclusive;
-        }
-
         unsafe impl<C> Borrow for $ty<C> {
             type Borrowed<'itm>
                 = Self

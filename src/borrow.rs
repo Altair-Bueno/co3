@@ -3,16 +3,19 @@ use alloc::{borrow::ToOwned as StdToOwned, boxed::Box, vec::Vec};
 
 use crate::{ReprC, stored::ArrayStore};
 #[cfg(feature = "alloc")]
-use rust_spec::{RustSpec, size::MetaSized};
+use rust_spec::{
+    RustSpec,
+    size::{MetaSized, MetadataKind, SizedKind},
+};
 
 // TODO: Remove this once extern types are stable
 // https://github.com/rust-lang/rust/issues/43467
 #[cfg(feature = "alloc")]
 trait NonExternTypeLike {}
 #[cfg(feature = "alloc")]
-impl<K> NonExternTypeLike for MetaSized<K> {}
+impl<K: MetadataKind> NonExternTypeLike for MetaSized<K> {}
 #[cfg(feature = "alloc")]
-impl<K> NonExternTypeLike for rust_spec::size::Sized<K> {}
+impl<K: SizedKind> NonExternTypeLike for rust_spec::size::Sized<K> {}
 
 /// A layout-compatible borrowed view of a robust C representation.
 ///

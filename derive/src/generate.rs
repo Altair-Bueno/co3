@@ -5,7 +5,7 @@ use quote::{format_ident, quote};
 use syn::{FnArg, ImplItem, ImplItemFn, ItemImpl, punctuated::Punctuated, visit_mut::VisitMut};
 
 use crate::{
-    DropImpl, DynImpl, ForeignItem, ForeignItemType,
+    DropImpl, DynImpl, ForeignItem, ForeignItemType, co3_path,
     dispatch::{
         StaticLifetimeNormalizer, erase_handle_types, gen_dispatch_erased_layout_checks,
         gen_dispatch_export, gen_dispatch_id_uniqueness_checks, inject_unnamed_lifetimes,
@@ -17,8 +17,8 @@ use crate::{
     parse::{FailureMode, MacroFeatures},
     symbol_name_value,
     utils::{
-        DispatchMonomorphizer, ParamUseDetector, co3_alias, has_non_lifetime_generics,
-        is_type_erased, strip_internal_generic_param,
+        DispatchMonomorphizer, ParamUseDetector, has_non_lifetime_generics, is_type_erased,
+        strip_internal_generic_param,
     },
     wrapper::{gen_extern_decl, wrap_fn_definition, wrap_impl_definition},
 };
@@ -134,8 +134,8 @@ pub(crate) fn expand_export_decls(
         ForeignItem::DynImpl(item) => gen_dispatch_export(&abi, failure_mode, item, None),
     });
 
-    let co3_alias = co3_alias();
-    quote! { #( const _: () = { #co3_alias #exports }; )* }
+    let co3 = co3_path();
+    quote! { #( const _: () = { use #co3 as co3; #exports }; )* }
 }
 
 pub(crate) fn expand_extern_decls(
@@ -216,13 +216,13 @@ pub(crate) fn expand_extern_decls(
         attrs: &[syn::Attribute],
         impl_: ItemImpl,
     ) -> TokenStream {
-        let co3_alias = co3_alias();
+        let co3 = co3_path();
         let import = wrap_impl_definition::<false>(failure_mode, &impl_);
         let extern_decl = gen_impl_extern_fn_decls(abi, failure_mode, attrs, impl_, None, None);
 
         quote! {
             const _: () = {
-                #co3_alias
+                use #co3 as co3;
                 #(#extern_decl)*
                 #import
             };
@@ -251,11 +251,11 @@ pub(crate) fn expand_extern_decls(
         let extern_decl =
             gen_impl_extern_fn_decls(abi, failure_mode, attrs, impl_, self_id, Some(&args));
 
-        let co3_alias = co3_alias();
+        let co3 = co3_path();
 
         quote! {
             const _: () = {
-                #co3_alias
+                use #co3 as co3;
                 #dispatch_helper
 
                 #(#extern_decl)*
@@ -569,7 +569,7 @@ fn wrap_extern_type_decl(
     mut type_: syn::ForeignItemType,
 ) -> TokenStream {
     if has_non_lifetime_generics(&type_.generics) {
-        let co3 = crate::utils::co3_path();
+        let co3 = co3_path();
         let ident = &type_.ident;
         let generics = &type_.generics;
         let (_, ty_generics, _) = generics.split_for_impl();
@@ -634,7 +634,7 @@ fn wrap_extern_type_decl(
         }
     };
 
-    let co3_alias = co3_alias();
+    let co3 = co3_path();
 
     quote! {
         #type_decl
@@ -655,7 +655,7 @@ fn wrap_extern_type_decl(
         }
 
         const _: () = {
-            #co3_alias
+            use #co3 as co3;
 
             #ident_impls
             #owned_impls
@@ -723,6 +723,7 @@ fn gen_owned_repr_c_impls(ident: &syn::Ident, generics: &syn::Generics) -> Token
             type Size = co3::rust_spec::size::Sized<co3::rust_spec::size::NonZst>;
             type Niche = co3::rust_spec::niche::WithoutNiche;
             type Mutability = co3::rust_spec::mutability::Exclusive;
+            type __IndirectLayout = co3::rust_spec::layout::Stable<co3::rust_spec::layout::Robust>;
         }
 
         impl #impl_generics co3::ExternC for #owned_repr_c_name #ty_generics #where_clause {
@@ -783,6 +784,7 @@ fn gen_owned_extern_type_impls(ident: &syn::Ident, generics: &syn::Generics) -> 
             type Size = co3::rust_spec::size::Sized<co3::rust_spec::size::NonZst>;
             type Niche = co3::rust_spec::niche::WithNiche<co3::rust_spec::niche::Stable>;
             type Mutability = co3::rust_spec::mutability::Exclusive;
+            type __IndirectLayout = co3::rust_spec::layout::Stable<co3::rust_spec::layout::Robust>;
         }
 
         unsafe impl #impl_generics co3::transmute::CheckedTransmute for #owned_ident #ty_generics #where_clause {
@@ -879,6 +881,7 @@ fn derive_opaque_item(
             type Size = #size_kind;
             type Niche = co3::rust_spec::niche::WithoutNiche;
             type Mutability = co3::rust_spec::mutability::Exclusive;
+            type __IndirectLayout = co3::rust_spec::layout::Stable<co3::rust_spec::layout::Robust>;
         }
 
         unsafe impl #impl_generics co3::ReprC for #ident #ty_generics #where_clause {}

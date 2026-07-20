@@ -2,13 +2,12 @@
 
 use alloc::boxed::Box;
 use core::ptr::NonNull;
-use rust_spec::{RustSpec, mutability::Exclusive, niche::WithoutNiche};
+use rust_spec::RustSpec;
 
 use crate::{
     CFnArg, Decode, Encode, ExternC, ReprC,
     borrow::{Borrow, BorrowCast, BorrowCastMut, ToOwned},
-    slice::{CSlice, CSliceMut},
-    spread::Spread,
+    slice::{CSlice, CSliceMut, Spread},
     stored::{DecodeOwned, EncodeOwned},
     transmute::CheckedTransmute,
 };
@@ -16,6 +15,7 @@ use crate::{
 /// Owned pointer `Box<C>`.
 ///
 /// If the data pointer is set to `null`, the struct represents `Option<Box<C>>`.
+#[derive(RustSpec)]
 #[repr(C)]
 pub struct CBox<C> {
     pub(crate) data: *mut C,
@@ -24,6 +24,7 @@ pub struct CBox<C> {
 /// Owned slice `Box<[C]>` with a defined C ABI layout. Consists of a data pointer and a length.
 /// Used in place of a function out-pointer to transfer ownership of the slice to the caller.
 /// If the data pointer is set to `null`, the struct represents `Option<Box<[C]>>`.
+#[derive(RustSpec)]
 #[repr(C)]
 pub struct CBoxedSlice<C> {
     pub(crate) data: *mut C,
@@ -231,13 +232,6 @@ impl<C> CBoxedSlice<C> {
 
 macro_rules! impl_boxed_carrier {
     ($ty:ident) => {
-        unsafe impl<C: RustSpec> RustSpec for $ty<C> {
-            type Layout = C::Layout;
-            type Size = rust_spec::size::Sized<rust_spec::size::NonZst>;
-            type Niche = WithoutNiche;
-            type Mutability = Exclusive;
-        }
-
         unsafe impl<C> Borrow for $ty<C> {
             type Borrowed<'itm>
                 = Self

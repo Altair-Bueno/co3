@@ -6,6 +6,9 @@ on:
   pull_request:
     branches: [main]
 
+permissions:
+  contents: read
+
 concurrency:
   group: ${{ github.workflow }}-${{ github.head_ref || github.ref }}
   cancel-in-progress: true
@@ -16,49 +19,73 @@ jobs:
     timeout-minutes: 5
 
     steps:
-    - uses: actions/checkout@v6
+    - uses: actions/checkout@v7
     - uses: dtolnay/rust-toolchain@stable
       with:
         components: rustfmt, clippy
     - uses: Swatinem/rust-cache@v2
 
-    - name: Rust format
+    - name: Check formatting
       run: cargo fmt --all --check
 
-    - name: Clippy (all features)
-      run: cargo clippy --workspace --tests --all-features -- --deny warnings
+    - name: Lint workspace
+      run: cargo clippy --workspace --benches --tests --examples -- --deny warnings
 
-    - name: Clippy (no features)
-      run: cargo clippy --workspace --tests --no-default-features -- --deny warnings
+    - name: Lint workspace (no default features)
+      run: cargo clippy --workspace --benches --tests --examples --no-default-features -- --deny warnings
+
+    - name: Lint workspace (alloc only)
+      run: cargo clippy --workspace --benches --tests --examples --no-default-features --features alloc -- --deny warnings
+
+    - name: Lint workspace (derive only)
+      run: cargo clippy --workspace --benches --tests --examples --no-default-features --features derive -- --deny warnings
+
+  allocator-api:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+    - uses: actions/checkout@v7
+    - uses: dtolnay/rust-toolchain@nightly
+      with:
+        components: clippy
+    - uses: Swatinem/rust-cache@v2
+      with:
+        key: allocator-api
+
+    - name: Lint workspace
+      run: cargo clippy --workspace --benches --tests --examples --features allocator-api -- --deny warnings
+
+    - name: Lint workspace (alloc only)
+      run: cargo clippy --workspace --benches --tests --examples --no-default-features --features allocator-api,alloc -- --deny warnings
+
+    - name: Lint workspace (derive only)
+      run: cargo clippy --workspace --benches --tests --examples --no-default-features --features allocator-api,derive -- --deny warnings
 
   test:
     runs-on: ${{ matrix.os }}
-    needs: static-analysis
     timeout-minutes: 5
 
     strategy:
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
-        feature_suffix:
-        - ""
-        - "unsafe-optimizations"
 
     steps:
-    - uses: actions/checkout@v6
+    - uses: actions/checkout@v7
     - uses: dtolnay/rust-toolchain@stable
     - uses: Swatinem/rust-cache@v2
       with:
-        key: test-${{ matrix.os }}-${{ matrix.feature_suffix }}
+        key: test-${{ matrix.os }}
 
     - name: Run Tests
-      run: cargo test --workspace --no-default-features --features "alloc,derive,unstable-refs,${{ matrix.feature_suffix }}"
+      run: cargo test --workspace
 
   wasm-test:
     runs-on: ubuntu-latest
-    needs: static-analysis
     timeout-minutes: 10
+
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: wasm32-wasip1
@@ -70,4 +97,4 @@ jobs:
           echo "$HOME/.wasmtime/bin" >> $GITHUB_PATH
 
       - name: Run Tests (WASIp1)
-        run: cargo test --target wasm32-wasip1 --all-features
+        run: cargo test --workspace --target wasm32-wasip1

@@ -159,15 +159,16 @@ impl<T: Copy, E: Copy> TryFrom<ReprCResult<T, E>> for Result<T, E> {
     }
 }
 
-unsafe impl<T, E> RustSpec for ReprCResult<T, E>
+unsafe impl<T: RustSpec + Copy, E: RustSpec + Copy> RustSpec for ReprCResult<T, E>
 where
-    T: RustSpec<Layout: Add<<E as RustSpec>::Layout>> + Copy,
-    E: RustSpec + Copy,
+    T: RustSpec<Layout: Add<<E as RustSpec>::Layout>>,
+    T::__IndirectLayout: Add<E::__IndirectLayout>,
 {
     type Layout = <<T as RustSpec>::Layout as Add<<E as RustSpec>::Layout>>::Output;
     type Size = rust_spec::size::Sized<rust_spec::size::NonZst>;
     type Niche = WithoutNiche;
     type Mutability = rust_spec::mutability::Exclusive;
+    type __IndirectLayout = <T::__IndirectLayout as Add<E::__IndirectLayout>>::Output;
 }
 
 unsafe impl<T: Borrow + Copy, E: Borrow + Copy> Borrow for ReprCResult<T, E>

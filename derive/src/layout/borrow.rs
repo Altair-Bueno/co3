@@ -182,7 +182,7 @@ fn gen_borrow_impls<const ADD_SIZED: bool>(
 
     let view_name = gen_view_name(name);
     let sized_bound = ADD_SIZED.then(|| {
-        if generics.params.is_empty() {
+        if generics.type_params().count() == 0 {
             quote! { for<'_dummy> Self: Sized, }
         } else {
             quote! { Self: Sized, }

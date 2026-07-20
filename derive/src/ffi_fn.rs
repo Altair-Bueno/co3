@@ -262,7 +262,7 @@ pub(crate) fn gen_input_decode_stmts<'a>(
             let decode_c_ty = quote!(<#decode_ty as co3::ExternC>::CType);
 
             quote! {{
-                <#decode_c_ty as co3::spread::Spread>::from_parts(
+                <#decode_c_ty as co3::slice::Spread>::from_parts(
                     #data_name, #metadata_name
                 )
             }}
@@ -524,8 +524,8 @@ fn lower_signature_input(generics: &mut syn::Generics, input: syn::FnArg) -> Vec
         let arg_name = item_fn_input_ident(&pat);
         let (data_name, metadata_name) = spread_arg_names(arg_name);
         let spread_ty = item_fn_input_arg_type(&attrs, &arg_ty);
-        let part1_ty = quote! { <#spread_ty as co3::spread::Spread>::Part1 };
-        let part2_ty = quote! { <#spread_ty as co3::spread::Spread>::Part2 };
+        let part1_ty = quote! { <#spread_ty as co3::slice::Spread>::Part1 };
+        let part2_ty = quote! { <#spread_ty as co3::slice::Spread>::Part2 };
 
         generics
             .make_where_clause()

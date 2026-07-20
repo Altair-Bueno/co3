@@ -139,6 +139,7 @@ unsafe impl<T: RustSpec> RustSpec for ReprCOption<T> {
     type Size = rust_spec::size::Sized<rust_spec::size::NonZst>;
     type Niche = WithoutNiche;
     type Mutability = rust_spec::mutability::Exclusive;
+    type __IndirectLayout = T::__IndirectLayout;
 }
 
 unsafe impl<T: Borrow> Borrow for ReprCOption<T> {

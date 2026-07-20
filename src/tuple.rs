@@ -60,12 +60,10 @@
 //! );
 //! ```
 
-use core::ops::Add;
-
 use disjoint_impls::disjoint_impls;
 use rust_spec::{
     RustSpec,
-    niche::{WithNiche, WithoutNiche},
+    niche::{NicheStabilityKind, WithNiche, WithoutNiche},
     size::NonZst,
 };
 
@@ -73,7 +71,7 @@ use crate::{
     CFnArg, Decode, Encode, ExternC, ReprC, Store,
     borrow::{Borrow, BorrowCast, BorrowCastMut, ToOwned},
     niche::Niche,
-    spread::Spread,
+    slice::Spread,
     stored::{DecodeOwned, EncodeOwned},
     transmute::CheckedTransmute,
 };
@@ -237,7 +235,7 @@ macro_rules! impl_tuple {
         ///
         /// See [the module level documentation](self) for more.
         #[repr(C)]
-        #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
+        #[derive(RustSpec, Debug, Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
         pub struct $ffi_ty<$($head,)* $last: ?Sized>($(pub $head,)* pub $last);
 
         impl<$($head: ExternC<CType: Sized>,)* $last: ExternC + ?Sized> ExternC for ($($head,)* $last,) {
@@ -328,14 +326,14 @@ disjoint_impls! {
         const NICHE_VALUE: Self::CType;
     }
 
-    impl<A: Niche<CType: Copy>, B: ExternC<CType: Copy>, N> Niche for (A, B)
+    impl<A: Niche<CType: Copy>, B: ExternC<CType: Copy>, N: NicheStabilityKind> Niche for (A, B)
     where
         A: RustSpec<Niche = WithNiche<N>>,
     {
         const NICHE_VALUE: Self::CType = ReprCTuple2(A::NICHE_VALUE, unsafe { core::mem::zeroed() });
     }
 
-    impl<A: ExternC<CType: Copy>, B: Niche<CType: Copy>, N> Niche for (A, B)
+    impl<A: ExternC<CType: Copy>, B: Niche<CType: Copy>, N: NicheStabilityKind> Niche for (A, B)
     where
         A: RustSpec<Niche = WithoutNiche>,
         B: RustSpec<Niche = WithNiche<N>>,
@@ -380,61 +378,6 @@ impl_tuple_niche_recursive! {
     (A, B, C, D, E, F, G, H, I, J) => ((A, B, C, D, E), (F, G, H, I, J)) : ReprCTuple10(0.0, 0.1, 0.2, 0.3, 0.4, 1.0, 1.1, 1.2, 1.3, 1.4),
     (A, B, C, D, E, F, G, H, I, J, K) => ((A, B, C, D, E), (F, G, H, I, J, K)) : ReprCTuple11(0.0, 0.1, 0.2, 0.3, 0.4, 1.0, 1.1, 1.2, 1.3, 1.4, 1.5),
     (A, B, C, D, E, F, G, H, I, J, K, L) => ((A, B, C, D, E, F), (G, H, I, J, K, L)) : ReprCTuple12(0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 1.0, 1.1, 1.2, 1.3, 1.4, 1.5)
-}
-
-macro_rules! impl_tuple_type_spec {
-    (@layout_kind Layout; $ty:ident) => {
-        <$ty as RustSpec>::Layout
-    };
-    (@layout_kind Size; $ty:ident) => {
-        <$ty as RustSpec>::Size
-    };
-    (@layout_kind Niche; $ty:ident) => {
-        <$ty as RustSpec>::Niche
-    };
-    (@layout_kind $axis:ident; $head:ident, $($tail:ident),+) => {
-        <<$head as RustSpec>::$axis as Add<impl_tuple_type_spec!(@layout_kind $axis; $($tail),+)>>::Output
-    };
-
-    (@layout_params for $target:ty [$($all:ident),+] [$($params:tt)*]; $ty:ident) => {
-        unsafe impl<$($params)* $ty: RustSpec + ?Sized> RustSpec for $target {
-            type Layout = impl_tuple_type_spec!(@layout_kind Layout; $($all),+);
-            type Size = impl_tuple_type_spec!(@layout_kind Size; $($all),+);
-            type Niche = impl_tuple_type_spec!(@layout_kind Niche; $($all),+);
-            type Mutability = rust_spec::mutability::Exclusive;
-        }
-    };
-    (@layout_params for $target:ty [$($all:ident),+] [$($params:tt)*]; $head:ident, $($tail:ident),+) => {
-        impl_tuple_type_spec!(
-            @layout_params for $target
-            [$($all),+]
-            [$($params)* $head: RustSpec<
-                Layout: Add<impl_tuple_type_spec!(@layout_kind Layout; $($tail),+)>,
-                Size: Add<impl_tuple_type_spec!(@layout_kind Size; $($tail),+)>,
-                Niche: Add<impl_tuple_type_spec!(@layout_kind Niche; $($tail),+)>,
-            >,]
-            ; $($tail),+
-        );
-    };
-
-    ($(($($ty:ident),+) => $ffi_ty:ident),+ $(,)?) => { $(
-        impl_tuple_type_spec!(@layout_params for $ffi_ty<$($ty),+> [$($ty),+] []; $($ty),+); )+
-    };
-}
-
-impl_tuple_type_spec! {
-    (A) => ReprCTuple1,
-    (A, B) => ReprCTuple2,
-    (A, B, C) => ReprCTuple3,
-    (A, B, C, D) => ReprCTuple4,
-    (A, B, C, D, E) => ReprCTuple5,
-    (A, B, C, D, E, F) => ReprCTuple6,
-    (A, B, C, D, E, F, G) => ReprCTuple7,
-    (A, B, C, D, E, F, G, H) => ReprCTuple8,
-    (A, B, C, D, E, F, G, H, I) => ReprCTuple9,
-    (A, B, C, D, E, F, G, H, I, J) => ReprCTuple10,
-    (A, B, C, D, E, F, G, H, I, J, K) => ReprCTuple11,
-    (A, B, C, D, E, F, G, H, I, J, K, L) => ReprCTuple12
 }
 
 #[cfg(test)]
