@@ -2,7 +2,7 @@ use proc_macro2::TokenStream;
 use quote::{format_ident, quote};
 use syn::{DeriveInput, Ident, parse_quote};
 
-use crate::repr::{
+use crate::layout::{
     ReprCAttrs, VariantReprCAttrs,
     ctype::gen_ctype_name,
     generic_param_idents, is_type_parameterized,
@@ -27,7 +27,7 @@ pub(super) fn gen_item_view(
     rewrite_view_fields(&mut view_def.data);
 
     quote! {
-        #[derive(co3::rust_spec::TypeSpec, co3::ReprC)]
+        #[derive(co3::rust_spec::RustSpec, co3::ReprC)]
         #[reprC(view)]
         #[doc(hidden)]
         #view_def

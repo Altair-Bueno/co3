@@ -4,9 +4,8 @@ use proc_macro2::TokenStream;
 use quote::{format_ident, quote};
 use syn::{parse_quote, visit::Visit};
 
-use crate::repr::{
+use crate::layout::{
     attr::ReprKind, enum_tag_type, is_transparent_enum_repr, is_type_parameterized,
-    wide::gen_transparent_wide_impl,
 };
 
 fn lowered_field_ty(field_ty: &syn::Type) -> TokenStream {
@@ -177,7 +176,7 @@ fn gen_ctype_struct_item<const ADD_COPY: bool>(
 
     parse_quote! {
         #repr
-        #[derive(co3::rust_spec::TypeSpec)]
+        #[derive(co3::rust_spec::RustSpec)]
         #[doc(hidden)]
         #vis #ctype
     }
@@ -307,7 +306,6 @@ fn gen_struct_ctype_impls<const ADD_COPY: bool>(ctype: &syn::ItemStruct) -> Toke
     let copy_impls = gen_copy_impls::<ADD_COPY>(&ctype.ident, &ctype.generics, &fields);
     let default_impl = gen_default_impl::<ADD_COPY>(&ctype.ident, &ctype.generics, &fields);
     let robust_impls = gen_robust_impls::<ADD_COPY>(&ctype.ident, &ctype.generics, &fields);
-    let wide_impl = gen_transparent_wide_impl(&ctype.ident, &ctype.generics, &ctype.fields);
 
     let const_view = gen_ctype_struct_view::<ADD_COPY>(ctype.clone(), false);
     let mut_view = gen_ctype_struct_view::<ADD_COPY>(ctype.clone(), true);
@@ -318,7 +316,6 @@ fn gen_struct_ctype_impls<const ADD_COPY: bool>(ctype: &syn::ItemStruct) -> Toke
         #copy_impls
         #default_impl
         #robust_impls
-        #wide_impl
 
         #const_view
         #mut_view
@@ -370,7 +367,7 @@ fn gen_robust_impls<const ADD_COPY: bool>(
         .then_some(quote! { for<'_dummy> });
 
     let type_spec_bound = (!ADD_COPY).then(|| {
-        quote! { #for_dummy Self: co3::rust_spec::TypeSpec<Size = co3::rust_spec::size::Sized<co3::rust_spec::size::NonZst>>, }
+        quote! { #for_dummy Self: co3::rust_spec::RustSpec<Size = co3::rust_spec::size::Sized<co3::rust_spec::size::NonZst>>, }
     });
 
     quote! {
@@ -398,8 +395,8 @@ fn gen_repr_c_type_spec_impl(ident: &syn::Ident, generics: &syn::Generics) -> To
     let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
 
     quote! {
-        unsafe impl #impl_generics co3::rust_spec::TypeSpec for #ident #ty_generics #where_clause {
-            type Repr = co3::rust_spec::repr::Stable<co3::rust_spec::repr::Robust>;
+        unsafe impl #impl_generics co3::rust_spec::RustSpec for #ident #ty_generics #where_clause {
+            type Layout = co3::rust_spec::layout::Stable<co3::rust_spec::layout::Robust>;
             type Size = co3::rust_spec::size::Sized<co3::rust_spec::size::NonZst>;
             type Niche = co3::rust_spec::niche::WithoutNiche;
             type Mutability = co3::rust_spec::mutability::Exclusive;

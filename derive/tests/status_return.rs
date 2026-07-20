@@ -1,8 +1,8 @@
 use core::num::NonZeroU8;
 
-use co3::{Error, ExternC, ReprC, ffi, rust_spec::TypeSpec};
+use co3::{Error, ExternC, ReprC, ffi, rust_spec::RustSpec};
 
-#[derive(Debug, PartialEq, Eq, TypeSpec, ReprC)]
+#[derive(Debug, PartialEq, Eq, RustSpec, ReprC)]
 #[repr(u8)]
 enum CustomStatus {
     Ok,

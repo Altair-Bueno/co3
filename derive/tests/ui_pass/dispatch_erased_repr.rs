@@ -1,4 +1,4 @@
-use co3::{rust_spec::TypeSpec, ReprC, ffi, handles};
+use co3::{rust_spec::RustSpec, ReprC, ffi, handles};
 
 trait Attribute {}
 
@@ -7,15 +7,15 @@ trait ByteValue {
     fn add_ref(&self, rhs: &Self) -> u8;
 }
 
-#[derive(TypeSpec, ReprC)]
+#[derive(RustSpec, ReprC)]
 #[repr(transparent)]
 struct EnvAttr(usize);
 
-#[derive(Clone, TypeSpec, ReprC)]
+#[derive(Clone, RustSpec, ReprC)]
 #[reprC(id(u16))]
 struct Custom1(usize);
 
-#[derive(TypeSpec, ReprC)]
+#[derive(RustSpec, ReprC)]
 #[reprC(id(u16))]
 #[repr(transparent)]
 struct Custom2<'a>(&'a u8);
@@ -35,11 +35,11 @@ mod provider {
 
     use super::*;
 
-    #[derive(TypeSpec, ReprC)]
+    #[derive(RustSpec, ReprC)]
     #[reprC(id(u16))]
     struct Custom1(usize);
 
-    #[derive(TypeSpec, ReprC)]
+    #[derive(RustSpec, ReprC)]
     #[reprC(id(u16))]
     #[repr(transparent)]
     struct Custom2<'a>(&'a u8);

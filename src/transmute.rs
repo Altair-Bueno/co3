@@ -3,7 +3,7 @@ use alloc::boxed::Box;
 
 use disjoint_impls::disjoint_impls;
 use rust_spec::{
-    TypeSpec,
+    RustSpec,
     niche::{Stable, WithNiche},
     size::{NonZst, Zst},
 };
@@ -32,8 +32,8 @@ disjoint_impls! {
 
     unsafe impl<R: CheckedTransmute<CType: Copy>, E> CheckedTransmute for Result<R, E>
     where
-        R: TypeSpec<Size = rust_spec::size::Sized<NonZst>, Niche = WithNiche<Stable>>,
-        E: TypeSpec<Size = rust_spec::size::Sized<Zst>>,
+        R: RustSpec<Size = rust_spec::size::Sized<NonZst>, Niche = WithNiche<Stable>>,
+        E: RustSpec<Size = rust_spec::size::Sized<Zst>>,
     {
         #[inline(always)]
         unsafe fn is_valid(target: &Self::CType) -> bool {
@@ -42,8 +42,8 @@ disjoint_impls! {
     }
     unsafe impl<R, E: CheckedTransmute<CType: Copy>> CheckedTransmute for Result<R, E>
     where
-        R: TypeSpec<Size = rust_spec::size::Sized<Zst>>,
-        E: TypeSpec<Size = rust_spec::size::Sized<NonZst>, Niche = WithNiche<Stable>>,
+        R: RustSpec<Size = rust_spec::size::Sized<Zst>>,
+        E: RustSpec<Size = rust_spec::size::Sized<NonZst>, Niche = WithNiche<Stable>>,
     {
         #[inline(always)]
         unsafe fn is_valid(target: &Self::CType) -> bool {
@@ -71,7 +71,7 @@ where
 // FIXME: Should it be implemented for non-robust R?
 // atm we say yes, this is transmutable but don't misuse it.
 // Either require Stable<Robust> or write this in the documentation
-// If Repr<Robust> then also consider how it affects Box<&mut R>
+// If Layout<Robust> then also consider how it affects Box<&mut R>
 unsafe impl<R: CheckedTransmute + ?Sized> CheckedTransmute for &mut R
 where
     Self: ExternC<CType = *mut R::CType>,
@@ -138,7 +138,7 @@ unsafe impl CheckedTransmute for str {
 
 unsafe impl<R: CheckedTransmute<CType: Copy>> CheckedTransmute for Option<R>
 where
-    R: TypeSpec<Niche = WithNiche<Stable>>,
+    R: RustSpec<Niche = WithNiche<Stable>>,
     Self: ExternC<CType = R::CType>,
 {
     #[inline(always)]

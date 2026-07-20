@@ -36,8 +36,8 @@ use crate::{
     cfg_attr::{emit_macro_invocations, expand as expand_cfg_attr},
     dispatch::{find_dispatch_attr, synthesize_dispatch_handle_ids},
     generate::{expand_export_decls, expand_extern_decls},
+    layout::derive_repr_c,
     parse::{FailureMode, FfiInput, MacroFeatures, ParsedForeignItem, parse_dispatch_attr},
-    repr::derive_repr_c,
     utils::{
         has_non_lifetime_generics, is_drop_impl, is_type_erased, path_symbol_name, push_error,
         type_symbol_name,
@@ -49,8 +49,8 @@ mod cfg_attr;
 mod dispatch;
 mod ffi_fn;
 mod generate;
+mod layout;
 mod parse;
-mod repr;
 mod utils;
 mod validate;
 mod wrapper;
@@ -107,9 +107,9 @@ enum DropImpl {
 /// * `#[reprC(id($type))]` defines `co3::handle::HandleFamily::Kind`
 ///
 /// ```
-/// use co3::{rust_spec::TypeSpec, ReprC as ReprCAlias};
+/// use co3::{rust_spec::RustSpec, ReprC as ReprCAlias};
 ///
-/// #[derive(TypeSpec, ReprCAlias)]
+/// #[derive(RustSpec, ReprCAlias)]
 /// pub struct Hello(u32);
 /// ```
 ///

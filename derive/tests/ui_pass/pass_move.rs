@@ -1,6 +1,6 @@
-use co3::{rust_spec::TypeSpec, ReprC, ffi};
+use co3::{rust_spec::RustSpec, ReprC, ffi};
 
-#[derive(Clone, Debug, PartialEq, Eq, TypeSpec, ReprC)]
+#[derive(Clone, Debug, PartialEq, Eq, RustSpec, ReprC)]
 #[repr(C)]
 struct Value(Box<u32>);
 

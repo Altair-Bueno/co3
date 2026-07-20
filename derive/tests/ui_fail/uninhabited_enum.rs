@@ -1,6 +1,6 @@
-use co3::{rust_spec::TypeSpec, ReprC};
+use co3::{rust_spec::RustSpec, ReprC};
 
-#[derive(TypeSpec, ReprC)]
+#[derive(RustSpec, ReprC)]
 pub enum FfiStruct2 {}
 
 fn main() {}

@@ -2,7 +2,7 @@
 
 use alloc::boxed::Box;
 use core::ptr::NonNull;
-use rust_spec::{TypeSpec, mutability::Exclusive, niche::WithoutNiche};
+use rust_spec::{RustSpec, mutability::Exclusive, niche::WithoutNiche};
 
 use crate::{
     CFnArg, Decode, Encode, ExternC, ReprC,
@@ -231,8 +231,8 @@ impl<C> CBoxedSlice<C> {
 
 macro_rules! impl_boxed_carrier {
     ($ty:ident) => {
-        unsafe impl<C: TypeSpec> TypeSpec for $ty<C> {
-            type Repr = C::Repr;
+        unsafe impl<C: RustSpec> RustSpec for $ty<C> {
+            type Layout = C::Layout;
             type Size = rust_spec::size::Sized<rust_spec::size::NonZst>;
             type Niche = WithoutNiche;
             type Mutability = Exclusive;

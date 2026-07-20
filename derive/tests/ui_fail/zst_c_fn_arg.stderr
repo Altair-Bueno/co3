@@ -1,20 +1,20 @@
-error[E0271]: type mismatch resolving `<CReprCZst as TypeSpec>::Size == Sized<NonZst>`
+error[E0271]: type mismatch resolving `<CReprCZst as RustSpec>::Size == Sized<NonZst>`
   --> tests/ui_fail/zst_c_fn_arg.rs:72:19
    |
 72 |     require_arg::<<ReprCZst as ExternC>::CType>();
-   |                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^ type mismatch resolving `<CReprCZst as TypeSpec>::Size == Sized<NonZst>`
+   |                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^ type mismatch resolving `<CReprCZst as RustSpec>::Size == Sized<NonZst>`
    |
 note: expected this to be `co3::rust_spec::size::Sized<NonZst>`
   --> tests/ui_fail/zst_c_fn_arg.rs:39:33
    |
-39 | #[derive(Clone, Copy, TypeSpec, ReprC)]
+39 | #[derive(Clone, Copy, RustSpec, ReprC)]
    |                                 ^^^^^
    = note: expected struct `co3::rust_spec::size::Sized<NonZst>`
               found struct `co3::rust_spec::size::Sized<Zst>`
 note: required for `CReprCZst` to implement `CFnArg`
   --> tests/ui_fail/zst_c_fn_arg.rs:39:33
    |
-39 | #[derive(Clone, Copy, TypeSpec, ReprC)]
+39 | #[derive(Clone, Copy, RustSpec, ReprC)]
    |                                 ^^^^^ type parameter would need to implement `CFnArg`
    = help: consider manually implementing `CFnArg` to avoid undesired bounds
    = note: associated types for the current `impl` cannot be restricted in `where` clauses
@@ -24,25 +24,25 @@ note: required by a bound in `require_arg`
    |
 68 | fn require_arg<T: CFnArg>() {}
    |                   ^^^^^^ required by this bound in `require_arg`
-   = note: this error originates in the derive macro `co3::rust_spec::TypeSpec` which comes from the expansion of the derive macro `ReprC` (in Nightly builds, run with -Z macro-backtrace for more info)
+   = note: this error originates in the derive macro `co3::rust_spec::RustSpec` which comes from the expansion of the derive macro `ReprC` (in Nightly builds, run with -Z macro-backtrace for more info)
 
-error[E0271]: type mismatch resolving `<CReprCZst as TypeSpec>::Size == Sized<NonZst>`
+error[E0271]: type mismatch resolving `<CReprCZst as RustSpec>::Size == Sized<NonZst>`
   --> tests/ui_fail/zst_c_fn_arg.rs:73:22
    |
 73 |     require_return::<<ReprCZst as ExternC>::CType>();
-   |                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^ type mismatch resolving `<CReprCZst as TypeSpec>::Size == Sized<NonZst>`
+   |                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^ type mismatch resolving `<CReprCZst as RustSpec>::Size == Sized<NonZst>`
    |
 note: expected this to be `co3::rust_spec::size::Sized<NonZst>`
   --> tests/ui_fail/zst_c_fn_arg.rs:39:33
    |
-39 | #[derive(Clone, Copy, TypeSpec, ReprC)]
+39 | #[derive(Clone, Copy, RustSpec, ReprC)]
    |                                 ^^^^^
    = note: expected struct `co3::rust_spec::size::Sized<NonZst>`
               found struct `co3::rust_spec::size::Sized<Zst>`
 note: required for `CReprCZst` to implement `CFnArg`
   --> tests/ui_fail/zst_c_fn_arg.rs:39:33
    |
-39 | #[derive(Clone, Copy, TypeSpec, ReprC)]
+39 | #[derive(Clone, Copy, RustSpec, ReprC)]
    |                                 ^^^^^ type parameter would need to implement `CFnArg`
    = help: consider manually implementing `CFnArg` to avoid undesired bounds
    = note: associated types for the current `impl` cannot be restricted in `where` clauses
@@ -53,25 +53,25 @@ note: required by a bound in `require_return`
    |
 69 | fn require_return<T: CFnReturn>() {}
    |                      ^^^^^^^^^ required by this bound in `require_return`
-   = note: this error originates in the derive macro `co3::rust_spec::TypeSpec` which comes from the expansion of the derive macro `ReprC` (in Nightly builds, run with -Z macro-backtrace for more info)
+   = note: this error originates in the derive macro `co3::rust_spec::RustSpec` which comes from the expansion of the derive macro `ReprC` (in Nightly builds, run with -Z macro-backtrace for more info)
 
-error[E0271]: type mismatch resolving `<CTransparentZst as TypeSpec>::Size == Sized<NonZst>`
+error[E0271]: type mismatch resolving `<CTransparentZst as RustSpec>::Size == Sized<NonZst>`
   --> tests/ui_fail/zst_c_fn_arg.rs:75:19
    |
 75 |     require_arg::<<TransparentZst as ExternC>::CType>();
-   |                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ type mismatch resolving `<CTransparentZst as TypeSpec>::Size == Sized<NonZst>`
+   |                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ type mismatch resolving `<CTransparentZst as RustSpec>::Size == Sized<NonZst>`
    |
 note: expected this to be `co3::rust_spec::size::Sized<NonZst>`
   --> tests/ui_fail/zst_c_fn_arg.rs:46:33
    |
-46 | #[derive(Clone, Copy, TypeSpec, ReprC)]
+46 | #[derive(Clone, Copy, RustSpec, ReprC)]
    |                                 ^^^^^
    = note: expected struct `co3::rust_spec::size::Sized<NonZst>`
               found struct `co3::rust_spec::size::Sized<Zst>`
 note: required for `CTransparentZst` to implement `CFnArg`
   --> tests/ui_fail/zst_c_fn_arg.rs:46:33
    |
-46 | #[derive(Clone, Copy, TypeSpec, ReprC)]
+46 | #[derive(Clone, Copy, RustSpec, ReprC)]
    |                                 ^^^^^ type parameter would need to implement `CFnArg`
    = help: consider manually implementing `CFnArg` to avoid undesired bounds
    = note: associated types for the current `impl` cannot be restricted in `where` clauses
@@ -81,25 +81,25 @@ note: required by a bound in `require_arg`
    |
 68 | fn require_arg<T: CFnArg>() {}
    |                   ^^^^^^ required by this bound in `require_arg`
-   = note: this error originates in the derive macro `co3::rust_spec::TypeSpec` which comes from the expansion of the derive macro `ReprC` (in Nightly builds, run with -Z macro-backtrace for more info)
+   = note: this error originates in the derive macro `co3::rust_spec::RustSpec` which comes from the expansion of the derive macro `ReprC` (in Nightly builds, run with -Z macro-backtrace for more info)
 
-error[E0271]: type mismatch resolving `<CTransparentZst as TypeSpec>::Size == Sized<NonZst>`
+error[E0271]: type mismatch resolving `<CTransparentZst as RustSpec>::Size == Sized<NonZst>`
   --> tests/ui_fail/zst_c_fn_arg.rs:76:22
    |
 76 |     require_return::<<TransparentZst as ExternC>::CType>();
-   |                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ type mismatch resolving `<CTransparentZst as TypeSpec>::Size == Sized<NonZst>`
+   |                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ type mismatch resolving `<CTransparentZst as RustSpec>::Size == Sized<NonZst>`
    |
 note: expected this to be `co3::rust_spec::size::Sized<NonZst>`
   --> tests/ui_fail/zst_c_fn_arg.rs:46:33
    |
-46 | #[derive(Clone, Copy, TypeSpec, ReprC)]
+46 | #[derive(Clone, Copy, RustSpec, ReprC)]
    |                                 ^^^^^
    = note: expected struct `co3::rust_spec::size::Sized<NonZst>`
               found struct `co3::rust_spec::size::Sized<Zst>`
 note: required for `CTransparentZst` to implement `CFnArg`
   --> tests/ui_fail/zst_c_fn_arg.rs:46:33
    |
-46 | #[derive(Clone, Copy, TypeSpec, ReprC)]
+46 | #[derive(Clone, Copy, RustSpec, ReprC)]
    |                                 ^^^^^ type parameter would need to implement `CFnArg`
    = help: consider manually implementing `CFnArg` to avoid undesired bounds
    = note: associated types for the current `impl` cannot be restricted in `where` clauses
@@ -110,25 +110,25 @@ note: required by a bound in `require_return`
    |
 69 | fn require_return<T: CFnReturn>() {}
    |                      ^^^^^^^^^ required by this bound in `require_return`
-   = note: this error originates in the derive macro `co3::rust_spec::TypeSpec` which comes from the expansion of the derive macro `ReprC` (in Nightly builds, run with -Z macro-backtrace for more info)
+   = note: this error originates in the derive macro `co3::rust_spec::RustSpec` which comes from the expansion of the derive macro `ReprC` (in Nightly builds, run with -Z macro-backtrace for more info)
 
-error[E0271]: type mismatch resolving `<CNoReprZst as TypeSpec>::Size == Sized<NonZst>`
+error[E0271]: type mismatch resolving `<CNoReprZst as RustSpec>::Size == Sized<NonZst>`
   --> tests/ui_fail/zst_c_fn_arg.rs:78:19
    |
 78 |     require_arg::<<NoReprZst as ExternC>::CType>();
-   |                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ type mismatch resolving `<CNoReprZst as TypeSpec>::Size == Sized<NonZst>`
+   |                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ type mismatch resolving `<CNoReprZst as RustSpec>::Size == Sized<NonZst>`
    |
 note: expected this to be `co3::rust_spec::size::Sized<NonZst>`
   --> tests/ui_fail/zst_c_fn_arg.rs:52:33
    |
-52 | #[derive(Clone, Copy, TypeSpec, ReprC)]
+52 | #[derive(Clone, Copy, RustSpec, ReprC)]
    |                                 ^^^^^
    = note: expected struct `co3::rust_spec::size::Sized<NonZst>`
               found struct `co3::rust_spec::size::Sized<Zst>`
 note: required for `CNoReprZst` to implement `CFnArg`
   --> tests/ui_fail/zst_c_fn_arg.rs:52:33
    |
-52 | #[derive(Clone, Copy, TypeSpec, ReprC)]
+52 | #[derive(Clone, Copy, RustSpec, ReprC)]
    |                                 ^^^^^ type parameter would need to implement `CFnArg`
    = help: consider manually implementing `CFnArg` to avoid undesired bounds
    = note: associated types for the current `impl` cannot be restricted in `where` clauses
@@ -138,25 +138,25 @@ note: required by a bound in `require_arg`
    |
 68 | fn require_arg<T: CFnArg>() {}
    |                   ^^^^^^ required by this bound in `require_arg`
-   = note: this error originates in the derive macro `co3::rust_spec::TypeSpec` which comes from the expansion of the derive macro `ReprC` (in Nightly builds, run with -Z macro-backtrace for more info)
+   = note: this error originates in the derive macro `co3::rust_spec::RustSpec` which comes from the expansion of the derive macro `ReprC` (in Nightly builds, run with -Z macro-backtrace for more info)
 
-error[E0271]: type mismatch resolving `<CNoReprZst as TypeSpec>::Size == Sized<NonZst>`
+error[E0271]: type mismatch resolving `<CNoReprZst as RustSpec>::Size == Sized<NonZst>`
   --> tests/ui_fail/zst_c_fn_arg.rs:79:22
    |
 79 |     require_return::<<NoReprZst as ExternC>::CType>();
-   |                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ type mismatch resolving `<CNoReprZst as TypeSpec>::Size == Sized<NonZst>`
+   |                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ type mismatch resolving `<CNoReprZst as RustSpec>::Size == Sized<NonZst>`
    |
 note: expected this to be `co3::rust_spec::size::Sized<NonZst>`
   --> tests/ui_fail/zst_c_fn_arg.rs:52:33
    |
-52 | #[derive(Clone, Copy, TypeSpec, ReprC)]
+52 | #[derive(Clone, Copy, RustSpec, ReprC)]
    |                                 ^^^^^
    = note: expected struct `co3::rust_spec::size::Sized<NonZst>`
               found struct `co3::rust_spec::size::Sized<Zst>`
 note: required for `CNoReprZst` to implement `CFnArg`
   --> tests/ui_fail/zst_c_fn_arg.rs:52:33
    |
-52 | #[derive(Clone, Copy, TypeSpec, ReprC)]
+52 | #[derive(Clone, Copy, RustSpec, ReprC)]
    |                                 ^^^^^ type parameter would need to implement `CFnArg`
    = help: consider manually implementing `CFnArg` to avoid undesired bounds
    = note: associated types for the current `impl` cannot be restricted in `where` clauses
@@ -167,25 +167,25 @@ note: required by a bound in `require_return`
    |
 69 | fn require_return<T: CFnReturn>() {}
    |                      ^^^^^^^^^ required by this bound in `require_return`
-   = note: this error originates in the derive macro `co3::rust_spec::TypeSpec` which comes from the expansion of the derive macro `ReprC` (in Nightly builds, run with -Z macro-backtrace for more info)
+   = note: this error originates in the derive macro `co3::rust_spec::RustSpec` which comes from the expansion of the derive macro `ReprC` (in Nightly builds, run with -Z macro-backtrace for more info)
 
-error[E0271]: type mismatch resolving `<CParamReprCZst<()> as TypeSpec>::Size == Sized<NonZst>`
+error[E0271]: type mismatch resolving `<CParamReprCZst<()> as RustSpec>::Size == Sized<NonZst>`
   --> tests/ui_fail/zst_c_fn_arg.rs:81:19
    |
 81 |     require_arg::<<ParamReprCZst<()> as ExternC>::CType>();
-   |                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ type mismatch resolving `<CParamReprCZst<()> as TypeSpec>::Size == Sized<NonZst>`
+   |                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ type mismatch resolving `<CParamReprCZst<()> as RustSpec>::Size == Sized<NonZst>`
    |
 note: expected this to be `co3::rust_spec::size::Sized<NonZst>`
   --> tests/ui_fail/zst_c_fn_arg.rs:3:33
    |
- 3 | #[derive(Clone, Copy, TypeSpec, ReprC)]
+ 3 | #[derive(Clone, Copy, RustSpec, ReprC)]
    |                                 ^^^^^
    = note: expected struct `co3::rust_spec::size::Sized<NonZst>`
               found struct `co3::rust_spec::size::Sized<Zst>`
 note: required for `CParamReprCZst<()>` to implement `CFnArg`
   --> tests/ui_fail/zst_c_fn_arg.rs:3:33
    |
- 3 | #[derive(Clone, Copy, TypeSpec, ReprC)]
+ 3 | #[derive(Clone, Copy, RustSpec, ReprC)]
    |                                 ^^^^^ type parameter would need to implement `CFnArg`
    = help: consider manually implementing `CFnArg` to avoid undesired bounds
    = note: associated types for the current `impl` cannot be restricted in `where` clauses
@@ -196,25 +196,25 @@ note: required by a bound in `require_arg`
    |
 68 | fn require_arg<T: CFnArg>() {}
    |                   ^^^^^^ required by this bound in `require_arg`
-   = note: this error originates in the derive macro `co3::rust_spec::TypeSpec` which comes from the expansion of the derive macro `ReprC` (in Nightly builds, run with -Z macro-backtrace for more info)
+   = note: this error originates in the derive macro `co3::rust_spec::RustSpec` which comes from the expansion of the derive macro `ReprC` (in Nightly builds, run with -Z macro-backtrace for more info)
 
-error[E0271]: type mismatch resolving `<CParamReprCZst<()> as TypeSpec>::Size == Sized<NonZst>`
+error[E0271]: type mismatch resolving `<CParamReprCZst<()> as RustSpec>::Size == Sized<NonZst>`
   --> tests/ui_fail/zst_c_fn_arg.rs:82:22
    |
 82 |     require_return::<<ParamReprCZst<()> as ExternC>::CType>();
-   |                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ type mismatch resolving `<CParamReprCZst<()> as TypeSpec>::Size == Sized<NonZst>`
+   |                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ type mismatch resolving `<CParamReprCZst<()> as RustSpec>::Size == Sized<NonZst>`
    |
 note: expected this to be `co3::rust_spec::size::Sized<NonZst>`
   --> tests/ui_fail/zst_c_fn_arg.rs:3:33
    |
- 3 | #[derive(Clone, Copy, TypeSpec, ReprC)]
+ 3 | #[derive(Clone, Copy, RustSpec, ReprC)]
    |                                 ^^^^^
    = note: expected struct `co3::rust_spec::size::Sized<NonZst>`
               found struct `co3::rust_spec::size::Sized<Zst>`
 note: required for `CParamReprCZst<()>` to implement `CFnArg`
   --> tests/ui_fail/zst_c_fn_arg.rs:3:33
    |
- 3 | #[derive(Clone, Copy, TypeSpec, ReprC)]
+ 3 | #[derive(Clone, Copy, RustSpec, ReprC)]
    |                                 ^^^^^ type parameter would need to implement `CFnArg`
    = help: consider manually implementing `CFnArg` to avoid undesired bounds
    = note: associated types for the current `impl` cannot be restricted in `where` clauses
@@ -226,25 +226,25 @@ note: required by a bound in `require_return`
    |
 69 | fn require_return<T: CFnReturn>() {}
    |                      ^^^^^^^^^ required by this bound in `require_return`
-   = note: this error originates in the derive macro `co3::rust_spec::TypeSpec` which comes from the expansion of the derive macro `ReprC` (in Nightly builds, run with -Z macro-backtrace for more info)
+   = note: this error originates in the derive macro `co3::rust_spec::RustSpec` which comes from the expansion of the derive macro `ReprC` (in Nightly builds, run with -Z macro-backtrace for more info)
 
-error[E0271]: type mismatch resolving `<CParamTransparentZst<()> as TypeSpec>::Size == Sized<NonZst>`
+error[E0271]: type mismatch resolving `<CParamTransparentZst<()> as RustSpec>::Size == Sized<NonZst>`
   --> tests/ui_fail/zst_c_fn_arg.rs:84:19
    |
 84 |     require_arg::<<ParamTransparentZst<()> as ExternC>::CType>();
-   |                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ type mismatch resolving `<CParamTransparentZst<()> as TypeSpec>::Size == Sized<NonZst>`
+   |                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ type mismatch resolving `<CParamTransparentZst<()> as RustSpec>::Size == Sized<NonZst>`
    |
 note: expected this to be `co3::rust_spec::size::Sized<NonZst>`
   --> tests/ui_fail/zst_c_fn_arg.rs:10:33
    |
-10 | #[derive(Clone, Copy, TypeSpec, ReprC)]
+10 | #[derive(Clone, Copy, RustSpec, ReprC)]
    |                                 ^^^^^
    = note: expected struct `co3::rust_spec::size::Sized<NonZst>`
               found struct `co3::rust_spec::size::Sized<Zst>`
 note: required for `CParamTransparentZst<()>` to implement `CFnArg`
   --> tests/ui_fail/zst_c_fn_arg.rs:10:33
    |
-10 | #[derive(Clone, Copy, TypeSpec, ReprC)]
+10 | #[derive(Clone, Copy, RustSpec, ReprC)]
    |                                 ^^^^^ type parameter would need to implement `CFnArg`
    = help: consider manually implementing `CFnArg` to avoid undesired bounds
    = note: associated types for the current `impl` cannot be restricted in `where` clauses
@@ -255,25 +255,25 @@ note: required by a bound in `require_arg`
    |
 68 | fn require_arg<T: CFnArg>() {}
    |                   ^^^^^^ required by this bound in `require_arg`
-   = note: this error originates in the derive macro `co3::rust_spec::TypeSpec` which comes from the expansion of the derive macro `ReprC` (in Nightly builds, run with -Z macro-backtrace for more info)
+   = note: this error originates in the derive macro `co3::rust_spec::RustSpec` which comes from the expansion of the derive macro `ReprC` (in Nightly builds, run with -Z macro-backtrace for more info)
 
-error[E0271]: type mismatch resolving `<CParamTransparentZst<()> as TypeSpec>::Size == Sized<NonZst>`
+error[E0271]: type mismatch resolving `<CParamTransparentZst<()> as RustSpec>::Size == Sized<NonZst>`
   --> tests/ui_fail/zst_c_fn_arg.rs:85:22
    |
 85 |     require_return::<<ParamTransparentZst<()> as ExternC>::CType>();
-   |                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ type mismatch resolving `<CParamTransparentZst<()> as TypeSpec>::Size == Sized<NonZst>`
+   |                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ type mismatch resolving `<CParamTransparentZst<()> as RustSpec>::Size == Sized<NonZst>`
    |
 note: expected this to be `co3::rust_spec::size::Sized<NonZst>`
   --> tests/ui_fail/zst_c_fn_arg.rs:10:33
    |
-10 | #[derive(Clone, Copy, TypeSpec, ReprC)]
+10 | #[derive(Clone, Copy, RustSpec, ReprC)]
    |                                 ^^^^^
    = note: expected struct `co3::rust_spec::size::Sized<NonZst>`
               found struct `co3::rust_spec::size::Sized<Zst>`
 note: required for `CParamTransparentZst<()>` to implement `CFnArg`
   --> tests/ui_fail/zst_c_fn_arg.rs:10:33
    |
-10 | #[derive(Clone, Copy, TypeSpec, ReprC)]
+10 | #[derive(Clone, Copy, RustSpec, ReprC)]
    |                                 ^^^^^ type parameter would need to implement `CFnArg`
    = help: consider manually implementing `CFnArg` to avoid undesired bounds
    = note: associated types for the current `impl` cannot be restricted in `where` clauses
@@ -285,25 +285,25 @@ note: required by a bound in `require_return`
    |
 69 | fn require_return<T: CFnReturn>() {}
    |                      ^^^^^^^^^ required by this bound in `require_return`
-   = note: this error originates in the derive macro `co3::rust_spec::TypeSpec` which comes from the expansion of the derive macro `ReprC` (in Nightly builds, run with -Z macro-backtrace for more info)
+   = note: this error originates in the derive macro `co3::rust_spec::RustSpec` which comes from the expansion of the derive macro `ReprC` (in Nightly builds, run with -Z macro-backtrace for more info)
 
-error[E0271]: type mismatch resolving `<CParamNoReprZst<()> as TypeSpec>::Size == Sized<NonZst>`
+error[E0271]: type mismatch resolving `<CParamNoReprZst<()> as RustSpec>::Size == Sized<NonZst>`
   --> tests/ui_fail/zst_c_fn_arg.rs:87:19
    |
 87 |     require_arg::<<ParamNoReprZst<()> as ExternC>::CType>();
-   |                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ type mismatch resolving `<CParamNoReprZst<()> as TypeSpec>::Size == Sized<NonZst>`
+   |                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ type mismatch resolving `<CParamNoReprZst<()> as RustSpec>::Size == Sized<NonZst>`
    |
 note: expected this to be `co3::rust_spec::size::Sized<NonZst>`
   --> tests/ui_fail/zst_c_fn_arg.rs:33:33
    |
-33 | #[derive(Clone, Copy, TypeSpec, ReprC)]
+33 | #[derive(Clone, Copy, RustSpec, ReprC)]
    |                                 ^^^^^
    = note: expected struct `co3::rust_spec::size::Sized<NonZst>`
               found struct `co3::rust_spec::size::Sized<Zst>`
 note: required for `CParamNoReprZst<()>` to implement `CFnArg`
   --> tests/ui_fail/zst_c_fn_arg.rs:33:33
    |
-33 | #[derive(Clone, Copy, TypeSpec, ReprC)]
+33 | #[derive(Clone, Copy, RustSpec, ReprC)]
    |                                 ^^^^^ type parameter would need to implement `CFnArg`
    = help: consider manually implementing `CFnArg` to avoid undesired bounds
    = note: associated types for the current `impl` cannot be restricted in `where` clauses
@@ -314,25 +314,25 @@ note: required by a bound in `require_arg`
    |
 68 | fn require_arg<T: CFnArg>() {}
    |                   ^^^^^^ required by this bound in `require_arg`
-   = note: this error originates in the derive macro `co3::rust_spec::TypeSpec` which comes from the expansion of the derive macro `ReprC` (in Nightly builds, run with -Z macro-backtrace for more info)
+   = note: this error originates in the derive macro `co3::rust_spec::RustSpec` which comes from the expansion of the derive macro `ReprC` (in Nightly builds, run with -Z macro-backtrace for more info)
 
-error[E0271]: type mismatch resolving `<CParamNoReprZst<()> as TypeSpec>::Size == Sized<NonZst>`
+error[E0271]: type mismatch resolving `<CParamNoReprZst<()> as RustSpec>::Size == Sized<NonZst>`
   --> tests/ui_fail/zst_c_fn_arg.rs:88:22
    |
 88 |     require_return::<<ParamNoReprZst<()> as ExternC>::CType>();
-   |                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ type mismatch resolving `<CParamNoReprZst<()> as TypeSpec>::Size == Sized<NonZst>`
+   |                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ type mismatch resolving `<CParamNoReprZst<()> as RustSpec>::Size == Sized<NonZst>`
    |
 note: expected this to be `co3::rust_spec::size::Sized<NonZst>`
   --> tests/ui_fail/zst_c_fn_arg.rs:33:33
    |
-33 | #[derive(Clone, Copy, TypeSpec, ReprC)]
+33 | #[derive(Clone, Copy, RustSpec, ReprC)]
    |                                 ^^^^^
    = note: expected struct `co3::rust_spec::size::Sized<NonZst>`
               found struct `co3::rust_spec::size::Sized<Zst>`
 note: required for `CParamNoReprZst<()>` to implement `CFnArg`
   --> tests/ui_fail/zst_c_fn_arg.rs:33:33
    |
-33 | #[derive(Clone, Copy, TypeSpec, ReprC)]
+33 | #[derive(Clone, Copy, RustSpec, ReprC)]
    |                                 ^^^^^ type parameter would need to implement `CFnArg`
    = help: consider manually implementing `CFnArg` to avoid undesired bounds
    = note: associated types for the current `impl` cannot be restricted in `where` clauses
@@ -344,7 +344,7 @@ note: required by a bound in `require_return`
    |
 69 | fn require_return<T: CFnReturn>() {}
    |                      ^^^^^^^^^ required by this bound in `require_return`
-   = note: this error originates in the derive macro `co3::rust_spec::TypeSpec` which comes from the expansion of the derive macro `ReprC` (in Nightly builds, run with -Z macro-backtrace for more info)
+   = note: this error originates in the derive macro `co3::rust_spec::RustSpec` which comes from the expansion of the derive macro `ReprC` (in Nightly builds, run with -Z macro-backtrace for more info)
 
 error[E0277]: the trait bound `(): CFnArg` is not satisfied
   --> tests/ui_fail/zst_c_fn_arg.rs:96:19

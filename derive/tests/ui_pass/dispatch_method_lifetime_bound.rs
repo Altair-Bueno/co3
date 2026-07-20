@@ -1,4 +1,4 @@
-use co3::{rust_spec::TypeSpec, ReprC, ffi, handle::HandleFamily, handles};
+use co3::{rust_spec::RustSpec, ReprC, ffi, handle::HandleFamily, handles};
 
 trait Attribute {}
 
@@ -6,11 +6,11 @@ trait Dispatch {
     fn len(values: &[u32], attr: &Self) -> usize;
 }
 
-#[derive(TypeSpec, ReprC)]
+#[derive(RustSpec, ReprC)]
 #[repr(transparent)]
 struct CustomAttribute(u32);
 
-#[derive(TypeSpec, ReprC)]
+#[derive(RustSpec, ReprC)]
 #[reprC(id(u8))]
 #[repr(transparent)]
 struct CustomAttributeRef<'a>(&'a u32);

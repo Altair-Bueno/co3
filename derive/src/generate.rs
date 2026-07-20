@@ -705,8 +705,8 @@ fn gen_owned_repr_c_impls(ident: &syn::Ident, generics: &syn::Generics) -> Token
         }
         impl #impl_generics Copy for #owned_repr_c_name #ty_generics #where_clause {}
 
-        unsafe impl #impl_generics co3::rust_spec::TypeSpec for #owned_repr_c_name #ty_generics #where_clause {
-            type Repr = co3::rust_spec::repr::Stable<co3::rust_spec::repr::Robust>;
+        unsafe impl #impl_generics co3::rust_spec::RustSpec for #owned_repr_c_name #ty_generics #where_clause {
+            type Layout = co3::rust_spec::layout::Stable<co3::rust_spec::layout::Robust>;
             type Size = co3::rust_spec::size::Sized<co3::rust_spec::size::NonZst>;
             type Niche = co3::rust_spec::niche::WithoutNiche;
             type Mutability = co3::rust_spec::mutability::Exclusive;
@@ -765,8 +765,8 @@ fn gen_owned_extern_type_impls(ident: &syn::Ident, generics: &syn::Generics) -> 
     let owned_repr_c_name = gen_owned_repr_c_name(ident);
 
     quote! {
-        unsafe impl #impl_generics co3::rust_spec::TypeSpec for #owned_ident #ty_generics #where_clause {
-            type Repr = co3::rust_spec::repr::Stable<co3::rust_spec::repr::NonRobust>;
+        unsafe impl #impl_generics co3::rust_spec::RustSpec for #owned_ident #ty_generics #where_clause {
+            type Layout = co3::rust_spec::layout::Stable<co3::rust_spec::layout::NonRobust>;
             type Size = co3::rust_spec::size::Sized<co3::rust_spec::size::NonZst>;
             type Niche = co3::rust_spec::niche::WithNiche<co3::rust_spec::niche::Stable>;
             type Mutability = co3::rust_spec::mutability::Exclusive;
@@ -861,8 +861,8 @@ fn derive_opaque_item(
     quote! {
         #handle_family_impl
 
-        unsafe impl #impl_generics co3::rust_spec::TypeSpec for #ident #ty_generics #where_clause {
-            type Repr = co3::rust_spec::repr::Stable<co3::rust_spec::repr::Robust>;
+        unsafe impl #impl_generics co3::rust_spec::RustSpec for #ident #ty_generics #where_clause {
+            type Layout = co3::rust_spec::layout::Stable<co3::rust_spec::layout::Robust>;
             type Size = #size_kind;
             type Niche = co3::rust_spec::niche::WithoutNiche;
             type Mutability = co3::rust_spec::mutability::Exclusive;

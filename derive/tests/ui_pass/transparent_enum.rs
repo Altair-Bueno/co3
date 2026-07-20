@@ -1,18 +1,18 @@
-use co3::{rust_spec::TypeSpec, ExternC, ReprC};
+use co3::{rust_spec::RustSpec, ExternC, ReprC};
 
-#[derive(Clone, Copy, TypeSpec, ReprC)]
+#[derive(Clone, Copy, RustSpec, ReprC)]
 #[repr(transparent)]
 enum TransparentTupleEnum {
     A(u8),
 }
 
-#[derive(Clone, Copy, TypeSpec, ReprC)]
+#[derive(Clone, Copy, RustSpec, ReprC)]
 #[repr(transparent)]
 enum TransparentNamedEnum {
     A { value: u8 },
 }
 
-#[derive(Clone, Copy, TypeSpec, ReprC)]
+#[derive(Clone, Copy, RustSpec, ReprC)]
 enum ImplicitTransparentTupleEnum {
     A(u8),
 }

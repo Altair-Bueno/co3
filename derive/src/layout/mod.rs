@@ -4,8 +4,8 @@ use syn::{Attribute, spanned::Spanned as _, visit::Visit};
 
 use crate::{
     generate::gen_handle_family_impl,
-    repr::attr::{ReprKind, parse_repr},
-    repr::item::{derive_fieldless_enum, derive_item},
+    layout::attr::{ReprKind, parse_repr},
+    layout::item::{derive_fieldless_enum, derive_item},
     utils::push_error,
     validate::validate_niche_value_sized_tail,
 };
@@ -15,7 +15,6 @@ mod borrow;
 mod ctype;
 mod item;
 mod niche;
-mod wide;
 
 const FFI_TYPE_ATTR: &str = "reprC";
 

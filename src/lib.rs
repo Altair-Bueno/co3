@@ -1,6 +1,6 @@
 //! Structures and macros related to FFI and generation of FFI bindings. Any type that implements
 //! [`ExternC`] can be used in the FFI bindings generated with [`ffi!`]. It is advisable
-//! to implement [`TypeSpec`](rust_spec::TypeSpec) and benefit from automatic
+//! to implement [`RustSpec`](rust_spec::RustSpec) and benefit from automatic
 //! implementation of [`ExternC`].
 //!
 //! ```rust,ignore
@@ -31,10 +31,10 @@ pub use co3_derive::*;
 use disjoint_impls::disjoint_impls;
 pub use rust_spec;
 use rust_spec::{
-    TypeSpec,
+    RustSpec,
+    layout::{NonRobust, Stable, Unstable},
     mutability::{Exclusive, Interior},
     niche::{WithNiche, WithoutNiche},
-    repr::{NonRobust, Stable, Unstable},
     size::{ExternTypeLike, MetaSized, NonZst, SliceLike, Wide, Zst},
 };
 // TODO: I don't like having to reexport macros from other crates
@@ -131,33 +131,33 @@ disjoint_impls! {
         type CType: ReprC + ?Sized;
     }
 
-    impl<R: TypeSpec<Size: Thin, Mutability = Exclusive> + ExternC + ?Sized> ExternC for &R
+    impl<R: RustSpec<Size: Thin, Mutability = Exclusive> + ExternC + ?Sized> ExternC for &R
     where
-        Self: TypeSpec<Repr: UnstableOrNonRobust>,
+        Self: RustSpec<Layout: UnstableOrNonRobust>,
     {
         type CType = *const R::CType;
     }
-    impl<R: TypeSpec<Size: Thin, Mutability = Interior> + ExternC + ?Sized> ExternC for &R
+    impl<R: RustSpec<Size: Thin, Mutability = Interior> + ExternC + ?Sized> ExternC for &R
     where
-        Self: TypeSpec<Repr: UnstableOrNonRobust>,
+        Self: RustSpec<Layout: UnstableOrNonRobust>,
     {
         type CType = *mut R::CType;
     }
     impl<R: ?Sized, K> ExternC for &R
     where
-        R: TypeSpec<Repr = Stable<K>, Size = MetaSized<SliceLike>, Mutability = Exclusive>
+        R: RustSpec<Layout = Stable<K>, Size = MetaSized<SliceLike>, Mutability = Exclusive>
             + Wide<Data: ExternC, Metadata = usize>,
-        Self: TypeSpec<Repr = Unstable<NonRobust>>,
+        Self: RustSpec<Layout = Unstable<NonRobust>>,
         <<R as Wide>::Data as ExternC>::CType: Sized,
     {
         type CType = CSlice<<R::Data as ExternC>::CType>;
     }
     impl<R, K> ExternC for &R
     where
-        R: TypeSpec<Repr = Stable<K>, Size = MetaSized<SliceLike>, Mutability = Interior>
+        R: RustSpec<Layout = Stable<K>, Size = MetaSized<SliceLike>, Mutability = Interior>
             + Wide<Data: ExternC, Metadata = usize>
             + ?Sized,
-        Self: TypeSpec<Repr = Unstable<NonRobust>>,
+        Self: RustSpec<Layout = Unstable<NonRobust>>,
         <<R as Wide>::Data as ExternC>::CType: Sized,
     {
         type CType = CSliceMut<<R::Data as ExternC>::CType>;
@@ -165,22 +165,22 @@ disjoint_impls! {
     #[cfg(feature = "alloc")]
     impl<R, K, RK> ExternC for &R
     where
-        R: TypeSpec<Repr = Unstable<RK>, Size = MetaSized<K>> + ?Sized,
-        Self: TypeSpec<Repr = Unstable<RK>>,
+        R: RustSpec<Layout = Unstable<RK>, Size = MetaSized<K>> + ?Sized,
+        Self: RustSpec<Layout = Unstable<RK>>,
         R: ToOwned<Owned: ExternC<CType: BorrowCast>>,
     {
         type CType = <<R::Owned as ExternC>::CType as BorrowCast>::AsConst;
     }
 
-    impl<R: TypeSpec<Size: Thin> + ExternC + ?Sized> ExternC for &mut R
+    impl<R: RustSpec<Size: Thin> + ExternC + ?Sized> ExternC for &mut R
     where
-        Self: TypeSpec<Repr: UnstableOrNonRobust>,
+        Self: RustSpec<Layout: UnstableOrNonRobust>,
     {
         type CType = *mut R::CType;
     }
-    impl<R: TypeSpec<Repr = Stable<K>, Size = MetaSized<SliceLike>> + ?Sized, K> ExternC for &mut R
+    impl<R: RustSpec<Layout = Stable<K>, Size = MetaSized<SliceLike>> + ?Sized, K> ExternC for &mut R
     where
-        Self: TypeSpec<Repr = Unstable<NonRobust>>,
+        Self: RustSpec<Layout = Unstable<NonRobust>>,
         R: Wide<Data: ExternC, Metadata = usize>,
         <<R as Wide>::Data as ExternC>::CType: Sized,
     {
@@ -189,25 +189,25 @@ disjoint_impls! {
     #[cfg(feature = "alloc")]
     impl<R, K, RK> ExternC for &mut R
     where
-        R: TypeSpec<Repr = Unstable<RK>, Size = MetaSized<K>> + ?Sized,
-        Self: TypeSpec<Repr = Unstable<RK>>,
+        R: RustSpec<Layout = Unstable<RK>, Size = MetaSized<K>> + ?Sized,
+        Self: RustSpec<Layout = Unstable<RK>>,
         R: ToOwned<Owned: ExternC<CType: BorrowCastMut>>,
     {
         type CType = <<R::Owned as ExternC>::CType as BorrowCastMut>::AsMut;
     }
 
     #[cfg(feature = "alloc")]
-    impl<R: TypeSpec<Size = rust_spec::size::Sized<S>> + ExternC, S> ExternC for Box<R>
+    impl<R: RustSpec<Size = rust_spec::size::Sized<S>> + ExternC, S> ExternC for Box<R>
     where
-        Self: TypeSpec<Repr: UnstableOrNonRobust>,
+        Self: RustSpec<Layout: UnstableOrNonRobust>,
         <R as ExternC>::CType: Sized,
     {
         type CType = CBox<R::CType>;
     }
     #[cfg(feature = "alloc")]
-    impl<R: TypeSpec<Repr = Stable<K>, Size = MetaSized<SliceLike>> + ?Sized, K> ExternC for Box<R>
+    impl<R: RustSpec<Layout = Stable<K>, Size = MetaSized<SliceLike>> + ?Sized, K> ExternC for Box<R>
     where
-        Self: TypeSpec<Repr = Unstable<NonRobust>>,
+        Self: RustSpec<Layout = Unstable<NonRobust>>,
         R: Wide<Data: ExternC, Metadata = usize>,
         <<R as Wide>::Data as ExternC>::CType: Sized,
     {
@@ -216,26 +216,26 @@ disjoint_impls! {
     #[cfg(feature = "alloc")]
     impl<R, K, RK> ExternC for Box<R>
     where
-        R: TypeSpec<Repr = Unstable<RK>, Size = MetaSized<K>> + ?Sized,
-        Self: TypeSpec<Repr = Unstable<RK>>,
+        R: RustSpec<Layout = Unstable<RK>, Size = MetaSized<K>> + ?Sized,
+        Self: RustSpec<Layout = Unstable<RK>>,
         R: ToOwned<Owned: ExternC>,
     {
         type CType = <R::Owned as ExternC>::CType;
     }
 
-    impl<R: TypeSpec<Niche = WithoutNiche> + ExternC> ExternC for Option<R>
+    impl<R: RustSpec<Niche = WithoutNiche> + ExternC> ExternC for Option<R>
     where
         <R as ExternC>::CType: Sized,
     {
         type CType = ReprCOption<R::CType>;
     }
-    impl<R: TypeSpec<Niche = WithNiche<N>> + ExternC, N> ExternC for Option<R> {
+    impl<R: RustSpec<Niche = WithNiche<N>> + ExternC, N> ExternC for Option<R> {
         type CType = R::CType;
     }
 
     impl<
-        R: TypeSpec<Size = rust_spec::size::Sized<K>> + ExternC,
-        E: TypeSpec<Size = rust_spec::size::Sized<K>> + ExternC,
+        R: RustSpec<Size = rust_spec::size::Sized<K>> + ExternC,
+        E: RustSpec<Size = rust_spec::size::Sized<K>> + ExternC,
         K,
     > ExternC for Result<R, E>
     where
@@ -247,16 +247,16 @@ disjoint_impls! {
         type CType = ReprCResult<R::CType, E::CType>;
     }
     impl<
-        R: TypeSpec<Size = rust_spec::size::Sized<NonZst>, Niche = WithNiche<N>> + ExternC,
-        E: TypeSpec<Size = rust_spec::size::Sized<Zst>>,
+        R: RustSpec<Size = rust_spec::size::Sized<NonZst>, Niche = WithNiche<N>> + ExternC,
+        E: RustSpec<Size = rust_spec::size::Sized<Zst>>,
         N,
     > ExternC for Result<R, E>
     {
         type CType = R::CType;
     }
     impl<
-        R: TypeSpec<Size = rust_spec::size::Sized<Zst>>,
-        E: TypeSpec<Size = rust_spec::size::Sized<NonZst>, Niche = WithNiche<N>> + ExternC,
+        R: RustSpec<Size = rust_spec::size::Sized<Zst>>,
+        E: RustSpec<Size = rust_spec::size::Sized<NonZst>, Niche = WithNiche<N>> + ExternC,
         N,
     > ExternC for Result<R, E>
     {
@@ -271,12 +271,12 @@ disjoint_impls! {
     #[cfg(feature = "alloc")]
     impl<R: ?Sized, K> Encode for Box<R>
     where
-        Self: TypeSpec<Repr = Stable<K>> + EncodeOwned,
+        Self: RustSpec<Layout = Stable<K>> + EncodeOwned,
     {}
     #[cfg(feature = "alloc")]
-    impl<R: TypeSpec<Repr = Stable<K>> + ?Sized, K> Encode for Box<R>
+    impl<R: RustSpec<Layout = Stable<K>> + ?Sized, K> Encode for Box<R>
     where
-        Self: TypeSpec<Repr = Unstable<NonRobust>> + EncodeOwned,
+        Self: RustSpec<Layout = Unstable<NonRobust>> + EncodeOwned,
     {}
 }
 
@@ -287,12 +287,12 @@ disjoint_impls! {
     #[cfg(feature = "alloc")]
     impl<'d, R: ?Sized, K> Decode<'d> for Box<R>
     where
-        Self: TypeSpec<Repr = Stable<K>> + DecodeOwned<'d>,
+        Self: RustSpec<Layout = Stable<K>> + DecodeOwned<'d>,
     {}
     #[cfg(feature = "alloc")]
-    impl<'d, R: TypeSpec<Repr = Stable<K>> + ?Sized, K> Decode<'d> for Box<R>
+    impl<'d, R: RustSpec<Layout = Stable<K>> + ?Sized, K> Decode<'d> for Box<R>
     where
-        Self: TypeSpec<Repr = Unstable<NonRobust>> + DecodeOwned<'d>,
+        Self: RustSpec<Layout = Unstable<NonRobust>> + DecodeOwned<'d>,
     {}
 }
 

@@ -1,25 +1,25 @@
-use co3::{rust_spec::TypeSpec, ReprC, ffi, handles};
+use co3::{rust_spec::RustSpec, ReprC, ffi, handles};
 
 trait Dispatch {
     fn me(self);
 }
 
-#[derive(TypeSpec, ReprC)]
+#[derive(RustSpec, ReprC)]
 #[repr(transparent)]
 #[reprC(id(usize))]
 struct Handle(usize);
 
-#[derive(TypeSpec, ReprC)]
+#[derive(RustSpec, ReprC)]
 #[repr(transparent)]
 #[reprC(id(usize))]
 struct Handle2(u64);
 
-#[derive(TypeSpec, ReprC)]
+#[derive(RustSpec, ReprC)]
 #[repr(transparent)]
 #[reprC(id(usize))]
 struct Array([u8; 2]);
 
-#[derive(TypeSpec, ReprC)]
+#[derive(RustSpec, ReprC)]
 #[repr(transparent)]
 #[reprC(id(usize))]
 struct Array2([u8; 8]);

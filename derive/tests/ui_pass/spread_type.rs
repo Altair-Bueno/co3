@@ -1,4 +1,4 @@
-use co3::{rust_spec::TypeSpec, ReprC, ffi};
+use co3::{rust_spec::RustSpec, ReprC, ffi};
 
 trait ExportSpreadLen {
     fn export_trait_spread_len(&self, values: &[u32]) -> usize;
@@ -8,7 +8,7 @@ trait ImportSpreadLen {
     fn import_trait_spread_len(&self, values: &[u32]) -> usize;
 }
 
-#[derive(TypeSpec, ReprC)]
+#[derive(RustSpec, ReprC)]
 #[repr(transparent)]
 struct Counter(usize);
 

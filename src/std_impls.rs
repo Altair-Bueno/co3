@@ -551,13 +551,13 @@ mod tests {
     //    );
     //    assert_impl_all!(&ManuallyDrop<u8>:
     //        Niche<CType = *const u8>,
-    //        TypeSpec<Niche = rust_spec::niche::WithNiche<rust_spec::niche::Stable>>,
+    //        RustSpec<Niche = rust_spec::niche::WithNiche<rust_spec::niche::Stable>>,
     //        Decode<'static>,
     //        Encode,
     //    );
     //    assert_impl_all!(&mut ManuallyDrop<u8>:
     //        Niche<CType = *mut u8>,
-    //        TypeSpec<Niche = rust_spec::niche::WithNiche<rust_spec::niche::Stable>>,
+    //        RustSpec<Niche = rust_spec::niche::WithNiche<rust_spec::niche::Stable>>,
     //        Decode<'static>,
     //        Encode,
     //    );
@@ -623,7 +623,7 @@ mod tests {
     //    );
     //    assert_impl_all!(Box<ManuallyDrop<String>>:
     //        Niche<CType = CBox<CBoxedSlice<u8>>,
-    //        TypeSpec<Niche = rust_spec::niche::WithNiche<rust_spec::niche::Stable>>>>,
+    //        RustSpec<Niche = rust_spec::niche::WithNiche<rust_spec::niche::Stable>>>>,
     //        DecodeOwned<'static>,
     //        EncodeOwned,
     //    );

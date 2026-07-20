@@ -4,7 +4,7 @@ use proc_macro2::TokenStream;
 use quote::{format_ident, quote};
 use syn::{Ident, parse_quote};
 
-use crate::repr::{
+use crate::layout::{
     ReprCAttrs, VariantReprCAttrs,
     attr::ReprKind,
     borrow::{
@@ -19,7 +19,6 @@ use crate::repr::{
     is_type_parameterized,
     niche::{gen_enum_niche_ir, gen_struct_niche_ir},
     repr_type_is_signed,
-    wide::gen_transparent_wide_impl,
 };
 
 pub(super) fn derive_item(
@@ -32,12 +31,6 @@ pub(super) fn derive_item(
 
     let ctype_def = (!is_view).then(|| gen_item_ctype(repr, input));
     let view_def = (!is_view).then(|| gen_item_view(input, attrs, variant_attrs));
-
-    let wide_impl = if !is_view && let syn::Data::Struct(data) = &input.data {
-        gen_transparent_wide_impl(&input.ident, &input.generics, &data.fields)
-    } else {
-        quote! {}
-    };
 
     let borrow_impls = (!is_view).then(|| gen_item_borrow_impls(input));
     let codec_impls = gen_item_codec_impls(repr, input, attrs, variant_attrs);
@@ -52,7 +45,6 @@ pub(super) fn derive_item(
         #view_def
 
         #borrow_impls
-        #wide_impl
         #codec_impls
         #niche_impls
 

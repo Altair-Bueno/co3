@@ -12,19 +12,19 @@ mod exported_abi;
 //    fn target(self) -> Self::Target;
 //}
 //
-//#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, TypeSpec, ReprC)]
+//#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, RustSpec, ReprC)]
 //pub struct Name(String);
-//#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, TypeSpec, ReprC)]
+//#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, RustSpec, ReprC)]
 //pub struct Value(String);
 //
-//#[derive(Debug, Clone, PartialEq, Eq, Default, TypeSpec, ReprC)]
+//#[derive(Debug, Clone, PartialEq, Eq, Default, RustSpec, ReprC)]
 //pub struct OpaqueStruct {
 //    name: Option<Name>,
 //    tokens: Vec<Value>,
 //    params: BTreeMap<Name, Value>,
 //}
 //
-//#[derive(Debug, Clone, Copy, PartialEq, Eq, TypeSpec, ReprC)]
+//#[derive(Debug, Clone, Copy, PartialEq, Eq, RustSpec, ReprC)]
 //#[repr(u8)]
 //pub enum FieldlessEnum {
 //    A,
@@ -32,7 +32,7 @@ mod exported_abi;
 //    C,
 //}
 //
-//#[derive(Debug, Clone, PartialEq, Eq, TypeSpec, ReprC)]
+//#[derive(Debug, Clone, PartialEq, Eq, RustSpec, ReprC)]
 //#[repr(C)]
 //pub enum DataCarryingEnum<T> {
 //    A(OpaqueStruct),
@@ -41,7 +41,7 @@ mod exported_abi;
 //    D,
 //}
 //
-//#[derive(Clone, Copy, PartialEq, Eq, TypeSpec, ReprC)]
+//#[derive(Clone, Copy, PartialEq, Eq, RustSpec, ReprC)]
 //#[repr(C)]
 //pub struct RobustReprCStruct<T, U> {
 //    a: u8,

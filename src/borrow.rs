@@ -3,7 +3,7 @@ use alloc::{borrow::ToOwned as StdToOwned, boxed::Box, vec::Vec};
 
 use crate::{ReprC, stored::ArrayStore};
 #[cfg(feature = "alloc")]
-use rust_spec::{TypeSpec, size::MetaSized};
+use rust_spec::{RustSpec, size::MetaSized};
 
 // TODO: Remove this once extern types are stable
 // https://github.com/rust-lang/rust/issues/43467
@@ -172,7 +172,7 @@ impl<'itm, 'a: 'itm, R: ?Sized> ToOwned<'itm> for &'a mut R {
 
 #[cfg(feature = "alloc")]
 // NOTE: extern types cannot be borrowed, only moved
-unsafe impl<R: TypeSpec<Size: NonExternTypeLike> + ?Sized> Borrow for Box<R> {
+unsafe impl<R: RustSpec<Size: NonExternTypeLike> + ?Sized> Borrow for Box<R> {
     type Borrowed<'itm>
         = &'itm R
     where
@@ -191,7 +191,7 @@ unsafe impl<R: TypeSpec<Size: NonExternTypeLike> + ?Sized> Borrow for Box<R> {
     }
 }
 #[cfg(feature = "alloc")]
-impl<'itm, R: TypeSpec<Size: NonExternTypeLike> + StdToOwned + ?Sized> ToOwned<'itm> for Box<R>
+impl<'itm, R: RustSpec<Size: NonExternTypeLike> + StdToOwned + ?Sized> ToOwned<'itm> for Box<R>
 where
     R::Owned: Into<Self>,
 {

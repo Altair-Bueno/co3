@@ -1,7 +1,7 @@
 use std::{mem::MaybeUninit, ptr::NonNull};
 
 use co3::{
-    Decode, EncodeWithStore, FfiReturn, ReprC, export, external::Extern, ffi, rust_spec::TypeSpec,
+    Decode, EncodeWithStore, FfiReturn, ReprC, export, external::Extern, ffi, rust_spec::RustSpec,
 };
 
 trait AmbiguousX<T, const N: usize> {
@@ -18,7 +18,7 @@ trait CustomExports {
     fn xor(&self, by: u8) -> Self;
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, TypeSpec, ReprC)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, RustSpec, ReprC)]
 #[repr(u8)]
 pub enum Ambiguous {
     AmbiguousX,
@@ -43,7 +43,7 @@ pub(crate) struct OpaqueStructBool(bool);
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub(crate) struct OpaqueStructI32(i32);
 
-#[derive(Debug, Clone, Copy, PartialEq, TypeSpec, ReprC)]
+#[derive(Debug, Clone, Copy, PartialEq, RustSpec, ReprC)]
 #[repr(transparent)]
 pub enum NonOpaqueStruct<T> {
     A(T),

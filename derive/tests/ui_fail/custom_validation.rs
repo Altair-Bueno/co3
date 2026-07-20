@@ -1,6 +1,6 @@
-use co3::{rust_spec::TypeSpec, ReprC};
+use co3::{rust_spec::RustSpec, ReprC};
 
-#[derive(TypeSpec, ReprC)]
+#[derive(RustSpec, ReprC)]
 #[reprC(is_valid = |a| *a != 42)]
 #[reprC(NICHE_VALUE = Self::CType {
     field: 42
@@ -9,7 +9,7 @@ pub struct CustomStructValid {
     field: u32,
 }
 
-#[derive(TypeSpec, ReprC)]
+#[derive(RustSpec, ReprC)]
 pub enum CustomEnumValid {
     #[reprC(is_valid = |a| *a != 0)]
     A(u32),

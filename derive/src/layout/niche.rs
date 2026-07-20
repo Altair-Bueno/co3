@@ -2,7 +2,7 @@ use proc_macro2::{Literal, TokenStream};
 use quote::quote;
 
 use crate::{
-    repr::{
+    layout::{
         attr::ReprKind,
         ctype::{gen_ctype_name, gen_extern_c_bounds_for_ctype},
         enum_tag_type, is_exhaustive_enum, is_transparent_enum_repr,

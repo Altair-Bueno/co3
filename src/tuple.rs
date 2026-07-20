@@ -64,7 +64,7 @@ use core::ops::Add;
 
 use disjoint_impls::disjoint_impls;
 use rust_spec::{
-    TypeSpec,
+    RustSpec,
     niche::{WithNiche, WithoutNiche},
     size::NonZst,
 };
@@ -218,7 +218,7 @@ macro_rules! impl_tuple {
 
         unsafe impl<$($ty: ReprC + Copy),*> CFnArg for $ffi_ty<$($ty),*>
         where
-            Self: TypeSpec<Size = rust_spec::size::Sized<NonZst>>,
+            Self: RustSpec<Size = rust_spec::size::Sized<NonZst>>,
         {}
 
         impl<$($ty),*> From<($( $ty, )*)> for $ffi_ty<$($ty),*> {
@@ -330,15 +330,15 @@ disjoint_impls! {
 
     impl<A: Niche<CType: Copy>, B: ExternC<CType: Copy>, N> Niche for (A, B)
     where
-        A: TypeSpec<Niche = WithNiche<N>>,
+        A: RustSpec<Niche = WithNiche<N>>,
     {
         const NICHE_VALUE: Self::CType = ReprCTuple2(A::NICHE_VALUE, unsafe { core::mem::zeroed() });
     }
 
     impl<A: ExternC<CType: Copy>, B: Niche<CType: Copy>, N> Niche for (A, B)
     where
-        A: TypeSpec<Niche = WithoutNiche>,
-        B: TypeSpec<Niche = WithNiche<N>>,
+        A: RustSpec<Niche = WithoutNiche>,
+        B: RustSpec<Niche = WithNiche<N>>,
     {
         const NICHE_VALUE: Self::CType = ReprCTuple2(unsafe { core::mem::zeroed() }, B::NICHE_VALUE);
     }
@@ -383,22 +383,22 @@ impl_tuple_niche_recursive! {
 }
 
 macro_rules! impl_tuple_type_spec {
-    (@layout_kind Repr; $ty:ident) => {
-        <$ty as TypeSpec>::Repr
+    (@layout_kind Layout; $ty:ident) => {
+        <$ty as RustSpec>::Layout
     };
     (@layout_kind Size; $ty:ident) => {
-        <$ty as TypeSpec>::Size
+        <$ty as RustSpec>::Size
     };
     (@layout_kind Niche; $ty:ident) => {
-        <$ty as TypeSpec>::Niche
+        <$ty as RustSpec>::Niche
     };
     (@layout_kind $axis:ident; $head:ident, $($tail:ident),+) => {
-        <<$head as TypeSpec>::$axis as Add<impl_tuple_type_spec!(@layout_kind $axis; $($tail),+)>>::Output
+        <<$head as RustSpec>::$axis as Add<impl_tuple_type_spec!(@layout_kind $axis; $($tail),+)>>::Output
     };
 
     (@layout_params for $target:ty [$($all:ident),+] [$($params:tt)*]; $ty:ident) => {
-        unsafe impl<$($params)* $ty: TypeSpec + ?Sized> TypeSpec for $target {
-            type Repr = impl_tuple_type_spec!(@layout_kind Repr; $($all),+);
+        unsafe impl<$($params)* $ty: RustSpec + ?Sized> RustSpec for $target {
+            type Layout = impl_tuple_type_spec!(@layout_kind Layout; $($all),+);
             type Size = impl_tuple_type_spec!(@layout_kind Size; $($all),+);
             type Niche = impl_tuple_type_spec!(@layout_kind Niche; $($all),+);
             type Mutability = rust_spec::mutability::Exclusive;
@@ -408,8 +408,8 @@ macro_rules! impl_tuple_type_spec {
         impl_tuple_type_spec!(
             @layout_params for $target
             [$($all),+]
-            [$($params)* $head: TypeSpec<
-                Repr: Add<impl_tuple_type_spec!(@layout_kind Repr; $($tail),+)>,
+            [$($params)* $head: RustSpec<
+                Layout: Add<impl_tuple_type_spec!(@layout_kind Layout; $($tail),+)>,
                 Size: Add<impl_tuple_type_spec!(@layout_kind Size; $($tail),+)>,
                 Niche: Add<impl_tuple_type_spec!(@layout_kind Niche; $($tail),+)>,
             >,]
@@ -460,15 +460,15 @@ mod tests {
 
     #[test]
     fn tuple_size_family_tracks_zst_fields() {
-        assert_impl_all!(ReprCTuple2<(), ()>: TypeSpec<Size = Co3Sized<Zst>>);
-        assert_impl_all!(ReprCTuple3<(), (), ()>: TypeSpec<Size = Co3Sized<Zst>>);
+        assert_impl_all!(ReprCTuple2<(), ()>: RustSpec<Size = Co3Sized<Zst>>);
+        assert_impl_all!(ReprCTuple3<(), (), ()>: RustSpec<Size = Co3Sized<Zst>>);
     }
 
     #[test]
     fn tuple_size_family_tracks_non_zst_fields() {
-        assert_impl_all!(ReprCTuple2<(), u8>: TypeSpec<Size = rust_spec::size::Sized<NonZst>>);
-        assert_impl_all!(ReprCTuple2<u8, ()>: TypeSpec<Size = rust_spec::size::Sized<NonZst>>);
-        assert_impl_all!(ReprCTuple3<(), u8, ()>: TypeSpec<Size = rust_spec::size::Sized<NonZst>>);
+        assert_impl_all!(ReprCTuple2<(), u8>: RustSpec<Size = rust_spec::size::Sized<NonZst>>);
+        assert_impl_all!(ReprCTuple2<u8, ()>: RustSpec<Size = rust_spec::size::Sized<NonZst>>);
+        assert_impl_all!(ReprCTuple3<(), u8, ()>: RustSpec<Size = rust_spec::size::Sized<NonZst>>);
     }
 
     #[test]

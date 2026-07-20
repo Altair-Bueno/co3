@@ -1,4 +1,4 @@
-use co3::{rust_spec::TypeSpec, ReprC, ffi, handles};
+use co3::{rust_spec::RustSpec, ReprC, ffi, handles};
 
 trait Kita {
     type MySelf;
@@ -6,7 +6,7 @@ trait Kita {
     fn kita2(a: &u32);
 }
 
-#[derive(TypeSpec, ReprC)]
+#[derive(RustSpec, ReprC)]
 #[repr(transparent)]
 struct CVoid(core::ffi::c_void);
 

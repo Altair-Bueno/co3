@@ -1,6 +1,6 @@
 use core::cmp::Ordering;
 
-use co3::{EncodeWithStore, ReprC, ffi, rust_spec::TypeSpec};
+use co3::{EncodeWithStore, ReprC, ffi, rust_spec::RustSpec};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Opaque {
@@ -29,7 +29,7 @@ ffi! {
     }
 }
 
-#[derive(Clone, Copy, TypeSpec, ReprC)]
+#[derive(Clone, Copy, RustSpec, ReprC)]
 #[allow(unused)]
 #[repr(u8)]
 pub enum FieldlessUEnum {
@@ -39,7 +39,7 @@ pub enum FieldlessUEnum {
     Var4,
 }
 
-#[derive(Clone, Copy, TypeSpec, ReprC)]
+#[derive(Clone, Copy, RustSpec, ReprC)]
 #[allow(unused)]
 #[repr(i8)]
 pub enum FieldlessIEnum {
@@ -49,7 +49,7 @@ pub enum FieldlessIEnum {
     Var4,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, TypeSpec, ReprC)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, RustSpec, ReprC)]
 pub enum FieldlessNoReprEnum {
     A,
     B,
@@ -57,7 +57,7 @@ pub enum FieldlessNoReprEnum {
     D,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, TypeSpec, ReprC)]
+#[derive(Debug, Clone, PartialEq, Eq, RustSpec, ReprC)]
 #[allow(unused)]
 #[repr(C, i8)]
 pub enum ReprCDataEnum<'a, T> {
@@ -67,7 +67,7 @@ pub enum ReprCDataEnum<'a, T> {
     D,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, TypeSpec, ReprC)]
+#[derive(Debug, Clone, PartialEq, Eq, RustSpec, ReprC)]
 #[allow(unused)]
 #[repr(i8)]
 pub enum DataEnum<'a, T> {
@@ -77,7 +77,7 @@ pub enum DataEnum<'a, T> {
     D,
 }
 
-#[derive(Clone, Copy, TypeSpec, ReprC)]
+#[derive(Clone, Copy, RustSpec, ReprC)]
 #[allow(unused)]
 #[repr(u16)]
 pub enum FieldlessLargeEnum {

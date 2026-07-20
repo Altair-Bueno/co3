@@ -8,7 +8,7 @@ use crate::{
     stored::{DecodeOwned, EmptyStore, EncodeOwned},
     transmute::CheckedTransmute,
 };
-use rust_spec::{TypeSpec, niche::WithoutNiche};
+use rust_spec::{RustSpec, niche::WithoutNiche};
 
 /// FFI-safe equivalent of [`core::result::Result`]
 #[repr(C)]
@@ -159,12 +159,12 @@ impl<T: Copy, E: Copy> TryFrom<ReprCResult<T, E>> for Result<T, E> {
     }
 }
 
-unsafe impl<T, E> TypeSpec for ReprCResult<T, E>
+unsafe impl<T, E> RustSpec for ReprCResult<T, E>
 where
-    T: TypeSpec<Repr: Add<<E as TypeSpec>::Repr>> + Copy,
-    E: TypeSpec + Copy,
+    T: RustSpec<Layout: Add<<E as RustSpec>::Layout>> + Copy,
+    E: RustSpec + Copy,
 {
-    type Repr = <<T as TypeSpec>::Repr as Add<<E as TypeSpec>::Repr>>::Output;
+    type Layout = <<T as RustSpec>::Layout as Add<<E as RustSpec>::Layout>>::Output;
     type Size = rust_spec::size::Sized<rust_spec::size::NonZst>;
     type Niche = WithoutNiche;
     type Mutability = rust_spec::mutability::Exclusive;

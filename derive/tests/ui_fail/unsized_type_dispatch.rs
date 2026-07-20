@@ -1,13 +1,13 @@
 use core::{borrow::Borrow, ffi::c_void};
 
-use co3::{rust_spec::TypeSpec, ReprC, ffi, handles};
+use co3::{rust_spec::RustSpec, ReprC, ffi, handles};
 
-#[derive(TypeSpec, ReprC)]
+#[derive(RustSpec, ReprC)]
 #[reprC(id(u8))]
 #[repr(transparent)]
 struct Unsized<T: ?Sized>(T);
 
-#[derive(TypeSpec, ReprC)]
+#[derive(RustSpec, ReprC)]
 #[repr(C)]
 struct Wrapper<T: ?Sized>(Box<T>);
 
