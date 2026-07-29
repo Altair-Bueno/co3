@@ -24,15 +24,14 @@ extern crate alloc;
 extern crate self as co3;
 
 #[cfg(feature = "alloc")]
-use alloc::{borrow::ToOwned, boxed::Box, vec::Vec};
+use alloc::{boxed::Box, vec::Vec};
 
 #[cfg(feature = "derive")]
 pub use co3_derive::*;
 use disjoint_impls::disjoint_impls;
 pub use rust_spec;
 use rust_spec::{
-    RustSpec,
-    layout::{NonRobust, Stable, TrapKind, Unstable},
+    RustSpec, Stable, Unstable,
     mutability::{Exclusive, Interior},
     niche::{NicheStabilityKind, WithNiche, WithoutNiche},
     size::{ExternTypeLike, MetaSized, MetadataKind, NonZst, SizedKind, SliceLike, Zst},
@@ -42,10 +41,7 @@ use rust_spec::{
 pub use impls::impls;
 
 #[cfg(feature = "alloc")]
-use crate::{
-    borrow::{BorrowCast, BorrowCastMut},
-    boxed::{CBox, CBoxedSlice},
-};
+use crate::boxed::{CBox, CBoxedSlice};
 use crate::{
     option::ReprCOption,
     result::ReprCResult,
@@ -57,6 +53,7 @@ use crate::{
 pub mod borrow;
 #[cfg(feature = "alloc")]
 pub mod boxed;
+pub mod cell;
 #[doc(hidden)]
 pub mod either;
 pub mod handle;
@@ -78,10 +75,6 @@ impl Thin for ExternTypeLike {}
 trait Dst {}
 impl Dst for ExternTypeLike {}
 impl<K: MetadataKind> Dst for MetaSized<K> {}
-
-trait UnstableOrNonRobust {}
-impl<K: TrapKind> UnstableOrNonRobust for Unstable<K> {}
-impl UnstableOrNonRobust for Stable<NonRobust> {}
 
 pub trait Error {
     fn trap_value() -> Self;
@@ -144,27 +137,19 @@ disjoint_impls! {
     {
         type CType = *mut R::CType;
     }
-    impl<R: Wide<Data: ExternC, Metadata = usize> + ?Sized, K: TrapKind> ExternC for &R
+    impl<R: Wide<Data: ExternC, Metadata = usize> + ?Sized> ExternC for &R
     where
-        R: RustSpec<Layout = Stable<K>, Size = MetaSized<SliceLike>, Mutability = Exclusive>,
-        // TODO: rewrite as constraint once disjoint_impls is fixed
+        R: RustSpec<Size = MetaSized<SliceLike>, Mutability = Exclusive>,
         <<R as Wide>::Data as ExternC>::CType: Sized,
     {
         type CType = CSlice<<R::Data as ExternC>::CType>;
     }
-    impl<R: Wide<Data: ExternC, Metadata = usize> + ?Sized, K: TrapKind> ExternC for &R
+    impl<R: Wide<Data: ExternC, Metadata = usize> + ?Sized> ExternC for &R
     where
-        R: RustSpec<Layout = Stable<K>, Size = MetaSized<SliceLike>, Mutability = Interior>,
+        R: RustSpec<Size = MetaSized<SliceLike>, Mutability = Interior>,
         <<R as Wide>::Data as ExternC>::CType: Sized,
     {
         type CType = CSliceMut<<R::Data as ExternC>::CType>;
-    }
-    #[cfg(feature = "alloc")]
-    impl<R: ToOwned<Owned: ExternC<CType: BorrowCast>> + ?Sized, K: MetadataKind, RK: TrapKind> ExternC for &R
-    where
-        R: RustSpec<Layout = Unstable<RK>, Size = MetaSized<K>>,
-    {
-        type CType = <<R::Owned as ExternC>::CType as BorrowCast>::AsConst;
     }
 
     impl<R: ExternC + ?Sized> ExternC for &mut R
@@ -173,20 +158,12 @@ disjoint_impls! {
     {
         type CType = *mut R::CType;
     }
-    impl<R: Wide<Data: ExternC, Metadata = usize> + ?Sized, K: TrapKind> ExternC for &mut R
+    impl<R: Wide<Data: ExternC, Metadata = usize> + ?Sized> ExternC for &mut R
     where
-        R: RustSpec<Layout = Stable<K>, Size = MetaSized<SliceLike>>,
+        R: RustSpec<Size = MetaSized<SliceLike>>,
         <<R as Wide>::Data as ExternC>::CType: Sized,
     {
         type CType = CSliceMut<<R::Data as ExternC>::CType>;
-    }
-    #[cfg(feature = "alloc")]
-    impl<R: ?Sized, K: MetadataKind, RK: TrapKind> ExternC for &mut R
-    where
-        R: RustSpec<Layout = Unstable<RK>, Size = MetaSized<K>>,
-        R: ToOwned<Owned: ExternC<CType: BorrowCastMut>>,
-    {
-        type CType = <<R::Owned as ExternC>::CType as BorrowCastMut>::AsMut;
     }
 
     #[cfg(feature = "alloc")]
@@ -198,21 +175,13 @@ disjoint_impls! {
         type CType = CBox<R::CType>;
     }
     #[cfg(feature = "alloc")]
-    impl<R: ?Sized, K: TrapKind> ExternC for Box<R>
+    impl<R: ?Sized> ExternC for Box<R>
     where
-        R: RustSpec<Layout = Stable<K>, Size = MetaSized<SliceLike>>,
+        R: RustSpec<Size = MetaSized<SliceLike>>,
         R: Wide<Data: ExternC, Metadata = usize>,
         <<R as Wide>::Data as ExternC>::CType: Sized,
     {
         type CType = CBoxedSlice<<R::Data as ExternC>::CType>;
-    }
-    #[cfg(feature = "alloc")]
-    impl<R: ?Sized, K: MetadataKind, RK: TrapKind> ExternC for Box<R>
-    where
-        R: RustSpec<Layout = Unstable<RK>, Size = MetaSized<K>>,
-        R: ToOwned<Owned: ExternC>,
-    {
-        type CType = <R::Owned as ExternC>::CType;
     }
 
     impl<R: ExternC> ExternC for Option<R>
@@ -261,14 +230,14 @@ disjoint_impls! {
     pub trait Encode: EncodeOwned {}
 
     #[cfg(feature = "alloc")]
-    impl<R: ?Sized, K: TrapKind> Encode for Box<R>
+    impl<R: ?Sized> Encode for Box<R>
     where
-        Self: RustSpec<Layout = Stable<K>> + EncodeOwned,
+        Self: RustSpec<Layout = Stable> + EncodeOwned,
     {}
     #[cfg(feature = "alloc")]
-    impl<R: RustSpec<Layout = Stable<K>> + ?Sized, K: TrapKind> Encode for Box<R>
+    impl<R: RustSpec<Layout = Stable> + ?Sized> Encode for Box<R>
     where
-        Self: RustSpec<Layout = Unstable<NonRobust>> + EncodeOwned,
+        Self: RustSpec<Layout = Unstable> + EncodeOwned,
     {}
 }
 
@@ -277,15 +246,17 @@ disjoint_impls! {
     pub trait Decode<'d>: DecodeOwned<'d> {}
 
     #[cfg(feature = "alloc")]
-    impl<'d, R: ?Sized, K: TrapKind> Decode<'d> for Box<R>
+    impl<'d, R: ?Sized> Decode<'d> for Box<R>
     where
-        Self: RustSpec<Layout = Stable<K>> + DecodeOwned<'d>,
+        Self: RustSpec<Layout = Stable>,
+        Self: DecodeOwned<'d>,
     {}
     #[cfg(feature = "alloc")]
-    impl<'d, R: ?Sized, K: TrapKind> Decode<'d> for Box<R>
+    impl<'d, R: ?Sized> Decode<'d> for Box<R>
     where
-        Self: RustSpec<Layout = Unstable<NonRobust>> + DecodeOwned<'d>,
-        R: RustSpec<Layout = Stable<K>>,
+        Self: RustSpec<Layout = Unstable>,
+        R: RustSpec<Layout = Stable>,
+        Self: DecodeOwned<'d>,
     {}
 }
 

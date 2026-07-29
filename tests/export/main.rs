@@ -216,7 +216,7 @@ mod exported_abi;
 //        let mut ffi_struct = MaybeUninit::new(core::ptr::null_mut());
 //
 //        assert_eq!(
-//            FfiReturn::Ok,
+//            (),
 //            OpaqueStruct__new(name.encode(&mut ()), ffi_struct.as_mut_ptr())
 //        );
 //
@@ -233,7 +233,7 @@ mod exported_abi;
 //
 //    let mut store = Default::default();
 //    let params_ffi = params.encode(&mut store);
-//    assert_eq!(FfiReturn::Ok, unsafe {
+//    assert_eq!((), unsafe {
 //        OpaqueStruct__with_params(ffi_struct.encode(&mut ()), params_ffi, output.as_mut_ptr())
 //    });
 //
@@ -252,7 +252,7 @@ mod exported_abi;
 //
 //    unsafe {
 //        assert_eq!(
-//            FfiReturn::Ok,
+//            (),
 //            __take_non_robust_ref_mut(ffi_type, output.as_mut_ptr())
 //        );
 //
@@ -285,7 +285,7 @@ mod exported_abi;
 //
 //    unsafe {
 //        assert_eq!(
-//            FfiReturn::Ok,
+//            (),
 //            OpaqueStruct__consume_self(ffi_struct.encode(&mut ()).cast())
 //        );
 //    }
@@ -306,7 +306,7 @@ mod exported_abi;
 //
 //    unsafe {
 //        assert_eq!(
-//            FfiReturn::Ok,
+//            (),
 //            OpaqueStruct__with_tokens(ffi_struct.encode(&mut ()), tokens_ffi, output.as_mut_ptr())
 //        );
 //
@@ -325,7 +325,7 @@ mod exported_abi;
 //
 //    unsafe {
 //        assert_eq!(
-//            FfiReturn::Ok,
+//            (),
 //            OpaqueStruct__remove_param(
 //                (&mut ffi_struct).encode(&mut ()),
 //                &param_name,
@@ -348,7 +348,7 @@ mod exported_abi;
 //    let mut param2 = MaybeUninit::new(core::ptr::null());
 //
 //    let name1 = Name(String::from("Non"));
-//    assert_eq!(FfiReturn::Ok, unsafe {
+//    assert_eq!((), unsafe {
 //        OpaqueStruct__get_param((&ffi_struct).encode(&mut ()), &name1, param1.as_mut_ptr())
 //    });
 //    let param1 = unsafe { param1.assume_init() };
@@ -357,7 +357,7 @@ mod exported_abi;
 //    assert!(param1.is_none());
 //
 //    let name2 = Name(String::from("Nomen"));
-//    assert_eq!(FfiReturn::Ok, unsafe {
+//    assert_eq!((), unsafe {
 //        OpaqueStruct__get_param((&ffi_struct).encode(&mut ()), &name2, param2.as_mut_ptr())
 //    });
 //
@@ -377,7 +377,7 @@ mod exported_abi;
 //
 //    unsafe {
 //        assert_eq!(
-//            FfiReturn::Ok,
+//            (),
 //            __freestanding_with_boxed_slice(input.encode(&mut in_store), output.as_mut_ptr())
 //        );
 //
@@ -398,7 +398,7 @@ mod exported_abi;
 //
 //    unsafe {
 //        assert_eq!(
-//            FfiReturn::Ok,
+//            (),
 //            __freestanding_with_option(input.encode(&mut ()), output.as_mut_ptr())
 //        );
 //
@@ -416,7 +416,7 @@ mod exported_abi;
 //
 //    //unsafe {
 //    //    assert_eq!(
-//    //        FfiReturn::Ok,
+//    //        (),
 //    //        __freestanding_with_option_with_niche_ref(
 //    //            (&input).encode(&mut in_store),
 //    //            output.as_mut_ptr()
@@ -439,7 +439,7 @@ mod exported_abi;
 //    //
 //    //    unsafe {
 //    //        assert_eq!(
-//    //            FfiReturn::Ok,
+//    //            (),
 //    //            __freestanding_with_option_with_niche_ref(
 //    //                (&input).encode(&mut in_store),
 //    //                output.as_mut_ptr()
@@ -470,7 +470,7 @@ mod exported_abi;
 //
 //    unsafe {
 //        assert_eq!(
-//            FfiReturn::Ok,
+//            (),
 //            __freestanding_with_option_without_niche_ref(
 //                (&input).encode(&mut in_store),
 //                output.as_mut_ptr()
@@ -489,7 +489,7 @@ mod exported_abi;
 //
 //    unsafe {
 //        assert_eq!(
-//            FfiReturn::Ok,
+//            (),
 //            OpaqueStruct__params((&ffi_struct).encode(&mut ()), out_params.as_mut_ptr())
 //        );
 //
@@ -509,12 +509,12 @@ mod exported_abi;
 //
 //    unsafe {
 //        assert_eq!(
-//            FfiReturn::ExecutionFail,
+//            (),
 //            OpaqueStruct__fallible_int_output(false.encode(&mut ()), output.as_mut_ptr())
 //        );
 //        assert_eq!(0, output.assume_init());
 //        assert_eq!(
-//            FfiReturn::Ok,
+//            (),
 //            OpaqueStruct__fallible_int_output(true.encode(&mut ()), output.as_mut_ptr())
 //        );
 //        assert_eq!(42, output.assume_init());
@@ -525,11 +525,11 @@ mod exported_abi;
 //fn return_empty_tuple_result() {
 //    unsafe {
 //        assert_eq!(
-//            FfiReturn::ExecutionFail,
+//            (),
 //            OpaqueStruct__fallible_empty_tuple_output(false.encode(&mut ()))
 //        );
 //        assert_eq!(
-//            FfiReturn::Ok,
+//            (),
 //            OpaqueStruct__fallible_empty_tuple_output(true.encode(&mut ()))
 //        );
 //    }
@@ -544,7 +544,7 @@ mod exported_abi;
 ////
 ////    unsafe {
 ////        assert_eq!(
-////            FfiReturn::Ok,
+////            (),
 ////            __freestanding_with_array(ptr, output.as_mut_ptr())
 ////        );
 ////
@@ -563,7 +563,7 @@ mod exported_abi;
 //
 //    unsafe {
 //        assert_eq!(
-//            FfiReturn::Ok,
+//            (),
 //            __freestanding_with_array_ref(ptr, output.as_mut_ptr())
 //        );
 //
@@ -582,7 +582,7 @@ mod exported_abi;
 //
 //    unsafe {
 //        assert_eq!(
-//            FfiReturn::Ok,
+//            (),
 //            __freestanding_with_array_in_struct(ffi_arr, output.as_mut_ptr())
 //        );
 //
@@ -604,7 +604,7 @@ mod exported_abi;
 //
 //    unsafe {
 //        assert_eq!(
-//            FfiReturn::Ok,
+//            (),
 //            __freestanding_with_repr_c_struct(struct_, output.as_mut_ptr())
 //        );
 //
@@ -619,7 +619,7 @@ mod exported_abi;
 //
 //    unsafe {
 //        assert_eq!(
-//            FfiReturn::Ok,
+//            (),
 //            __freestanding_with_primitive(byte.encode(&mut ()), output.as_mut_ptr())
 //        );
 //
@@ -634,7 +634,7 @@ mod exported_abi;
 //
 //    unsafe {
 //        assert_eq!(
-//            FfiReturn::Ok,
+//            (),
 //            __freestanding_with_fieldless_enum(fieldless_enum.encode(&mut ()), output.as_mut_ptr())
 //        );
 //
@@ -651,7 +651,7 @@ mod exported_abi;
 //
 //    unsafe {
 //        assert_eq!(
-//            FfiReturn::ConversionFailed,
+//            (),
 //            __freestanding_with_primitive(byte, output.as_mut_ptr())
 //        );
 //
@@ -670,7 +670,7 @@ mod exported_abi;
 //    unsafe {
 //        let mut store = Default::default();
 //        assert_eq!(
-//            FfiReturn::Ok,
+//            (),
 //            __freestanding_with_data_carrying_enum(
 //                data_carrying_enum.clone().encode(&mut store),
 //                output.as_mut_ptr()
@@ -689,7 +689,7 @@ mod exported_abi;
 //
 //    unsafe {
 //        assert_eq!(
-//            FfiReturn::Ok,
+//            (),
 //            OpaqueStruct__Target__target(ffi_struct.encode(&mut ()), output.as_mut_ptr())
 //        );
 //        let name = Decode::decode(output.assume_init(), &mut ()).unwrap();
@@ -704,7 +704,7 @@ mod exported_abi;
 //    unsafe {
 //        let mut store = Default::default();
 //        assert_eq!(
-//            FfiReturn::Ok,
+//            (),
 //            __freestanding_with_nested_vec(vec.encode(&mut store))
 //        );
 //    }
@@ -716,7 +716,7 @@ mod exported_abi;
 //
 //    unsafe {
 //        assert_eq!(
-//            FfiReturn::Ok,
+//            (),
 //            __get_vec_of_boxed_opaques(output.as_mut_ptr())
 //        );
 //        let output = output.assume_init();
@@ -734,7 +734,7 @@ mod exported_abi;
 //
 //    unsafe {
 //        assert_eq!(
-//            FfiReturn::Ok,
+//            (),
 //            __take_and_return_array_of_opaques((&input).encode(&mut store), output.as_mut_ptr())
 //        );
 //        let output = output.assume_init();
@@ -749,7 +749,7 @@ mod exported_abi;
 //    let mut store = Default::default();
 //
 //    unsafe {
-//        assert_eq!(FfiReturn::Ok, __take_vec_ref((&a).encode(&mut store)));
+//        assert_eq!((), __take_vec_ref((&a).encode(&mut store)));
 //    }
 //}
 //
@@ -761,7 +761,7 @@ mod exported_abi;
 //
 //    unsafe {
 //        assert_eq!(
-//            FfiReturn::Ok,
+//            (),
 //            __reference_from_slice(a.as_slice().encode(&mut ()), output.as_mut_ptr())
 //        );
 //
@@ -780,7 +780,7 @@ mod exported_abi;
 //
 //        unsafe {
 //            assert_eq!(
-//                FfiReturn::Ok,
+//                (),
 //                __take_tuple_ref((&a).encode(&mut store), output.as_mut_ptr())
 //            );
 //
@@ -791,3 +791,4 @@ mod exported_abi;
 //    assert_eq!(b, (1, 2));
 //}
 //
+

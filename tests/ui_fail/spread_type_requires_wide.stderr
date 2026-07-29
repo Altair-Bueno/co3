@@ -9,12 +9,12 @@ error[E0277]: the trait bound `u32: Spread` is not satisfied
    | |_^ the trait `Spread` is not implemented for `u32`
    |
 help: the following other types implement trait `Spread`
-  --> $WORKSPACE/src/tuple.rs
+  --> src/tuple.rs
    |
    | impl<A: ReprC, B: ReprC> Spread for ReprCTuple2<A, B> {
    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `ReprCTuple2<A, B>`
    |
-  ::: $WORKSPACE/src/slice.rs
+  ::: src/slice.rs
    |
    | impl<C: ReprC> Spread for CSlice<C> {
    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `CSlice<C>`
@@ -22,7 +22,7 @@ help: the following other types implement trait `Spread`
    | impl<C: ReprC> Spread for CSliceMut<C> {
    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `CSliceMut<C>`
    |
-  ::: $WORKSPACE/src/boxed.rs
+  ::: src/boxed.rs
    |
    | impl<C: ReprC> Spread for CBoxedSlice<C> {
    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `CBoxedSlice<C>`
@@ -39,12 +39,12 @@ error[E0277]: the trait bound `u32: Spread` is not satisfied
    | |_^ the trait `Spread` is not implemented for `u32`
    |
 help: the following other types implement trait `Spread`
-  --> $WORKSPACE/src/tuple.rs
+  --> src/tuple.rs
    |
    | impl<A: ReprC, B: ReprC> Spread for ReprCTuple2<A, B> {
    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `ReprCTuple2<A, B>`
    |
-  ::: $WORKSPACE/src/slice.rs
+  ::: src/slice.rs
    |
    | impl<C: ReprC> Spread for CSlice<C> {
    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `CSlice<C>`
@@ -52,7 +52,7 @@ help: the following other types implement trait `Spread`
    | impl<C: ReprC> Spread for CSliceMut<C> {
    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `CSliceMut<C>`
    |
-  ::: $WORKSPACE/src/boxed.rs
+  ::: src/boxed.rs
    |
    | impl<C: ReprC> Spread for CBoxedSlice<C> {
    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `CBoxedSlice<C>`
@@ -70,12 +70,12 @@ error[E0277]: the trait bound `u32: Spread` is not satisfied
    | |_- required by a bound introduced by this call
    |
 help: the following other types implement trait `Spread`
-  --> $WORKSPACE/src/tuple.rs
+  --> src/tuple.rs
    |
    | impl<A: ReprC, B: ReprC> Spread for ReprCTuple2<A, B> {
    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `ReprCTuple2<A, B>`
    |
-  ::: $WORKSPACE/src/slice.rs
+  ::: src/slice.rs
    |
    | impl<C: ReprC> Spread for CSlice<C> {
    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `CSlice<C>`
@@ -83,7 +83,7 @@ help: the following other types implement trait `Spread`
    | impl<C: ReprC> Spread for CSliceMut<C> {
    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `CSliceMut<C>`
    |
-  ::: $WORKSPACE/src/boxed.rs
+  ::: src/boxed.rs
    |
    | impl<C: ReprC> Spread for CBoxedSlice<C> {
    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `CBoxedSlice<C>`

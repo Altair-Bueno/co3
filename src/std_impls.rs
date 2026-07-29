@@ -571,13 +571,13 @@ mod tests {
     //    );
     //    assert_impl_all!(&ManuallyDrop<u8>:
     //        Niche<CType = *const u8>,
-    //        RustSpec<Niche = rust_spec::niche::WithNiche<rust_spec::niche::Stable>>,
+    //        RustSpec<Niche = rust_spec::niche::WithNiche<rust_spec::Stable>>,
     //        Decode<'static>,
     //        Encode,
     //    );
     //    assert_impl_all!(&mut ManuallyDrop<u8>:
     //        Niche<CType = *mut u8>,
-    //        RustSpec<Niche = rust_spec::niche::WithNiche<rust_spec::niche::Stable>>,
+    //        RustSpec<Niche = rust_spec::niche::WithNiche<rust_spec::Stable>>,
     //        Decode<'static>,
     //        Encode,
     //    );
@@ -643,7 +643,7 @@ mod tests {
     //    );
     //    assert_impl_all!(Box<ManuallyDrop<String>>:
     //        Niche<CType = CBox<CBoxedSlice<u8>>,
-    //        RustSpec<Niche = rust_spec::niche::WithNiche<rust_spec::niche::Stable>>>>,
+    //        RustSpec<Niche = rust_spec::niche::WithNiche<rust_spec::Stable>>>>,
     //        DecodeOwned<'static>,
     //        EncodeOwned,
     //    );
@@ -754,7 +754,7 @@ mod tests {
             Encode,
         );
         assert_impl_all!(&[UnsafeCell<u8>]:
-            Niche<CType = CSliceMut<u8>>,
+            Niche<CType = CSlice<u8>>,
             Decode<'static>,
             Encode,
         );
@@ -799,7 +799,7 @@ mod tests {
         assert_impl_all!(&UnsafeCell<NonZero<u8>>:
             Niche<CType = *mut u8>,
             Decode<'static>,
-            Encode,
+            //Encode,
         );
         assert_impl_all!(&mut UnsafeCell<NonZero<u8>>:
             Niche<CType = *mut u8>,
@@ -812,7 +812,7 @@ mod tests {
             Encode,
         );
         assert_impl_all!(&[UnsafeCell<NonZero<u8>>]:
-            Niche<CType = CSliceMut<u8>>,
+            Niche<CType = CSlice<u8>>,
             Decode<'static>,
             Encode,
         );

@@ -1,17 +1,17 @@
-use co3::{external::ExternRef, ffi};
+use co3::ffi;
 
 trait Custom {
     fn inc(self, by: Vec<u32>) -> Self;
 }
 
-co3::handles! {
+co3::handles! { unsafe {
     Opaque::<bool, u8> = 1,
     Opaque::<bool, u32>,
     Opaque<u8, bool>,
-}
+} }
 
 ffi! {
-    #![extern("C")]
+    #![unsafe(extern("C"))]
 
     #[id(u8)]
     type Opaque<T, U>;
@@ -85,11 +85,11 @@ mod provider {
 
     use super::Custom;
 
-    handles! {
+    handles! { unsafe {
         Opaque::<bool, u8> = 1,
         Opaque<bool, u32>,
         Opaque<u8, bool>,
-    }
+    } }
 
     #[derive(Debug, Default, Clone, PartialEq, Eq)]
     pub struct Opaque<T, U> {
@@ -117,7 +117,7 @@ mod provider {
     }
 
     ffi! {
-        #![export("C")]
+        #![unsafe(export("C"))]
 
         #[id(u8)]
         pub type Opaque<T, U>;
@@ -218,3 +218,4 @@ fn opaque_handles() {
 
     //assert!(PartialEq::eq(&owned_incremented, &owned_incremented_cloned));
 }
+

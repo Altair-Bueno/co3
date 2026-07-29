@@ -35,7 +35,7 @@ note: required because it appears within the type `OpaqueSlice<T>`
  7 | struct OpaqueSlice<T>([T]);
    |        ^^^^^^^^^^^
 note: required by a bound in `EncodeOwned`
-  --> $WORKSPACE/src/stored.rs
+  --> src/stored.rs
    |
    |     pub unsafe trait EncodeOwned: ExternC<CType: Sized> + Sized {
    |                                                  ^^^^^ required by this bound in `EncodeOwned`
@@ -77,7 +77,7 @@ note: required because it appears within the type `OpaqueSlice<T>`
  7 | struct OpaqueSlice<T>([T]);
    |        ^^^^^^^^^^^
 note: required by a bound in `DecodeOwned`
-  --> $WORKSPACE/src/stored.rs
+  --> src/stored.rs
    |
    |     pub unsafe trait DecodeOwned<'d>: ExternC<CType: Sized> + Sized {
    |                                                      ^^^^^ required by this bound in `DecodeOwned`
@@ -106,7 +106,7 @@ note: required because it appears within the type `OpaqueSlice<T>`
    |        ^^^^^^^^^^^
    = note: required for `OpaqueSlice<T>` to implement `EncodeOwned`
 note: required by a bound in `Encode`
-  --> $WORKSPACE/src/lib.rs
+  --> src/lib.rs
    |
    |     pub trait Encode: EncodeOwned {}
    |                       ^^^^^^^^^^^ required by this bound in `Encode`
@@ -136,7 +136,7 @@ note: required because it appears within the type `OpaqueSlice<T>`
    |        ^^^^^^^^^^^
    = note: required for `OpaqueSlice<T>` to implement `DecodeOwned<'_>`
 note: required by a bound in `Decode`
-  --> $WORKSPACE/src/lib.rs
+  --> src/lib.rs
    |
    |     pub trait Decode<'d>: DecodeOwned<'d> {}
    |                           ^^^^^^^^^^^^^^^ required by this bound in `Decode`

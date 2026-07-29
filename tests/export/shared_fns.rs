@@ -1,6 +1,6 @@
 use std::{cmp::Ordering, mem::MaybeUninit};
 
-use co3::{rust_spec::RustSpec, Decode, DecodeWithStore, EncodeWithStore, ExternC, FfiReturn, ReprC, def_fns, export};
+use co3::{rust_spec::RustSpec, Decode, DecodeWithStore, EncodeWithStore, ExternC, (), ReprC, def_fns, export};
 
 co3::handles! {FfiStruct1, FfiStruct2}
 
@@ -25,7 +25,14 @@ pub struct FfiStruct2 {
     name: String,
 }
 
-#[export("C")]
+ffi! {
+    #![unsafe(export("C"))]
+
+    impl FfiStruct1 {
+        move fn new(name: String) -> Self;
+    }
+}
+
 impl FfiStruct1 {
     pub fn new(name: String) -> Self {
         Self { name }
@@ -41,7 +48,7 @@ fn export_shared_fns() {
     let ffi_struct1 = unsafe {
         let mut ffi_struct = MaybeUninit::new(core::ptr::null_mut());
         let mut store = Default::default();
-        assert_eq! {FfiReturn::Ok, FfiStruct1__new(name.clone().encode(&mut store), ffi_struct.as_mut_ptr())};
+        FfiStruct1__new(name.clone().encode(&mut store), ffi_struct.as_mut_ptr());
         let ffi_struct = ffi_struct.assume_init();
         assert!(!ffi_struct.is_null());
         assert_eq!(FfiStruct1 { name }, *ffi_struct);
@@ -86,16 +93,13 @@ fn export_shared_fns() {
         let ordering: Ordering = Decode::decode(ordering.assume_init()).unwrap();
         assert_eq!(ordering, Ordering::Equal);
 
-        assert_eq!(
-            FfiReturn::Ok,
             __co3_export::drop(FfiStruct1::ID.encode(&mut ()), ffi_struct1.cast())
-        );
-        assert_eq!(
-            FfiReturn::Ok,
+        ;;
             __co3_export::drop(
                 FfiStruct1::ID.encode(&mut ()),
                 cloned.encode(&mut ()).cast()
             )
-        );
+        ;;
     }
 }
+

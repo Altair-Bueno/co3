@@ -5,7 +5,7 @@ use quote::{format_ident, quote};
 use syn::{parse_quote, visit::Visit};
 
 use crate::layout::{
-    attr::ReprKind, enum_tag_type, is_transparent_enum_repr, is_type_parameterized,
+    attr::ReprKind, infer_repr, is_transparent_enum_repr, is_type_parametrized, primitive_tag_type,
 };
 
 fn lowered_field_ty(field_ty: &syn::Type) -> TokenStream {
@@ -28,12 +28,15 @@ pub(super) fn gen_item_ctype(repr: Option<&ReprKind>, input: &syn::DeriveInput) 
 
             derive_ctype_struct::<true>(repr, vis, name, generics, &first_variant.fields)
         }
-        syn::Data::Enum(data) if matches!(repr, Some(&ReprKind::Primitive(_)) | None) => {
-            let tag_type = enum_tag_type(repr, data.variants.len()).unwrap();
+        syn::Data::Enum(data) if repr.is_none() => {
+            let tag_type = infer_repr(data.variants.len());
             derive_data_enum_ctype(tag_type, vis, name, generics, &data.variants)
         }
+        syn::Data::Enum(data) if let Some(ReprKind::Primitive(repr)) = repr => {
+            derive_data_enum_ctype((**repr).clone(), vis, name, generics, &data.variants)
+        }
         syn::Data::Enum(data) if matches!(repr, Some(&ReprKind::C(Some(_)))) => {
-            let tag_type = enum_tag_type(repr, data.variants.len()).unwrap();
+            let tag_type = primitive_tag_type(repr.expect("C primitive representation")).clone();
             derive_repr_c_data_enum_ctype(tag_type, vis, name, generics, &data.variants)
         }
         syn::Data::Union(_) | syn::Data::Enum(_) => {
@@ -393,11 +396,12 @@ fn gen_repr_c_type_spec_impl(ident: &syn::Ident, generics: &syn::Generics) -> To
 
     quote! {
         unsafe impl #impl_generics co3::rust_spec::RustSpec for #ident #ty_generics #where_clause {
-            type Layout = co3::rust_spec::layout::Stable<co3::rust_spec::layout::Robust>;
+            type Layout = co3::rust_spec::Stable;
+            type Trap = co3::rust_spec::layout::Robust;
             type Size = co3::rust_spec::size::Sized<co3::rust_spec::size::NonZst>;
             type Niche = co3::rust_spec::niche::WithoutNiche;
             type Mutability = co3::rust_spec::mutability::Exclusive;
-            type __IndirectLayout = co3::rust_spec::layout::Stable<co3::rust_spec::layout::Robust>;
+            type __IndirectTrap = co3::rust_spec::layout::Robust;
         }
     }
 }
@@ -648,11 +652,11 @@ fn gen_copy_bounds<const ADD_COPY: bool>(
 
     let mut predicates = fields
         .iter()
-        .filter(|ty| is_type_parameterized(ty, generics))
+        .filter(|ty| is_type_parametrized(ty, generics))
         .map(|&ty| parse_quote! { #ty: Copy })
         .collect::<Vec<_>>();
 
-    if is_type_parameterized(last, generics) {
+    if is_type_parametrized(last, generics) {
         predicates.push(quote!(#last: Copy));
     } else if !ADD_COPY {
         predicates.push(quote!(for<'_dummy> #last: Copy));
@@ -845,7 +849,7 @@ pub(super) fn gen_extern_c_bounds_for_ctype<const ADD_COPY: bool>(
 
     let mut predicates = fields
         .iter()
-        .filter(|ty| is_type_parameterized(ty, generics))
+        .filter(|ty| is_type_parametrized(ty, generics))
         .map(|&ty| {
             let ctype_bound = if ADD_COPY {
                 quote! { <CType: Copy> }
@@ -857,7 +861,7 @@ pub(super) fn gen_extern_c_bounds_for_ctype<const ADD_COPY: bool>(
         })
         .collect::<Vec<_>>();
 
-    if is_type_parameterized(last, generics) {
+    if is_type_parametrized(last, generics) {
         let copy_bound = ADD_COPY.then(|| quote! { <CType: Copy> });
         predicates.push(quote! { #last: co3::ExternC #copy_bound });
     }
@@ -882,7 +886,7 @@ fn gen_ctype_borrow_cast_bounds<const ADD_COPY: bool>(
 
     let mut predicates = fields
         .iter()
-        .filter(|ty| is_type_parameterized(ty, generics))
+        .filter(|ty| is_type_parametrized(ty, generics))
         .map(|&ty| {
             let ctype_bound = if ADD_COPY {
                 quote! { <#assoc_type: Copy> }
@@ -894,7 +898,7 @@ fn gen_ctype_borrow_cast_bounds<const ADD_COPY: bool>(
         })
         .collect::<Vec<_>>();
 
-    if is_type_parameterized(last, generics) {
+    if is_type_parametrized(last, generics) {
         let copy_bound = ADD_COPY.then(|| quote! { <#assoc_type: Copy> });
         predicates.push(parse_quote! { #last: #borrow_cast_trait #copy_bound });
     }

@@ -1,7 +1,7 @@
 use std::{alloc, marker::PhantomData, mem::MaybeUninit, num::NonZeroU64};
 
 use co3::{
-    rust_spec::RustSpec, COption, Decode, DecodeWithStore, EncodeWithStore, ExternC, FfiReturn,
+    rust_spec::RustSpec, COption, Decode, DecodeWithStore, EncodeWithStore, ExternC, (),
     ReprC, export,
     slice::{CBoxedSlice, CSlice},
 };
@@ -55,33 +55,48 @@ pub struct RobustTargetTransparent([u8; 4]);
 #[repr(transparent)]
 struct TransaprentDst([u32]);
 
-#[export("C")]
+ffi! {
+    #![unsafe(export("C"))]
+
+    fn array_of_transparent(arr: &mut [TransparentStruct; 1]) -> &mut [TransparentStruct; 1];
+    fn transparent_with_niche(arr: Option<RobustTargetTransparent>) -> Option<RobustTargetTransparent>;
+    fn transparent_without_niche(arr: Option<TransparentWithoutNiche>) -> Option<TransparentWithoutNiche>;
+    fn transparent_with_inner_niche(arr: Option<GenericTransparentStruct<u32>>) -> Option<GenericTransparentStruct<u32>>;
+
+    impl TransparentStruct {
+        fn new(payload: GenericTransparentStruct<()>) -> Self;
+        fn with_payload(self, payload: GenericTransparentStruct<()>) -> Self;
+        fn payload(&self) -> &GenericTransparentStruct<()>;
+        fn payload_mut(&mut self) -> &mut GenericTransparentStruct<()>;
+    }
+
+    fn self_to_self(value: TransparentStruct) -> TransparentStruct;
+    fn vec_to_vec(value: Vec<TransparentStruct>) -> Vec<TransparentStruct>;
+    fn slice_to_slice(value: &[TransparentStruct]) -> &[TransparentStruct];
+}
+
 pub fn array_of_transparent(arr: &mut [TransparentStruct; 1]) -> &mut [TransparentStruct; 1] {
     arr
 }
 
-#[export("C")]
 pub fn transparent_with_niche(
     arr: Option<RobustTargetTransparent>,
 ) -> Option<RobustTargetTransparent> {
     arr
 }
 
-#[export("C")]
 pub fn transparent_without_niche(
     arr: Option<TransparentWithoutNiche>,
 ) -> Option<TransparentWithoutNiche> {
     arr
 }
 
-#[export("C")]
 pub fn transparent_with_inner_niche(
     arr: Option<GenericTransparentStruct<u32>>,
 ) -> Option<GenericTransparentStruct<u32>> {
     arr
 }
 
-#[export("C")]
 impl TransparentStruct {
     pub fn new(payload: GenericTransparentStruct<()>) -> Self {
         Self {
@@ -107,17 +122,14 @@ impl TransparentStruct {
     }
 }
 
-#[export("C")]
 pub fn self_to_self(value: TransparentStruct) -> TransparentStruct {
     value
 }
 
-#[export("C")]
 pub fn vec_to_vec(value: Vec<TransparentStruct>) -> Vec<TransparentStruct> {
     value
 }
 
-#[export("C")]
 pub fn slice_to_slice(value: &[TransparentStruct]) -> &[TransparentStruct] {
     value
 }
@@ -131,10 +143,8 @@ fn take_and_return_transparent_array_ref() {
     let mut output = MaybeUninit::new(core::ptr::null_mut());
 
     unsafe {
-        assert_eq!(
-            FfiReturn::Ok,
             __array_of_transparent(ptr, output.as_mut_ptr())
-        );
+        ;;
 
         assert_eq!(
             &[value; 1],
@@ -149,10 +159,8 @@ fn take_and_return_option_of_transparent_with_niche() {
     let mut output = MaybeUninit::new([0u8; 4]);
 
     unsafe {
-        assert_eq!(
-            FfiReturn::Ok,
             __transparent_with_niche(value.encode(&mut ()), output.as_mut_ptr())
-        );
+        ;;
 
         assert_eq!(
             value,
@@ -167,10 +175,8 @@ fn take_and_return_option_of_transparent_without_niche() {
     let mut output: MaybeUninit<COption<u64>> = MaybeUninit::new(COption { tag: 1, payload: 0 });
 
     unsafe {
-        assert_eq!(
-            FfiReturn::Ok,
             __transparent_without_niche(value.encode(&mut ()), output.as_mut_ptr())
-        );
+        ;;
 
         assert_eq!(
             value,
@@ -185,10 +191,8 @@ fn take_and_return_option_of_transparent_with_inner_niche() {
     let mut output: MaybeUninit<u64> = MaybeUninit::new(0);
 
     unsafe {
-        assert_eq!(
-            FfiReturn::Ok,
             __transparent_with_inner_niche(value.encode(&mut ()), output.as_mut_ptr())
-        );
+        ;;
 
         assert_eq!(
             value,
@@ -203,10 +207,8 @@ fn transparent_self_to_self() {
     let mut output: MaybeUninit<u64> = MaybeUninit::new(0);
 
     unsafe {
-        assert_eq!(
-            FfiReturn::Ok,
             __self_to_self(transparent_struct.encode(&mut ()), output.as_mut_ptr())
-        );
+        ;;
         assert_eq!(
             Ok(transparent_struct),
             <TransparentStruct as Decode>::decode(output.assume_init())
@@ -226,13 +228,11 @@ fn transparent_vec_to_vec() {
     let mut output = MaybeUninit::new(CBoxedSlice::from_raw_parts(core::ptr::null_mut(), 0));
 
     unsafe {
-        assert_eq!(
-            FfiReturn::Ok,
             __vec_to_vec(
                 transparent_struct_vec.clone().encode(&mut store),
                 output.as_mut_ptr()
             )
-        );
+        ;;
 
         let output = output.assume_init();
         assert_eq!(output.len(), 3);
@@ -252,13 +252,11 @@ fn transparent_slice_to_slice() {
     let mut output = MaybeUninit::new(CSlice::from_raw_parts(core::ptr::null(), 0));
 
     unsafe {
-        assert_eq!(
-            FfiReturn::Ok,
             __slice_to_slice(
                 transparent_struct_slice.as_slice().encode(&mut ()),
                 output.as_mut_ptr()
             )
-        );
+        ;;
 
         let output: &[TransparentStruct] =
             Decode::decode(output.assume_init()).expect("Invalid output");
@@ -274,14 +272,12 @@ fn transparent_method_consume() {
     let mut output: MaybeUninit<u64> = MaybeUninit::new(0);
 
     unsafe {
-        assert_eq!(
-            FfiReturn::Ok,
             TransparentStruct__with_payload(
                 transparent_struct.encode(&mut ()),
                 payload.encode(&mut ()),
                 output.as_mut_ptr()
             )
-        );
+        ;;
         transparent_struct =
             <TransparentStruct as Decode>::decode(output.assume_init()).expect("valid");
 
@@ -295,10 +291,8 @@ fn transparent_method_borrow() {
     let mut output = MaybeUninit::new(core::ptr::null());
 
     unsafe {
-        assert_eq!(
-            FfiReturn::Ok,
             TransparentStruct__payload((&transparent_struct).encode(&mut ()), output.as_mut_ptr())
-        );
+        ;;
         assert_eq!(
             Ok(&transparent_struct.payload),
             <&GenericTransparentStruct<_> as Decode>::decode(output.assume_init())
@@ -312,16 +306,16 @@ fn transparent_method_borrow_mut() {
     let mut output = MaybeUninit::new(core::ptr::null_mut());
 
     unsafe {
-        assert_eq!(
-            FfiReturn::Ok,
             TransparentStruct__payload_mut(
                 (&mut transparent_struct).encode(&mut ()),
                 output.as_mut_ptr()
             )
-        );
+        ;;
         assert_eq!(
             Ok(&mut transparent_struct.payload),
             <&mut GenericTransparentStruct as Decode>::decode(output.assume_init())
         );
     }
 }
+
+

@@ -5,7 +5,7 @@ use syn::{DeriveInput, Ident, parse_quote};
 use crate::layout::{
     ReprCAttrs, VariantReprCAttrs,
     ctype::gen_ctype_name,
-    generic_param_idents, is_type_parameterized,
+    generic_param_idents, is_type_parametrized,
     item::{field_vars, gen_fields_destructure},
 };
 
@@ -466,7 +466,7 @@ fn gen_field_trait_bounds<'a>(
     bound: TokenStream,
 ) -> impl Iterator<Item = syn::WherePredicate> + use<'a> {
     fields.iter().map(move |ty| {
-        let for_dummy = (!is_type_parameterized(ty, generics)).then_some(quote! { for<'_dummy> });
+        let for_dummy = (!is_type_parametrized(ty, generics)).then_some(quote! { for<'_dummy> });
         parse_quote! { #for_dummy #ty: #bound }
     })
 }

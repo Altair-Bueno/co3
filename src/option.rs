@@ -136,10 +136,11 @@ impl<T> TryFrom<ReprCOption<T>> for Option<T> {
 
 unsafe impl<T: RustSpec> RustSpec for ReprCOption<T> {
     type Layout = T::Layout;
+    type Trap = T::Trap;
     type Size = rust_spec::size::Sized<rust_spec::size::NonZst>;
     type Niche = WithoutNiche;
     type Mutability = rust_spec::mutability::Exclusive;
-    type __IndirectLayout = T::__IndirectLayout;
+    type __IndirectTrap = T::__IndirectTrap;
 }
 
 unsafe impl<T: Borrow> Borrow for ReprCOption<T> {

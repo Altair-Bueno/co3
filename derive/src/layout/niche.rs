@@ -85,9 +85,7 @@ pub fn gen_enum_niche_ir(
         return gen_struct_niche_ir(enum_name, generics, &variant.fields, None);
     }
 
-    let Some(tag_ty) = enum_tag_type(repr, variants.len()) else {
-        return quote! {};
-    };
+    let tag_ty = enum_tag_type(repr, variants.len());
     if is_exhaustive_enum(variants.len(), &tag_ty) {
         return quote! {};
     }
@@ -99,6 +97,12 @@ pub fn gen_enum_niche_ir(
     let predicates = where_clause
         .as_ref()
         .map(|where_clause| &where_clause.predicates);
+
+    let variant_field_types = variants
+        .iter()
+        .flat_map(|variant| variant.fields.iter().map(|field| &field.ty))
+        .collect::<Vec<_>>();
+    let extern_c_bounds = gen_extern_c_bounds_for_ctype::<true>(generics, &variant_field_types);
 
     let niche_discriminant = Literal::usize_unsuffixed(variants.len());
     let niche_tag_value = quote! { #niche_discriminant as #tag_ty };
@@ -133,6 +137,7 @@ pub fn gen_enum_niche_ir(
 
     quote! {
         impl #impl_generics co3::niche::Niche for #enum_name #ty_generics where
+            #(#extern_c_bounds,)*
             #self_bounds
             #predicates
         {

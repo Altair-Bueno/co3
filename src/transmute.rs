@@ -3,8 +3,9 @@ use alloc::boxed::Box;
 
 use disjoint_impls::disjoint_impls;
 use rust_spec::{
-    RustSpec,
-    niche::{Stable, WithNiche},
+    RustSpec, Stable,
+    mutability::Exclusive,
+    niche::WithNiche,
     size::{NonZst, Zst},
 };
 
@@ -52,7 +53,7 @@ disjoint_impls! {
     }
 }
 
-unsafe impl<R: CheckedTransmute + ?Sized> CheckedTransmute for &R
+unsafe impl<R: CheckedTransmute + RustSpec<Mutability = Exclusive> + ?Sized> CheckedTransmute for &R
 where
     Self: ExternC<CType: Copy>,
 {
@@ -70,8 +71,8 @@ where
 
 // FIXME: Should it be implemented for non-robust R?
 // atm we say yes, this is transmutable but don't misuse it.
-// Either require Stable<Robust> or write this in the documentation
-// If Layout<Robust> then also consider how it affects Box<&mut R>
+// Either require `Stable<Robust>` or write this in the documentation
+// If layout is Stable<Robust> then also consider how it affects Box<&mut R>
 unsafe impl<R: CheckedTransmute + ?Sized> CheckedTransmute for &mut R
 where
     Self: ExternC<CType = *mut R::CType>,

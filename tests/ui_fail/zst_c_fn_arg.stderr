@@ -4,13 +4,13 @@ error[E0271]: type mismatch resolving `<CReprCZst as RustSpec>::Size == Sized<No
 72 |     require_arg::<<ReprCZst as ExternC>::CType>();
    |                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^ type mismatch resolving `<CReprCZst as RustSpec>::Size == Sized<NonZst>`
    |
-note: expected this to be `co3::rust_spec::size::Sized<NonZst>`
+note: expected this to be `rust_spec::size::Sized<NonZst>`
   --> tests/ui_fail/zst_c_fn_arg.rs:39:33
    |
 39 | #[derive(Clone, Copy, RustSpec, ReprC)]
    |                                 ^^^^^
-   = note: expected struct `co3::rust_spec::size::Sized<NonZst>`
-              found struct `co3::rust_spec::size::Sized<Zst>`
+   = note: expected struct `rust_spec::size::Sized<NonZst>`
+              found struct `rust_spec::size::Sized<Zst>`
 note: required for `CReprCZst` to implement `CFnArg`
   --> tests/ui_fail/zst_c_fn_arg.rs:39:33
    |
@@ -32,13 +32,13 @@ error[E0271]: type mismatch resolving `<CReprCZst as RustSpec>::Size == Sized<No
 73 |     require_return::<<ReprCZst as ExternC>::CType>();
    |                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^ type mismatch resolving `<CReprCZst as RustSpec>::Size == Sized<NonZst>`
    |
-note: expected this to be `co3::rust_spec::size::Sized<NonZst>`
+note: expected this to be `rust_spec::size::Sized<NonZst>`
   --> tests/ui_fail/zst_c_fn_arg.rs:39:33
    |
 39 | #[derive(Clone, Copy, RustSpec, ReprC)]
    |                                 ^^^^^
-   = note: expected struct `co3::rust_spec::size::Sized<NonZst>`
-              found struct `co3::rust_spec::size::Sized<Zst>`
+   = note: expected struct `rust_spec::size::Sized<NonZst>`
+              found struct `rust_spec::size::Sized<Zst>`
 note: required for `CReprCZst` to implement `CFnArg`
   --> tests/ui_fail/zst_c_fn_arg.rs:39:33
    |
@@ -61,13 +61,13 @@ error[E0271]: type mismatch resolving `<CTransparentZst as RustSpec>::Size == Si
 75 |     require_arg::<<TransparentZst as ExternC>::CType>();
    |                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ type mismatch resolving `<CTransparentZst as RustSpec>::Size == Sized<NonZst>`
    |
-note: expected this to be `co3::rust_spec::size::Sized<NonZst>`
+note: expected this to be `rust_spec::size::Sized<NonZst>`
   --> tests/ui_fail/zst_c_fn_arg.rs:46:33
    |
 46 | #[derive(Clone, Copy, RustSpec, ReprC)]
    |                                 ^^^^^
-   = note: expected struct `co3::rust_spec::size::Sized<NonZst>`
-              found struct `co3::rust_spec::size::Sized<Zst>`
+   = note: expected struct `rust_spec::size::Sized<NonZst>`
+              found struct `rust_spec::size::Sized<Zst>`
 note: required for `CTransparentZst` to implement `CFnArg`
   --> tests/ui_fail/zst_c_fn_arg.rs:46:33
    |
@@ -89,13 +89,13 @@ error[E0271]: type mismatch resolving `<CTransparentZst as RustSpec>::Size == Si
 76 |     require_return::<<TransparentZst as ExternC>::CType>();
    |                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ type mismatch resolving `<CTransparentZst as RustSpec>::Size == Sized<NonZst>`
    |
-note: expected this to be `co3::rust_spec::size::Sized<NonZst>`
+note: expected this to be `rust_spec::size::Sized<NonZst>`
   --> tests/ui_fail/zst_c_fn_arg.rs:46:33
    |
 46 | #[derive(Clone, Copy, RustSpec, ReprC)]
    |                                 ^^^^^
-   = note: expected struct `co3::rust_spec::size::Sized<NonZst>`
-              found struct `co3::rust_spec::size::Sized<Zst>`
+   = note: expected struct `rust_spec::size::Sized<NonZst>`
+              found struct `rust_spec::size::Sized<Zst>`
 note: required for `CTransparentZst` to implement `CFnArg`
   --> tests/ui_fail/zst_c_fn_arg.rs:46:33
    |
@@ -118,13 +118,13 @@ error[E0271]: type mismatch resolving `<CNoReprZst as RustSpec>::Size == Sized<N
 78 |     require_arg::<<NoReprZst as ExternC>::CType>();
    |                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ type mismatch resolving `<CNoReprZst as RustSpec>::Size == Sized<NonZst>`
    |
-note: expected this to be `co3::rust_spec::size::Sized<NonZst>`
+note: expected this to be `rust_spec::size::Sized<NonZst>`
   --> tests/ui_fail/zst_c_fn_arg.rs:52:33
    |
 52 | #[derive(Clone, Copy, RustSpec, ReprC)]
    |                                 ^^^^^
-   = note: expected struct `co3::rust_spec::size::Sized<NonZst>`
-              found struct `co3::rust_spec::size::Sized<Zst>`
+   = note: expected struct `rust_spec::size::Sized<NonZst>`
+              found struct `rust_spec::size::Sized<Zst>`
 note: required for `CNoReprZst` to implement `CFnArg`
   --> tests/ui_fail/zst_c_fn_arg.rs:52:33
    |
@@ -146,13 +146,13 @@ error[E0271]: type mismatch resolving `<CNoReprZst as RustSpec>::Size == Sized<N
 79 |     require_return::<<NoReprZst as ExternC>::CType>();
    |                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ type mismatch resolving `<CNoReprZst as RustSpec>::Size == Sized<NonZst>`
    |
-note: expected this to be `co3::rust_spec::size::Sized<NonZst>`
+note: expected this to be `rust_spec::size::Sized<NonZst>`
   --> tests/ui_fail/zst_c_fn_arg.rs:52:33
    |
 52 | #[derive(Clone, Copy, RustSpec, ReprC)]
    |                                 ^^^^^
-   = note: expected struct `co3::rust_spec::size::Sized<NonZst>`
-              found struct `co3::rust_spec::size::Sized<Zst>`
+   = note: expected struct `rust_spec::size::Sized<NonZst>`
+              found struct `rust_spec::size::Sized<Zst>`
 note: required for `CNoReprZst` to implement `CFnArg`
   --> tests/ui_fail/zst_c_fn_arg.rs:52:33
    |
@@ -175,13 +175,13 @@ error[E0271]: type mismatch resolving `<CParamReprCZst<()> as RustSpec>::Size ==
 81 |     require_arg::<<ParamReprCZst<()> as ExternC>::CType>();
    |                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ type mismatch resolving `<CParamReprCZst<()> as RustSpec>::Size == Sized<NonZst>`
    |
-note: expected this to be `co3::rust_spec::size::Sized<NonZst>`
+note: expected this to be `rust_spec::size::Sized<NonZst>`
   --> tests/ui_fail/zst_c_fn_arg.rs:3:33
    |
  3 | #[derive(Clone, Copy, RustSpec, ReprC)]
    |                                 ^^^^^
-   = note: expected struct `co3::rust_spec::size::Sized<NonZst>`
-              found struct `co3::rust_spec::size::Sized<Zst>`
+   = note: expected struct `rust_spec::size::Sized<NonZst>`
+              found struct `rust_spec::size::Sized<Zst>`
 note: required for `CParamReprCZst<()>` to implement `CFnArg`
   --> tests/ui_fail/zst_c_fn_arg.rs:3:33
    |
@@ -204,13 +204,13 @@ error[E0271]: type mismatch resolving `<CParamReprCZst<()> as RustSpec>::Size ==
 82 |     require_return::<<ParamReprCZst<()> as ExternC>::CType>();
    |                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ type mismatch resolving `<CParamReprCZst<()> as RustSpec>::Size == Sized<NonZst>`
    |
-note: expected this to be `co3::rust_spec::size::Sized<NonZst>`
+note: expected this to be `rust_spec::size::Sized<NonZst>`
   --> tests/ui_fail/zst_c_fn_arg.rs:3:33
    |
  3 | #[derive(Clone, Copy, RustSpec, ReprC)]
    |                                 ^^^^^
-   = note: expected struct `co3::rust_spec::size::Sized<NonZst>`
-              found struct `co3::rust_spec::size::Sized<Zst>`
+   = note: expected struct `rust_spec::size::Sized<NonZst>`
+              found struct `rust_spec::size::Sized<Zst>`
 note: required for `CParamReprCZst<()>` to implement `CFnArg`
   --> tests/ui_fail/zst_c_fn_arg.rs:3:33
    |
@@ -234,13 +234,13 @@ error[E0271]: type mismatch resolving `<CParamTransparentZst<()> as RustSpec>::S
 84 |     require_arg::<<ParamTransparentZst<()> as ExternC>::CType>();
    |                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ type mismatch resolving `<CParamTransparentZst<()> as RustSpec>::Size == Sized<NonZst>`
    |
-note: expected this to be `co3::rust_spec::size::Sized<NonZst>`
+note: expected this to be `rust_spec::size::Sized<NonZst>`
   --> tests/ui_fail/zst_c_fn_arg.rs:10:33
    |
 10 | #[derive(Clone, Copy, RustSpec, ReprC)]
    |                                 ^^^^^
-   = note: expected struct `co3::rust_spec::size::Sized<NonZst>`
-              found struct `co3::rust_spec::size::Sized<Zst>`
+   = note: expected struct `rust_spec::size::Sized<NonZst>`
+              found struct `rust_spec::size::Sized<Zst>`
 note: required for `CParamTransparentZst<()>` to implement `CFnArg`
   --> tests/ui_fail/zst_c_fn_arg.rs:10:33
    |
@@ -263,13 +263,13 @@ error[E0271]: type mismatch resolving `<CParamTransparentZst<()> as RustSpec>::S
 85 |     require_return::<<ParamTransparentZst<()> as ExternC>::CType>();
    |                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ type mismatch resolving `<CParamTransparentZst<()> as RustSpec>::Size == Sized<NonZst>`
    |
-note: expected this to be `co3::rust_spec::size::Sized<NonZst>`
+note: expected this to be `rust_spec::size::Sized<NonZst>`
   --> tests/ui_fail/zst_c_fn_arg.rs:10:33
    |
 10 | #[derive(Clone, Copy, RustSpec, ReprC)]
    |                                 ^^^^^
-   = note: expected struct `co3::rust_spec::size::Sized<NonZst>`
-              found struct `co3::rust_spec::size::Sized<Zst>`
+   = note: expected struct `rust_spec::size::Sized<NonZst>`
+              found struct `rust_spec::size::Sized<Zst>`
 note: required for `CParamTransparentZst<()>` to implement `CFnArg`
   --> tests/ui_fail/zst_c_fn_arg.rs:10:33
    |
@@ -293,13 +293,13 @@ error[E0271]: type mismatch resolving `<CParamNoReprZst<()> as RustSpec>::Size =
 87 |     require_arg::<<ParamNoReprZst<()> as ExternC>::CType>();
    |                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ type mismatch resolving `<CParamNoReprZst<()> as RustSpec>::Size == Sized<NonZst>`
    |
-note: expected this to be `co3::rust_spec::size::Sized<NonZst>`
+note: expected this to be `rust_spec::size::Sized<NonZst>`
   --> tests/ui_fail/zst_c_fn_arg.rs:33:33
    |
 33 | #[derive(Clone, Copy, RustSpec, ReprC)]
    |                                 ^^^^^
-   = note: expected struct `co3::rust_spec::size::Sized<NonZst>`
-              found struct `co3::rust_spec::size::Sized<Zst>`
+   = note: expected struct `rust_spec::size::Sized<NonZst>`
+              found struct `rust_spec::size::Sized<Zst>`
 note: required for `CParamNoReprZst<()>` to implement `CFnArg`
   --> tests/ui_fail/zst_c_fn_arg.rs:33:33
    |
@@ -322,13 +322,13 @@ error[E0271]: type mismatch resolving `<CParamNoReprZst<()> as RustSpec>::Size =
 88 |     require_return::<<ParamNoReprZst<()> as ExternC>::CType>();
    |                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ type mismatch resolving `<CParamNoReprZst<()> as RustSpec>::Size == Sized<NonZst>`
    |
-note: expected this to be `co3::rust_spec::size::Sized<NonZst>`
+note: expected this to be `rust_spec::size::Sized<NonZst>`
   --> tests/ui_fail/zst_c_fn_arg.rs:33:33
    |
 33 | #[derive(Clone, Copy, RustSpec, ReprC)]
    |                                 ^^^^^
-   = note: expected struct `co3::rust_spec::size::Sized<NonZst>`
-              found struct `co3::rust_spec::size::Sized<Zst>`
+   = note: expected struct `rust_spec::size::Sized<NonZst>`
+              found struct `rust_spec::size::Sized<Zst>`
 note: required for `CParamNoReprZst<()>` to implement `CFnArg`
   --> tests/ui_fail/zst_c_fn_arg.rs:33:33
    |

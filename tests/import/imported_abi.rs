@@ -25,7 +25,7 @@ enum Ambiguous {
 struct MyType<T>(T);
 
 ffi! {
-    #![extern("Rust")]
+    #![unsafe(extern("Rust"))]
 
     #![symbol_prefix = "import"]
 
@@ -47,7 +47,7 @@ ffi! {
 }
 
 ffi! {
-    #![extern("C")]
+    #![unsafe(extern("C"))]
 
     #![symbol_prefix = "import"]
 
@@ -97,23 +97,62 @@ mod provider {
     }
 
     ffi! {
-        #![export("C")]
+        #![unsafe(export("C"))]
 
         type MyType2;
 
         impl Drop for MyType2 {
             fn drop(&mut self);
         }
+
+        impl MyType2 {
+            fn new() -> Self;
+        }
+
+        impl AmbiguousX<u64, 3> for MyType<u64> {
+            const K: bool = false;
+            type U = u8;
+            fn ambiguous(a: &[<Self as AmbiguousX<u64, 3>>::U; 3]) -> Ambiguous;
+        }
+
+        impl AmbiguousY for MyType<u64> {
+            #[symbol_name = "ambiguous"]
+            extern "C" fn ambiguous() -> Ambiguous;
+        }
+
+        impl MyType<u32> {
+            fn ambiguous() -> Self;
+        }
+
+        #[symbol_name = "ambiguous1"]
+        fn ambiguous1() -> Ambiguous;
     }
 
-    #[export("C")]
+    ffi! {
+        #![unsafe(export("Rust"))]
+
+        impl AmbiguousX<u32, 4> for MyType<u32> {
+            const K: bool = true;
+            type U = i8;
+            #[symbol_name = "kita"]
+            fn ambiguous(a: &[<Self as AmbiguousX<u32, 4>>::U; 4]) -> Ambiguous;
+        }
+
+        impl MyType<u64> {
+            #[symbol_name = "kita1"]
+            unsafe extern "C" fn ambiguous() -> Box<Self>;
+        }
+
+        #[symbol_name = "kita2"]
+        unsafe fn ambiguous2() -> Ambiguous;
+    }
+
     impl MyType2 {
         fn new() -> Self {
             MyType2::A("KITA".to_owned())
         }
     }
 
-    #[export("C")]
     impl AmbiguousX<u64, 3> for MyType<u64> {
         const K: bool = false;
         type U = u8;
@@ -123,48 +162,37 @@ mod provider {
         }
     }
 
-    #[export("Rust")]
     impl AmbiguousX<u32, 4> for MyType<u32> {
         const K: bool = true;
         type U = i8;
 
-        #[symbol_name = "kita"]
         fn ambiguous(_a: &[<Self as AmbiguousX<u32, 4>>::U; 4]) -> Ambiguous {
             Ambiguous::AmbiguousX
         }
     }
 
-    #[export("C")]
     impl AmbiguousY for MyType<u64> {
-        #[symbol_name = "ambiguous"]
         extern "C" fn ambiguous() -> Ambiguous {
             Ambiguous::AmbiguousY
         }
     }
 
-    #[export("Rust")]
     impl MyType<u64> {
-        #[symbol_name = "kita1"]
         pub unsafe extern "C" fn ambiguous() -> Box<Self> {
             Box::new(Self(42))
         }
     }
 
-    #[export("C")]
     impl MyType<u32> {
         pub const fn ambiguous() -> Self {
             Self(420)
         }
     }
 
-    #[export("C")]
-    #[symbol_name = "ambiguous1"]
     pub const fn ambiguous1() -> Ambiguous {
         Ambiguous::Fn
     }
 
-    #[export("Rust")]
-    #[symbol_name = "kita2"]
     pub const unsafe extern "Rust" fn ambiguous2() -> Ambiguous {
         Ambiguous::Fn
     }

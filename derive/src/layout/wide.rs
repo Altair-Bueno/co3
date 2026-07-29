@@ -1,7 +1,7 @@
 use proc_macro2::TokenStream;
 use quote::{format_ident, quote};
 
-use super::{ReprKind, is_type_parameterized};
+use super::{ReprKind, is_type_parametrized};
 
 fn gen_data_struct_name(ident: &syn::Ident) -> syn::Ident {
     format_ident!("{}Data", ident)
@@ -174,7 +174,7 @@ fn data_field_ty(ty: &syn::Type, is_last_field: bool) -> TokenStream {
 }
 
 fn wide_predicate(field_ty: &syn::Type, generics: &syn::Generics) -> TokenStream {
-    let for_dummy = (!is_type_parameterized(field_ty, generics)).then(|| quote! { for<'__dummy> });
+    let for_dummy = (!is_type_parametrized(field_ty, generics)).then(|| quote! { for<'__dummy> });
     quote! { #for_dummy #field_ty: co3::wide::Wide }
 }
 

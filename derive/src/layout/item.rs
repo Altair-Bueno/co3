@@ -15,10 +15,10 @@ use crate::layout::{
     ctype::{
         gen_ctype_name, gen_extern_c_bounds_for_ctype, gen_item_ctype, gen_variant_struct_name,
     },
-    enum_tag_type, generic_param_idents, is_exhaustive_enum, is_transparent_enum_repr,
-    is_type_parameterized,
+    enum_tag_type, generic_param_idents, infer_repr, is_exhaustive_enum, is_transparent_enum_repr,
+    is_type_parametrized,
     niche::{gen_enum_niche_ir, gen_struct_niche_ir},
-    repr_type_is_signed,
+    primitive_tag_type, repr_type_is_signed,
 };
 
 pub(super) fn derive_item(
@@ -35,6 +35,7 @@ pub(super) fn derive_item(
     let borrow_impls = (!is_view).then(|| gen_item_borrow_impls(input));
     let codec_impls = gen_item_codec_impls(repr, input, attrs, variant_attrs);
     let niche_impls = (!is_view).then(|| gen_item_niche_impls(repr, input, attrs));
+    let interior_mut_impl = gen_item_interior_mut_impl(repr, input);
 
     let repr_c_impls = repr
         .is_some()
@@ -47,6 +48,7 @@ pub(super) fn derive_item(
         #borrow_impls
         #codec_impls
         #niche_impls
+        #interior_mut_impl
 
         #repr_c_impls
     }
@@ -141,6 +143,108 @@ fn gen_item_repr_c_impls(
     }
 }
 
+fn gen_item_interior_mut_impl(repr: Option<&ReprKind>, input: &syn::DeriveInput) -> TokenStream {
+    match &input.data {
+        syn::Data::Struct(data) => {
+            gen_struct_interior_mut_impl(&input.ident, &input.generics, &data.fields)
+        }
+        syn::Data::Enum(data)
+            if matches!(repr, None | Some(ReprKind::Transparent)) && data.variants.len() == 1 =>
+        {
+            gen_enum_interior_mut_impl(&input.ident, &input.generics, &data.variants[0])
+        }
+        syn::Data::Enum(_) | syn::Data::Union(_) => quote! {},
+    }
+}
+
+fn gen_struct_interior_mut_impl(
+    name: &Ident,
+    generics: &syn::Generics,
+    fields: &syn::Fields,
+) -> TokenStream {
+    if fields.len() != 1 {
+        return quote! {};
+    }
+
+    let field = fields.iter().next().expect("single-field struct");
+    let field_access = match &field.ident {
+        Some(ident) => quote! { &self.#ident },
+        None => quote! { &self.0 },
+    };
+
+    gen_interior_mut_impl(
+        name,
+        generics,
+        field,
+        quote! { co3::cell::InteriorMut::get(#field_access) },
+    )
+}
+
+fn gen_enum_interior_mut_impl(
+    name: &Ident,
+    generics: &syn::Generics,
+    variant: &syn::Variant,
+) -> TokenStream {
+    if variant.fields.len() != 1 {
+        return quote! {};
+    }
+
+    let field = variant.fields.iter().next().expect("single-field variant");
+    let variant_name = &variant.ident;
+    let (pattern, field_access) = match &field.ident {
+        Some(field_name) => (
+            quote! { Self::#variant_name { #field_name } },
+            quote! { #field_name },
+        ),
+        None => {
+            let field_name = format_ident!("__co3_interior_mut_field");
+            (
+                quote! { Self::#variant_name(#field_name) },
+                quote! { #field_name },
+            )
+        }
+    };
+
+    gen_interior_mut_impl(
+        name,
+        generics,
+        field,
+        quote! {
+            let #pattern = self;
+            co3::cell::InteriorMut::get(#field_access)
+        },
+    )
+}
+
+fn gen_interior_mut_impl(
+    name: &Ident,
+    generics: &syn::Generics,
+    field: &syn::Field,
+    get: TokenStream,
+) -> TokenStream {
+    let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
+    let predicates = where_clause
+        .as_ref()
+        .map(|where_clause| &where_clause.predicates);
+    let field_ty = &field.ty;
+    let for_dummy = (!is_type_parametrized(field_ty, generics)).then_some(quote! { for<'_dummy> });
+
+    quote! {
+        impl #impl_generics co3::cell::InteriorMut for #name #ty_generics
+        where
+            #for_dummy #field_ty: co3::cell::InteriorMut,
+            #predicates
+        {
+            type Target = <#field_ty as co3::cell::InteriorMut>::Target;
+
+            #[inline(always)]
+            fn get(&self) -> *mut Self::Target {
+                #get
+            }
+        }
+    }
+}
+
 fn gen_struct_codec_impls(
     is_view: bool,
     name: &Ident,
@@ -191,7 +295,6 @@ fn gen_enum_codec_impls(
     variant_attrs: &[VariantReprCAttrs],
 ) -> TokenStream {
     let view_owner_name = is_view.then(|| gen_view_owner_name(name));
-    let tag_type = enum_tag_type(repr, variants.len());
 
     let ctype_name = if is_view {
         gen_view_ctype_name(name)
@@ -202,6 +305,8 @@ fn gen_enum_codec_impls(
     if is_transparent_enum_repr(repr, variants) {
         return gen_transparent_enum_codec_impls(is_view, name, generics, variants, variant_attrs);
     }
+
+    let tag_type = enum_tag_type(repr, variants.len());
 
     let payload_name = if let Some(owner_name) = &view_owner_name {
         format_ident!("{owner_name}Payload")
@@ -252,7 +357,6 @@ fn gen_enum_codec_impls(
             let custom_is_valid = variant_attrs[idx].is_valid.as_ref();
             let variant_tag = match repr {
                 None | Some(ReprKind::Primitive(_)) => {
-                    let tag_type = tag_type.as_ref().expect("variant-tag enum must have tag type");
                     Some(quote!(#tag_value as #tag_type))
                 }
                 Some(ReprKind::Transparent | ReprKind::C(Some(_))) => None,
@@ -304,7 +408,6 @@ fn gen_enum_codec_impls(
 
             let encode_variant = match repr {
                 Some(ReprKind::C(Some(_))) => {
-                    let tag_type = tag_type.as_ref().expect("outer-tag enum must have tag type");
                     quote! {
                         #ctype_name {
                             tag: #tag_value as #tag_type,
@@ -645,7 +748,7 @@ fn gen_checked_transmute_bounds<const ADD_COPY: bool>(
     let mut predicates = fields
         .iter()
         .map(|&ty| {
-            let for_dummy = (!is_type_parameterized(ty, generics)).then_some(quote!(for<'_dummy>));
+            let for_dummy = (!is_type_parametrized(ty, generics)).then_some(quote!(for<'_dummy>));
 
             let ctype_bound = if ADD_COPY {
                 quote!(<CType: Copy>)
@@ -657,7 +760,7 @@ fn gen_checked_transmute_bounds<const ADD_COPY: bool>(
         })
         .collect::<Vec<_>>();
 
-    let for_dummy = (!is_type_parameterized(last, generics)).then_some(quote!(for<'_dummy>));
+    let for_dummy = (!is_type_parametrized(last, generics)).then_some(quote!(for<'_dummy>));
     let copy_bound = ADD_COPY.then(|| quote! { <CType: Copy> });
 
     predicates.push(parse_quote! {
@@ -700,10 +803,14 @@ pub(super) fn derive_fieldless_enum(
     let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
     let params = &generics.params;
 
-    let tag_type = if repr.is_none() && variants.len() == 1 {
-        None
-    } else {
-        enum_tag_type(repr, variants.len())
+    let tag_type = match repr {
+        None if variants.len() == 1 => None,
+        None => Some(infer_repr(variants.len())),
+        Some(ReprKind::Transparent) => None,
+        Some(repr @ (ReprKind::C(Some(_)) | ReprKind::Primitive(_))) => {
+            Some(primitive_tag_type(repr).clone())
+        }
+        Some(ReprKind::C(None)) => unreachable!(),
     };
 
     let checked_transmute_method = match repr {
@@ -1044,7 +1151,7 @@ fn gen_field_encode_bounds<'a>(
     bound: TokenStream,
 ) -> impl Iterator<Item = syn::WherePredicate> + use<'a> {
     fields.iter().map(move |ty| {
-        let for_dummy = (!is_type_parameterized(ty, generics)).then_some(quote! { for<'_dummy> });
+        let for_dummy = (!is_type_parametrized(ty, generics)).then_some(quote! { for<'_dummy> });
         parse_quote! { #for_dummy #ty: #bound<CType: Copy> }
     })
 }
@@ -1055,7 +1162,7 @@ fn gen_field_decode_bounds<'a>(
     bound: TokenStream,
 ) -> impl Iterator<Item = syn::WherePredicate> + use<'a> {
     fields.iter().map(move |ty| {
-        let for_dummy = (!is_type_parameterized(ty, generics)).then_some(quote! { for<'_dummy> });
+        let for_dummy = (!is_type_parametrized(ty, generics)).then_some(quote! { for<'_dummy> });
         parse_quote! { #for_dummy #ty: #bound<'_dšč, CType: Copy> }
     })
 }
@@ -1097,7 +1204,7 @@ fn gen_borrow_cast_view_bounds<const ADD_COPY: bool>(
     let mut predicates = fields
         .iter()
         .map(|ty| borrow_ty(ty))
-        .filter(|ty| is_type_parameterized(ty, generics))
+        .filter(|ty| is_type_parametrized(ty, generics))
         .map(|ty| {
             let ctype_bound = if ADD_COPY {
                 quote! { <AsConst: Copy> + Copy }
@@ -1110,7 +1217,7 @@ fn gen_borrow_cast_view_bounds<const ADD_COPY: bool>(
         .collect::<Vec<_>>();
 
     let last = borrow_ty(last);
-    if is_type_parameterized(last, generics) {
+    if is_type_parametrized(last, generics) {
         let ctype_bound = ADD_COPY.then(|| quote! { <AsConst: Copy> + Copy });
         predicates.push(quote!(#last: co3::ExternC<CType: co3::borrow::BorrowCast #ctype_bound>));
     }

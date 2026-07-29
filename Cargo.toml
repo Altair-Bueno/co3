@@ -38,7 +38,7 @@ default = ["alloc", "derive"]
 rust-spec = { path = "../rust-spec", default-features = false, features = ["derive"] }
 co3-derive = { path = "derive", optional = true }
 
-disjoint_impls = "1.3.8"
+disjoint_impls = "1.3.9"
 impls = "1.0.3"
 
 [dev-dependencies]

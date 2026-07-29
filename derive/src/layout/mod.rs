@@ -309,7 +309,7 @@ fn validate_fields_no_ffi_type_attr(fields: &syn::Fields, errors: &mut Option<sy
 }
 
 /// Check if a type contains any of the type parameters from generics
-fn is_type_parameterized(ty: &syn::Type, generics: &syn::Generics) -> bool {
+pub(super) fn is_type_parametrized(ty: &syn::Type, generics: &syn::Generics) -> bool {
     /// Visitor to check if a type contains any of the specified type parameters
     struct TypeParamVisitor<'a> {
         type_params: &'a [&'a syn::Ident],
@@ -389,27 +389,36 @@ pub fn repr_type_is_signed(repr: &syn::Type) -> bool {
     matches!(repr_type_name(repr), Some("i8" | "i16" | "i32" | "i64"))
 }
 
-pub(super) fn enum_tag_type(repr: Option<&ReprKind>, variants_len: usize) -> Option<syn::Type> {
-    fn infer_repr(num_variants: usize) -> syn::Type {
-        const U8_CAPACITY: usize = u8::MAX as usize + 1;
-        const U16_CAPACITY: usize = u16::MAX as usize + 1;
-        const U32_CAPACITY: usize = u32::MAX as usize + 1;
+pub(super) fn infer_repr(num_variants: usize) -> syn::Type {
+    const U8_CAPACITY: usize = u8::MAX as usize + 1;
+    const U16_CAPACITY: usize = u16::MAX as usize + 1;
+    const U32_CAPACITY: usize = u32::MAX as usize + 1;
 
-        #[expect(clippy::match_overlapping_arm)]
-        match num_variants {
-            0..=U8_CAPACITY => syn::parse_quote!(u8),
-            0..=U16_CAPACITY => syn::parse_quote!(u16),
-            0..=U32_CAPACITY => syn::parse_quote!(u32),
-            // TODO: is this correct
-            _ => syn::parse_quote!(u64),
-        }
+    #[expect(clippy::match_overlapping_arm)]
+    match num_variants {
+        0..=U8_CAPACITY => syn::parse_quote!(u8),
+        0..=U16_CAPACITY => syn::parse_quote!(u16),
+        0..=U32_CAPACITY => syn::parse_quote!(u32),
+        // TODO: is this correct
+        _ => syn::parse_quote!(u64),
     }
+}
 
+pub(super) fn primitive_tag_type(repr: &ReprKind) -> &syn::Type {
     match repr {
-        None => Some(infer_repr(variants_len)),
-        Some(ReprKind::Transparent) => None,
-        Some(ReprKind::C(None)) => unreachable!(),
-        Some(ReprKind::C(Some(repr))) | Some(ReprKind::Primitive(repr)) => Some(*repr.clone()),
+        ReprKind::C(Some(repr)) | ReprKind::Primitive(repr) => repr,
+        ReprKind::Transparent => unreachable!("transparent enums have no tag"),
+        ReprKind::C(None) => unreachable!("plain repr(C) enums are unsupported"),
+    }
+}
+
+pub(super) fn enum_tag_type(repr: Option<&ReprKind>, variants_len: usize) -> syn::Type {
+    match repr {
+        None => infer_repr(variants_len),
+        Some(repr @ (ReprKind::C(Some(_)) | ReprKind::Primitive(_))) => {
+            primitive_tag_type(repr).clone()
+        }
+        Some(ReprKind::Transparent) | Some(ReprKind::C(None)) => unreachable!(),
     }
 }
 
@@ -421,7 +430,7 @@ pub(super) fn is_transparent_enum_repr(
 }
 
 /// Checks if an enum exhausts all possible values of its repr type
-fn is_exhaustive_enum(num_variants: usize, repr: &syn::Type) -> bool {
+pub(super) fn is_exhaustive_enum(num_variants: usize, repr: &syn::Type) -> bool {
     fn repr_type_bit_width(repr: &syn::Type) -> Option<u32> {
         match repr_type_name(repr)? {
             "u8" | "i8" => Some(8),

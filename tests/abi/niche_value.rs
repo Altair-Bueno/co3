@@ -1,6 +1,6 @@
 use core::cmp::Ordering;
 
-use co3::{EncodeWithStore, ReprC, ffi, rust_spec::RustSpec};
+use co3::{Encode, ReprC, ffi, rust_spec::RustSpec};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Opaque {
@@ -9,7 +9,7 @@ pub enum Opaque {
 }
 
 ffi! {
-    #![export("C")]
+    #![unsafe(export("C"))]
 
     type Opaque;
 
@@ -19,7 +19,7 @@ ffi! {
 }
 
 ffi! {
-    #![extern("C")]
+    #![unsafe(extern("C"))]
 
     pub type Extern;
 
@@ -393,3 +393,4 @@ fn verify_enum_niche_value() {
         None::<FieldlessLargeEnum>.encode(&mut ())
     );
 }
+

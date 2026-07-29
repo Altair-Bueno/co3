@@ -142,7 +142,7 @@ mod ffi {
     use std::{alloc, collections::BTreeMap};
 
     use co3::{
-        DecodeWithStore, EncodeWithStore, ExternC, FfiReturn,
+        DecodeWithStore, EncodeWithStore, ExternC,
         out_ptr::{OutPtr, OutPtrWrite},
         slice::RawSliceMut,
     };
@@ -157,12 +157,18 @@ mod ffi {
 
     co3::def_fns! { dealloc }
 
+    co3::ffi! {
+        #![unsafe(export("C"))]
+        #![symbol_prefix = "import"]
+
+        type ExternValue;
+        type ExternOpaqueStruct;
+    }
+
     #[derive(Debug, Clone, PartialEq, Eq)]
-    #[export("C", symbol_prefix = "import")]
     pub struct ExternValue(pub String);
 
     #[derive(Debug, PartialEq, Eq)]
-    #[export("C", symbol_prefix = "import")]
     pub struct ExternOpaqueStruct {
         pub name: Option<u8>,
         pub tokens: Vec<ExternValue>,
@@ -173,7 +179,7 @@ mod ffi {
     unsafe extern "C" fn Value__new(
         input: RawSliceMut<u8>,
         output: *mut *mut ExternValue,
-    ) -> FfiReturn {
+    ) {
         unsafe {
             let string = String::from_utf8(input.into_rust().expect("Defined").to_vec());
             let opaque = Box::new(ExternValue(string.expect("Valid UTF8 string")));
@@ -181,14 +187,13 @@ mod ffi {
             output.write(Box::into_raw(opaque));
         }
 
-        FfiReturn::Ok
     }
 
     #[unsafe(export_name = "OpaqueStruct__new")]
     unsafe extern "C" fn OpaqueStruct__new(
         name: <u8 as co3::ExternC>::CType,
         output: *mut *mut ExternOpaqueStruct,
-    ) -> FfiReturn {
+    ) {
         unsafe {
             let opaque = Box::new(ExternOpaqueStruct {
                 name: Some(DecodeWithStore::decode(name, &mut ()).expect("Valid num")),
@@ -199,7 +204,6 @@ mod ffi {
             output.write(Box::into_raw(opaque));
         }
 
-        FfiReturn::Ok
     }
 
     #[unsafe(export_name = "OpaqueStruct__with_params")]
@@ -207,7 +211,7 @@ mod ffi {
         handle: *mut ExternOpaqueStruct,
         params: <Vec<(u8, ExternValue)> as co3::ExternC>::CType,
         output: *mut *mut ExternOpaqueStruct,
-    ) -> co3::FfiReturn {
+    ) {
         unsafe {
             let mut handle = *Box::from_raw(handle);
             let mut store = Default::default();
@@ -218,7 +222,6 @@ mod ffi {
             handle.params = params.into_iter().collect();
             output.write(Box::into_raw(Box::new(handle)));
         }
-        FfiReturn::Ok
     }
 
     #[unsafe(export_name = "OpaqueStruct__get_param")]
@@ -226,7 +229,7 @@ mod ffi {
         handle: *const ExternOpaqueStruct,
         param_name: <&u8 as ExternC>::CType,
         output: *mut *const ExternValue,
-    ) -> FfiReturn {
+    ) {
         unsafe {
             let handle = handle.as_ref().expect("Valid");
             let param_name = param_name.as_ref().expect("Valid");
@@ -234,21 +237,19 @@ mod ffi {
             OutPtrWrite::write_out(value, output);
         }
 
-        FfiReturn::Ok
     }
 
     #[unsafe(export_name = "OpaqueStruct__params")]
     unsafe extern "C" fn OpaqueStruct__params(
         handle: *const ExternOpaqueStruct,
         output: *mut <Vec<&ExternValue> as OutPtr>::OutPtr,
-    ) -> FfiReturn {
+    ) {
         unsafe {
             let handle = handle.as_ref().expect("Valid");
             let params: Vec<_> = handle.params.values().collect();
             OutPtrWrite::write_out(params, output);
         }
 
-        FfiReturn::Ok
     }
 
     #[unsafe(export_name = "OpaqueStruct__remove_param")]
@@ -256,7 +257,7 @@ mod ffi {
         handle: *mut ExternOpaqueStruct,
         param_name: <&u8 as ExternC>::CType,
         output: *mut *mut ExternValue,
-    ) -> FfiReturn {
+    ) {
         unsafe {
             let handle = handle.as_mut().expect("Valid");
             let param_name = param_name.as_ref().expect("Valid");
@@ -265,34 +266,32 @@ mod ffi {
             output.write(out.encode(&mut ()));
         }
 
-        FfiReturn::Ok
     }
 
     #[unsafe(export_name = "OpaqueStruct__fallible_int_output")]
     unsafe extern "C" fn OpaqueStruct__fallible_int_output(
         input: <bool as ExternC>::CType,
         output: *mut <u8 as OutPtr>::OutPtr,
-    ) -> FfiReturn {
+    ) {
         if input == 0 {
-            return FfiReturn::ExecutionFail;
+            return;
         }
 
         unsafe {
             output.write(42);
         }
 
-        FfiReturn::Ok
     }
 
     #[unsafe(export_name = "__freestanding_returns_opaque_item")]
     unsafe extern "C" fn __freestanding_returns_opaque_item(
         input: *const ExternOpaqueStruct,
         output: *mut *const ExternOpaqueStruct,
-    ) -> FfiReturn {
+    ) {
         unsafe {
             output.write(input);
         }
 
-        FfiReturn::Ok
     }
 }
+

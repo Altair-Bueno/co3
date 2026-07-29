@@ -150,7 +150,7 @@ mod imported_abi;
 //    use std::alloc;
 //
 //    use co3::{
-//        ExternC, FfiReturn, CTuple2,
+//        ExternC, (), CTuple2,
 //        out_ptr::OutPtr,
 //        slice::{CBoxedSlice, CSliceMut, CSlice},
 //    };
@@ -161,120 +161,122 @@ mod imported_abi;
 //    unsafe extern "C" fn Robust__take_ref(
 //        input: *const super::Robust,
 //        output: *mut *const super::Robust,
-//    ) -> FfiReturn {
+//    ) {
 //        unsafe {
 //            output.write(input);
 //        }
 //
-//        FfiReturn::Ok
+//        ()
 //    }
 //
 //    #[unsafe(export_name = "__freestanding_returns_non_local")]
 //    unsafe extern "C" fn __freestanding_returns_non_local(
 //        input: *const u32,
 //        output: *mut *const u32,
-//    ) -> FfiReturn {
+//    ) {
 //        unsafe {
 //            output.write(input);
 //        }
 //
-//        FfiReturn::Ok
+//        ()
 //    }
 //
 //    #[unsafe(export_name = "__freestanding_returns_local_ref")]
 //    unsafe extern "C" fn __freestanding_returns_local_ref(
 //        input: *const CTuple2<u32, u32>,
 //        output: *mut CTuple2<u32, u32>,
-//    ) -> FfiReturn {
+//    ) {
 //        unsafe {
 //            output.write(input.read());
 //        }
 //
-//        FfiReturn::Ok
+//        ()
 //    }
 //
 //    #[unsafe(export_name = "__freestanding_returns_local_slice")]
 //    unsafe extern "C" fn __freestanding_returns_local_slice(
 //        input: CSlice<CTuple2<u32, u32>>,
 //        output: *mut CBoxedSlice<CTuple2<u32, u32>>,
-//    ) -> FfiReturn {
+//    ) {
 //        unsafe {
 //            let input = input.into_rust().map(Into::into);
 //            output.write(CBoxedSlice::from_boxed_slice(input));
 //        }
 //
-//        FfiReturn::Ok
+//        ()
 //    }
 //
 //    #[unsafe(export_name = "__freestanding_returns_boxed_slice")]
 //    unsafe extern "C" fn __freestanding_returns_boxed_slice(
 //        input: CSliceMut<u32>,
 //        output: *mut CBoxedSlice<u32>,
-//    ) -> FfiReturn {
+//    ) {
 //        unsafe {
 //            let input = input.into_rust().map(|slice| (&*slice).into());
 //            output.write(CBoxedSlice::from_boxed_slice(input));
 //        }
 //
-//        FfiReturn::Ok
+//        ()
 //    }
 //
 //    #[unsafe(export_name = "__freestanding_returns_iterator")]
 //    unsafe extern "C" fn __freestanding_returns_iterator(
 //        input: CSliceMut<u32>,
 //        output: *mut CBoxedSlice<u32>,
-//    ) -> FfiReturn {
+//    ) {
 //        unsafe {
 //            let input = input.into_rust().map(|slice| (&*slice).into());
 //            output.write(CBoxedSlice::from_boxed_slice(input));
 //        }
 //
-//        FfiReturn::Ok
+//        ()
 //    }
 //
 //    #[unsafe(export_name = "__freestanding_take_and_return_local_transparent_ref")]
 //    unsafe extern "C" fn __freestanding_take_and_return_local_transparent_ref(
 //        input: <&(u32, u32) as ExternC>::CType,
 //        output: *mut <&(u32, u32) as OutPtr>::OutPtr,
-//    ) -> FfiReturn {
+//    ) {
 //        unsafe {
 //            output.write(input.read());
 //        }
-//        FfiReturn::Ok
+//        ()
 //    }
 //
 ////    #[unsafe(export_name = "__freestanding_take_and_return_boxed_int")]
 ////    unsafe extern "C" fn __freestanding_take_and_return_boxed_int(
 ////        input: <Box<u8> as ExternC>::CType,
 ////        output: *mut <Box<u8> as OutPtr>::OutPtr,
-////    ) -> FfiReturn {
+////    ) {
 ////        unsafe {
 ////            output.write(input.read());
 ////        }
 ////
-////        FfiReturn::Ok
+////        ()
 ////    }
 //
 //    #[unsafe(export_name = "__freestanding_take_and_return_boxed_int_ref")]
 //    unsafe extern "C" fn __freestanding_take_and_return_boxed_int_ref(
 //        input: <&Box<u8> as ExternC>::CType,
 //        output: *mut <&Box<u8> as OutPtr>::OutPtr,
-//    ) -> FfiReturn {
+//    ) {
 //        unsafe {
 //            output.write(input);
 //        }
 //
-//        FfiReturn::Ok
+//        ()
 //    }
 //
 //    #[unsafe(export_name = "__freestanding_return_empty_tuple_result")]
 //    unsafe extern "C" fn __freestanding_return_empty_tuple_result(
 //        input: <bool as ExternC>::CType,
-//    ) -> FfiReturn {
+//    ) {
 //        if input == 1 {
-//            return FfiReturn::ExecutionFail;
+//            return ();
 //        }
 //
-//        FfiReturn::Ok
+//        ()
 //    }
 //}
+
+
