@@ -1,0 +1,11 @@
+error: Uninhabited enums are not allowed in FFI
+ --> tests/ui_fail/uninhabited_enum.rs:5:10
+  |
+5 | pub enum FfiStruct1 {}
+  |          ^^^^^^^^^^
+
+error: Uninhabited enums are not allowed in FFI
+ --> tests/ui_fail/uninhabited_enum.rs:8:10
+  |
+8 | pub enum FfiStruct2 {}
+  |          ^^^^^^^^^^

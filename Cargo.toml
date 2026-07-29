@@ -1,0 +1,28 @@
+[package]
+name = "co3"
+
+version = "0.1.0"
+edition = "2024"
+license = "Apache-2.0"
+authors = ["Marin Veršić <marin.versic101@gmail.com>"]
+repository = "https://github.com/mversic/co3"
+description = "Build C API from Rust"
+keywords = ["FFI", "foreign", "dynamic", "linking", "ABI"]
+
+categories = ["development-tools::ffi"]
+
+[features]
+# Enables sharing mutable references of non-robust transmutable types across FFI.
+# When handing out non-robust mutable references across FFI, it's possible for the caller
+# to modify the given reference and store a trap representation causing immediate UB.
+non_robust_ref_mut = []
+
+[dependencies]
+co3_derive = { path = "derive" }
+
+derive_more = { version = "2.0.1", features = ["display", "constructor"] }
+disjoint_impls = "1.0.8"
+
+[dev-dependencies]
+webassembly-test = "0.1.0"
+getset = "0.1.6"

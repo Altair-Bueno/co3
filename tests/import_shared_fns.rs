@@ -1,0 +1,67 @@
+#![allow(unsafe_code)]
+
+co3::handles! {FfiStruct<bool>}
+co3::decl_fns! {Drop, Clone, Eq, Ord}
+
+co3::extern_type! {
+    /// Struct without a repr attribute is opaque by default
+    #[derive(Clone, PartialEq, Eq, PartialOrd, Ord)]
+    // NOTE: Replaced by the [`co3::extern_type`] macro
+    pub struct FfiStruct<T>;
+}
+
+#[co3::decarbonate]
+impl FfiStruct<bool> {
+    pub fn new(name: String) -> Self {
+        unreachable!("replaced by co3::decarbonate")
+    }
+}
+
+#[test]
+#[allow(clippy::nonminimal_bool)]
+#[webassembly_test::webassembly_test]
+fn import_shared_fns() {
+    let ffi_struct = FfiStruct::new("ipso facto".to_string());
+    let ref_ffi_struct: RefFfiStruct<_> = ffi_struct.as_ref();
+    let cloned_ffi_struct: FfiStruct<_> = Clone::clone(&ref_ffi_struct);
+
+    assert!(*ref_ffi_struct == *cloned_ffi_struct.as_ref());
+    assert!(!(*ref_ffi_struct < *cloned_ffi_struct.as_ref()));
+}
+
+mod ffi {
+    use std::alloc;
+
+    use co3::{FfiReturn, FfiType, slice::RefMutSlice};
+
+    co3::handles! {ExternFfiStruct}
+
+    co3::def_fns! {
+        Drop: {ExternFfiStruct},
+        Clone: {ExternFfiStruct},
+        Eq: {ExternFfiStruct},
+        Ord: {ExternFfiStruct}
+    }
+
+    co3::def_fns! { dealloc }
+
+    #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, FfiType)]
+    #[mineral(opaque)]
+    #[repr(C)]
+    pub struct ExternFfiStruct(pub String);
+
+    #[unsafe(no_mangle)]
+    unsafe extern "C" fn FfiStruct__new(
+        input: RefMutSlice<u8>,
+        output: *mut *mut ExternFfiStruct,
+    ) -> FfiReturn {
+        unsafe {
+            let string = String::from_utf8(input.into_rust().expect("Defined").to_vec());
+            let opaque = Box::new(ExternFfiStruct(string.expect("Valid UTF8 string")));
+
+            output.write(Box::into_raw(opaque));
+        }
+
+        FfiReturn::Ok
+    }
+}
