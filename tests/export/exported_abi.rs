@@ -1,6 +1,6 @@
-use std::{mem::MaybeUninit, ptr::NonNull};
+use core::ffi::c_void;
 
-use co3::{Decode, ReprC, ffi, rust_spec::RustSpec};
+use co3::{ReprC, ffi, rust_spec::RustSpec};
 
 trait AmbiguousX<T, const N: usize> {
     type U;
@@ -13,7 +13,7 @@ trait AmbiguousY {
 }
 
 trait CustomExports {
-    fn xor(&self, by: u8) -> Self;
+    fn xor(&self, by: u8) -> Box<Self>;
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, RustSpec, ReprC)]
@@ -60,20 +60,20 @@ ffi! {
     unsafe fn ambiguous1() -> Ambiguous;
 
     impl OpaqueStructU32 {
-        move fn re_exported() -> Self;
+        move fn re_exported() -> Box<Self>;
     }
 
     impl CustomExports for OpaqueStructU8 {
         #[symbol_name = "xor_u8"]
-        move fn xor(&self, by: u8) -> Self;
+        move fn xor(&self, by: u8) -> Box<Self>;
     }
 
-    impl Clone for OpaqueStructBool {
+    impl Clone for Box<OpaqueStructBool> {
         #[symbol_name = "cclone"]
         move fn clone(&self) -> Self;
     }
 
-    impl Clone for OpaqueStructI32 {
+    impl Clone for Box<OpaqueStructI32> {
         #[symbol_name = "lclone"]
         move fn clone(&self) -> Self;
     }
@@ -105,7 +105,7 @@ ffi! {
 ffi! {
     #![unsafe(export("Rust"))]
 
-    impl Clone for OpaqueStructU8 {
+    impl Clone for Box<OpaqueStructU8> {
         #[symbol_name = "clone"]
         move fn clone(&self) -> Self;
     }
@@ -115,7 +115,7 @@ ffi! {
     }
 
     impl Clone for NonOpaqueStruct<i8> {
-        fn clone(&self) -> Self;
+        move fn clone(&self) -> Self;
     }
 
     impl AmbiguousX<u32, 4> for OpaqueStructU32 {
@@ -156,14 +156,14 @@ impl AmbiguousY for OpaqueStructU64 {
 }
 
 impl CustomExports for OpaqueStructU8 {
-    fn xor(&self, by: u8) -> Self {
-        OpaqueStructU8(self.0 ^ by)
+    fn xor(&self, by: u8) -> Box<Self> {
+        Box::new(OpaqueStructU8(self.0 ^ by))
     }
 }
 
 impl OpaqueStructU32 {
-    fn re_exported() -> Self {
-        OpaqueStructU32(42)
+    fn re_exported() -> Box<Self> {
+        Box::new(OpaqueStructU32(42))
     }
 }
 
@@ -189,32 +189,25 @@ pub const unsafe extern "Rust" fn ambiguous2() -> Ambiguous {
 
 #[test]
 fn exported_abi() {
-    let mut output = MaybeUninit::new(Ambiguous::None as _);
-
     unsafe extern "C" {
         fn export__OpaqueStructU32__ambiguous() -> u8;
 
         fn ambiguous() -> u8;
         fn ambiguous1() -> u8;
 
-        #[symbol_name = "cclone"]
-        fn export_opaque_clone_bool(
-            handle_ptr: *const OpaqueStructBool,
-        ) -> *mut OpaqueStructBool;
-        #[symbol_name = "nclone"]
-        fn export_non_opaque_clone_bool(handle_ptr: *const u8) -> u8;
-        #[symbol_name = "xor_u8"]
-        fn export_opaque_xor_u8(
-            handle_ptr: *const OpaqueStructU8,
-            by: u8,
-        ) -> *mut OpaqueStructU8;
+        #[link_name = "cclone"]
+        fn export_opaque_clone_bool(handle: *const c_void) -> *mut c_void;
+        #[link_name = "nclone"]
+        fn export_non_opaque_clone_bool(
+            handle_ptr: *const <NonOpaqueStruct<bool> as co3::ExternC>::CType,
+        ) -> <NonOpaqueStruct<bool> as co3::ExternC>::CType;
+        #[link_name = "xor_u8"]
+        fn export_opaque_xor_u8(handle_ptr: *const c_void, by: u8) -> *mut c_void;
 
-        fn export__AmbiguousX_u64_3__OpaqueStructU64__ambiguous(
-            a: &[u8; 3],
-        ) -> u8;
+        fn export__AmbiguousX_u64_3__OpaqueStructU64__ambiguous(a: &[u8; 3]) -> u8;
 
-        #[symbol_name = "export__OpaqueStructU32__re_exported"]
-        fn re_exported() -> *mut OpaqueStructU32;
+        #[link_name = "export__OpaqueStructU32__re_exported"]
+        fn re_exported() -> *mut c_void;
     }
 
     unsafe extern "Rust" {
@@ -222,73 +215,62 @@ fn exported_abi() {
         fn kita1() -> u8;
         fn kita2() -> u8;
 
-        #[symbol_name = "export__Clone__NonOpaqueStruct_u8__clone"]
-        fn export_non_opaque_clone_u8(handle: *const u8) -> u8;
-        #[symbol_name = "clone"]
-        fn export_opaque_clone_u8(
-            handle: *const NonNull<Extern>,
-        ) -> *mut OpaqueStructU8;
+        #[link_name = "export__Clone__NonOpaqueStruct_u8__clone"]
+        fn export_non_opaque_clone_u8(
+            handle: *const <NonOpaqueStruct<u8> as co3::ExternC>::CType,
+        ) -> <NonOpaqueStruct<u8> as co3::ExternC>::CType;
+        #[link_name = "clone"]
+        fn export_opaque_clone_u8(handle: *const c_void) -> *mut c_void;
     }
 
     unsafe {
-            export__OpaqueStructU32__ambiguous(output.as_mut_ptr())
-        ;;
-        let inherent: Ambiguous = Decode::decode(output.assume_init()).unwrap();
+        let inherent: Ambiguous = co3::decode(export__OpaqueStructU32__ambiguous()).unwrap();
         assert_eq!(Ambiguous::Inherent, inherent);
 
-            export__AmbiguousX_u64_3__OpaqueStructU64__ambiguous(&[12; 3], output.as_mut_ptr())
-        ;;
-        let ambiguous_x: Ambiguous = Decode::decode(output.assume_init()).unwrap();
+        let ambiguous_x: Ambiguous = co3::decode(
+            export__AmbiguousX_u64_3__OpaqueStructU64__ambiguous(&[12; 3]),
+        )
+        .unwrap();
         assert_eq!(Ambiguous::AmbiguousX, ambiguous_x);
 
-            kita((&[13_i8; 4]).encode(&mut ()), output.as_mut_ptr())
-        ;;
-        let ambiguous_x: Ambiguous = Decode::decode(output.assume_init()).unwrap();
+        let ambiguous_x: Ambiguous = co3::decode(kita(co3::encode(&[13_i8; 4]))).unwrap();
         assert_eq!(Ambiguous::AmbiguousX, ambiguous_x);
 
-        let inherent = co3::decode(unsafe { kita1() }).unwrap();
+        let inherent = co3::decode(kita1()).unwrap();
         assert_eq!(Ambiguous::Inherent, inherent);
 
-        let custom_fn = co3::decode(unsafe { kita2() }).unwrap();
+        let custom_fn = co3::decode(kita2()).unwrap();
         assert_eq!(Ambiguous::Fn, custom_fn);
 
-        let custom_fn = co3::decode(unsafe { ambiguous1() }).unwrap();
+        let custom_fn = co3::decode(ambiguous1()).unwrap();
         assert_eq!(Ambiguous::Fn, custom_fn);
 
-        let custom_fn = co3::decode(unsafe { ambiguous() }).unwrap();
+        let custom_fn = co3::decode(ambiguous()).unwrap();
         assert_eq!(Ambiguous::AmbiguousY, custom_fn);
     }
 
     unsafe {
-        let mut output = MaybeUninit::new(NonNull::dangling());
-
-        let custom_fn = Box::from_raw(re_exported());
+        let custom_fn = Box::from_raw(re_exported().cast::<OpaqueStructU32>());
         assert_eq!(OpaqueStructU32(42_u32), *custom_fn);
     }
 
     unsafe {
-        let opaque_bool = OpaqueStructBool(true);
-        let opaque_u8 = OpaqueStructU8(11_u8);
+        let opaque_bool = Box::new(OpaqueStructBool(true));
+        let opaque_u8 = Box::new(OpaqueStructU8(11_u8));
 
-        let opaque_bool_ptr = &opaque_bool as *const OpaqueStructBool;
-        let opaque_u8_ptr = &opaque_u8 as *const OpaqueStructU8;
+        let opaque_u8_ptr = (&*opaque_u8 as *const OpaqueStructU8).cast::<c_void>();
 
-        let mut opaque_bool_clone_out = MaybeUninit::new(NonNull::dangling());
-
-            export_opaque_clone_bool(opaque_bool_ptr.cast(), opaque_bool_clone_out.as_mut_ptr())
-        ;;
-        let mut opaque_u8_clone_out = MaybeUninit::new(NonNull::dangling());
-            export_opaque_clone_u8(opaque_u8_ptr.cast(), opaque_u8_clone_out.as_mut_ptr(),)
-        ;;
-        let opaque_u8_clone = Box::from_raw(opaque_u8_clone_out.assume_init().as_ptr().cast());
+        let opaque_bool_handle =
+            co3::encode::<&Box<OpaqueStructBool>>(&opaque_bool).cast::<c_void>();
+        let opaque_bool_clone =
+            Box::from_raw(export_opaque_clone_bool(opaque_bool_handle).cast::<OpaqueStructBool>());
+        let opaque_u8_handle = co3::encode::<&Box<OpaqueStructU8>>(&opaque_u8).cast::<c_void>();
+        let opaque_u8_clone =
+            Box::from_raw(export_opaque_clone_u8(opaque_u8_handle).cast::<OpaqueStructU8>());
         assert_eq!(OpaqueStructU8(11_u8), *opaque_u8_clone);
-        let mut opaque_xor_out = MaybeUninit::new(NonNull::dangling());
-            export_opaque_xor_u8(opaque_u8_ptr.cast(), 7, opaque_xor_out.as_mut_ptr())
-        ;;
-        let opaque_xor = Box::from_raw(opaque_xor_out.assume_init().as_ptr().cast());
+        let opaque_xor =
+            Box::from_raw(export_opaque_xor_u8(opaque_u8_ptr, 7).cast::<OpaqueStructU8>());
         assert_eq!(OpaqueStructU8(12_u8), *opaque_xor);
-        let opaque_bool_clone = Box::from_raw(opaque_bool_clone_out.assume_init().as_ptr().cast());
-
         assert_eq!(OpaqueStructBool(true), *opaque_bool_clone);
     }
 
@@ -296,28 +278,16 @@ fn exported_abi() {
         let non_opaque_bool = NonOpaqueStruct::A(true);
         let non_opaque_u8 = NonOpaqueStruct::A(11_u8);
 
-        let mut non_opaque_bool_clone_out = MaybeUninit::new(171);
-
-            export_non_opaque_clone_bool(
-                (&non_opaque_bool).encode(&mut ()),
-                non_opaque_bool_clone_out.as_mut_ptr(),
-            )
-        ;;
-        let mut non_opaque_u8_clone_out = MaybeUninit::new(171);
-            export_non_opaque_clone_u8(
-                (&non_opaque_u8).encode(&mut ()),
-                non_opaque_u8_clone_out.as_mut_ptr(),
-            )
-        ;;
-        let non_opaque_u8_clone =
-            <NonOpaqueStruct<u8> as Decode>::decode(non_opaque_u8_clone_out.assume_init()).unwrap();
+        let non_opaque_bool_clone = co3::decode::<NonOpaqueStruct<bool>>(
+            export_non_opaque_clone_bool(co3::encode(&non_opaque_bool)),
+        )
+        .unwrap();
+        let non_opaque_u8_clone = co3::decode::<NonOpaqueStruct<u8>>(export_non_opaque_clone_u8(
+            co3::encode(&non_opaque_u8),
+        ))
+        .unwrap();
         assert_eq!(NonOpaqueStruct::A(11_u8), non_opaque_u8_clone);
-
-        let non_opaque_bool_clone =
-            <NonOpaqueStruct<bool> as Decode>::decode(non_opaque_bool_clone_out.assume_init())
-                .unwrap();
 
         assert_eq!(NonOpaqueStruct::A(true), non_opaque_bool_clone);
     }
 }
-

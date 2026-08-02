@@ -25,6 +25,7 @@ pub(super) struct ReprCAttrs {
     pub(super) is_valid: Option<syn::ExprClosure>,
     pub(super) handle_id: Option<syn::Type>,
     pub(super) is_view: bool,
+    pub(super) is_wide_data: bool,
 }
 
 #[derive(Default)]
@@ -48,6 +49,14 @@ fn parse_repr_c_attrs(attrs: &[Attribute]) -> syn::Result<ReprCAttrs> {
                     return Err(meta.error("Duplicate `view` within attribute"));
                 }
                 repr_c.is_view = true;
+                return Ok(());
+            }
+
+            if meta.path.is_ident("__wide_data") {
+                if repr_c.is_wide_data {
+                    return Err(meta.error("Duplicate `__wide_data` within attribute"));
+                }
+                repr_c.is_wide_data = true;
                 return Ok(());
             }
 
@@ -89,6 +98,7 @@ fn parse_repr_c_attrs(attrs: &[Attribute]) -> syn::Result<ReprCAttrs> {
         && repr_c.is_valid.is_none()
         && repr_c.handle_id.is_none()
         && !repr_c.is_view
+        && !repr_c.is_wide_data
     {
         return Err(syn::Error::new_spanned(
             attrs
@@ -214,7 +224,9 @@ pub(crate) fn derive_repr_c(input: &syn::DeriveInput) -> syn::Result<TokenStream
     let tokens = match &input.data {
         syn::Data::Struct(_) => {
             let item = derive_item(repr_attr.as_ref(), input, &repr_c_attrs, &[]);
-            let wide = wide::expand(input, repr_attr.as_ref())?;
+            let wide = (!repr_c_attrs.is_wide_data)
+                .then(|| wide::expand(input, repr_attr.as_ref()))
+                .transpose()?;
             quote! { #item #wide }
         }
         syn::Data::Enum(data) if data.variants.is_empty() => {

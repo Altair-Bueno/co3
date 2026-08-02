@@ -62,6 +62,7 @@ impl<R: InteriorMut + ?Sized> InteriorMut for alloc::boxed::Box<R> {
 }
 
 #[cfg(test)]
+#[cfg(all(feature = "alloc", feature = "derive"))]
 mod tests {
     use alloc::boxed::Box;
     use core::cell::UnsafeCell;

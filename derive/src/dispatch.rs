@@ -13,7 +13,7 @@ use crate::{
         self, emit_extern_definition, gen_definition_body, gen_failure_panic,
         gen_fn_signature_check, gen_input_decode_stmts, gen_store_sync_stmts, gen_sync_check,
         gen_sync_error, gen_unknown_handle_error, is_spread_arg, item_fn_input_arg_type,
-        item_fn_output_type, merge_generics, normalize_fn_signature, strip_erased_type_params,
+        item_fn_output_type, merge_generics, normalize_fn_signature, strip_dispatch_params,
     },
     parse::FailureMode,
     utils::{
@@ -102,7 +102,7 @@ pub(crate) fn gen_dispatch_export(
         normalize_fn_signature(&mut item.sig, Some(self_ty));
         let erased_layout_checks = gen_dispatch_erased_layout_checks(generics, &item.sig, &args);
         monomorphize_predicates(&mut item.sig.generics, &args);
-        strip_erased_type_params(&mut item.sig.generics);
+        strip_dispatch_params(&mut item.sig.generics);
 
         let fn_by_val = item.attrs.iter().any(crate::ffi_fn::is_by_val_attr);
         let (id_arg_names, handle_ids): (Vec<_>, Vec<_>) = item

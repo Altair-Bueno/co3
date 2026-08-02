@@ -447,16 +447,10 @@ pub(crate) fn merge_generics(impl_generics: syn::Generics, fn_generics: &mut syn
     }
 }
 
-pub(crate) fn strip_erased_type_params(generics: &mut syn::Generics) {
+pub(crate) fn strip_dispatch_params(generics: &mut syn::Generics) {
     generics.params = core::mem::take(&mut generics.params)
         .into_iter()
-        .filter(|param| {
-            !matches!(
-                param,
-                syn::GenericParam::Type(param)
-                    if param.attrs.iter().any(crate::utils::is_type_erased)
-            )
-        })
+        .filter(|param| matches!(param, syn::GenericParam::Lifetime(_)))
         .collect();
 }
 

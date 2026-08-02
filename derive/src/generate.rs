@@ -12,7 +12,7 @@ use crate::{
     },
     ffi_fn::{
         self, emit_extern_definition, gen_extern_fn_signature, merge_generics,
-        normalize_fn_signature, strip_erased_type_params,
+        normalize_fn_signature, strip_dispatch_params,
     },
     parse::{FailureMode, MacroFeatures},
     symbol_name_value,
@@ -78,7 +78,7 @@ pub(crate) fn expand_export_decls(
                 ident,
                 &ty.generics,
                 // TODO: This is not correct, but I don't think it matters whether it's ZST or not
-                quote! { co3::rust_spec::size::Sized<co3::rust_spec::size::NonZst> },
+                quote! { co3::rust_spec::size::Sized<co3::rust_spec::Gt<rust_spec::Zero>> },
                 quote! { co3::rust_spec::niche::WithoutNiche },
             );
             let size_check = gen_non_zst_sized_check(ident, &ty.generics);
@@ -197,7 +197,7 @@ pub(crate) fn expand_extern_decls(
                 if let Some(args) = args {
                     strip_erased_param_predicates(&impl_.generics, &mut item.sig.generics);
                     erase_handle_types(&impl_.generics, self_id, &mut item.sig, args);
-                    strip_erased_type_params(&mut item.sig.generics);
+                    strip_dispatch_params(&mut item.sig.generics);
                 }
 
                 let decl = gen_extern_fn_signature(item.sig, failure_mode);
@@ -722,8 +722,9 @@ fn gen_owned_repr_c_impls(ident: &syn::Ident, generics: &syn::Generics) -> Token
 
         unsafe impl #impl_generics co3::rust_spec::RustSpec for #owned_repr_c_name #ty_generics #where_clause {
             type Layout = co3::rust_spec::Stable;
+            type Size = co3::rust_spec::size::Sized<co3::rust_spec::Gt<rust_spec::Zero>>;
+            type Alignment = <usize as co3::rust_spec::RustSpec>::Alignment;
             type Trap = co3::rust_spec::layout::Robust;
-            type Size = co3::rust_spec::size::Sized<co3::rust_spec::size::NonZst>;
             type Niche = co3::rust_spec::niche::WithoutNiche;
             type Mutability = co3::rust_spec::mutability::Exclusive;
             type __IndirectTrap = co3::rust_spec::layout::Robust;
@@ -784,8 +785,9 @@ fn gen_owned_extern_type_impls(ident: &syn::Ident, generics: &syn::Generics) -> 
     quote! {
         unsafe impl #impl_generics co3::rust_spec::RustSpec for #owned_ident #ty_generics #where_clause {
             type Layout = co3::rust_spec::Stable;
+            type Size = co3::rust_spec::size::Sized<co3::rust_spec::Gt<rust_spec::Zero>>;
+            type Alignment = <usize as co3::rust_spec::RustSpec>::Alignment;
             type Trap = co3::rust_spec::layout::NonRobust;
-            type Size = co3::rust_spec::size::Sized<co3::rust_spec::size::NonZst>;
             type Niche = co3::rust_spec::niche::WithNiche<co3::rust_spec::Stable>;
             type Mutability = co3::rust_spec::mutability::Exclusive;
             type __IndirectTrap = co3::rust_spec::layout::Robust;
@@ -883,8 +885,10 @@ fn derive_opaque_item(
 
         unsafe impl #impl_generics co3::rust_spec::RustSpec for #ident #ty_generics #where_clause {
             type Layout = co3::rust_spec::Stable;
-            type Trap = co3::rust_spec::layout::Robust;
             type Size = #size_kind;
+            // TODO: This is just useless IMO
+            type Alignment = co3::rust_spec::One;
+            type Trap = co3::rust_spec::layout::Robust;
             type Niche = #niche_kind;
             type Mutability = co3::rust_spec::mutability::Exclusive;
             type __IndirectTrap = co3::rust_spec::layout::Robust;

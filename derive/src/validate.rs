@@ -30,7 +30,7 @@ pub(crate) fn validate_niche_value_sized_tail(fields: &syn::Fields) -> Result<()
         }
     }
 
-    let Some(field) = fields.iter().last() else {
+    let Some(field) = fields.iter().next_back() else {
         return Ok(());
     };
 

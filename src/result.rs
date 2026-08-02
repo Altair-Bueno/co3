@@ -162,11 +162,13 @@ impl<T: Copy, E: Copy> TryFrom<ReprCResult<T, E>> for Result<T, E> {
 unsafe impl<T: RustSpec + Copy, E: RustSpec + Copy> RustSpec for ReprCResult<T, E>
 where
     T: RustSpec<Layout: Add<<E as RustSpec>::Layout>, Trap: Add<E::Trap>>,
+    T::Alignment: rust_spec::Max<E::Alignment>,
     T::__IndirectTrap: Add<E::__IndirectTrap>,
 {
     type Layout = <<T as RustSpec>::Layout as Add<<E as RustSpec>::Layout>>::Output;
+    type Size = rust_spec::size::Sized<rust_spec::Gt<rust_spec::Zero>>;
+    type Alignment = <T::Alignment as rust_spec::Max<E::Alignment>>::Output;
     type Trap = <<T as RustSpec>::Trap as Add<<E as RustSpec>::Trap>>::Output;
-    type Size = rust_spec::size::Sized<rust_spec::size::NonZst>;
     type Niche = WithoutNiche;
     type Mutability = rust_spec::mutability::Exclusive;
     type __IndirectTrap = <T::__IndirectTrap as Add<E::__IndirectTrap>>::Output;

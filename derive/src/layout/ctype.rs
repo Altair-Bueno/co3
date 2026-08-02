@@ -53,7 +53,6 @@ fn derive_ctype_struct<const ADD_COPY: bool>(
     fields: &syn::Fields,
 ) -> TokenStream {
     let ctype_def = gen_ctype_struct_item::<ADD_COPY>(repr, vis, name, generics, fields);
-
     let ctype_impls = gen_struct_ctype_impls::<ADD_COPY>(&ctype_def);
 
     quote! {
@@ -109,8 +108,8 @@ fn derive_repr_c_data_enum_ctype(
     let ctype_bounds = gen_union_extern_c_bounds(generics, variants);
 
     let ctype_def: syn::ItemStruct = parse_quote! {
-        #[repr(C)]
         #[doc(hidden)]
+        #[repr(C)]
         #vis struct #ctype_name #impl_generics
         where
             #(#ctype_bounds,)*
@@ -178,9 +177,8 @@ fn gen_ctype_struct_item<const ADD_COPY: bool>(
     };
 
     parse_quote! {
-        #repr
-        #[derive(co3::rust_spec::RustSpec)]
         #[doc(hidden)]
+        #repr
         #vis #ctype
     }
 }
@@ -207,9 +205,9 @@ fn gen_data_enum_union(
     let union_extern_c_bounds = gen_union_extern_c_bounds(generics, variants);
 
     let union_def = parse_quote! {
-        #[repr(C)]
-        #[doc(hidden)]
         #[expect(non_snake_case)]
+        #[doc(hidden)]
+        #[repr(C)]
         #vis union #union_name #impl_generics
         where
             #(#union_extern_c_bounds,)*
@@ -309,7 +307,7 @@ fn gen_struct_ctype_impls<const ADD_COPY: bool>(ctype: &syn::ItemStruct) -> Toke
     let copy_impls = gen_copy_impls::<ADD_COPY>(&ctype.ident, &ctype.generics, &fields);
     let default_impl = gen_default_impl::<ADD_COPY>(&ctype.ident, &ctype.generics, &fields);
     let robust_impls = gen_robust_impls::<ADD_COPY>(&ctype.ident, &ctype.generics, &fields);
-
+    let type_spec_impl = gen_type_spec_impl(&ctype.ident, &ctype.generics, &fields);
     let const_view = gen_ctype_struct_view::<ADD_COPY>(ctype.clone(), false);
     let mut_view = gen_ctype_struct_view::<ADD_COPY>(ctype.clone(), true);
 
@@ -319,6 +317,7 @@ fn gen_struct_ctype_impls<const ADD_COPY: bool>(ctype: &syn::ItemStruct) -> Toke
         #copy_impls
         #default_impl
         #robust_impls
+        #type_spec_impl
 
         #const_view
         #mut_view
@@ -333,8 +332,7 @@ fn gen_union_ctype_impls(ctype: &syn::ItemUnion) -> TokenStream {
     let copy_impls = gen_copy_impls::<true>(&ctype.ident, &ctype.generics, &fields);
     let default_impl = gen_default_impl::<true>(&ctype.ident, &ctype.generics, &fields);
     let robust_impls = gen_robust_impls::<true>(&ctype.ident, &ctype.generics, &fields);
-    let type_spec_impl = gen_repr_c_type_spec_impl(&ctype.ident, &ctype.generics);
-
+    let type_spec_impl = gen_type_spec_impl(&ctype.ident, &ctype.generics, &fields);
     let const_view = gen_ctype_union_view(ctype.clone(), false);
     let mut_view = gen_ctype_union_view(ctype.clone(), true);
 
@@ -367,7 +365,7 @@ fn gen_robust_impls<const ADD_COPY: bool>(
     let for_dummy = (generics.type_params().count() == 0).then_some(quote! { for<'_dummy> });
 
     let type_spec_bound = (!ADD_COPY).then(|| {
-        quote! { #for_dummy Self: co3::rust_spec::RustSpec<Size = co3::rust_spec::size::Sized<co3::rust_spec::size::NonZst>>, }
+        quote! { #for_dummy Self: co3::rust_spec::RustSpec<Size = co3::rust_spec::size::Sized<co3::rust_spec::Gt<rust_spec::Zero>>>, }
     });
 
     quote! {
@@ -391,19 +389,49 @@ fn gen_robust_impls<const ADD_COPY: bool>(
     }
 }
 
-fn gen_repr_c_type_spec_impl(ident: &syn::Ident, generics: &syn::Generics) -> TokenStream {
+fn gen_type_spec_impl(
+    ident: &syn::Ident,
+    generics: &syn::Generics,
+    fields: &[&syn::Type],
+) -> TokenStream {
     let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
+    let predicates = where_clause.as_ref().map(|w| &w.predicates);
+    let (alignment, alignment_bounds) = gen_alignment_family(fields);
 
     quote! {
-        unsafe impl #impl_generics co3::rust_spec::RustSpec for #ident #ty_generics #where_clause {
+        unsafe impl #impl_generics co3::rust_spec::RustSpec for #ident #ty_generics
+        where
+            #(#alignment_bounds,)*
+            #predicates
+        {
             type Layout = co3::rust_spec::Stable;
+            type Size = co3::rust_spec::size::Sized<co3::rust_spec::Gt<rust_spec::Zero>>;
+            type Alignment = #alignment;
             type Trap = co3::rust_spec::layout::Robust;
-            type Size = co3::rust_spec::size::Sized<co3::rust_spec::size::NonZst>;
             type Niche = co3::rust_spec::niche::WithoutNiche;
             type Mutability = co3::rust_spec::mutability::Exclusive;
             type __IndirectTrap = co3::rust_spec::layout::Robust;
         }
     }
+}
+
+fn gen_alignment_family(fields: &[&syn::Type]) -> (TokenStream, Vec<TokenStream>) {
+    let mut alignment = quote! { co3::rust_spec::One };
+    let mut bounds = Vec::with_capacity(fields.len());
+
+    for field in fields {
+        let field_alignment = quote! { <#field as co3::rust_spec::RustSpec>::Alignment };
+
+        bounds.push(quote! {
+            #field: co3::rust_spec::RustSpec<
+                Alignment: co3::rust_spec::Max<#alignment>,
+            >
+        });
+
+        alignment = quote! { <#field_alignment as co3::rust_spec::Max<#alignment>>::Output };
+    }
+
+    (alignment, bounds)
 }
 
 fn gen_identity_codec_impls<const ADD_COPY: bool>(
@@ -521,12 +549,14 @@ fn gen_ctype_struct_view<const ADD_COPY: bool>(
     let copy_impls = gen_copy_impls::<ADD_COPY>(&ctype.ident, &ctype.generics, &fields);
     let default_impl = gen_default_impl::<ADD_COPY>(&ctype.ident, &ctype.generics, &fields);
     let robust_impls = gen_robust_impls::<ADD_COPY>(&ctype.ident, &ctype.generics, &fields);
+    let type_spec_impl = gen_type_spec_impl(&ctype.ident, &ctype.generics, &fields);
 
     quote! {
         #ctype
         #copy_impls
         #default_impl
         #robust_impls
+        #type_spec_impl
     }
 }
 
@@ -543,7 +573,7 @@ fn gen_ctype_union_view(mut ctype: syn::ItemUnion, is_mut: bool) -> TokenStream 
     let copy_impls = gen_copy_impls::<true>(&ctype.ident, &ctype.generics, &fields);
     let default_impl = gen_default_impl::<true>(&ctype.ident, &ctype.generics, &fields);
     let robust_impls = gen_robust_impls::<true>(&ctype.ident, &ctype.generics, &fields);
-    let type_spec_impl = gen_repr_c_type_spec_impl(&ctype.ident, &ctype.generics);
+    let type_spec_impl = gen_type_spec_impl(&ctype.ident, &ctype.generics, &fields);
 
     quote! {
         #ctype

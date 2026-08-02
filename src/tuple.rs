@@ -19,7 +19,7 @@
 //! ```rust
 //! use core::mem::size_of;
 //!
-//! use co3::{option::ReprCOption, tuple::ReprCTuple3, ExternC, Encode};
+//! use co3::{option::ReprCOption, soft_encode, tuple::ReprCTuple3, ExternC};
 //!
 //! type TupleWithNiche1<'a> = (u8, bool, &'a bool);
 //! type TupleWithNiche2<'a> = (u8, &'a bool, bool);
@@ -47,15 +47,15 @@
 //! let mut store3 = Default::default();
 //!
 //! assert_eq!(
-//!     none_value_1.soft_encode(&mut store1),
+//!     soft_encode(none_value_1, &mut store1),
 //!     ReprCTuple3(0, 2, core::ptr::null())
 //! );
 //! assert_eq!(
-//!     none_value_2.soft_encode(&mut store2),
+//!     soft_encode(none_value_2, &mut store2),
 //!     ReprCTuple3(0, core::ptr::null(), 0)
 //! );
 //! assert_eq!(
-//!     none_value_3.soft_encode(&mut store3),
+//!     soft_encode(none_value_3, &mut store3),
 //!     ReprCOption::None()
 //! );
 //! ```
@@ -64,7 +64,7 @@ use disjoint_impls::disjoint_impls;
 use rust_spec::{
     RustSpec,
     niche::{NicheStabilityKind, WithNiche, WithoutNiche},
-    size::NonZst,
+    Gt,
 };
 
 use crate::{
@@ -216,7 +216,7 @@ macro_rules! impl_tuple {
 
         unsafe impl<$($ty: ReprC + Copy),*> CFnArg for $ffi_ty<$($ty),*>
         where
-            Self: RustSpec<Size = rust_spec::size::Sized<NonZst>>,
+            Self: RustSpec<Size = rust_spec::size::Sized<rust_spec::Gt<rust_spec::Zero>>>,
         {}
 
         impl<$($ty),*> From<($( $ty, )*)> for $ffi_ty<$($ty),*> {
@@ -384,34 +384,33 @@ impl_tuple_niche_recursive! {
 mod tests {
     #[cfg(feature = "alloc")]
     use alloc::{boxed::Box, vec::Vec};
-    use core::num::NonZero;
-    use rust_spec::size::{Sized as Co3Sized, Zst};
+    use core::num::NonZero as StdNonZero;
 
-    use static_assertions::{assert_impl_all, assert_not_impl_any};
+    use rust_spec::{Gt, size::{Sized as Co3Sized, Zero}};
+    use static_assertions::assert_impl_all;
+    #[cfg(feature = "alloc")]
+    use static_assertions::assert_not_impl_any;
 
     use super::*;
-    use crate::{
-        Decode, Encode,
-        option::ReprCOption,
-        stored::{DecodeOwned, EncodeOwned},
-    };
+    use crate::{Decode, Encode, option::ReprCOption};
     #[cfg(feature = "alloc")]
     use crate::{
         boxed::{CBox, CBoxedSlice},
         slice::{CSlice, CSliceMut},
+        stored::{DecodeOwned, EncodeOwned},
     };
 
     #[test]
     fn tuple_size_family_tracks_zst_fields() {
-        assert_impl_all!(ReprCTuple2<(), ()>: RustSpec<Size = Co3Sized<Zst>>);
-        assert_impl_all!(ReprCTuple3<(), (), ()>: RustSpec<Size = Co3Sized<Zst>>);
+        assert_impl_all!(ReprCTuple2<(), ()>: RustSpec<Size = Co3Sized<Zero>>);
+        assert_impl_all!(ReprCTuple3<(), (), ()>: RustSpec<Size = Co3Sized<Zero>>);
     }
 
     #[test]
     fn tuple_size_family_tracks_non_zst_fields() {
-        assert_impl_all!(ReprCTuple2<(), u8>: RustSpec<Size = rust_spec::size::Sized<NonZst>>);
-        assert_impl_all!(ReprCTuple2<u8, ()>: RustSpec<Size = rust_spec::size::Sized<NonZst>>);
-        assert_impl_all!(ReprCTuple3<(), u8, ()>: RustSpec<Size = rust_spec::size::Sized<NonZst>>);
+        assert_impl_all!(ReprCTuple2<(), u8>: RustSpec<Size = rust_spec::size::Sized<rust_spec::Gt<rust_spec::Zero>>>);
+        assert_impl_all!(ReprCTuple2<u8, ()>: RustSpec<Size = rust_spec::size::Sized<rust_spec::Gt<rust_spec::Zero>>>);
+        assert_impl_all!(ReprCTuple3<(), u8, ()>: RustSpec<Size = rust_spec::size::Sized<rust_spec::Gt<rust_spec::Zero>>>);
     }
 
     #[test]
@@ -477,60 +476,60 @@ mod tests {
     #[test]
     fn stored_tuple_3_with_niche() {
         // NOTE: Confirms niche is taken from the first available element
-        assert_eq!(<(u8, NonZero<u8>, bool)>::NICHE_VALUE, ReprCTuple3(0, 0, 0));
+        assert_eq!(<(u8, StdNonZero<u8>, bool)>::NICHE_VALUE, ReprCTuple3(0, 0, 0));
 
-        assert_impl_all!((u8, NonZero<u8>, bool):
+        assert_impl_all!((u8, StdNonZero<u8>, bool):
             Niche<CType = ReprCTuple3<u8, u8, u8>>,
             Decode<'static>,
             Encode,
         );
 
-        assert_impl_all!(&(u8, NonZero<u8>, bool):
+        assert_impl_all!(&(u8, StdNonZero<u8>, bool):
             Niche<CType = *const ReprCTuple3<u8, u8, u8>>,
             Decode<'static>,
             Encode,
         );
-        assert_impl_all!(&mut (u8, NonZero<u8>, bool):
+        assert_impl_all!(&mut (u8, StdNonZero<u8>, bool):
             Niche<CType = *mut ReprCTuple3<u8, u8, u8>>,
             Decode<'static>,
             Encode,
         );
         #[cfg(feature = "alloc")]
-        assert_impl_all!(Box<(u8, NonZero<u8>, bool)>:
+        assert_impl_all!(Box<(u8, StdNonZero<u8>, bool)>:
             Niche<CType = CBox<ReprCTuple3<u8, u8, u8>>>,
             DecodeOwned<'static>,
             EncodeOwned,
         );
         #[cfg(feature = "alloc")]
-        assert_impl_all!(&[(u8, NonZero<u8>, bool)]:
+        assert_impl_all!(&[(u8, StdNonZero<u8>, bool)]:
             Niche<CType = CSlice<ReprCTuple3<u8, u8, u8>>>,
             Decode<'static>,
             Encode,
         );
         #[cfg(feature = "alloc")]
-        assert_impl_all!(&mut [(u8, NonZero<u8>, bool)]:
+        assert_impl_all!(&mut [(u8, StdNonZero<u8>, bool)]:
             Niche<CType = CSliceMut<ReprCTuple3<u8, u8, u8>>>,
             Decode<'static>,
             Encode,
         );
         #[cfg(feature = "alloc")]
-        assert_impl_all!(Box<[(u8, NonZero<u8>, bool)]>:
+        assert_impl_all!(Box<[(u8, StdNonZero<u8>, bool)]>:
             Niche<CType = CBoxedSlice<ReprCTuple3<u8, u8, u8>>>,
             DecodeOwned<'static>,
             EncodeOwned,
         );
         #[cfg(feature = "alloc")]
-        assert_impl_all!(Vec<(u8, NonZero<u8>, bool)>:
+        assert_impl_all!(Vec<(u8, StdNonZero<u8>, bool)>:
             Niche<CType = CBoxedSlice<ReprCTuple3<u8, u8, u8>>>,
             DecodeOwned<'static>,
             EncodeOwned,
         );
-        assert_impl_all!([(u8, NonZero<u8>, bool); 2]:
+        assert_impl_all!([(u8, StdNonZero<u8>, bool); 2]:
             Niche<CType = [ReprCTuple3<u8, u8, u8>; 2]>,
             Decode<'static>,
             Encode,
         );
-        assert_impl_all!(Option<(u8, NonZero<u8>, bool)>:
+        assert_impl_all!(Option<(u8, StdNonZero<u8>, bool)>:
             // TODO: Depends on: https://github.com/mversic/co3/issues/33
             //Niche<CType = ReprCTuple3<u8, u8, u8>>,
             Decode<'static>,
@@ -538,8 +537,8 @@ mod tests {
         );
 
         #[cfg(feature = "alloc")]
-        assert_not_impl_any!(Box<[(u8, NonZero<u8>, u8)]>: Encode, Decode<'static>);
+        assert_not_impl_any!(Box<[(u8, StdNonZero<u8>, u8)]>: Encode, Decode<'static>);
         #[cfg(feature = "alloc")]
-        assert_not_impl_any!(Vec<(u8, NonZero<u8>, u8)>: Encode, Decode<'static>);
+        assert_not_impl_any!(Vec<(u8, StdNonZero<u8>, u8)>: Encode, Decode<'static>);
     }
 }

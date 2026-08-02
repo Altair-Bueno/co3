@@ -69,7 +69,7 @@ fn validate_last_field(
 }
 
 fn last_field(fields: &syn::Fields) -> Option<(&syn::Field, TokenStream, TokenStream)> {
-    let (index, field) = fields.iter().enumerate().last()?;
+    let (index, field) = fields.iter().enumerate().next_back()?;
 
     let (field_ref, field_member) = field.ident.as_ref().map_or_else(
         || {
@@ -114,6 +114,7 @@ fn gen_data_def(
         .attrs
         .iter()
         .filter(|attr| attr.path().is_ident("repr") || attr.path().is_ident("cfg"));
+    let derives = regular_derives(input);
 
     let vis = &input.vis;
     let fields_len = fields.len();
@@ -121,45 +122,98 @@ fn gen_data_def(
     let (impl_generics, _, where_clause) = input.generics.split_for_impl();
     let predicates = where_clause.as_ref().map(|w| &w.predicates);
 
-    let suffix = match fields {
-        syn::Fields::Named(fields) => {
-            let fields = fields.named.iter().enumerate().map(|(index, field)| {
-                let vis = &field.vis;
-                let name = &field.ident;
+    let suffix =
+        match fields {
+            syn::Fields::Named(fields) => {
+                let fields = fields.named.iter().enumerate().map(|(index, field)| {
+                    let attrs = field.attrs.iter().filter(|attr| {
+                        attr.path().is_ident("cfg") || attr.path().is_ident("cfg_attr")
+                    });
+                    let vis = &field.vis;
+                    let name = &field.ident;
 
-                let is_last_field = index == fields_len - 1;
-                let ty = data_field_ty(&field.ty, is_last_field);
+                    let is_last_field = index == fields_len - 1;
+                    let ty = data_field_ty(&field.ty, is_last_field);
 
-                quote! { #vis #name: #ty }
-            });
+                    quote! { #(#attrs)* #vis #name: #ty }
+                });
 
-            quote! {
-                where #wide_predicate, #predicates
-                { #(#fields,)* }
+                quote! {
+                    where #wide_predicate, #predicates
+                    { #(#fields,)* }
+                }
             }
-        }
-        syn::Fields::Unnamed(fields) => {
-            let fields = fields.unnamed.iter().enumerate().map(|(index, field)| {
-                let vis = &field.vis;
+            syn::Fields::Unnamed(fields) => {
+                let fields = fields.unnamed.iter().enumerate().map(|(index, field)| {
+                    let attrs = field.attrs.iter().filter(|attr| {
+                        attr.path().is_ident("cfg") || attr.path().is_ident("cfg_attr")
+                    });
+                    let vis = &field.vis;
 
-                let is_last_field = index == fields_len - 1;
-                let ty = data_field_ty(&field.ty, is_last_field);
+                    let is_last_field = index == fields_len - 1;
+                    let ty = data_field_ty(&field.ty, is_last_field);
 
-                quote! { #vis #ty }
-            });
+                    quote! { #(#attrs)* #vis #ty }
+                });
 
-            quote! {
-                ( #(#fields,)*)
-                where #wide_predicate, #predicates;
+                quote! {
+                    ( #(#fields,)*)
+                    where #wide_predicate, #predicates;
+                }
             }
-        }
-        syn::Fields::Unit => quote! {;},
-    };
+            syn::Fields::Unit => quote! {;},
+        };
 
     quote! {
+        // FIXME:
+        #[derive(#(#derives, )*)] //co3::rust_spec::RustSpec, co3::ReprC)]
+        //#[reprC(__wide_data)]
         #(#attrs)*
         #vis struct #name #impl_generics #suffix
     }
+}
+
+fn regular_derives(input: &syn::DeriveInput) -> Vec<syn::Path> {
+    const SUPPORTED: &[&str] = &[
+        "Clone",
+        "Copy",
+        "Debug",
+        "Default",
+        "Eq",
+        "Hash",
+        "Ord",
+        "PartialEq",
+        "PartialOrd",
+    ];
+
+    let mut derives = Vec::new();
+    for attr in input
+        .attrs
+        .iter()
+        .filter(|attr| attr.path().is_ident("derive"))
+    {
+        let _ = attr.parse_nested_meta(|meta| {
+            let Some(name) = meta
+                .path
+                .segments
+                .last()
+                .map(|segment| segment.ident.to_string())
+            else {
+                return Ok(());
+            };
+
+            if SUPPORTED.contains(&name.as_str())
+                && !derives.iter().any(|path: &syn::Path| {
+                    path.segments.last().map(|segment| &segment.ident)
+                        == meta.path.segments.last().map(|segment| &segment.ident)
+                })
+            {
+                derives.push(meta.path.clone());
+            }
+            Ok(())
+        });
+    }
+    derives
 }
 
 fn data_field_ty(ty: &syn::Type, is_last_field: bool) -> TokenStream {

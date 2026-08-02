@@ -3,8 +3,17 @@
 //! to implement [`RustSpec`](rust_spec::RustSpec) and benefit from automatic
 //! implementation of [`ExternC`].
 //!
-//! ```rust,ignore
-//! # use co3::{ExternC, ffi};
+//! ```rust
+//! # mod ffi {
+//! # use co3::ffi;
+//!
+//! #[cfg(not(feature = "ffi-extern"))]
+//! struct Local(u8);
+//!
+//! #[cfg(not(feature = "ffi-extern"))]
+//! fn take_local_ref(a: &Local) {
+//!     unimplemented!()
+//! }
 //!
 //! ffi! {
 //!     #![cfg_attr(not(feature = "ffi-extern"), unsafe(export("C")))]
@@ -13,8 +22,10 @@
 //!     #![symbol_prefix = "provider"]
 //!
 //!     type Local;
-//!     fn make_local() -> Local;
+//!
+//!     fn take_local_ref(a: &Local);
 //! }
+//! # }
 //! ```
 #![cfg_attr(feature = "allocator-api", feature(allocator_api))]
 #![no_std]
@@ -31,11 +42,13 @@ pub use co3_derive::*;
 use disjoint_impls::disjoint_impls;
 pub use rust_spec;
 use rust_spec::{
-    RustSpec, Stable, Unstable,
+    One, RustSpec,
     mutability::{Exclusive, Interior},
     niche::{NicheStabilityKind, WithNiche, WithoutNiche},
-    size::{ExternTypeLike, MetaSized, MetadataKind, NonZst, SizedKind, SliceLike, Zst},
+    size::{ExternTypeLike, MetaSized, Gt, SizedKind, SliceLike, Zero},
 };
+#[cfg(feature = "alloc")]
+use rust_spec::{Stable, Unstable, size::MetadataKind};
 // TODO: I don't like having to reexport macros from other crates
 #[doc(hidden)]
 pub use impls::impls;
@@ -72,8 +85,11 @@ trait Thin {}
 impl<K: SizedKind> Thin for rust_spec::size::Sized<K> {}
 impl Thin for ExternTypeLike {}
 
+#[cfg(feature = "alloc")]
 trait Dst {}
+#[cfg(feature = "alloc")]
 impl Dst for ExternTypeLike {}
+#[cfg(feature = "alloc")]
 impl<K: MetadataKind> Dst for MetaSized<K> {}
 
 pub trait Error {
@@ -198,6 +214,7 @@ disjoint_impls! {
         type CType = R::CType;
     }
 
+    // TODO: The next 3 impls are the same
     impl<R: ExternC, E: ExternC, K: SizedKind> ExternC for Result<R, E>
     where
         R: RustSpec<Size = rust_spec::size::Sized<K>>,
@@ -209,17 +226,41 @@ disjoint_impls! {
     {
         type CType = ReprCResult<R::CType, E::CType>;
     }
+    impl<R: ExternC, E: ExternC, N: NicheStabilityKind> ExternC for Result<R, E>
+    where
+        R: RustSpec<Size = rust_spec::size::Sized<rust_spec::Gt<rust_spec::Zero>>, Niche = WithNiche<N>>,
+        E: RustSpec<
+            Size = rust_spec::size::Sized<Zero>,
+            Alignment = rust_spec::Gt<rust_spec::One>,
+        >,
+        <R as ExternC>::CType: Copy,
+        <E as ExternC>::CType: Copy,
+    {
+        type CType = ReprCResult<R::CType, E::CType>;
+    }
+    impl<R: ExternC, E: ExternC, N: NicheStabilityKind> ExternC for Result<R, E>
+    where
+        R: RustSpec<
+            Size = rust_spec::size::Sized<Zero>,
+            Alignment = rust_spec::Gt<rust_spec::One>,
+        >,
+        E: RustSpec<Size = rust_spec::size::Sized<rust_spec::Gt<rust_spec::Zero>>, Niche = WithNiche<N>>,
+        <R as ExternC>::CType: Copy,
+        <E as ExternC>::CType: Copy,
+    {
+        type CType = ReprCResult<R::CType, E::CType>;
+    }
     impl<R: ExternC, E, N: NicheStabilityKind> ExternC for Result<R, E>
     where
-        R: RustSpec<Size = rust_spec::size::Sized<NonZst>, Niche = WithNiche<N>>,
-        E: RustSpec<Size = rust_spec::size::Sized<Zst>>,
+        R: RustSpec<Size = rust_spec::size::Sized<rust_spec::Gt<rust_spec::Zero>>, Niche = WithNiche<N>>,
+        E: RustSpec<Size = rust_spec::size::Sized<Zero>, Alignment = One>,
     {
         type CType = R::CType;
     }
     impl<R, E: ExternC, N: NicheStabilityKind> ExternC for Result<R, E>
     where
-        R: RustSpec<Size = rust_spec::size::Sized<Zst>>,
-        E: RustSpec<Size = rust_spec::size::Sized<NonZst>, Niche = WithNiche<N>>,
+        R: RustSpec<Size = rust_spec::size::Sized<Zero>, Alignment = One>,
+        E: RustSpec<Size = rust_spec::size::Sized<rust_spec::Gt<rust_spec::Zero>>, Niche = WithNiche<N>>,
     {
         type CType = E::CType;
     }

@@ -13,6 +13,12 @@ enum TransparentNamedEnum {
 }
 
 #[derive(Clone, Copy, RustSpec, ReprC)]
+#[repr(transparent)]
+enum TransparentMultipleFieldsEnum {
+    A((), u8),
+}
+
+#[derive(Clone, Copy, RustSpec, ReprC)]
 enum ImplicitTransparentTupleEnum {
     A(u8),
 }
@@ -24,6 +30,11 @@ const _: () = assert!(
 
 const _: () = assert!(
     core::mem::size_of::<<TransparentNamedEnum as ExternC>::CType>()
+        == core::mem::size_of::<u8>()
+);
+
+const _: () = assert!(
+    core::mem::size_of::<<TransparentMultipleFieldsEnum as ExternC>::CType>()
         == core::mem::size_of::<u8>()
 );
 

@@ -2,12 +2,7 @@
 use alloc::boxed::Box;
 
 use disjoint_impls::disjoint_impls;
-use rust_spec::{
-    RustSpec, Stable,
-    mutability::Exclusive,
-    niche::WithNiche,
-    size::{NonZst, Zst},
-};
+use rust_spec::{RustSpec, Stable, mutability::Exclusive, niche::WithNiche, size::Zero};
 
 #[cfg(feature = "alloc")]
 use crate::boxed::CBox;
@@ -33,8 +28,11 @@ disjoint_impls! {
 
     unsafe impl<R: CheckedTransmute<CType: Copy>, E> CheckedTransmute for Result<R, E>
     where
-        R: RustSpec<Size = rust_spec::size::Sized<NonZst>, Niche = WithNiche<Stable>>,
-        E: RustSpec<Size = rust_spec::size::Sized<Zst>>,
+        R: RustSpec<
+                Size = rust_spec::size::Sized<rust_spec::Gt<rust_spec::Zero>>,
+                Niche = WithNiche<Stable>,
+            >,
+        E: RustSpec<Size = rust_spec::size::Sized<Zero>, Alignment = rust_spec::One>,
     {
         #[inline(always)]
         unsafe fn is_valid(target: &Self::CType) -> bool {
@@ -43,8 +41,11 @@ disjoint_impls! {
     }
     unsafe impl<R, E: CheckedTransmute<CType: Copy>> CheckedTransmute for Result<R, E>
     where
-        R: RustSpec<Size = rust_spec::size::Sized<Zst>>,
-        E: RustSpec<Size = rust_spec::size::Sized<NonZst>, Niche = WithNiche<Stable>>,
+        R: RustSpec<Size = rust_spec::size::Sized<Zero>, Alignment = rust_spec::One>,
+        E: RustSpec<
+                Size = rust_spec::size::Sized<rust_spec::Gt<rust_spec::Zero>>,
+                Niche = WithNiche<Stable>,
+            >,
     {
         #[inline(always)]
         unsafe fn is_valid(target: &Self::CType) -> bool {

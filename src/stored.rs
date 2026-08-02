@@ -26,7 +26,7 @@ use rust_spec::{
     RustSpec, Stable, Unstable,
     mutability::{Exclusive, Interior},
     niche::{NicheStabilityKind, WithNiche, WithoutNiche},
-    size::{MetaSized, NonZst, SizedKind, SliceLike, Zst},
+    size::{Gt, MetaSized, SizedKind, SliceLike, Zero},
 };
 
 // TODO: Could the store just be synced on drop?
@@ -119,7 +119,7 @@ disjoint_impls! {
     unsafe impl<'a, R: InteriorMut + EncodeOwned<Store: EmptyStore> + DecodeOwned<'a> + Clone, S: SizedKind> EncodeOwned for &'a R
     where
         Self: RustSpec<Layout = Stable> + ExternC<CType = *mut <R as ExternC>::CType>,
-        R: RustSpec<Trap = NonRobust, Size = rust_spec::size::Sized<S>, Mutability = Interior>,
+        R: RustSpec<Size = rust_spec::size::Sized<S>, Trap = NonRobust, Mutability = Interior>,
     {
         type Store = InteriorMutSizedEncodeStore<'a, R>;
 
@@ -156,7 +156,7 @@ disjoint_impls! {
     //unsafe impl<'a, R: StdToOwned<Owned: EncodeOwned + DecodeOwned<'a>> + ?Sized> EncodeOwned for &'a R
     //where
     //    Self: RustSpec<Layout = Unstable> + ExternC<CType = <<<R as StdToOwned>::Owned as ExternC>::CType as BorrowCastMut>::AsMut>,
-    //    R: RustSpec<Layout = Stable, Trap = NonRobust, Size = MetaSized<SliceLike>, Mutability = Interior>,
+    //    R: RustSpec<Layout = Stable, Size = MetaSized<SliceLike>, Trap = NonRobust, Mutability = Interior>,
     //    R: StdToOwned<Owned: ExternC<CType: BorrowCastMut<AsMut: Copy> + Copy>>,
     //{
     //    type Store = InteriorMutDstEncodeStore<'a, R>;
@@ -245,7 +245,7 @@ disjoint_impls! {
     unsafe impl<'a, R: EncodeOwned + DecodeOwned<'a> + Clone, S: SizedKind> EncodeOwned for &'a mut R
     where
         Self: RustSpec<Layout = Stable> + ExternC<CType = *mut <R as ExternC>::CType>,
-        R: RustSpec<Trap = NonRobust, Size = rust_spec::size::Sized<S>, Mutability = Exclusive>,
+        R: RustSpec<Size = rust_spec::size::Sized<S>, Trap = NonRobust, Mutability = Exclusive>,
     {
         type Store = RefMutSizedEncodeStore<'a, R>;
 
@@ -263,7 +263,7 @@ disjoint_impls! {
         for &mut R
     where
         Self: RustSpec<Layout = Unstable>,
-        R: RustSpec<Layout = Stable, Trap = Robust, Size = MetaSized<SliceLike>, Mutability = Exclusive>,
+        R: RustSpec<Layout = Stable, Size = MetaSized<SliceLike>, Trap = Robust, Mutability = Exclusive>,
     {
         type Store = ();
 
@@ -281,7 +281,7 @@ disjoint_impls! {
     unsafe impl<'a, R: StdToOwned<Owned: EncodeOwned + DecodeOwned<'a>> + ?Sized> EncodeOwned for &'a mut R
     where
         Self: RustSpec<Layout = Unstable> + ExternC<CType = <<<R as StdToOwned>::Owned as ExternC>::CType as BorrowCastMut>::AsMut>,
-        R: RustSpec<Layout = Stable, Trap = NonRobust, Size = MetaSized<SliceLike>, Mutability = Exclusive>,
+        R: RustSpec<Layout = Stable, Size = MetaSized<SliceLike>, Trap = NonRobust, Mutability = Exclusive>,
         R: StdToOwned<Owned: ExternC<CType: BorrowCastMut<AsMut: Copy> + Copy>>,
     {
         type Store = RefMutDstEncodeStore<'a, R>;
@@ -501,29 +501,43 @@ disjoint_impls! {
         where
             Self: 'itm,
         {
-            match self {
-                Ok(ok) => {
-                    let Result::Ok(store) = store.insert(Ok(Default::default())) else {
-                        unreachable!()
-                    };
+            encode_result(self, store)
+        }
+    }
+    unsafe impl<R: EncodeOwned<CType: Copy> + Niche, E: EncodeOwned<CType: Copy>, N: NicheStabilityKind>
+        EncodeOwned for Result<R, E>
+    where
+        R: RustSpec<Size = rust_spec::size::Sized<rust_spec::Gt<rust_spec::Zero>>, Niche = WithNiche<N>>,
+        E: RustSpec<Size = rust_spec::size::Sized<Zero>, Alignment = rust_spec::Gt<rust_spec::One>>,
+    {
+        type Store = Option<Result<R::Store, E::Store>>;
 
-                    ReprCResult::Ok(ok.soft_encode(store))
-                }
-                Err(err) => {
-                    let Result::Err(store) = store.insert(Err(Default::default())) else {
-                        unreachable!()
-                    };
+        fn soft_encode<'itm>(self, store: &'itm mut Self::Store) -> Self::CType
+        where
+            Self: 'itm,
+        {
+            encode_result(self, store)
+        }
+    }
+    unsafe impl<R: EncodeOwned<CType: Copy>, E: EncodeOwned<CType: Copy> + Niche, N: NicheStabilityKind> EncodeOwned for Result<R, E>
+    where
+        R: RustSpec<Size = rust_spec::size::Sized<Zero>, Alignment = rust_spec::Gt<rust_spec::One>>,
+        E: RustSpec<Size = rust_spec::size::Sized<rust_spec::Gt<rust_spec::Zero>>, Niche = WithNiche<N>>,
+    {
+        type Store = Option<Result<R::Store, E::Store>>;
 
-                    ReprCResult::Err(err.soft_encode(store))
-                }
-            }
+        fn soft_encode<'itm>(self, store: &'itm mut Self::Store) -> Self::CType
+        where
+            Self: 'itm,
+        {
+            encode_result(self, store)
         }
     }
     unsafe impl<R: EncodeOwned<CType: Copy> + Niche, E, N: NicheStabilityKind> EncodeOwned
         for Result<R, E>
     where
-        R: RustSpec<Size = rust_spec::size::Sized<NonZst>, Niche = WithNiche<N>>,
-        E: RustSpec<Size = rust_spec::size::Sized<Zst>>,
+        R: RustSpec<Size = rust_spec::size::Sized<rust_spec::Gt<rust_spec::Zero>>, Niche = WithNiche<N>>,
+        E: RustSpec<Size = rust_spec::size::Sized<Zero>, Alignment = rust_spec::One>,
     {
         type Store = R::Store;
 
@@ -540,8 +554,8 @@ disjoint_impls! {
     unsafe impl<R, E: EncodeOwned<CType: Copy> + Niche, N: NicheStabilityKind> EncodeOwned
         for Result<R, E>
     where
-        R: RustSpec<Size = rust_spec::size::Sized<Zst>>,
-        E: RustSpec<Size = rust_spec::size::Sized<NonZst>, Niche = WithNiche<N>>,
+        R: RustSpec<Size = rust_spec::size::Sized<Zero>, Alignment = rust_spec::One>,
+        E: RustSpec<Size = rust_spec::size::Sized<rust_spec::Gt<rust_spec::Zero>>, Niche = WithNiche<N>>,
     {
         type Store = E::Store;
 
@@ -721,25 +735,7 @@ disjoint_impls! {
             source: Self::CType,
             _store: &'itm mut Self::Store,
         ) -> Option<Self> {
-            if source.is_niche() {
-                return None;
-            }
-
             unimplemented!()
-            //let source = unsafe { source.into_rust()? };
-
-            //*store.store = core::iter::repeat_with(Default::default)
-            //    .take(source.len())
-            //    .collect();
-
-            //let owned = source
-            //    .iter()
-            //    .cloned()
-            //    .zip(store.store.iter_mut())
-            //    .map(|(item, store)| unsafe { R::Data::decode_owned(item.view(), store) })
-            //    .collect::<Option<Vec<_>>>()?;
-
-            //Some(core::borrow::Borrow::borrow(store.value.insert(owned)))
         }
     }
 
@@ -1025,27 +1021,38 @@ disjoint_impls! {
             source: Self::CType,
             store: &'itm mut Self::Store,
         ) -> Option<Self> {
-            let value = match source.try_into().ok()? {
-                Ok(ok) => {
-                    let ok_store = store.insert(Ok(Default::default()));
-                    let ok_store = unsafe { ok_store.as_mut().unwrap_unchecked() };
-                    Ok(unsafe { R::soft_decode(ok, ok_store)? })
-                }
-                Err(err) => {
-                    let err_store = store.insert(Err(Default::default()));
-                    let err_store = unsafe { err_store.as_mut().unwrap_err_unchecked() };
-                    Err(unsafe { E::soft_decode(err, err_store)? })
-                }
-            };
+            unsafe { decode_result(source, store) }
+        }
+    }
+    unsafe impl<'d, R: DecodeOwned<'d, CType: Copy> + Niche, E: DecodeOwned<'d, CType: Copy>, N: NicheStabilityKind>
+        DecodeOwned<'d> for Result<R, E>
+    where
+        R: RustSpec<Size = rust_spec::size::Sized<rust_spec::Gt<rust_spec::Zero>>, Niche = WithNiche<N>>,
+        E: RustSpec<Size = rust_spec::size::Sized<Zero>, Alignment = rust_spec::Gt<rust_spec::One>>,
+    {
+        type Store = Option<Result<R::Store, E::Store>>;
 
-            Some(value)
+        unsafe fn soft_decode<'itm: 'd>(source: Self::CType, store: &'itm mut Self::Store) -> Option<Self> {
+            unsafe { decode_result(source, store) }
+        }
+    }
+    unsafe impl<'d, R: DecodeOwned<'d, CType: Copy>, E: DecodeOwned<'d, CType: Copy> + Niche, N: NicheStabilityKind>
+        DecodeOwned<'d> for Result<R, E>
+    where
+        R: RustSpec<Size = rust_spec::size::Sized<Zero>, Alignment = rust_spec::Gt<rust_spec::One>>,
+        E: RustSpec<Size = rust_spec::size::Sized<rust_spec::Gt<rust_spec::Zero>>, Niche = WithNiche<N>>,
+    {
+        type Store = Option<Result<R::Store, E::Store>>;
+
+        unsafe fn soft_decode<'itm: 'd>(source: Self::CType, store: &'itm mut Self::Store) -> Option<Self> {
+            unsafe { decode_result(source, store) }
         }
     }
     unsafe impl<'d, R: DecodeOwned<'d> + Niche<CType: PartialEq>, E: Default, N: NicheStabilityKind>
         DecodeOwned<'d> for Result<R, E>
     where
-        R: RustSpec<Size = rust_spec::size::Sized<NonZst>, Niche = WithNiche<N>>,
-        E: RustSpec<Size = rust_spec::size::Sized<Zst>>,
+        R: RustSpec<Size = rust_spec::size::Sized<rust_spec::Gt<rust_spec::Zero>>, Niche = WithNiche<N>>,
+        E: RustSpec<Size = rust_spec::size::Sized<Zero>, Alignment = rust_spec::One>,
         <R as ExternC>::CType: Copy,
     {
         type Store = R::Store;
@@ -1064,8 +1071,8 @@ disjoint_impls! {
     unsafe impl<'d, R: Default, E: DecodeOwned<'d> + Niche<CType: PartialEq>, N: NicheStabilityKind>
         DecodeOwned<'d> for Result<R, E>
     where
-        R: RustSpec<Size = rust_spec::size::Sized<Zst>>,
-        E: RustSpec<Size = rust_spec::size::Sized<NonZst>, Niche = WithNiche<N>>,
+        R: RustSpec<Size = rust_spec::size::Sized<Zero>, Alignment = rust_spec::One>,
+        E: RustSpec<Size = rust_spec::size::Sized<rust_spec::Gt<rust_spec::Zero>>, Niche = WithNiche<N>>,
         <E as ExternC>::CType: Copy,
     {
         type Store = E::Store;
@@ -1081,6 +1088,51 @@ disjoint_impls! {
             unsafe { E::soft_decode(source, store) }.map(Err)
         }
     }
+}
+
+fn encode_result<'itm, R: EncodeOwned<CType: Copy> + 'itm, E: EncodeOwned<CType: Copy> + 'itm>(
+    value: Result<R, E>,
+    store: &'itm mut Option<Result<R::Store, E::Store>>,
+) -> ReprCResult<R::CType, E::CType> {
+    match value {
+        Ok(ok) => {
+            let Result::Ok(store) = store.insert(Ok(Default::default())) else {
+                unreachable!()
+            };
+
+            ReprCResult::Ok(ok.soft_encode(store))
+        }
+        Err(err) => {
+            let Result::Err(store) = store.insert(Err(Default::default())) else {
+                unreachable!()
+            };
+
+            ReprCResult::Err(err.soft_encode(store))
+        }
+    }
+}
+
+unsafe fn decode_result<'d, 'i, R: DecodeOwned<'d, CType: Copy>, E: DecodeOwned<'d, CType: Copy>>(
+    source: ReprCResult<R::CType, E::CType>,
+    store: &'i mut Option<Result<R::Store, E::Store>>,
+) -> Option<Result<R, E>>
+where
+    'i: 'd,
+{
+    let value = match source.try_into().ok()? {
+        Ok(ok) => {
+            let ok_store = store.insert(Ok(Default::default()));
+            let ok_store = unsafe { ok_store.as_mut().unwrap_unchecked() };
+            Ok(unsafe { R::soft_decode(ok, ok_store)? })
+        }
+        Err(err) => {
+            let err_store = store.insert(Err(Default::default()));
+            let err_store = unsafe { err_store.as_mut().unwrap_err_unchecked() };
+            Err(unsafe { E::soft_decode(err, err_store)? })
+        }
+    };
+
+    Some(value)
 }
 
 /// Perform the conversion from `T` into [`T::CType`] using external storage.
@@ -1156,6 +1208,7 @@ pub struct InteriorMutSizedEncodeStore<'d, R: ExternC<CType: Sized>> {
     pub(crate) original: Option<&'d R>,
 }
 
+#[cfg(feature = "alloc")]
 pub struct InteriorMutDstEncodeStore<'d, R: StdToOwned<Owned: EncodeOwned> + ?Sized> {
     pub(crate) ctype: Option<<R::Owned as ExternC>::CType>,
     pub(crate) original: Option<&'d R>,

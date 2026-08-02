@@ -1,5 +1,7 @@
 //! Logic related to the conversion of primitives to and from FFI-compatible representation
 
+use core::cmp::Ordering;
+
 use crate::{
     CFnArg, Decode, Encode, ExternC, ReprC, assert_arr_has_non_zero_len,
     borrow::{Borrow, BorrowCast, BorrowCastMut, ToOwned},
@@ -156,6 +158,12 @@ macro_rules! impl_fn_types {
 
 macro_rules! fieldless_enum_derive {
     ( $src:ty => $dst:ty: {$niche_val:expr}: $validity_fn:expr ) => {
+        fieldless_enum_derive! {
+            $src => $dst: {$niche_val}: $validity_fn;
+            |source: $dst| -> Option<$src> { source.try_into().ok() }
+        }
+    };
+    ( $src:ty => $dst:ty: {$niche_val:expr}: $validity_fn:expr; $decode_fn:expr ) => {
         unsafe impl CheckedTransmute for $src {
             #[inline(always)]
             unsafe fn is_valid(target: &Self::CType) -> bool {
@@ -199,9 +207,8 @@ macro_rules! fieldless_enum_derive {
 
             #[inline(always)]
             unsafe fn soft_decode<'itm: 'd>(source: Self::CType, (): &mut ()) -> Option<Self> {
-                unsafe { crate::stored::decode_owned::<$dst>(source)? }
-                    .try_into()
-                    .ok()
+                let source = unsafe { crate::stored::decode_owned::<$dst>(source)? };
+                $decode_fn(source)
             }
         }
 
@@ -325,6 +332,16 @@ fieldless_enum_derive! {
 fieldless_enum_derive! {
     bool => u8: {2}:
     |i: &u8| *i == 0 || *i == 1
+}
+fieldless_enum_derive! {
+    Ordering => i8: {2}:
+    |i: &i8| (-1..=1).contains(i);
+    |source| match source {
+        -1 => Some(Ordering::Less),
+        0 => Some(Ordering::Equal),
+        1 => Some(Ordering::Greater),
+        _ => None,
+    }
 }
 
 #[cfg(test)]

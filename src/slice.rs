@@ -276,6 +276,7 @@ impl<C: ReprC> Spread for CSliceMut<C> {
 }
 
 #[cfg(test)]
+#[cfg(feature = "alloc")]
 impl<C> CSliceMut<C> {
     /// Convert [`Self`] into a mutable slice. Return `None` if data pointer is null.
     /// Unlike [`core::slice::from_raw_parts_mut`], data pointer is allowed to be null.

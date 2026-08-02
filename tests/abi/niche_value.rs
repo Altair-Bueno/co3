@@ -1,11 +1,12 @@
-use core::cmp::Ordering;
+use std::cmp::Ordering;
 
-use co3::{Encode, ReprC, ffi, rust_spec::RustSpec};
+use co3::{ReprC, encode, ffi, option::ReprCOption, rust_spec::RustSpec, soft_encode};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[expect(dead_code)]
 pub enum Opaque {
-    #[allow(unused)]
     A,
+    B,
 }
 
 ffi! {
@@ -30,7 +31,6 @@ ffi! {
 }
 
 #[derive(Clone, Copy, RustSpec, ReprC)]
-#[allow(unused)]
 #[repr(u8)]
 pub enum FieldlessUEnum {
     Var1,
@@ -40,7 +40,6 @@ pub enum FieldlessUEnum {
 }
 
 #[derive(Clone, Copy, RustSpec, ReprC)]
-#[allow(unused)]
 #[repr(i8)]
 pub enum FieldlessIEnum {
     Var1,
@@ -58,7 +57,6 @@ pub enum FieldlessNoReprEnum {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, RustSpec, ReprC)]
-#[allow(unused)]
 #[repr(C, i8)]
 pub enum ReprCDataEnum<'a, T> {
     A(&'a [u32; 2]),
@@ -68,7 +66,6 @@ pub enum ReprCDataEnum<'a, T> {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, RustSpec, ReprC)]
-#[allow(unused)]
 #[repr(i8)]
 pub enum DataEnum<'a, T> {
     A(&'a [u32; 2]),
@@ -78,7 +75,6 @@ pub enum DataEnum<'a, T> {
 }
 
 #[derive(Clone, Copy, RustSpec, ReprC)]
-#[allow(unused)]
 #[repr(u16)]
 pub enum FieldlessLargeEnum {
     Var1,
@@ -344,29 +340,29 @@ fn verify_enum_niche_value() {
     let expected_bool = 2_u8;
     let expected_ord = 2_i8;
 
-    assert_eq!(expected_bool, None::<bool>.encode(&mut ()));
-    assert_eq!(expected_ord, None::<Ordering>.encode(&mut ()));
+    assert_eq!(expected_bool, encode(None::<bool>));
+    assert_eq!(expected_ord, encode(None::<Ordering>));
 
-    assert!(None::<Opaque>.encode(&mut ()).is_none());
-    assert!(None::<Extern>.encode(&mut ()).is_null());
+    assert_eq!(encode(None::<Opaque>), ReprCOption::None());
+    assert!(encode(None::<OwnedExtern>).0.is_null());
 
     let expected_niche_enum_discriminant_u = 4_u8;
     let expected_niche_enum_discriminant_i = 4_i8;
 
     assert_eq!(
         expected_niche_enum_discriminant_u,
-        None::<FieldlessUEnum>.encode(&mut ())
+        encode(None::<FieldlessUEnum>)
     );
     assert_eq!(
         expected_niche_enum_discriminant_i,
-        None::<FieldlessIEnum>.encode(&mut ())
+        encode(None::<FieldlessIEnum>)
     );
     assert_eq!(
         expected_niche_enum_discriminant_u,
-        None::<FieldlessNoReprEnum>.encode(&mut ())
+        encode(None::<FieldlessNoReprEnum>)
     );
 
-    let encoded = None::<ReprCDataEnum<&u8>>.encode(&mut ());
+    let encoded = soft_encode(None::<ReprCDataEnum<&u8>>, &mut Default::default());
     assert_eq!(expected_niche_enum_discriminant_i, encoded.tag);
     let bytes = unsafe {
         core::slice::from_raw_parts(
@@ -376,7 +372,7 @@ fn verify_enum_niche_value() {
     };
     assert!(bytes.iter().all(|&byte| byte == 0));
 
-    let encoded = None::<DataEnum<&u8>>.encode(&mut ());
+    let encoded = soft_encode(None::<DataEnum<&u8>>, &mut Default::default());
     let bytes = unsafe {
         core::slice::from_raw_parts(
             core::ptr::from_ref(&encoded).cast::<i8>(),
@@ -390,7 +386,6 @@ fn verify_enum_niche_value() {
 
     assert_eq!(
         expected_fieldless_large_enum,
-        None::<FieldlessLargeEnum>.encode(&mut ())
+        encode(None::<FieldlessLargeEnum>)
     );
 }
-

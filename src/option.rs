@@ -136,8 +136,9 @@ impl<T> TryFrom<ReprCOption<T>> for Option<T> {
 
 unsafe impl<T: RustSpec> RustSpec for ReprCOption<T> {
     type Layout = T::Layout;
+    type Size = rust_spec::size::Sized<rust_spec::Gt<rust_spec::Zero>>;
+    type Alignment = T::Alignment;
     type Trap = T::Trap;
-    type Size = rust_spec::size::Sized<rust_spec::size::NonZst>;
     type Niche = WithoutNiche;
     type Mutability = rust_spec::mutability::Exclusive;
     type __IndirectTrap = T::__IndirectTrap;

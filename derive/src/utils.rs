@@ -11,7 +11,7 @@ const MAX_TUPLE_ARITY: usize = 12;
 
 pub(crate) fn co3_path() -> TokenStream {
     match crate_name("co3") {
-        Ok(FoundCrate::Itself) => quote!(crate),
+        Ok(FoundCrate::Itself) => quote!(::co3),
         Ok(FoundCrate::Name(name)) => {
             let name = format_ident!("{name}");
             quote!(::#name)

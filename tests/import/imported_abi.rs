@@ -1,4 +1,4 @@
-use co3::{ReprC, export, ffi, rust_spec::RustSpec};
+use co3::{ReprC, ffi, rust_spec::RustSpec};
 
 trait AmbiguousX<T, const N: usize> {
     #[expect(unused)]
@@ -39,7 +39,7 @@ ffi! {
 
     impl MyType<u64> {
         #[symbol_name = "kita1"]
-        unsafe extern "C" fn ambiguous() -> Box<Self>;
+        unsafe extern "C" move fn ambiguous() -> Box<Self>;
     }
 
     #[symbol_name = "kita2"]
@@ -58,7 +58,7 @@ ffi! {
     }
 
     impl MyType2 {
-        fn new() -> Self;
+        move fn new() -> OwnedMyType2;
     }
 
     impl AmbiguousX<u64, 3> for MyType<u64> {
@@ -106,7 +106,7 @@ mod provider {
         }
 
         impl MyType2 {
-            fn new() -> Self;
+            move fn new() -> Box<Self>;
         }
 
         impl AmbiguousX<u64, 3> for MyType<u64> {
@@ -140,7 +140,7 @@ mod provider {
 
         impl MyType<u64> {
             #[symbol_name = "kita1"]
-            unsafe extern "C" fn ambiguous() -> Box<Self>;
+            unsafe extern "C" move fn ambiguous() -> Box<Self>;
         }
 
         #[symbol_name = "kita2"]
@@ -148,8 +148,8 @@ mod provider {
     }
 
     impl MyType2 {
-        fn new() -> Self {
-            MyType2::A("KITA".to_owned())
+        fn new() -> Box<Self> {
+            Box::new(MyType2::A("KITA".to_owned()))
         }
     }
 
@@ -221,6 +221,6 @@ fn extern_abi() {
     assert_eq!(Ambiguous::Fn, unsafe { ambiguous2_imported() });
 
     let my_type2 = MyType2::new();
-    let a = my_type2.0.as_ptr().cast::<String>();
-    assert_eq!("KITA", unsafe { &*a })
+    let a = my_type2.0.cast::<String>();
+    assert_eq!("KITA", unsafe { &*a });
 }

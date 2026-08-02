@@ -161,6 +161,13 @@ unsafe impl<'d> DecodeOwned<'d> for () {
 impl Encode for () {}
 impl Decode<'_> for () {}
 
+unsafe impl CheckedTransmute for () {
+    #[inline(always)]
+    unsafe fn is_valid(_: &Self::CType) -> bool {
+        true
+    }
+}
+
 unsafe impl ReprC for () {}
 unsafe impl BorrowCast for () {
     type AsConst = Self;
@@ -196,6 +203,12 @@ impl<'itm, T: ?Sized + 'itm> ToOwned<'itm> for PhantomData<T> {
 
 impl<T: ?Sized> ExternC for PhantomData<T> {
     type CType = Self;
+}
+unsafe impl<T: ?Sized> CheckedTransmute for PhantomData<T> {
+    #[inline(always)]
+    unsafe fn is_valid(_: &Self::CType) -> bool {
+        true
+    }
 }
 unsafe impl<T: ?Sized> EncodeOwned for PhantomData<T> {
     type Store = ();

@@ -1,7 +1,7 @@
 use co3::ffi;
 
 trait Custom {
-    fn inc(self, by: Vec<u32>) -> Self;
+    fn inc(&mut self, by: u8);
 }
 
 co3::handles! { unsafe {
@@ -16,103 +16,80 @@ ffi! {
     #[id(u8)]
     type Opaque<T, U>;
 
-    #[erased]
+    #[erased(<bool, u8>)]
     impl<T, U> Drop for dyn Opaque<T, U> {
-        #[symbol_name = "drop"]
-        fn drop(self_id: <dyn Self>::ID, &mut self);
+        #[symbol_name = "handles_drop"]
+        fn drop(&mut self);
     }
 
-    #[erased(
-        <bool, u8>,
-        <u8, bool>
-    )]
-    impl<T, U> dyn Opaque<T, U> {
-        #[symbol_name = "handle_as_ref"]
-        fn try_as_ref(id: <dyn Self>::ID, &self) -> Result<&Self, u8>;
+    impl Default for OwnedOpaque<bool, u8> {
+        #[symbol_name = "handles_default_bool_u8"]
+        move fn default() -> Self;
+    }
+
+    impl Default for OwnedOpaque<u8, bool> {
+        #[symbol_name = "handles_default_u8_bool"]
+        move fn default() -> Self;
+    }
+
+    impl Clone for OwnedOpaque<bool, u8> {
+        #[symbol_name = "handles_clone_bool_u8"]
+        move fn clone(&self) -> Self;
     }
 
     #[erased(
         <Opaque<bool, u8>>,
         <Opaque<u8, bool>>,
     )]
-    impl<dyn(u8) T> Clone for T {
-        fn clone(self_id: <dyn Self>::ID, &self) -> Self;
+    impl<dyn(u8) T> PartialEq for T {
+        #[symbol_name = "handles_eq"]
+        fn eq(t_id: <dyn T>::ID, &self, other: &Self) -> bool;
     }
 
-    #[erased(
-        <Opaque<u8, bool>>,
-        <Opaque<bool, u8>>,
-    )]
-    impl<dyn(u8) T> Default for T {
-        #[symbol_name = "default"]
-        fn default(self_id: <dyn Self>::ID) -> Self;
-    }
-
-    #[erased(
-        <bool, u8>,
-        <u8, bool>,
-    )]
-    impl<T, U> PartialEq for dyn Opaque<T, U> {
-        fn eq(self_id: <dyn Self>::ID, &self, other: &Self) -> bool;
-    }
-
-    #[erased(
-        <Opaque<bool, u8>, Opaque<u8, bool>>,
-    )]
+    #[erased(<Opaque<bool, u8>, Opaque<u8, bool>>)]
     impl<dyn(u8) T, dyn(u8) U> PartialEq<U> for T {
-        #[symbol_name = "abi_Eq_eq_2"]
-        fn eq(self_id: <dyn Self>::ID, other_id: <dyn U>::ID, &self, other: &U) -> bool;
+        #[symbol_name = "handles_cross_eq"]
+        fn eq(t_id: <dyn T>::ID, u_id: <dyn U>::ID, &self, other: &U) -> bool;
     }
 
-    #[erased(<bool>)]
-    impl<T> Custom for dyn Opaque<T, u8> {
-        #[symbol_name = "custom_inc_as_ref"]
-        fn inc(self_id: <dyn Self>::ID, self, by: Vec<u32>) -> Self;
+    #[erased(
+        <Opaque<bool, u8>>,
+        <Opaque<u8, bool>>,
+    )]
+    impl<dyn(u8) T> Custom for T {
+        #[symbol_name = "handles_inc"]
+        fn inc(t_id: <dyn T>::ID, &mut self, by: u8);
     }
-
-    // TODO:
-    //#[erased(<u8>)]
-    //impl<T> Custom for dyn Opaque<T, bool> {
-    //    #[symbol_name = "custom_inc_move"]
-    //    fn inc(self_id: <dyn Self>::ID, self, move by: Vec<u32>) -> Self;
-    //}
 }
 
 mod provider {
     use core::marker::PhantomData;
 
-    use co3::{ffi, handles};
+    use co3::ffi;
 
     use super::Custom;
 
-    handles! { unsafe {
+    #[derive(Debug, Clone, Default, PartialEq, Eq)]
+    struct Opaque<T, U> {
+        value: u8,
+        marker: PhantomData<(T, U)>,
+    }
+
+    co3::handles! { unsafe {
         Opaque::<bool, u8> = 1,
         Opaque<bool, u32>,
         Opaque<u8, bool>,
     } }
 
-    #[derive(Debug, Default, Clone, PartialEq, Eq)]
-    pub struct Opaque<T, U> {
-        id: u8,
-        _marker: PhantomData<(T, U)>,
-    }
-
     impl PartialEq<Opaque<u8, bool>> for Opaque<bool, u8> {
         fn eq(&self, other: &Opaque<u8, bool>) -> bool {
-            self.id == other.id
+            self.value == other.value
         }
     }
 
     impl<T, U> Custom for Opaque<T, U> {
-        fn inc(mut self, by: Vec<u32>) -> Self {
-            by.into_iter().for_each(|by| self.id += by as u8);
-            self
-        }
-    }
-
-    impl<T, U> Opaque<T, U> {
-        fn try_as_ref(&self) -> Result<&Self, u8> {
-            Ok(self)
+        fn inc(&mut self, by: u8) {
+            self.value += by;
         }
     }
 
@@ -120,102 +97,67 @@ mod provider {
         #![unsafe(export("C"))]
 
         #[id(u8)]
-        pub type Opaque<T, U>;
+        type Opaque<T, U>;
 
-        #[erased(
-            <bool, u8>,
-            <u8, bool>,
-        )]
+        #[erased(<bool, u8>)]
         impl<T, U> Drop for dyn Opaque<T, U> {
-            #[symbol_name = "drop"]
+            #[symbol_name = "handles_drop"]
             fn drop(&mut self);
         }
 
-        #[erased(
-            <bool, u8>,
-            <u8, bool>
-        )]
-        impl<T, U> dyn Opaque<T, U> {
-            #[symbol_name = "handle_as_ref"]
-            fn try_as_ref(&self) -> Result<&Self, u8>;
+        impl Default for Box<Opaque<bool, u8>> {
+            #[symbol_name = "handles_default_bool_u8"]
+            move fn default() -> Self;
+        }
+
+        impl Default for Box<Opaque<u8, bool>> {
+            #[symbol_name = "handles_default_u8_bool"]
+            move fn default() -> Self;
+        }
+
+        impl Clone for Box<Opaque<bool, u8>> {
+            #[symbol_name = "handles_clone_bool_u8"]
+            move fn clone(&self) -> Self;
         }
 
         #[erased(
             <Opaque<bool, u8>>,
             <Opaque<u8, bool>>,
         )]
-        impl<dyn(u8) T> Clone for T {
-            fn clone(&self) -> Self;
-        }
-
-        #[erased(
-            <bool, u8>,
-            <u8, bool>,
-        )]
-        impl<T, U> Default for dyn Opaque<T, U> {
-            #[symbol_name = "default"]
-            fn default() -> Self;
-        }
-
-        #[erased(
-            <bool, u8>,
-            <u8, bool>,
-        )]
-        impl<T, U> PartialEq for dyn Opaque<T, U> {
+        impl<#[erased(u8)] T> PartialEq for T {
+            #[symbol_name = "handles_eq"]
             fn eq(&self, other: &Self) -> bool;
         }
 
+        #[erased(<Opaque<bool, u8>, Opaque<u8, bool>>)]
+        impl<#[erased(u8)] T, #[erased(u8)] U> PartialEq<U> for T {
+            #[symbol_name = "handles_cross_eq"]
+            fn eq(&self, other: &U) -> bool;
+        }
+
         #[erased(
-            <Opaque<bool, u8>, Opaque<u8, bool>>,
+            <Opaque<bool, u8>>,
+            <Opaque<u8, bool>>,
         )]
-        impl<dyn(u8) T, dyn(u8) TU> PartialEq<TU> for T {
-            #[symbol_name = "abi_Eq_eq_2"]
-            fn eq(&self, other: &TU) -> bool;
+        impl<#[erased(u8)] T> Custom for T {
+            #[symbol_name = "handles_inc"]
+            fn inc(&mut self, by: u8);
         }
-
-        #[erased(<bool>)]
-        impl<T> Custom for dyn Opaque<T, u8> {
-            #[symbol_name = "custom_inc_as_ref"]
-            fn inc(self, by: Vec<u32>) -> Self;
-        }
-
-        // TODO:
-        //#[erased(
-        //    <Opaque<u8, bool>>,
-        //)]
-        //impl<dyn(u8) T> Custom for T {
-        //    #[symbol_name = "custom_inc_move"]
-        //    fn inc(self, move by: Vec<u32>) -> Self;
-        //}
     }
 }
 
 #[test]
-fn opaque_handles() {
-    let handle: Opaque<bool, u8> = Default::default();
-    let handle_ref: ExternRef<_> = handle.try_as_ref().unwrap();
-    assert!(PartialEq::eq(&*handle_ref, &handle));
-
+fn erased_handle_dispatch() {
+    let mut handle: OwnedOpaque<bool, u8> = Default::default();
     let cloned = Clone::clone(&handle);
-    assert!(PartialEq::eq(&handle, &cloned));
+    assert!(PartialEq::eq(&*handle, &*cloned));
 
-    let other: Opaque<u8, bool> = Default::default();
-    let other_cloned = Clone::clone(&other);
+    let other: OwnedOpaque<u8, bool> = Default::default();
+    assert!(PartialEq::<Opaque<u8, bool>>::eq(&*handle, &*other));
 
-    assert!(PartialEq::<Opaque<u8, bool>>::eq(&handle, &other));
-    assert!(PartialEq::<Opaque<u8, bool>>::eq(&cloned, &other_cloned));
+    Custom::inc(&mut *handle, 2);
+    assert!(!PartialEq::<Opaque<u8, bool>>::eq(&*handle, &*other));
+    assert!(!PartialEq::eq(&*handle, &*cloned));
 
-    let incremented = Custom::inc(handle, vec![2]);
-    assert!(!PartialEq::<Opaque<u8, bool>>::eq(&incremented, &other));
-
-    let incremented_cloned = Clone::clone(&incremented);
-    assert!(PartialEq::eq(&incremented, &incremented_cloned));
-
-    // TODO:
-    //let owned_handle: Opaque<u8, bool> = Default::default();
-    //let owned_incremented = Custom::inc(owned_handle, vec![2]);
-    //let owned_incremented_cloned = Clone::clone(&owned_incremented);
-
-    //assert!(PartialEq::eq(&owned_incremented, &owned_incremented_cloned));
+    core::mem::forget(other);
 }
-

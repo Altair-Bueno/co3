@@ -162,21 +162,6 @@ impl<C> CBox<C> {
     }
 }
 
-impl<C> CBox<C> {
-    /// Convert [`Self`] into [`Box<C>`]. Returns `None` if pointer is null.
-    ///
-    /// # Safety
-    ///
-    /// Check [`Box::from_raw`].
-    unsafe fn into_rust(self) -> Option<Box<C>> {
-        if self.data.is_null() {
-            return None;
-        }
-
-        Some(unsafe { Box::from_raw(self.data) })
-    }
-}
-
 impl<C> CBoxedSlice<C> {
     /// Create [`Self`] from a [`Box<[T]>`]
     pub fn from_boxed_slice(source: Box<[C]>) -> Self {
