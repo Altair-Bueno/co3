@@ -4,7 +4,7 @@ use core::cmp::Ordering;
 
 use crate::{
     CFnArg, Decode, Encode, ExternC, ReprC, assert_arr_has_non_zero_len,
-    borrow::{Borrow, BorrowCast, BorrowCastMut, ToOwned},
+    borrow::{Borrow, BorrowCast, BorrowCastMut, FromBorrow},
     niche::Niche,
     stored::{ArrayStore, DecodeOwned, EmptyStore, EncodeOwned},
     transmute::CheckedTransmute,
@@ -28,9 +28,9 @@ macro_rules! primitive_derive {
                 self
             }
         }
-        impl<'itm> ToOwned<'itm> for $primitive {
+        impl<'itm> FromBorrow<'itm> for $primitive {
             #[inline(always)]
-            fn to_owned(source: Self) -> Self {
+            fn from_borrow(source: Self) -> Self {
                 source
             }
         }
@@ -98,9 +98,9 @@ macro_rules! raw_pointer_derive {
                 self
             }
         }
-        impl<'itm, R: ?Sized> ToOwned<'itm> for *$mutability R {
+        impl<'itm, R: ?Sized> FromBorrow<'itm> for *$mutability R {
             #[inline(always)]
-            fn to_owned(source: Self) -> Self {
+            fn from_borrow(source: Self) -> Self {
                 source
             }
         }
@@ -181,9 +181,9 @@ macro_rules! fieldless_enum_derive {
                 self
             }
         }
-        impl<'itm> ToOwned<'itm> for $src {
+        impl<'itm> FromBorrow<'itm> for $src {
             #[inline(always)]
-            fn to_owned(source: Self::Borrowed<'itm>) -> Self {
+            fn from_borrow(source: Self::Borrowed<'itm>) -> Self {
                 source
             }
         }

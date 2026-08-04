@@ -152,7 +152,7 @@ mod ffi {
     use co3::{
         CTuple2, ExternC,
         out_ptr::OutPtr,
-        slice::{CBoxedSlice, CSliceMut, CSlice},
+        slice::{CBoxedSlice, CSlice, CSliceMut},
     };
 
     co3::def_fns! { dealloc }
@@ -243,17 +243,17 @@ mod ffi {
         ()
     }
 
-//    #[unsafe(export_name = "__freestanding_take_and_return_boxed_int")]
-//    unsafe extern "C" fn __freestanding_take_and_return_boxed_int(
-//        input: <Box<u8> as ExternC>::CType,
-//        output: *mut <Box<u8> as OutPtr>::OutPtr,
-//    ) {
-//        unsafe {
-//            output.write(input.read());
-//        }
-//
-//        ()
-//    }
+    //    #[unsafe(export_name = "__freestanding_take_and_return_boxed_int")]
+    //    unsafe extern "C" fn __freestanding_take_and_return_boxed_int(
+    //        input: <Box<u8> as ExternC>::CType,
+    //        output: *mut <Box<u8> as OutPtr>::OutPtr,
+    //    ) {
+    //        unsafe {
+    //            output.write(input.read());
+    //        }
+    //
+    //        ()
+    //    }
 
     #[unsafe(export_name = "__freestanding_take_and_return_boxed_int_ref")]
     unsafe extern "C" fn __freestanding_take_and_return_boxed_int_ref(
@@ -268,9 +268,7 @@ mod ffi {
     }
 
     #[unsafe(export_name = "__freestanding_return_empty_tuple_result")]
-    unsafe extern "C" fn __freestanding_return_empty_tuple_result(
-        input: <bool as ExternC>::CType,
-    ) {
+    unsafe extern "C" fn __freestanding_return_empty_tuple_result(input: <bool as ExternC>::CType) {
         if input == 1 {
             return ();
         }

@@ -276,16 +276,16 @@ pub(crate) fn gen_input_decode_stmts<'a>(
             quote! { co3::decode(#decode_arg) }
         };
 
-        let to_owned = match ownership_mode_for_arg(attrs) {
+        let from_borrow = match ownership_mode_for_arg(attrs) {
             OwnershipMode::ByValue => quote!(#arg_name),
             OwnershipMode::Borrow => quote! {
-                #arg_name.map(co3::borrow::ToOwned::to_owned)
+                #arg_name.map(co3::borrow::FromBorrow::from_borrow)
             },
         };
 
         stmts.extend(quote! {
             let #arg_name: Option<#decode_ty> = unsafe { #decode_call };
-            let #arg_name: Option<#arg_ty> = #to_owned;
+            let #arg_name: Option<#arg_ty> = #from_borrow;
 
             if let Some(#arg_name) = #arg_name {
                 __co3_input_values.#idx = Some(#arg_name);

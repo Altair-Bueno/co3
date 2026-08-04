@@ -13,7 +13,7 @@ use core::{
 use crate::boxed::CBoxedSlice;
 use crate::{
     Decode, Encode, ExternC, ReprC,
-    borrow::{Borrow, BorrowCast, BorrowCastMut, ToOwned},
+    borrow::{Borrow, BorrowCast, BorrowCastMut, FromBorrow},
     niche::Niche,
     stored::{DecodeOwned, EmptyStore, EncodeOwned},
     transmute::CheckedTransmute,
@@ -37,9 +37,9 @@ macro_rules! non_zero_derive {
                 self
             }
         }
-        impl<'itm> ToOwned<'itm> for NonZero<$primitive> {
+        impl<'itm> FromBorrow<'itm> for NonZero<$primitive> {
             #[inline(always)]
-            fn to_owned(source: Self::Borrowed<'itm>) -> Self {
+            fn from_borrow(source: Self::Borrowed<'itm>) -> Self {
                 source
             }
         }
@@ -101,9 +101,9 @@ unsafe impl Borrow for c_void {
         self
     }
 }
-impl<'itm> ToOwned<'itm> for c_void {
+impl<'itm> FromBorrow<'itm> for c_void {
     #[inline(always)]
-    fn to_owned(source: Self) -> Self {
+    fn from_borrow(source: Self) -> Self {
         source
     }
 }
@@ -130,9 +130,9 @@ unsafe impl Borrow for () {
     #[inline(always)]
     fn borrow<'itm>(self, (): &mut ()) -> Self::Borrowed<'itm> {}
 }
-impl<'itm> ToOwned<'itm> for () {
+impl<'itm> FromBorrow<'itm> for () {
     #[inline(always)]
-    fn to_owned(_: ()) -> Self {}
+    fn from_borrow(_: ()) -> Self {}
 }
 
 impl ExternC for () {
@@ -194,9 +194,9 @@ unsafe impl<T: ?Sized> Borrow for PhantomData<T> {
         self
     }
 }
-impl<'itm, T: ?Sized + 'itm> ToOwned<'itm> for PhantomData<T> {
+impl<'itm, T: ?Sized + 'itm> FromBorrow<'itm> for PhantomData<T> {
     #[inline(always)]
-    fn to_owned(source: Self::Borrowed<'itm>) -> Self {
+    fn from_borrow(source: Self::Borrowed<'itm>) -> Self {
         source
     }
 }
@@ -257,9 +257,9 @@ unsafe impl<T: ?Sized> Borrow for NonNull<T> {
         self
     }
 }
-impl<'itm, T: ?Sized + 'itm> ToOwned<'itm> for NonNull<T> {
+impl<'itm, T: ?Sized + 'itm> FromBorrow<'itm> for NonNull<T> {
     #[inline(always)]
-    fn to_owned(source: Self::Borrowed<'itm>) -> Self {
+    fn from_borrow(source: Self::Borrowed<'itm>) -> Self {
         source
     }
 }
@@ -325,9 +325,9 @@ unsafe impl Borrow for String {
     }
 }
 #[cfg(feature = "alloc")]
-impl<'itm> ToOwned<'itm> for String {
+impl<'itm> FromBorrow<'itm> for String {
     #[inline(always)]
-    fn to_owned(source: Self::Borrowed<'itm>) -> Self {
+    fn from_borrow(source: Self::Borrowed<'itm>) -> Self {
         source.into()
     }
 }
@@ -385,10 +385,10 @@ unsafe impl<T: Borrow> Borrow for UnsafeCell<T> {
         self.into_inner().borrow(owner)
     }
 }
-impl<'itm, T: ToOwned<'itm>> ToOwned<'itm> for UnsafeCell<T> {
+impl<'itm, T: FromBorrow<'itm>> FromBorrow<'itm> for UnsafeCell<T> {
     #[inline(always)]
-    fn to_owned(source: Self::Borrowed<'itm>) -> Self {
-        UnsafeCell::new(T::to_owned(source))
+    fn from_borrow(source: Self::Borrowed<'itm>) -> Self {
+        UnsafeCell::new(T::from_borrow(source))
     }
 }
 
@@ -446,10 +446,10 @@ unsafe impl<T: Borrow> Borrow for Cell<T> {
         T::borrow(Cell::into_inner(self), owner)
     }
 }
-impl<'itm, T: ToOwned<'itm>> ToOwned<'itm> for Cell<T> {
+impl<'itm, T: FromBorrow<'itm>> FromBorrow<'itm> for Cell<T> {
     #[inline(always)]
-    fn to_owned(source: Self::Borrowed<'itm>) -> Self {
-        Cell::new(T::to_owned(source))
+    fn from_borrow(source: Self::Borrowed<'itm>) -> Self {
+        Cell::new(T::from_borrow(source))
     }
 }
 
@@ -507,10 +507,10 @@ unsafe impl<T: Borrow> Borrow for ManuallyDrop<T> {
         ManuallyDrop::into_inner(self).borrow(owner)
     }
 }
-impl<'itm, T: ToOwned<'itm>> ToOwned<'itm> for ManuallyDrop<T> {
+impl<'itm, T: FromBorrow<'itm>> FromBorrow<'itm> for ManuallyDrop<T> {
     #[inline(always)]
-    fn to_owned(source: Self::Borrowed<'itm>) -> Self {
-        ManuallyDrop::new(T::to_owned(source))
+    fn from_borrow(source: Self::Borrowed<'itm>) -> Self {
+        ManuallyDrop::new(T::from_borrow(source))
     }
 }
 

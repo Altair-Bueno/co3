@@ -64,12 +64,11 @@ use disjoint_impls::disjoint_impls;
 use rust_spec::{
     RustSpec,
     niche::{NicheStabilityKind, WithNiche, WithoutNiche},
-    Gt,
 };
 
 use crate::{
     CFnArg, Decode, Encode, ExternC, ReprC, Store,
-    borrow::{Borrow, BorrowCast, BorrowCastMut, ToOwned},
+    borrow::{Borrow, BorrowCast, BorrowCastMut, FromBorrow},
     niche::Niche,
     slice::Spread,
     stored::{DecodeOwned, EncodeOwned},
@@ -131,20 +130,20 @@ macro_rules! impl_tuple {
                 $ffi_ty($( $ty.borrow(owner.$ty) ),+)
             }
         }
-        impl<'itm, $($ty: ToOwned<'itm>),+> ToOwned<'itm> for ($($ty,)+) {
+        impl<'itm, $($ty: FromBorrow<'itm>),+> FromBorrow<'itm> for ($($ty,)+) {
             #[inline(always)]
             #[expect(non_snake_case)]
-            fn to_owned(source: Self::Borrowed<'itm>) -> Self {
+            fn from_borrow(source: Self::Borrowed<'itm>) -> Self {
                 let ($($ty,)+) = source;
-                ($( $ty::to_owned($ty), )+)
+                ($( $ty::from_borrow($ty), )+)
             }
         }
-        impl<'itm, $($ty: ToOwned<'itm>),+> ToOwned<'itm> for $ffi_ty<$($ty),*> {
+        impl<'itm, $($ty: FromBorrow<'itm>),+> FromBorrow<'itm> for $ffi_ty<$($ty),*> {
             #[inline(always)]
             #[expect(non_snake_case)]
-            fn to_owned(source: Self::Borrowed<'itm>) -> Self {
+            fn from_borrow(source: Self::Borrowed<'itm>) -> Self {
                 let $ffi_ty($($ty),+) = source;
-                $ffi_ty($( $ty::to_owned($ty) ),+)
+                $ffi_ty($( $ty::from_borrow($ty) ),+)
             }
         }
 
@@ -386,7 +385,7 @@ mod tests {
     use alloc::{boxed::Box, vec::Vec};
     use core::num::NonZero as StdNonZero;
 
-    use rust_spec::{Gt, size::{Sized as Co3Sized, Zero}};
+    use rust_spec::size::{Sized as Co3Sized, Zero};
     use static_assertions::assert_impl_all;
     #[cfg(feature = "alloc")]
     use static_assertions::assert_not_impl_any;
@@ -476,7 +475,10 @@ mod tests {
     #[test]
     fn stored_tuple_3_with_niche() {
         // NOTE: Confirms niche is taken from the first available element
-        assert_eq!(<(u8, StdNonZero<u8>, bool)>::NICHE_VALUE, ReprCTuple3(0, 0, 0));
+        assert_eq!(
+            <(u8, StdNonZero<u8>, bool)>::NICHE_VALUE,
+            ReprCTuple3(0, 0, 0)
+        );
 
         assert_impl_all!((u8, StdNonZero<u8>, bool):
             Niche<CType = ReprCTuple3<u8, u8, u8>>,

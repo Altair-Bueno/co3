@@ -45,7 +45,7 @@ use rust_spec::{
     One, RustSpec,
     mutability::{Exclusive, Interior},
     niche::{NicheStabilityKind, WithNiche, WithoutNiche},
-    size::{ExternTypeLike, MetaSized, Gt, SizedKind, SliceLike, Zero},
+    size::{ExternTypeLike, MetaSized, SizedKind, SliceLike, Zero},
 };
 #[cfg(feature = "alloc")]
 use rust_spec::{Stable, Unstable, size::MetadataKind};

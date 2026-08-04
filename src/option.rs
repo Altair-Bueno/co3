@@ -4,7 +4,7 @@ use core::mem::MaybeUninit;
 
 use crate::{
     CFnArg, Decode, Encode, ExternC, ReprC,
-    borrow::{Borrow, BorrowCast, BorrowCastMut, ToOwned},
+    borrow::{Borrow, BorrowCast, BorrowCastMut, FromBorrow},
     stored::{DecodeOwned, EmptyStore, EncodeOwned},
     transmute::CheckedTransmute,
 };
@@ -166,13 +166,13 @@ unsafe impl<T: Borrow> Borrow for ReprCOption<T> {
         }
     }
 }
-impl<'itm, T: ToOwned<'itm>> ToOwned<'itm> for ReprCOption<T> {
+impl<'itm, T: FromBorrow<'itm>> FromBorrow<'itm> for ReprCOption<T> {
     #[inline(always)]
-    fn to_owned(source: Self::Borrowed<'itm>) -> Self {
+    fn from_borrow(source: Self::Borrowed<'itm>) -> Self {
         match source.tag {
             1 => {
                 let payload = unsafe { source.payload.assume_init() };
-                Self::Some(T::to_owned(payload))
+                Self::Some(T::from_borrow(payload))
             }
             _ => source.forward_payload(),
         }

@@ -6,7 +6,7 @@ use rust_spec::RustSpec;
 
 use crate::{
     CFnArg, Decode, Encode, ExternC, ReprC,
-    borrow::{Borrow, BorrowCast, BorrowCastMut, ToOwned},
+    borrow::{Borrow, BorrowCast, BorrowCastMut, FromBorrow},
     slice::{CSlice, CSliceMut, Spread},
     stored::{DecodeOwned, EncodeOwned},
     transmute::CheckedTransmute,
@@ -233,9 +233,9 @@ macro_rules! impl_boxed_carrier {
                 self
             }
         }
-        impl<'itm, C> ToOwned<'itm> for $ty<C> {
+        impl<'itm, C> FromBorrow<'itm> for $ty<C> {
             #[inline(always)]
-            fn to_owned(source: Self) -> Self {
+            fn from_borrow(source: Self) -> Self {
                 source
             }
         }

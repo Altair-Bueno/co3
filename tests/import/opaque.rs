@@ -176,17 +176,13 @@ mod ffi {
     }
 
     #[unsafe(export_name = "Value__new")]
-    unsafe extern "C" fn Value__new(
-        input: RawSliceMut<u8>,
-        output: *mut *mut ExternValue,
-    ) {
+    unsafe extern "C" fn Value__new(input: RawSliceMut<u8>, output: *mut *mut ExternValue) {
         unsafe {
             let string = String::from_utf8(input.into_rust().expect("Defined").to_vec());
             let opaque = Box::new(ExternValue(string.expect("Valid UTF8 string")));
 
             output.write(Box::into_raw(opaque));
         }
-
     }
 
     #[unsafe(export_name = "OpaqueStruct__new")]
@@ -203,7 +199,6 @@ mod ffi {
 
             output.write(Box::into_raw(opaque));
         }
-
     }
 
     #[unsafe(export_name = "OpaqueStruct__with_params")]
@@ -216,8 +211,7 @@ mod ffi {
             let mut handle = *Box::from_raw(handle);
             let mut store = Default::default();
 
-            let params =
-                Vec::<(u8, ExternValue)>::decode(params, &mut store).expect("Valid");
+            let params = Vec::<(u8, ExternValue)>::decode(params, &mut store).expect("Valid");
 
             handle.params = params.into_iter().collect();
             output.write(Box::into_raw(Box::new(handle)));
@@ -236,7 +230,6 @@ mod ffi {
             let value = handle.params.get(param_name);
             OutPtrWrite::write_out(value, output);
         }
-
     }
 
     #[unsafe(export_name = "OpaqueStruct__params")]
@@ -249,7 +242,6 @@ mod ffi {
             let params: Vec<_> = handle.params.values().collect();
             OutPtrWrite::write_out(params, output);
         }
-
     }
 
     #[unsafe(export_name = "OpaqueStruct__remove_param")]
@@ -265,7 +257,6 @@ mod ffi {
             let out: Option<ExternValue> = handle.params.remove(param_name);
             output.write(out.encode(&mut ()));
         }
-
     }
 
     #[unsafe(export_name = "OpaqueStruct__fallible_int_output")]
@@ -280,7 +271,6 @@ mod ffi {
         unsafe {
             output.write(42);
         }
-
     }
 
     #[unsafe(export_name = "__freestanding_returns_opaque_item")]
@@ -291,7 +281,5 @@ mod ffi {
         unsafe {
             output.write(input);
         }
-
     }
 }
-

@@ -4,7 +4,7 @@ use core::{mem::MaybeUninit, ops::Add};
 
 use crate::{
     CFnArg, Decode, Encode, ExternC, ReprC,
-    borrow::{Borrow, BorrowCast, BorrowCastMut, ToOwned},
+    borrow::{Borrow, BorrowCast, BorrowCastMut, FromBorrow},
     stored::{DecodeOwned, EmptyStore, EncodeOwned},
     transmute::CheckedTransmute,
 };
@@ -210,16 +210,17 @@ where
         }
     }
 }
-impl<'itm, T: ToOwned<'itm> + Copy, E: ToOwned<'itm> + Copy> ToOwned<'itm> for ReprCResult<T, E>
+impl<'itm, T: FromBorrow<'itm> + Copy, E: FromBorrow<'itm> + Copy> FromBorrow<'itm>
+    for ReprCResult<T, E>
 where
     for<'borrow> T::Borrowed<'borrow>: Copy,
     for<'borrow> E::Borrowed<'borrow>: Copy,
 {
     #[inline(always)]
-    fn to_owned(source: Self::Borrowed<'itm>) -> Self {
+    fn from_borrow(source: Self::Borrowed<'itm>) -> Self {
         match source.tag() {
-            0 => Self::Ok(T::to_owned(unsafe { source.ok.1.assume_init() })),
-            1 => Self::Err(E::to_owned(unsafe { source.err.1.assume_init() })),
+            0 => Self::Ok(T::from_borrow(unsafe { source.ok.1.assume_init() })),
+            1 => Self::Err(E::from_borrow(unsafe { source.err.1.assume_init() })),
             _ => source.forward_payload(),
         }
     }

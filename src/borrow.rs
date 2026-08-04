@@ -1,12 +1,13 @@
 #[cfg(feature = "alloc")]
-use alloc::{borrow::ToOwned as StdToOwned, boxed::Box, vec::Vec};
+use alloc::{borrow::ToOwned, boxed::Box, vec::Vec};
 
-use crate::{ReprC, stored::ArrayStore};
 #[cfg(feature = "alloc")]
 use rust_spec::{
     RustSpec,
     size::{MetaSized, MetadataKind, SizedKind},
 };
+
+use crate::{ReprC, stored::ArrayStore};
 
 // TODO: Remove this once extern types are stable
 // https://github.com/rust-lang/rust/issues/43467
@@ -65,8 +66,8 @@ pub unsafe trait Borrow: Sized {
         Self: 'itm;
 }
 // TODO: Join the 2 traits?
-pub trait ToOwned<'itm>: Borrow {
-    fn to_owned(source: Self::Borrowed<'itm>) -> Self;
+pub trait FromBorrow<'itm>: Borrow {
+    fn from_borrow(source: Self::Borrowed<'itm>) -> Self;
 }
 
 unsafe impl<R: Borrow> Borrow for Option<R> {
@@ -85,10 +86,10 @@ unsafe impl<R: Borrow> Borrow for Option<R> {
         self.map(|value| value.borrow(owner))
     }
 }
-impl<'itm, R: ToOwned<'itm>> ToOwned<'itm> for Option<R> {
+impl<'itm, R: FromBorrow<'itm>> FromBorrow<'itm> for Option<R> {
     #[inline(always)]
-    fn to_owned(source: Self::Borrowed<'itm>) -> Self {
-        source.map(R::to_owned)
+    fn from_borrow(source: Self::Borrowed<'itm>) -> Self {
+        source.map(R::from_borrow)
     }
 }
 
@@ -117,12 +118,12 @@ unsafe impl<T: Borrow, E: Borrow> Borrow for Result<T, E> {
         }
     }
 }
-impl<'itm, T: ToOwned<'itm>, E: ToOwned<'itm>> ToOwned<'itm> for Result<T, E> {
+impl<'itm, T: FromBorrow<'itm>, E: FromBorrow<'itm>> FromBorrow<'itm> for Result<T, E> {
     #[inline(always)]
-    fn to_owned(source: Self::Borrowed<'itm>) -> Self {
+    fn from_borrow(source: Self::Borrowed<'itm>) -> Self {
         match source {
-            Ok(value) => Ok(T::to_owned(value)),
-            Err(err) => Err(E::to_owned(err)),
+            Ok(value) => Ok(T::from_borrow(value)),
+            Err(err) => Err(E::from_borrow(err)),
         }
     }
 }
@@ -143,9 +144,9 @@ unsafe impl<R: ?Sized> Borrow for &R {
         self
     }
 }
-impl<'itm, 'a: 'itm, R: ?Sized> ToOwned<'itm> for &'a R {
+impl<'itm, 'a: 'itm, R: ?Sized> FromBorrow<'itm> for &'a R {
     #[inline(always)]
-    fn to_owned(source: Self::Borrowed<'itm>) -> Self {
+    fn from_borrow(source: Self::Borrowed<'itm>) -> Self {
         source
     }
 }
@@ -166,9 +167,9 @@ unsafe impl<R: ?Sized> Borrow for &mut R {
         self
     }
 }
-impl<'itm, 'a: 'itm, R: ?Sized> ToOwned<'itm> for &'a mut R {
+impl<'itm, 'a: 'itm, R: ?Sized> FromBorrow<'itm> for &'a mut R {
     #[inline(always)]
-    fn to_owned(source: Self::Borrowed<'itm>) -> Self {
+    fn from_borrow(source: Self::Borrowed<'itm>) -> Self {
         source
     }
 }
@@ -194,13 +195,13 @@ unsafe impl<R: RustSpec<Size: NonExternTypeLike> + ?Sized> Borrow for Box<R> {
     }
 }
 #[cfg(feature = "alloc")]
-impl<'itm, R: RustSpec<Size: NonExternTypeLike> + StdToOwned + ?Sized> ToOwned<'itm> for Box<R>
+impl<'itm, R: RustSpec<Size: NonExternTypeLike> + ToOwned + ?Sized> FromBorrow<'itm> for Box<R>
 where
     R::Owned: Into<Self>,
 {
     #[inline(always)]
-    fn to_owned(source: Self::Borrowed<'itm>) -> Self {
-        StdToOwned::to_owned(source).into()
+    fn from_borrow(source: Self::Borrowed<'itm>) -> Self {
+        ToOwned::to_owned(source).into()
     }
 }
 
@@ -223,9 +224,9 @@ unsafe impl<R> Borrow for Vec<R> {
     }
 }
 #[cfg(feature = "alloc")]
-impl<'itm, R: Clone> ToOwned<'itm> for Vec<R> {
+impl<'itm, R: Clone> FromBorrow<'itm> for Vec<R> {
     #[inline(always)]
-    fn to_owned(source: Self::Borrowed<'itm>) -> Self {
+    fn from_borrow(source: Self::Borrowed<'itm>) -> Self {
         source.to_vec()
     }
 }
@@ -258,9 +259,9 @@ unsafe impl<R: Borrow, const N: usize> Borrow for [R; N] {
         }
     }
 }
-impl<'itm, R: ToOwned<'itm>, const N: usize> ToOwned<'itm> for [R; N] {
+impl<'itm, R: FromBorrow<'itm>, const N: usize> FromBorrow<'itm> for [R; N] {
     #[inline(always)]
-    fn to_owned(source: Self::Borrowed<'itm>) -> Self {
-        source.map(R::to_owned)
+    fn from_borrow(source: Self::Borrowed<'itm>) -> Self {
+        source.map(R::from_borrow)
     }
 }

@@ -2,7 +2,7 @@
 
 use crate::{
     CFnArg, Decode, Encode, ExternC, ReprC,
-    borrow::{Borrow, BorrowCast, BorrowCastMut, ToOwned},
+    borrow::{Borrow, BorrowCast, BorrowCastMut, FromBorrow},
     stored::{DecodeOwned, EncodeOwned},
     transmute::CheckedTransmute,
 };
@@ -191,9 +191,9 @@ macro_rules! impl_slice_carrier {
                 self
             }
         }
-        impl<'itm, C> ToOwned<'itm> for $ty<C> {
+        impl<'itm, C> FromBorrow<'itm> for $ty<C> {
             #[inline(always)]
-            fn to_owned(source: Self) -> Self {
+            fn from_borrow(source: Self) -> Self {
                 source
             }
         }
@@ -275,7 +275,23 @@ impl<C: ReprC> Spread for CSliceMut<C> {
     }
 }
 
-#[cfg(test)]
+#[cfg(feature = "alloc")]
+impl<C> CSlice<C> {
+    /// Convert [`Self`] into a mutable slice. Return `None` if data pointer is null.
+    /// Unlike [`core::slice::from_raw_parts_mut`], data pointer is allowed to be null.
+    ///
+    /// # Safety
+    ///
+    /// Check [`core::slice::from_raw_parts_mut`]
+    pub(crate) const unsafe fn into_rust<'slice>(self) -> Option<&'slice [C]> {
+        if self.data.is_null() {
+            return None;
+        }
+
+        Some(unsafe { core::slice::from_raw_parts(self.data, self.len) })
+    }
+}
+
 #[cfg(feature = "alloc")]
 impl<C> CSliceMut<C> {
     /// Convert [`Self`] into a mutable slice. Return `None` if data pointer is null.

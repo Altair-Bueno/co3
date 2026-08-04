@@ -58,16 +58,16 @@ fn gen_struct_borrow_impls(
     let owner_type = struct_view_owner_type(fields);
     let borrowed_fields = gen_field_borrow_exprs(fields);
     let borrowed_view = gen_record_construction(quote! { #view_name }, fields, &borrowed_fields);
-    let to_owned_body = gen_record_to_owned(quote!(Self), fields);
+    let from_borrow_body = gen_record_from_borrow(quote!(Self), fields);
 
-    let (borrow_impl, to_owned_impl) = (
+    let (borrow_impl, from_borrow_impl) = (
         quote! {
             let Self #fields_destructure = self;
             #borrowed_view
         },
         quote! {
             let #view_name #fields_destructure = source;
-            #to_owned_body
+            #from_borrow_body
         },
     );
 
@@ -77,7 +77,7 @@ fn gen_struct_borrow_impls(
         &field_tys,
         owner_type,
         borrow_impl,
-        to_owned_impl,
+        from_borrow_impl,
     )
 }
 
@@ -95,7 +95,7 @@ fn gen_enum_borrow_impls(
     let owner_either_ty = gen_either_name(variants.len());
 
     let owner_type = enum_view_owner_type(variants);
-    let (variants_borrow, variants_to_owned): (Vec<_>, Vec<_>) = variants
+    let (variants_borrow, variants_from_borrow): (Vec<_>, Vec<_>) = variants
         .iter()
         .enumerate()
         .map(|(idx, variant)| {
@@ -105,7 +105,7 @@ fn gen_enum_borrow_impls(
             let view_head = quote! { #view_name::#variant_name };
             let owned_head = quote! { Self::#variant_name };
             let borrowed_variant = gen_record_construction(view_head, &variant.fields, &field_vars);
-            let to_owned_body = gen_record_to_owned(owned_head, &variant.fields);
+            let from_borrow_body = gen_record_from_borrow(owned_head, &variant.fields);
 
             let owner_variant = either_variant_name(idx);
             let owner_vars = (0..field_vars.len())
@@ -133,16 +133,16 @@ fn gen_enum_borrow_impls(
                     }
                 },
                 quote! {
-                    #view_name::#variant_name #destructure_fields => #to_owned_body
+                    #view_name::#variant_name #destructure_fields => #from_borrow_body
                 },
             )
         })
         .unzip();
 
-    let (borrow_impl, to_owned_impl) = (
+    let (borrow_impl, from_borrow_impl) = (
         quote! { match self { #(#variants_borrow,)* } },
         quote! {
-            match source { #(#variants_to_owned,)* }
+            match source { #(#variants_from_borrow,)* }
         },
     );
 
@@ -152,7 +152,7 @@ fn gen_enum_borrow_impls(
         &fields,
         owner_type,
         borrow_impl,
-        to_owned_impl,
+        from_borrow_impl,
     )
 }
 
@@ -162,7 +162,7 @@ fn gen_borrow_impls<const ADD_SIZED: bool>(
     fields: &[&syn::Type],
     owner_type: TokenStream,
     borrow_impl: TokenStream,
-    to_owned_impl: TokenStream,
+    from_borrow_impl: TokenStream,
 ) -> TokenStream {
     let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
     let predicates = where_clause.as_ref().map(|w| &w.predicates);
@@ -177,8 +177,8 @@ fn gen_borrow_impls<const ADD_SIZED: bool>(
         quote! { <#(#view_ty_generics),*> }
     });
     let borrow_bounds = gen_field_trait_bounds(generics, fields, quote! { co3::borrow::Borrow });
-    let to_owned_bounds =
-        gen_field_trait_bounds(generics, fields, quote! { co3::borrow::ToOwned<'_išč> });
+    let from_borrow_bounds =
+        gen_field_trait_bounds(generics, fields, quote! { co3::borrow::FromBorrow<'_išč> });
 
     let view_name = gen_view_name(name);
     let sized_bound = ADD_SIZED.then(|| {
@@ -212,15 +212,15 @@ fn gen_borrow_impls<const ADD_SIZED: bool>(
             }
         }
 
-        impl<'_išč, #params> co3::borrow::ToOwned<'_išč> for #name #ty_generics
+        impl<'_išč, #params> co3::borrow::FromBorrow<'_išč> for #name #ty_generics
         where
-            #(#to_owned_bounds,)*
+            #(#from_borrow_bounds,)*
             #sized_bound
             #predicates
         {
             #[inline(always)]
-            fn to_owned(source: Self::Borrowed<'_išč>) -> Self {
-                #to_owned_impl
+            fn from_borrow(source: Self::Borrowed<'_išč>) -> Self {
+                #from_borrow_impl
             }
         }
     }
@@ -274,17 +274,17 @@ fn gen_record_construction(
     }
 }
 
-fn gen_record_to_owned(head: TokenStream, fields: &syn::Fields) -> TokenStream {
+fn gen_record_from_borrow(head: TokenStream, fields: &syn::Fields) -> TokenStream {
     let field_vars = field_vars(fields);
 
     match fields {
         syn::Fields::Named(_) | syn::Fields::Unit => {
             let field_names: Vec<_> = fields.iter().filter_map(|f| f.ident.as_ref()).collect();
 
-            quote! { #head { #(#field_names: co3::borrow::ToOwned::to_owned(#field_vars)),* } }
+            quote! { #head { #(#field_names: co3::borrow::FromBorrow::from_borrow(#field_vars)),* } }
         }
         syn::Fields::Unnamed(_) => {
-            quote! { #head(#(co3::borrow::ToOwned::to_owned(#field_vars)),*) }
+            quote! { #head(#(co3::borrow::FromBorrow::from_borrow(#field_vars)),*) }
         }
     }
 }
@@ -432,8 +432,8 @@ pub fn gen_identity_borrow_impls(name: &Ident, generics: &syn::Generics) -> Toke
             }
         }
 
-        impl<'d, #params> co3::borrow::ToOwned<'d> for #name #ty_generics #where_clause {
-            fn to_owned(source: Self) -> Self {
+        impl<'d, #params> co3::borrow::FromBorrow<'d> for #name #ty_generics #where_clause {
+            fn from_borrow(source: Self) -> Self {
                 source
             }
         }
