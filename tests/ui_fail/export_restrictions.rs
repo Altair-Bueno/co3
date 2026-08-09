@@ -100,16 +100,18 @@ ffi! {
     #![unsafe(export("C"))]
 
     impl Kita for u32 {
-        #[erased]
-        fn kita(self);
+        fn kita(self)
+        where
+            <T> @ <>;
     }
 }
 
 ffi! {
     #![unsafe(export("C"))]
 
-    #[erased]
-    type OpaqueType;
+    type OpaqueType<T>
+    where
+        <T> @ <>;
 }
 
 ffi! {
@@ -138,13 +140,17 @@ ffi! {
     #[id(u32)]
     type OpaqueType<T>;
 
-    #[erased(<u32>)]
-    impl<T> Drop for dyn OpaqueType<T> {
+    impl<T> Drop for dyn OpaqueType<T>
+    where
+        <T> @ <u32>,
+    {
         fn drop(&mut self);
     }
 
-    #[erased]
-    impl<dyn(u32) T> Clone for OpaqueType<T> {
+    impl<dyn(u32) T> Clone for OpaqueType<T>
+    where
+        <T> @ <>
+    {
         fn clone(&self);
     }
 }
@@ -155,13 +161,17 @@ ffi! {
     #[id(u32)]
     type OpaqueType<T>;
 
-    #[erased(<u32>)]
-    impl<T> Drop for dyn OpaqueType<T> {
+    impl<T> Drop for dyn OpaqueType<T>
+    where
+        <T> @ <u32>,
+    {
         fn drop(&mut self);
     }
 
-    #[erased(<u32, u8>)]
-    impl<dyn(u32) T> Clone for OpaqueType<T> {
+    impl<dyn(u32) T> Clone for OpaqueType<T>
+    where
+        <T> @ <u32, u8>,
+    {
         fn clone(&self);
     }
 }

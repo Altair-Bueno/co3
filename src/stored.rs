@@ -739,7 +739,7 @@ disjoint_impls! {
     }
     #[cfg(feature = "alloc")]
     // TODO: Implement for all R, not just slices. It's quite difficult to unify it under this
-    unsafe impl<'d, R: DecodeOwned<'d, CType: BorrowCast<AsConst: Copy> + Copy> + FromBorrow<'d>>
+    unsafe impl<'d, R: DecodeOwned<'d, CType: BorrowCast<AsConst: Copy> + Copy> + FromBorrow<'d> + Clone>
         DecodeOwned<'d> for &'d [R]
     where
         Self: RustSpec<Layout = Unstable> + ExternC<CType = CSlice<<R as ExternC>::CType>>,
@@ -774,7 +774,7 @@ disjoint_impls! {
     }
     #[cfg(feature = "alloc")]
     // TODO: Implement for all R, not just slices. It's quite difficult to unify it under this
-    unsafe impl<'d, R: DecodeOwned<'d, CType: BorrowCast<AsConst: Copy> + Copy> + FromBorrow<'d>>
+    unsafe impl<'d, R: DecodeOwned<'d, CType: BorrowCast<AsConst: Copy> + Copy> + FromBorrow<'d> + Clone>
         DecodeOwned<'d> for &'d [R]
     where
         Self: RustSpec<Layout = Unstable> + ExternC<CType = CSliceMut<<R as ExternC>::CType>>,
@@ -1362,7 +1362,7 @@ pub struct RefMutSizedDecodeStore<R: ExternC, S> {
 }
 
 #[cfg(feature = "alloc")]
-pub struct RefDstDecodeStore<R: Owned + ?Sized, S> {
+pub struct RefDstDecodeStore<R: ToOwned + ?Sized, S> {
     pub(crate) value: Option<R::Owned>,
     pub(crate) store: S,
 }
@@ -1525,7 +1525,7 @@ impl<R: EncodeOwned<Store: EmptyStore>, S: Store> Store for RefMutSizedDecodeSto
 }
 
 #[cfg(feature = "alloc")]
-impl<R: Owned + ?Sized, S: Default> Default for RefDstDecodeStore<R, S> {
+impl<R: ToOwned + ?Sized, S: Default> Default for RefDstDecodeStore<R, S> {
     fn default() -> Self {
         Self {
             value: None,
@@ -1546,7 +1546,7 @@ impl<R: ExternC<CType: Sized>, S: Default> Default for RefMutSliceDecodeStore<R,
 }
 
 #[cfg(feature = "alloc")]
-impl<R: Owned + ?Sized, S: Store> Store for RefDstDecodeStore<R, S> {
+impl<R: ToOwned + ?Sized, S: Store> Store for RefDstDecodeStore<R, S> {
     fn sync(self) -> Option<()> {
         self.store.sync()
     }

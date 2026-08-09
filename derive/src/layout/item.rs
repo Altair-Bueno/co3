@@ -27,12 +27,21 @@ pub(super) fn derive_item(
     attrs: &ReprCAttrs,
     variant_attrs: &[VariantReprCAttrs],
 ) -> TokenStream {
+    if matches!(
+        &input.data,
+        syn::Data::Enum(data)
+            if matches!(repr, Some(ReprKind::Transparent)) && data.variants.len() != 1
+    ) {
+        return quote! {};
+    }
+
     let is_view = attrs.is_view;
+    let is_wide_data = attrs.is_wide_data;
 
-    let ctype_def = (!is_view).then(|| gen_item_ctype(repr, input));
-    let view_def = (!is_view).then(|| gen_item_view(input, attrs, variant_attrs));
+    let ctype_def = (!is_view).then(|| gen_item_ctype(repr, input, !is_wide_data));
+    let view_def = (!is_view && !is_wide_data).then(|| gen_item_view(input, attrs, variant_attrs));
 
-    let borrow_impls = (!is_view).then(|| gen_item_borrow_impls(input));
+    let borrow_impls = (!is_view && !is_wide_data).then(|| gen_item_borrow_impls(input));
     let codec_impls = gen_item_codec_impls(repr, input, attrs, variant_attrs);
     let niche_impls = (!is_view).then(|| gen_item_niche_impls(repr, input, attrs));
     let interior_mut_impl = gen_item_interior_mut_impl(repr, input);
@@ -305,7 +314,6 @@ fn gen_enum_codec_impls(
     if is_transparent_enum_repr(repr, variants) {
         return gen_transparent_enum_codec_impls(is_view, name, generics, variants, variant_attrs);
     }
-
     let tag_type = enum_tag_type(repr, variants.len());
 
     let payload_name = if let Some(owner_name) = &view_owner_name {

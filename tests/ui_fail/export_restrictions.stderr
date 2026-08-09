@@ -78,50 +78,44 @@ error: Attribute not supported in this position
 93 |     #[some_attr]
    |     ^^^^^^^^^^^^
 
-error: `#[erased]` is only supported on impl blocks`
-   --> tests/ui_fail/export_restrictions.rs:103:9
+error: tagged-dispatch predicates are only supported on impl blocks
+   --> tests/ui_fail/export_restrictions.rs:105:13
     |
-103 |         #[erased]
-    |         ^^^^^^^^^
+105 |             <T> @ <>;
+    |             ^
 
-error: Attribute not supported in this position
-   --> tests/ui_fail/export_restrictions.rs:103:9
+error: tagged-dispatch predicates are only supported on impl blocks
+   --> tests/ui_fail/export_restrictions.rs:114:9
     |
-103 |         #[erased]
-    |         ^^^^^^^^^
-
-error: Attribute not supported in this position
-   --> tests/ui_fail/export_restrictions.rs:111:5
-    |
-111 |     #[erased]
-    |     ^^^^^^^^^
+114 |         <T> @ <>;
+    |         ^
 
 error: fn bodies are not allowed in declarations
-   --> tests/ui_fail/export_restrictions.rs:119:24
+   --> tests/ui_fail/export_restrictions.rs:121:24
     |
-119 |         fn kita1(self) {}
+121 |         fn kita1(self) {}
     |                        ^
 
 error: fn bodies are not allowed in declarations
-   --> tests/ui_fail/export_restrictions.rs:126:22
+   --> tests/ui_fail/export_restrictions.rs:128:22
     |
-126 |     fn kita1(a: u32) {}
+128 |     fn kita1(a: u32) {}
     |                      ^
 
 error: patterns aren't allowed in function declarations
-   --> tests/ui_fail/export_restrictions.rs:132:14
+   --> tests/ui_fail/export_restrictions.rs:134:14
     |
-132 |     fn kita1((a, b): (u32, u32));
+134 |     fn kita1((a, b): (u32, u32));
     |              ^^^^^^
 
-error: erased must provide 1 generic argument
-   --> tests/ui_fail/export_restrictions.rs:146:5
+error: tagged dispatch must provide 1 concrete generic argument
+   --> tests/ui_fail/export_restrictions.rs:152:9
     |
-146 |     #[erased]
-    |     ^^^^^^^^^
+152 |         <T> @ <>
+    |         ^
 
-error: erased must provide 1 generic argument
-   --> tests/ui_fail/export_restrictions.rs:163:14
+error: tagged dispatch must provide 1 concrete generic argument
+   --> tests/ui_fail/export_restrictions.rs:173:15
     |
-163 |     #[erased(<u32, u8>)]
-    |              ^^^^^^^^^
+173 |         <T> @ <u32, u8>,
+    |               ^^^^^^^^^

@@ -1,9 +1,10 @@
 use proc_macro2::TokenStream;
 use quote::{format_ident, quote};
+use syn::parse_quote;
 
-use super::{ReprKind, is_type_parametrized};
+use super::{ReprKind, ctype::gen_extern_c_bounds_for_ctype, is_type_parametrized};
 
-fn gen_data_struct_name(ident: &syn::Ident) -> syn::Ident {
+pub(super) fn gen_data_struct_name(ident: &syn::Ident) -> syn::Ident {
     format_ident!("{}Data", ident)
 }
 
@@ -22,19 +23,26 @@ pub(crate) fn expand(
         return Ok(quote! {});
     };
 
-    validate_last_field(repr, &data.fields, field)?;
-
     let name = &input.ident;
     let field_ty = &field.ty;
 
-    let data_ty = gen_data_ty(input);
-    let methods = gen_dst_methods(field_ty, field_ref, field_member);
+    let is_transparent_single =
+        data.fields.len() == 1 && matches!(repr, Some(ReprKind::Transparent));
+    let data_ty = if is_transparent_single {
+        quote!(<#field_ty as co3::wide::Wide>::Data)
+    } else {
+        gen_data_ty(input)
+    };
+    let size_assertion = gen_size_assertion(repr, &data.fields, &input.generics, name);
+    let methods = gen_dst_methods(is_transparent_single, field_ty, field_ref, field_member);
     let alloc_methods = gen_alloc_methods();
 
     let wide_predicate = wide_predicate(field_ty, &input.generics);
-    let data_def = gen_data_def(input, &data.fields, &wide_predicate);
+    let data_def = (!is_transparent_single).then(|| gen_data_def(input, &data.fields));
 
     Ok(quote! {
+        #size_assertion
+
         #data_def
 
         impl #impl_generics co3::wide::Wide for #name #ty_generics
@@ -51,24 +59,41 @@ pub(crate) fn expand(
     })
 }
 
-fn validate_last_field(
+fn gen_size_assertion(
     repr: Option<&ReprKind>,
     fields: &syn::Fields,
-    field: &syn::Field,
-) -> syn::Result<()> {
-    let err_msg = "single-field DST structs require #[repr(transparent)]";
+    generics: &syn::Generics,
+    name: &syn::Ident,
+) -> TokenStream {
+    let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
 
-    if fields.len() == 1
-        && !matches!(repr, Some(ReprKind::Transparent))
-        && matches!(field.ty, syn::Type::Slice(_) | syn::Type::TraitObject(_))
-    {
-        return Err(syn::Error::new_spanned(field, err_msg));
+    if fields.len() != 1 || matches!(repr, Some(ReprKind::Transparent)) {
+        return quote! {};
     }
 
-    Ok(())
+    quote! {
+        const _: () = {
+            #[expect(dead_code)]
+            trait AssertTransparentSize {
+                fn assert_slice_like();
+            }
+
+            impl #impl_generics AssertTransparentSize for #name #ty_generics #where_clause {
+                fn assert_slice_like() {
+                    const {
+                        // TODO: What about DynTraitLike or ExternTypeLike?
+                        assert!(co3::impls!(Self: !co3::rust_spec::RustSpec<
+                            Size = co3::rust_spec::size::MetaSized<co3::rust_spec::size::SliceLike>>),
+                            "single-field DST structs require #[repr(transparent)]"
+                        );
+                    }
+                }
+            }
+        };
+    }
 }
 
-fn last_field(fields: &syn::Fields) -> Option<(&syn::Field, TokenStream, TokenStream)> {
+pub(super) fn last_field(fields: &syn::Fields) -> Option<(&syn::Field, TokenStream, TokenStream)> {
     let (index, field) = fields.iter().enumerate().next_back()?;
 
     let (field_ref, field_member) = field.ident.as_ref().map_or_else(
@@ -103,11 +128,7 @@ fn gen_data_ty(input: &syn::DeriveInput) -> TokenStream {
     quote! { #name <#(#args),*> }
 }
 
-fn gen_data_def(
-    input: &syn::DeriveInput,
-    fields: &syn::Fields,
-    wide_predicate: &TokenStream,
-) -> TokenStream {
+fn gen_data_def(input: &syn::DeriveInput, fields: &syn::Fields) -> TokenStream {
     let name = gen_data_struct_name(&input.ident);
 
     let attrs = input
@@ -119,7 +140,8 @@ fn gen_data_def(
     let vis = &input.vis;
     let fields_len = fields.len();
 
-    let (impl_generics, _, where_clause) = input.generics.split_for_impl();
+    let generics = data_generics(fields, &input.generics);
+    let (impl_generics, _, where_clause) = generics.split_for_impl();
     let predicates = where_clause.as_ref().map(|w| &w.predicates);
 
     let suffix =
@@ -139,7 +161,7 @@ fn gen_data_def(
                 });
 
                 quote! {
-                    where #wide_predicate, #predicates
+                    where #predicates
                     { #(#fields,)* }
                 }
             }
@@ -158,7 +180,7 @@ fn gen_data_def(
 
                 quote! {
                     ( #(#fields,)*)
-                    where #wide_predicate, #predicates;
+                    where #predicates;
                 }
             }
             syn::Fields::Unit => quote! {;},
@@ -170,6 +192,20 @@ fn gen_data_def(
         #(#attrs)*
         #vis struct #name #impl_generics #suffix
     }
+}
+
+pub(super) fn data_generics(fields: &syn::Fields, generics: &syn::Generics) -> syn::Generics {
+    let Some((last, ..)) = last_field(fields) else {
+        return generics.clone();
+    };
+
+    let mut data_generics = generics.clone();
+    let wide_predicate = wide_predicate(&last.ty, generics);
+    data_generics
+        .make_where_clause()
+        .predicates
+        .push(parse_quote!(#wide_predicate));
+    data_generics
 }
 
 fn regular_derives(input: &syn::DeriveInput) -> Vec<syn::Path> {
@@ -215,27 +251,51 @@ fn regular_derives(input: &syn::DeriveInput) -> Vec<syn::Path> {
     derives
 }
 
-fn data_field_ty(ty: &syn::Type, is_last_field: bool) -> TokenStream {
+pub(super) fn data_field_ty(ty: &syn::Type, is_last_field: bool) -> syn::Type {
     if !is_last_field {
-        return quote! { #ty };
+        return ty.clone();
     }
 
     match ty {
-        syn::Type::Slice(_) => quote! { [<#ty as co3::wide::Wide>::Data; 0] },
-        _ => quote! { <#ty as co3::wide::Wide>::Data },
+        syn::Type::Slice(_) => parse_quote! { [<#ty as co3::wide::Wide>::Data; 0] },
+        _ => parse_quote! { <#ty as co3::wide::Wide>::Data },
     }
 }
 
-fn wide_predicate(field_ty: &syn::Type, generics: &syn::Generics) -> TokenStream {
+pub(super) fn gen_data_ctype_bounds(
+    fields: &syn::Fields,
+    generics: &syn::Generics,
+) -> Vec<syn::WherePredicate> {
+    let fields_len = fields.len();
+
+    let field_tys = fields
+        .iter()
+        .enumerate()
+        .map(|(index, field)| data_field_ty(&field.ty, index == fields_len - 1))
+        .collect::<Vec<_>>();
+
+    let generics = data_generics(fields, generics);
+    let field_tys = field_tys.iter().collect::<Vec<_>>();
+    gen_extern_c_bounds_for_ctype::<false>(&generics, &field_tys)
+}
+
+pub(super) fn wide_predicate(field_ty: &syn::Type, generics: &syn::Generics) -> TokenStream {
     let for_dummy = (!is_type_parametrized(field_ty, generics)).then(|| quote! { for<'__dummy> });
     quote! { #for_dummy #field_ty: co3::wide::Wide }
 }
 
-fn gen_dst_methods(
+pub(super) fn gen_dst_methods(
+    is_transparent: bool,
     field_ty: &syn::Type,
     field_ref: TokenStream,
     field_member: TokenStream,
 ) -> TokenStream {
+    let offset = if is_transparent {
+        quote!(0)
+    } else {
+        quote!(core::mem::offset_of!(Self::Data, #field_member))
+    };
+
     quote! {
         #[inline(always)]
         fn metadata(&self) -> Self::Metadata {
@@ -257,7 +317,7 @@ fn gen_dst_methods(
             data: *const Self::Data,
             metadata: Self::Metadata,
         ) -> &'__rust_spec Self {
-            let offset = core::mem::offset_of!(Self::Data, #field_member);
+            let offset = #offset;
             let field = unsafe {
                 <#field_ty as co3::wide::Wide>::from_raw_parts(
                     data.cast::<u8>().byte_add(offset).cast(),
@@ -275,7 +335,7 @@ fn gen_dst_methods(
             data: *mut Self::Data,
             metadata: Self::Metadata,
         ) -> &'__rust_spec mut Self {
-            let offset = core::mem::offset_of!(Self::Data, #field_member);
+            let offset = #offset;
             let field = unsafe {
                 <#field_ty as co3::wide::Wide>::from_raw_parts_mut(
                     data.cast::<u8>().byte_add(offset).cast(),
@@ -290,7 +350,7 @@ fn gen_dst_methods(
     }
 }
 
-fn gen_alloc_methods() -> TokenStream {
+pub(super) fn gen_alloc_methods() -> TokenStream {
     if !cfg!(feature = "alloc") {
         return quote! {};
     }

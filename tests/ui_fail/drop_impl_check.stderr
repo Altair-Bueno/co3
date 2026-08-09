@@ -23,10 +23,10 @@ error: explicit `impl Drop` is only allowed for declared types
    |                   ^^^^^^^^^^
 
 error[E0367]: `Drop` impl requires `_::_::Export1<T>: Kita` but the struct it is implemented for does not
-  --> tests/ui_fail/drop_impl_check.rs:57:49
+  --> tests/ui_fail/drop_impl_check.rs:58:15
    |
-57 |     impl<T> Drop for dyn Export1<T> where Self: Kita {
-   |                                                 ^^^^
+58 |         Self: Kita,
+   |               ^^^^
    |
 note: the implementor must specify the same requirement
   --> tests/ui_fail/drop_impl_check.rs:49:1
@@ -40,20 +40,20 @@ note: the implementor must specify the same requirement
    = note: this error originates in the macro `ffi` (in Nightly builds, run with -Z macro-backtrace for more info)
 
 error[E0367]: `Drop` impl requires `Extern2<T>: Kita` but the struct it is implemented for does not
-  --> tests/ui_fail/drop_impl_check.rs:71:49
+  --> tests/ui_fail/drop_impl_check.rs:75:15
    |
-71 |     impl<T> Drop for dyn Extern2<T> where Self: Kita {
-   |                                                 ^^^^
+75 |         Self: Kita,
+   |               ^^^^
    |
 note: the implementor must specify the same requirement
-  --> tests/ui_fail/drop_impl_check.rs:62:1
+  --> tests/ui_fail/drop_impl_check.rs:65:1
    |
-62 | / ffi! {
-63 | |     #![unsafe(extern("C"))]
-64 | |
-65 | |     #![symbol_prefix = "kita"]
-66 | |
-67 | |     #[id(u32)]
-68 | |     type Extern2<T>;
+65 | / ffi! {
+66 | |     #![unsafe(extern("C"))]
+67 | |
+68 | |     #![symbol_prefix = "kita"]
+69 | |
+70 | |     #[id(u32)]
+71 | |     type Extern2<T>;
    | |________________^
    = note: this error originates in the macro `ffi` (in Nightly builds, run with -Z macro-backtrace for more info)

@@ -11,7 +11,7 @@ use crate::{
     utils::{has_non_lifetime_generics, is_drop_impl, is_type_erased, push_error},
 };
 
-const GENERICS_ERR: &str = "Type and const generics on impls are not supported. Use `#[erased]`";
+const GENERICS_ERR: &str = "Type and const generics on impls require a tagged-dispatch predicate";
 
 pub(crate) fn validate_niche_value_sized_tail(fields: &syn::Fields) -> Result<()> {
     fn peel_type(ty: &syn::Type) -> &syn::Type {
@@ -70,6 +70,9 @@ fn handle_id<'a>(ty: &'a syn::Type, self_ty: &syn::Type) -> Option<HandleId<'a>>
 
 fn validate_export_fn_attrs(attrs: &[syn::Attribute]) -> Result<()> {
     for attr in attrs {
+        if attr.path().is_ident("erased") {
+            continue;
+        }
         if is_symbol_name_attr(attr)
             || is_explicit_lifetimes_attr(attr)
             || is_by_val_attr(attr)
@@ -112,7 +115,7 @@ fn validate_lifetime_opt_in(attrs: &[syn::Attribute], generics: &syn::Generics) 
 fn validate_no_dispatch_attrs(attrs: &[syn::Attribute], errors: &mut Option<Error>) {
     for attr in attrs {
         if attr.path().is_ident("erased") {
-            let err_msg = "`#[erased]` is only supported on impl blocks`";
+            let err_msg = "tagged-dispatch predicates are only supported on impl blocks";
             push_error(errors, Error::new_spanned(attr, err_msg));
         }
     }
@@ -214,7 +217,10 @@ fn validate_export_decl(decl: &ParsedForeignItem) -> Result<()> {
         }
         ParsedForeignItem::Type(decl) => {
             for attr in &decl.ty.attrs {
-                if !attr.path().is_ident("id") && !is_cfg_attr(attr) {
+                if !attr.path().is_ident("id")
+                    && !attr.path().is_ident("erased")
+                    && !is_cfg_attr(attr)
+                {
                     push_error(&mut errors, unsupported_attr(attr));
                 }
             }
@@ -263,10 +269,8 @@ fn validate_shared(decls: &[ParsedForeignItem]) -> Result<()> {
                     if is_explicit_lifetimes_attr(attr) {
                         push_error(&mut errors, unsupported_attr(attr));
                     }
-                    if attr.path().is_ident("erased") {
-                        push_error(&mut errors, unsupported_attr(attr));
-                    }
                 }
+                validate_no_dispatch_attrs(&decl.ty.attrs, &mut errors);
             }
             ParsedForeignItem::Fn(decl_fn) => {
                 if let Err(err) = ensure_no_handle_arg_attrs(&decl_fn.sig) {
@@ -318,7 +322,9 @@ fn validate_shared(decls: &[ParsedForeignItem]) -> Result<()> {
                         if let Err(err) = ensure_no_handle_arg_attrs(sig) {
                             push_error(&mut errors, err);
                         }
-                        if let Err(err) = validate_signature_shape(Some(&impl_.self_ty), sig) {
+                        if !attrs.iter().any(is_type_erased)
+                            && let Err(err) = validate_signature_shape(Some(&impl_.self_ty), sig)
+                        {
                             push_error(&mut errors, err);
                         }
                         if let Err(err) = validate_lifetime_opt_in(attrs, &sig.generics) {
@@ -346,7 +352,7 @@ fn validate_shared(decls: &[ParsedForeignItem]) -> Result<()> {
 }
 
 fn validate_dispatch_impl_targets(generics: &syn::Generics, self_ty: &syn::Type) -> Result<()> {
-    let err_msg = "`#[erased]` requires at least one `dyn Type` or `dyn Self`";
+    let err_msg = "tagged dispatch requires at least one `dyn Type` or `dyn Self`";
 
     let mut type_params = generics.type_params();
     if type_params.any(|p| p.attrs.iter().any(is_type_erased)) {

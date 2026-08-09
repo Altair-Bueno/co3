@@ -18,7 +18,7 @@ note: required by an implicit `Sized` bound in `__Co3AssertSized`
 11 | |
 12 | |     #[id(u8)]
 ...  |
-19 | | }
+21 | | }
    | |_^ required by the implicit `Sized` requirement on this type parameter in `__Co3AssertSized`
    = note: this error originates in the macro `ffi` (in Nightly builds, run with -Z macro-backtrace for more info)
 
@@ -48,7 +48,7 @@ error[E0277]: the size for values of type `[T]` cannot be known at compilation t
 11 | |
 12 | |     #[id(u8)]
 ...  |
-19 | | }
+21 | | }
    | |_^ doesn't have a size known at compile-time
    |
    = help: within `OpaqueSlice<T>`, the trait `std::marker::Sized` is not implemented for `[T]`
@@ -150,7 +150,7 @@ error[E0277]: the size for values of type `[T]` cannot be known at compilation t
 11 | |
 12 | |     #[id(u8)]
 ...  |
-19 | | }
+21 | | }
    | |_^ doesn't have a size known at compile-time
    |
    = help: within `OpaqueSlice<T>`, the trait `std::marker::Sized` is not implemented for `[T]`
@@ -170,7 +170,7 @@ error[E0277]: the size for values of type `[T]` cannot be known at compilation t
 11 | |
 12 | |     #[id(u8)]
 ...  |
-19 | | }
+21 | | }
    | |_^ doesn't have a size known at compile-time
    |
    = help: within `OpaqueSlice<T>`, the trait `std::marker::Sized` is not implemented for `[T]`

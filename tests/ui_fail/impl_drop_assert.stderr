@@ -6,7 +6,7 @@ error: cannot cast enum `PrimitiveEnumWithDrop` into integer `u8` because it imp
    |
    = note: this error originates in the derive macro `ReprC` (in Nightly builds, run with -Z macro-backtrace for more info)
 
-error[E0080]: evaluation panicked: assertion failed: co3::impls!(Self : ! Drop)
+error[E0080]: evaluation panicked: Types with custom Drop are not yet supported
   --> tests/ui_fail/impl_drop_assert.rs:10:20
    |
 10 | #[derive(RustSpec, ReprC)]
@@ -20,7 +20,7 @@ note: erroneous constant encountered
    |
    = note: this note originates in the derive macro `ReprC` (in Nightly builds, run with -Z macro-backtrace for more info)
 
-error[E0080]: evaluation panicked: assertion failed: co3::impls!(Self : ! Drop)
+error[E0080]: evaluation panicked: Types with custom Drop are not yet supported
   --> tests/ui_fail/impl_drop_assert.rs:27:27
    |
 27 | #[derive(Clone, RustSpec, ReprC)]
@@ -45,7 +45,7 @@ error[E0509]: cannot move out of type `TransparentEnumWithDrop`, which implement
    |
    = note: this error originates in the derive macro `ReprC` (in Nightly builds, run with -Z macro-backtrace for more info)
 
-error[E0080]: evaluation panicked: assertion failed: co3::impls!(Self : ! Drop)
+error[E0080]: evaluation panicked: Types with custom Drop are not yet supported
   --> tests/ui_fail/impl_drop_assert.rs:43:20
    |
 43 | #[derive(RustSpec, ReprC)]
@@ -59,7 +59,7 @@ note: erroneous constant encountered
    |
    = note: this note originates in the derive macro `ReprC` (in Nightly builds, run with -Z macro-backtrace for more info)
 
-error[E0080]: evaluation panicked: assertion failed: co3::impls!(Self : ! Drop)
+error[E0080]: evaluation panicked: Types with custom Drop are not yet supported
   --> tests/ui_fail/impl_drop_assert.rs:59:20
    |
 59 | #[derive(RustSpec, ReprC)]
@@ -73,7 +73,7 @@ note: erroneous constant encountered
    |
    = note: this note originates in the derive macro `ReprC` (in Nightly builds, run with -Z macro-backtrace for more info)
 
-error[E0080]: evaluation panicked: assertion failed: co3::impls!(Self : ! Drop)
+error[E0080]: evaluation panicked: Types with custom Drop are not yet supported
   --> tests/ui_fail/impl_drop_assert.rs:74:20
    |
 74 | #[derive(RustSpec, ReprC)]
@@ -87,7 +87,7 @@ note: erroneous constant encountered
    |
    = note: this note originates in the derive macro `ReprC` (in Nightly builds, run with -Z macro-backtrace for more info)
 
-error[E0080]: evaluation panicked: assertion failed: co3::impls!(Self : ! Drop)
+error[E0080]: evaluation panicked: Types with custom Drop are not yet supported
   --> tests/ui_fail/impl_drop_assert.rs:87:20
    |
 87 | #[derive(RustSpec, ReprC)]
@@ -101,7 +101,7 @@ note: erroneous constant encountered
    |
    = note: this note originates in the derive macro `ReprC` (in Nightly builds, run with -Z macro-backtrace for more info)
 
-error[E0080]: evaluation panicked: assertion failed: co3::impls!(Self : ! Drop)
+error[E0080]: evaluation panicked: Types with custom Drop are not yet supported
   --> tests/ui_fail/impl_drop_assert.rs:99:27
    |
 99 | #[derive(Clone, RustSpec, ReprC)]
@@ -115,7 +115,7 @@ note: erroneous constant encountered
    |
    = note: this note originates in the derive macro `ReprC` (in Nightly builds, run with -Z macro-backtrace for more info)
 
-error[E0080]: evaluation panicked: assertion failed: co3::impls!(Self : ! Drop)
+error[E0080]: evaluation panicked: Types with custom Drop are not yet supported
    --> tests/ui_fail/impl_drop_assert.rs:110:20
     |
 110 | #[derive(RustSpec, ReprC)]

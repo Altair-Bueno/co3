@@ -89,8 +89,10 @@ mod provider {
 
         #![symbol_prefix = "kita"]
 
-        #[erased(<Custom1>, <Custom2<'_>>)]
-        impl<dyn(u16) T: Attribute = EnvAttr> ByteValue for T {
+        impl<dyn(u16) T: Attribute = EnvAttr> ByteValue for T
+        where
+            <T> @ (<Custom1> | <Custom2<'_>>),
+        {
             fn into_byte(self) -> u8;
             fn add_ref(#[soft] &self, #[soft] rhs: &Self) -> u8;
         }
@@ -102,8 +104,10 @@ ffi! {
 
     #![symbol_prefix = "kita"]
 
-    #[erased(<Custom1>, <Custom2<'_>>)]
-    impl<dyn(u16) T: Attribute = EnvAttr> ByteValue for T {
+    impl<dyn(u16) T: Attribute = EnvAttr> ByteValue for T
+    where
+        <T> @ (<Custom1> | <Custom2<'_>>),
+    {
         fn into_byte(self) -> u8;
         fn add_ref(#[soft] &self, #[soft] rhs: &Self) -> u8;
     }

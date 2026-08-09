@@ -5,28 +5,51 @@ use quote::{format_ident, quote};
 use syn::{parse_quote, visit::Visit};
 
 use crate::layout::{
-    attr::ReprKind, infer_repr, is_transparent_enum_repr, is_type_parametrized, primitive_tag_type,
+    attr::ReprKind,
+    infer_repr, is_transparent_enum_repr, is_type_parametrized, primitive_tag_type,
+    wide::{
+        data_field_ty, gen_alloc_methods, gen_data_ctype_bounds, gen_data_struct_name,
+        gen_dst_methods, last_field, wide_predicate,
+    },
 };
 
 fn lowered_field_ty(field_ty: &syn::Type) -> TokenStream {
     quote!(<#field_ty as co3::ExternC>::CType)
 }
 
-pub(super) fn gen_item_ctype(repr: Option<&ReprKind>, input: &syn::DeriveInput) -> TokenStream {
+pub(super) fn gen_item_ctype(
+    repr: Option<&ReprKind>,
+    input: &syn::DeriveInput,
+    generate_views_and_spec: bool,
+) -> TokenStream {
     let vis = &input.vis;
     let name = &input.ident;
     let generics = &input.generics;
 
     match &input.data {
-        syn::Data::Struct(data) => {
-            derive_ctype_struct::<false>(repr, vis, name, generics, &data.fields)
-        }
+        syn::Data::Struct(data) => derive_ctype_struct::<false>(
+            repr,
+            vis,
+            name,
+            generics,
+            &data.fields,
+            generate_views_and_spec,
+            generate_views_and_spec,
+        ),
         syn::Data::Enum(data) if is_transparent_enum_repr(repr, &data.variants) => {
             let Some(first_variant) = data.variants.first() else {
                 return quote! {};
             };
 
-            derive_ctype_struct::<true>(repr, vis, name, generics, &first_variant.fields)
+            derive_ctype_struct::<true>(
+                repr,
+                vis,
+                name,
+                generics,
+                &first_variant.fields,
+                generate_views_and_spec,
+                false,
+            )
         }
         syn::Data::Enum(data) if repr.is_none() => {
             let tag_type = infer_repr(data.variants.len());
@@ -51,13 +74,94 @@ fn derive_ctype_struct<const ADD_COPY: bool>(
     name: &syn::Ident,
     generics: &syn::Generics,
     fields: &syn::Fields,
+    generate_views_and_spec: bool,
+    generate_wide: bool,
 ) -> TokenStream {
     let ctype_def = gen_ctype_struct_item::<ADD_COPY>(repr, vis, name, generics, fields);
-    let ctype_impls = gen_struct_ctype_impls::<ADD_COPY>(&ctype_def);
+    let ctype_impls = gen_struct_ctype_impls::<ADD_COPY>(&ctype_def, generate_views_and_spec);
+    let wide_impl = generate_wide.then(|| gen_ctype_wide_impl(repr, &ctype_def, fields, generics));
 
     quote! {
         #ctype_def
         #ctype_impls
+        #wide_impl
+    }
+}
+
+fn gen_ctype_wide_impl(
+    repr: Option<&ReprKind>,
+    ctype: &syn::ItemStruct,
+    source_fields: &syn::Fields,
+    source_generics: &syn::Generics,
+) -> TokenStream {
+    let is_transparent = matches!(repr, Some(ReprKind::Transparent));
+
+    let Some((field, field_ref, field_member)) = last_field(&ctype.fields) else {
+        return quote! {};
+    };
+
+    let field_ty = &field.ty;
+    let name = &ctype.ident;
+
+    let source_name = name.to_string();
+    let source_name = source_name.strip_prefix('C').unwrap();
+    let source_name = syn::Ident::new(source_name, name.span());
+
+    let (impl_generics, ty_generics, where_clause) = ctype.generics.split_for_impl();
+    let predicates = where_clause.as_ref().map(|w| &w.predicates);
+
+    let data_name = gen_data_struct_name(&source_name);
+    let data_ctype_name = gen_ctype_name(&data_name);
+
+    let ctype_wide_predicate = wide_predicate(field_ty, &ctype.generics);
+    let methods = gen_dst_methods(is_transparent, field_ty, field_ref, field_member);
+
+    let alloc_methods = gen_alloc_methods();
+    let Some((source_last, ..)) = last_field(source_fields) else {
+        return quote! {};
+    };
+    let source_field_ty = &source_last.ty;
+
+    let source_wide_predicate = wide_predicate(&source_last.ty, source_generics);
+    let source_data_ctype_bounds = gen_data_ctype_bounds(source_fields, source_generics);
+    let source_data_ty = data_field_ty(&source_last.ty, true);
+    let source_data_ctype_sized_bound = if is_type_parametrized(&source_data_ty, source_generics) {
+        quote!(#source_data_ty: co3::ExternC<CType: Sized>)
+    } else {
+        quote!(for<'__dummy> #source_data_ty: co3::ExternC<CType: Sized>)
+    };
+
+    let for_dummy = (ctype.generics.type_params().count() == 0).then_some(quote! {
+        for<'_dummy>
+    });
+
+    let data_bound = (!is_transparent).then(|| {
+        quote! {
+            #for_dummy #data_name #ty_generics: co3::ExternC<CType = #data_ctype_name #ty_generics>,
+        }
+    });
+    let data_ty = if is_transparent {
+        quote!(<<#source_field_ty as co3::wide::Wide>::Data as co3::ExternC>::CType)
+    } else {
+        quote!(<#data_name #ty_generics as co3::ExternC>::CType)
+    };
+
+    quote! {
+        impl #impl_generics co3::wide::Wide for #name #ty_generics
+        where
+            #source_wide_predicate,
+            #(#source_data_ctype_bounds,)*
+            #data_bound
+            #source_data_ctype_sized_bound,
+            #ctype_wide_predicate,
+            #predicates
+        {
+            type Data = #data_ty;
+            type Metadata = <#field_ty as co3::wide::Wide>::Metadata;
+
+            #methods
+            #alloc_methods
+        }
     }
 }
 
@@ -114,7 +218,7 @@ fn derive_repr_c_data_enum_ctype(
         }
     };
 
-    let ctype_impls = gen_struct_ctype_impls::<true>(&ctype_def);
+    let ctype_impls = gen_struct_ctype_impls::<true>(&ctype_def, true);
 
     quote! {
         #(#variant_structs)*
@@ -239,7 +343,7 @@ fn gen_variant_struct(
     }
 
     let ctype = gen_ctype_struct_item::<true>(repr, vis, &name, generics, &fields);
-    let ctype_impls = gen_struct_ctype_impls::<true>(&ctype);
+    let ctype_impls = gen_struct_ctype_impls::<true>(&ctype, true);
     quote! { #ctype #ctype_impls }
 }
 
@@ -295,17 +399,24 @@ fn gen_union_extern_c_bounds(
         })
 }
 
-fn gen_struct_ctype_impls<const ADD_COPY: bool>(ctype: &syn::ItemStruct) -> TokenStream {
+fn gen_struct_ctype_impls<const ADD_COPY: bool>(
+    ctype: &syn::ItemStruct,
+    generate_views_and_spec: bool,
+) -> TokenStream {
     let fields = ctype.fields.iter().map(|f| &f.ty).collect::<Vec<_>>();
 
     let copy_impls = gen_copy_impls::<ADD_COPY>(&ctype.ident, &ctype.generics, &fields);
     let default_impl = gen_default_impl::<ADD_COPY>(&ctype.ident, &ctype.generics, &fields);
     let robust_impls = gen_robust_impls::<ADD_COPY>(&ctype.ident, &ctype.generics, &fields);
-    let type_spec_impl = gen_type_spec_impl(&ctype.ident, &ctype.generics, &fields);
-    let const_view = gen_ctype_struct_view::<ADD_COPY>(ctype.clone(), false);
-    let mut_view = gen_ctype_struct_view::<ADD_COPY>(ctype.clone(), true);
+    let type_spec_impl =
+        generate_views_and_spec.then(|| gen_type_spec(&ctype.ident, &ctype.generics, &fields));
+    let const_view =
+        generate_views_and_spec.then(|| gen_ctype_struct_view::<ADD_COPY>(ctype.clone(), false));
+    let mut_view =
+        generate_views_and_spec.then(|| gen_ctype_struct_view::<ADD_COPY>(ctype.clone(), true));
 
-    let borrow_cast_impl = gen_borrow_cast_impl::<ADD_COPY>(&ctype.ident, &ctype.generics, &fields);
+    let borrow_cast_impl = generate_views_and_spec
+        .then(|| gen_borrow_cast_impl::<ADD_COPY>(&ctype.ident, &ctype.generics, &fields));
 
     quote! {
         #copy_impls
@@ -326,7 +437,7 @@ fn gen_union_ctype_impls(ctype: &syn::ItemUnion) -> TokenStream {
     let copy_impls = gen_copy_impls::<true>(&ctype.ident, &ctype.generics, &fields);
     let default_impl = gen_default_impl::<true>(&ctype.ident, &ctype.generics, &fields);
     let robust_impls = gen_robust_impls::<true>(&ctype.ident, &ctype.generics, &fields);
-    let type_spec_impl = gen_type_spec_impl(&ctype.ident, &ctype.generics, &fields);
+    let type_spec_impl = gen_type_spec(&ctype.ident, &ctype.generics, &fields);
     let const_view = gen_ctype_union_view(ctype.clone(), false);
     let mut_view = gen_ctype_union_view(ctype.clone(), true);
 
@@ -383,7 +494,9 @@ fn gen_robust_impls<const ADD_COPY: bool>(
     }
 }
 
-fn gen_type_spec_impl(
+// TODO: This is duplicated from rust-spec. There is some complicated logic here.
+// Maybe we can use some derive macro attribute in the aformentioned crate to dedup?
+fn gen_type_spec(
     ident: &syn::Ident,
     generics: &syn::Generics,
     fields: &[&syn::Type],
@@ -404,10 +517,17 @@ fn gen_type_spec_impl(
         quote! { Alignment },
         quote! { co3::rust_spec::One },
     );
+    let rust_spec_bounds = fields
+        .iter()
+        .filter(|field| !is_type_parametrized(field, generics))
+        .flat_map(|field| {
+            gen_hrtb_projection_bounds(field, generics, quote! { co3::rust_spec::RustSpec })
+        });
 
     quote! {
         unsafe impl #impl_generics co3::rust_spec::RustSpec for #ident #ty_generics
         where
+            #(#rust_spec_bounds,)*
             #(#size_bounds,)*
             #(#alignment_bounds,)*
             #predicates
@@ -603,7 +723,7 @@ fn gen_ctype_struct_view<const ADD_COPY: bool>(
     let copy_impls = gen_copy_impls::<ADD_COPY>(&ctype.ident, &ctype.generics, &fields);
     let default_impl = gen_default_impl::<ADD_COPY>(&ctype.ident, &ctype.generics, &fields);
     let robust_impls = gen_robust_impls::<ADD_COPY>(&ctype.ident, &ctype.generics, &fields);
-    let type_spec_impl = gen_type_spec_impl(&ctype.ident, &ctype.generics, &fields);
+    let type_spec_impl = gen_type_spec(&ctype.ident, &ctype.generics, &fields);
 
     quote! {
         #ctype
@@ -627,7 +747,7 @@ fn gen_ctype_union_view(mut ctype: syn::ItemUnion, is_mut: bool) -> TokenStream 
     let copy_impls = gen_copy_impls::<true>(&ctype.ident, &ctype.generics, &fields);
     let default_impl = gen_default_impl::<true>(&ctype.ident, &ctype.generics, &fields);
     let robust_impls = gen_robust_impls::<true>(&ctype.ident, &ctype.generics, &fields);
-    let type_spec_impl = gen_type_spec_impl(&ctype.ident, &ctype.generics, &fields);
+    let type_spec_impl = gen_type_spec(&ctype.ident, &ctype.generics, &fields);
 
     quote! {
         #ctype
@@ -926,31 +1046,107 @@ pub(super) fn filter_generics(
 pub(super) fn gen_extern_c_bounds_for_ctype<const ADD_COPY: bool>(
     generics: &syn::Generics,
     fields: &[&syn::Type],
-) -> Vec<TokenStream> {
+) -> Vec<syn::WherePredicate> {
+    let gen_bound = |ty: &syn::Type, ctype_bound: TokenStream| {
+        if is_type_parametrized(ty, generics) {
+            vec![parse_quote! { #ty: co3::ExternC #ctype_bound }]
+        } else {
+            gen_hrtb_projection_bounds(ty, generics, quote! { co3::ExternC #ctype_bound })
+        }
+    };
+
     let Some((last, fields)) = fields.split_last() else {
         return Vec::new();
     };
 
-    let mut predicates = fields
+    let (field_ctype_bound, last_ctype_bound) = if ADD_COPY {
+        (quote!(<CType: Copy>), quote!(<CType: Copy>))
+    } else {
+        (quote!(<CType: Sized>), quote!())
+    };
+
+    fields
         .iter()
-        .filter(|ty| is_type_parametrized(ty, generics))
-        .map(|&ty| {
-            let ctype_bound = if ADD_COPY {
-                quote! { <CType: Copy> }
-            } else {
-                quote! { <CType: Sized> }
-            };
+        .flat_map(|&ty| gen_bound(ty, field_ctype_bound.clone()))
+        .chain(gen_bound(last, last_ctype_bound))
+        .collect::<Vec<_>>()
+}
 
-            quote! { #ty: co3::ExternC #ctype_bound }
-        })
-        .collect::<Vec<_>>();
-
-    if is_type_parametrized(last, generics) {
-        let copy_bound = ADD_COPY.then(|| quote! { <CType: Copy> });
-        predicates.push(quote! { #last: co3::ExternC #copy_bound });
+fn gen_hrtb_projection_bounds(
+    ty: &syn::Type,
+    generics: &syn::Generics,
+    bound: TokenStream,
+) -> Vec<syn::WherePredicate> {
+    #[derive(Default)]
+    struct ProjectionVisitor<'a> {
+        projections: Vec<&'a syn::TypePath>,
     }
 
-    predicates
+    impl<'ast> Visit<'ast> for ProjectionVisitor<'ast> {
+        fn visit_type_path(&mut self, type_path: &'ast syn::TypePath) {
+            if type_path.qself.is_some() {
+                self.projections.push(type_path);
+                for segment in &type_path.path.segments {
+                    self.visit_path_arguments(&segment.arguments);
+                }
+                return;
+            }
+            syn::visit::visit_type_path(self, type_path);
+        }
+    }
+
+    let mut visitor = ProjectionVisitor::default();
+    visitor.visit_type(ty);
+
+    let mut bounds = Vec::new();
+    for projection in visitor.projections {
+        let Some(qself) = projection.qself.as_ref() else {
+            continue;
+        };
+        let trait_path = syn::Path {
+            leading_colon: projection.path.leading_colon,
+            segments: projection
+                .path
+                .segments
+                .iter()
+                .take(qself.position)
+                .cloned()
+                .collect(),
+        };
+        for predicate in generics
+            .where_clause
+            .iter()
+            .flat_map(|where_clause| &where_clause.predicates)
+        {
+            let syn::WherePredicate::Type(predicate) = predicate else {
+                continue;
+            };
+            let Some(lifetimes) = &predicate.lifetimes else {
+                continue;
+            };
+            let bounded_ty = &predicate.bounded_ty;
+            let projected_ty = &qself.ty;
+            if quote!(#bounded_ty).to_string() != quote!(#projected_ty).to_string() {
+                continue;
+            }
+
+            for prerequisite in &predicate.bounds {
+                let syn::TypeParamBound::Trait(trait_bound) = prerequisite else {
+                    continue;
+                };
+                let predicate_trait_path = &trait_bound.path;
+                if quote!(#predicate_trait_path).to_string() != quote!(#trait_path).to_string() {
+                    continue;
+                }
+
+                let generated: syn::WherePredicate =
+                    parse_quote! { #lifetimes #projection: #bound };
+                bounds.push(generated);
+            }
+        }
+    }
+
+    bounds
 }
 
 fn gen_ctype_borrow_cast_bounds<const ADD_COPY: bool>(

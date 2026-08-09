@@ -279,12 +279,12 @@ fn dispatch_layout_checks(
                     assert!(
                         core::mem::size_of::<#concrete_ty>()
                             == core::mem::size_of::<#erased_ty>(),
-                        "erased argument size mismatch",
+                        "tagged-dispatch argument size mismatch",
                     );
                     assert!(
                         core::mem::align_of::<#concrete_ty>()
                             == core::mem::align_of::<#erased_ty>(),
-                        "erased argument alignment mismatch",
+                        "tagged-dispatch argument alignment mismatch",
                     );
                 }
             }

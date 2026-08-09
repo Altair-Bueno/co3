@@ -24,6 +24,10 @@ struct Array([u8; 2]);
 #[reprC(id(usize))]
 struct Array2([u8; 8]);
 
+#[derive(RustSpec, ReprC)]
+#[repr(C)]
+struct NonTransparentDst([u8]);
+
 handles! {
     unsafe {
         Handle,
@@ -117,16 +121,20 @@ mod provider {
     ffi! {
         #![unsafe(export("C"))]
 
-        #[erased(<Handle>)]
-        impl<dyn(usize) T = Array> Dispatch for T {
+        impl<dyn(usize) T = Array> Dispatch for T
+        where
+            <T> @ <Handle>,
+        {
             fn me(self);
         }
     }
     ffi! {
         #![unsafe(export("C"))]
 
-        #[erased(<Handle2>)]
-        impl<dyn(usize) T = Array2> Dispatch for T {
+        impl<dyn(usize) T = Array2> Dispatch for T
+        where
+            <T> @ <Handle2>,
+        {
             fn me(self);
         }
     }
@@ -191,8 +199,10 @@ ffi! {
 
     #![symbol_prefix = "kita"]
 
-    #[erased(<Array>)]
-    impl<dyn(usize) T = Handle> Dispatch for T {
+    impl<dyn(usize) T = Handle> Dispatch for T
+    where
+        <T> @ <Array>,
+    {
         fn me(id: <dyn T>::ID, self);
     }
 }
@@ -202,8 +212,10 @@ ffi! {
 
     #![symbol_prefix = "kita"]
 
-    #[erased(<Array2>)]
-    impl<dyn(usize) T = Handle2> Dispatch for T {
+    impl<dyn(usize) T = Handle2> Dispatch for T
+    where
+        <T> @ <Array2>,
+    {
         fn me(id: <dyn T>::ID, self);
     }
 }

@@ -127,8 +127,10 @@ mod provider {
         #![symbol_prefix = "cfg_attr_dispatch"]
 
         #[cfg(all())]
-        #[cfg_attr(all(), erased(<Custom>))]
-        impl<#[cfg_attr(all(), erased(u16))] T: Attr = EnvAttr> ByteValue for T {
+        impl<dyn(u16) T: Attr = EnvAttr> ByteValue for T
+        where
+            <T> @ <Custom>,
+        {
             #[cfg(all())]
             fn into_byte(self) -> u8;
         }
@@ -141,8 +143,10 @@ ffi! {
     #![symbol_prefix = "cfg_attr_dispatch"]
 
     #[cfg(all())]
-    #[cfg_attr(all(), erased(<Custom>))]
-    impl<#[cfg_attr(all(), erased(u16))] T: Attr = EnvAttr> ByteValue for T {
+    impl<dyn(u16) T: Attr = EnvAttr> ByteValue for T
+    where
+        <T> @ <Custom>,
+    {
         #[cfg(all())]
         fn into_byte(handle_id: <dyn T>::ID, self) -> u8;
     }

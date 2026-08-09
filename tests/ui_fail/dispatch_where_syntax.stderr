@@ -1,0 +1,5 @@
+error: expected a tagged-dispatch type list such as `<Type>`
+  --> tests/ui_fail/dispatch_where_syntax.rs:12:15
+   |
+12 |         <T> @ <u32> | <u64>,
+   |               ^^^^^^^^^^^^^

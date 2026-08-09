@@ -63,8 +63,10 @@ mod provider {
     ffi! {
         #![unsafe(export("C"))]
 
-        #[erased(<Unsized<str>>)]
-        impl<dyn(u8) T = [c_void]> Wrapper<T> {
+        impl<dyn(u8) T = [c_void]> Wrapper<T>
+        where
+            <T> @ <Unsized<str>>,
+        {
             fn take_export(self) -> usize;
         }
     }
@@ -75,8 +77,10 @@ ffi! {
 
     #![symbol_prefix = "kita"]
 
-    #[erased(<Unsized<str>>)]
-    impl<dyn(u8) T = [c_void]> Wrapper<T> {
+    impl<dyn(u8) T = [c_void]> Wrapper<T>
+    where
+        <T> @ <Unsized<str>>,
+    {
         fn take(self, handle_id: <dyn T>::ID) -> usize;
     }
 }

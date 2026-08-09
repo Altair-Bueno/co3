@@ -82,8 +82,10 @@ ffi! {
 ffi! {
     #![unsafe(export("C"))]
 
-    #[erased(<DriftHandle>)]
-    impl<dyn(u8) T = DriftHandle> ExportDispatchTrait for T {
+    impl<dyn(u8) T = DriftHandle> ExportDispatchTrait for T
+    where
+        <T> @ <DriftHandle>,
+    {
         fn dispatch(&self, arg: &T);
     }
 }
@@ -93,8 +95,10 @@ ffi! {
 
     #![symbol_prefix = "signature_drift"]
 
-    #[erased(<DriftHandle>)]
-    impl<dyn(u8) T = DriftHandle> ExternDispatchTrait for T {
+    impl<dyn(u8) T = DriftHandle> ExternDispatchTrait for T
+    where
+        <T> @ <DriftHandle>,
+    {
         fn dispatch(self_id: <dyn Self>::ID, &self, arg: &T);
     }
 }

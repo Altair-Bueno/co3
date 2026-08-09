@@ -16,8 +16,10 @@ ffi! {
     #[id(u8)]
     type Opaque<T, U>;
 
-    #[erased(<bool, u8>)]
-    impl<T, U> Drop for dyn Opaque<T, U> {
+    impl<T, U> Drop for dyn Opaque<T, U>
+    where
+        <T, U> @ <bool, u8>,
+    {
         #[symbol_name = "handles_drop"]
         fn drop(&mut self);
     }
@@ -37,26 +39,26 @@ ffi! {
         move fn clone(&self) -> Self;
     }
 
-    #[erased(
-        <Opaque<bool, u8>>,
-        <Opaque<u8, bool>>,
-    )]
-    impl<dyn(u8) T> PartialEq for T {
+    impl<dyn(u8) T> PartialEq for T
+    where
+        <T> @ (<Opaque<bool, u8>> | <Opaque<u8, bool>>),
+    {
         #[symbol_name = "handles_eq"]
         fn eq(t_id: <dyn T>::ID, &self, other: &Self) -> bool;
     }
 
-    #[erased(<Opaque<bool, u8>, Opaque<u8, bool>>)]
-    impl<dyn(u8) T, dyn(u8) U> PartialEq<U> for T {
+    impl<dyn(u8) T, dyn(u8) U> PartialEq<U> for T
+    where
+        <T, U> @ <Opaque<bool, u8>, Opaque<u8, bool>>,
+    {
         #[symbol_name = "handles_cross_eq"]
         fn eq(t_id: <dyn T>::ID, u_id: <dyn U>::ID, &self, other: &U) -> bool;
     }
 
-    #[erased(
-        <Opaque<bool, u8>>,
-        <Opaque<u8, bool>>,
-    )]
-    impl<dyn(u8) T> Custom for T {
+    impl<dyn(u8) T> Custom for T
+    where
+        <T> @ (<Opaque<bool, u8>> | <Opaque<u8, bool>>),
+    {
         #[symbol_name = "handles_inc"]
         fn inc(t_id: <dyn T>::ID, &mut self, by: u8);
     }
@@ -99,8 +101,10 @@ mod provider {
         #[id(u8)]
         type Opaque<T, U>;
 
-        #[erased(<bool, u8>)]
-        impl<T, U> Drop for dyn Opaque<T, U> {
+        impl<T, U> Drop for dyn Opaque<T, U>
+        where
+            <T, U> @ <bool, u8>,
+        {
             #[symbol_name = "handles_drop"]
             fn drop(&mut self);
         }
@@ -120,26 +124,26 @@ mod provider {
             move fn clone(&self) -> Self;
         }
 
-        #[erased(
-            <Opaque<bool, u8>>,
-            <Opaque<u8, bool>>,
-        )]
-        impl<#[erased(u8)] T> PartialEq for T {
+        impl<dyn(u8) T> PartialEq for T
+        where
+            <T> @ (<Opaque<bool, u8>> | <Opaque<u8, bool>>),
+        {
             #[symbol_name = "handles_eq"]
             fn eq(&self, other: &Self) -> bool;
         }
 
-        #[erased(<Opaque<bool, u8>, Opaque<u8, bool>>)]
-        impl<#[erased(u8)] T, #[erased(u8)] U> PartialEq<U> for T {
+        impl<dyn(u8) T, dyn(u8) U> PartialEq<U> for T
+        where
+            <T, U> @ <Opaque<bool, u8>, Opaque<u8, bool>>,
+        {
             #[symbol_name = "handles_cross_eq"]
             fn eq(&self, other: &U) -> bool;
         }
 
-        #[erased(
-            <Opaque<bool, u8>>,
-            <Opaque<u8, bool>>,
-        )]
-        impl<#[erased(u8)] T> Custom for T {
+        impl<dyn(u8) T> Custom for T
+        where
+            <T> @ (<Opaque<bool, u8>> | <Opaque<u8, bool>>),
+        {
             #[symbol_name = "handles_inc"]
             fn inc(&mut self, by: u8);
         }

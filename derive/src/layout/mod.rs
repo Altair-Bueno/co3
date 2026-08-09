@@ -224,7 +224,7 @@ pub(crate) fn derive_repr_c(input: &syn::DeriveInput) -> syn::Result<TokenStream
     let tokens = match &input.data {
         syn::Data::Struct(_) => {
             let item = derive_item(repr_attr.as_ref(), input, &repr_c_attrs, &[]);
-            let wide = (!repr_c_attrs.is_wide_data)
+            let wide = (!repr_c_attrs.is_view && !repr_c_attrs.is_wide_data)
                 .then(|| wide::expand(input, repr_attr.as_ref()))
                 .transpose()?;
             quote! { #item #wide }
@@ -260,16 +260,24 @@ pub(crate) fn derive_repr_c(input: &syn::DeriveInput) -> syn::Result<TokenStream
             .handle_id
             .as_ref()
             .map(|id| gen_handle_family_impl(&input.ident, &generics, id));
-        Ok(quote! {
-            const _: () = {
-                use #co3 as co3;
+        let body = quote! {
+            #handle_family_impl
+            #drop_impl_assert
 
-                #handle_family_impl
-                #drop_impl_assert
+            #tokens
+        };
 
-                #tokens
-            };
-        })
+        if repr_c_attrs.is_wide_data {
+            Ok(body)
+        } else {
+            Ok(quote! {
+                const _: () = {
+                    use #co3 as co3;
+
+                    #body
+                };
+            })
+        }
     }
 }
 
@@ -367,7 +375,10 @@ fn assert_no_drop(generics: &syn::Generics, ident: &syn::Ident) -> TokenStream {
 
             impl #impl_generics AssertNoDrop for #ident #ty_generics #where_clause {
                 fn assert_no_drop() {
-                    const { assert!(co3::impls!(Self: !Drop)); }
+                    const {
+                        assert!(co3::impls!(Self: !Drop),
+                        "Types with custom Drop are not yet supported");
+                    }
                 }
             }
         };

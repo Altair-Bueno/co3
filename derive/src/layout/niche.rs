@@ -5,7 +5,7 @@ use crate::{
     layout::{
         attr::ReprKind,
         ctype::{gen_ctype_name, gen_extern_c_bounds_for_ctype},
-        enum_tag_type, is_exhaustive_enum, is_transparent_enum_repr,
+        enum_tag_type, is_exhaustive_enum, is_transparent_enum_repr, is_type_parametrized,
     },
     utils::build_extern_c_type_tuple,
 };
@@ -24,9 +24,19 @@ pub fn gen_struct_niche_ir(
         .map(|where_clause| &where_clause.predicates);
 
     let ctype_name = gen_ctype_name(struct_name);
-    let self_bounds = quote! { Self: co3::ExternC<CType = #ctype_name #ty_generics>, };
+    let for_dummy = (generics.type_params().count() == 0).then_some(quote! {
+        for<'_dummy>
+    });
 
-    let for_dummy = (generics.type_params().count() == 0).then_some(quote! { for<'_dummy> });
+    let last_field_sized = fields.iter().next_back().map(|field| {
+        let ty = &field.ty;
+
+        let for_dummy = (!is_type_parametrized(ty, generics)).then_some(quote! {
+            for<'_dummy>
+        });
+
+        quote! { #for_dummy #ty: Sized, }
+    });
     let types = fields.iter().map(|f| &f.ty).collect::<Vec<_>>();
     let extern_c_bounds = gen_extern_c_bounds_for_ctype::<true>(generics, &types);
 
@@ -55,10 +65,9 @@ pub fn gen_struct_niche_ir(
     quote! {
         impl #impl_generics co3::niche::Niche for #struct_name #ty_generics where
             #for_dummy #ctype_name #ty_generics: Copy,
-            #for_dummy Self: Sized,
+            #last_field_sized
             #inferred_niche_bounds
             #(#extern_c_bounds,)*
-            #self_bounds
             #predicates
         {
             const NICHE_VALUE: Self::CType = #niche_value;
@@ -84,7 +93,6 @@ pub fn gen_enum_niche_ir(
 
         return gen_struct_niche_ir(enum_name, generics, &variant.fields, None);
     }
-
     let tag_ty = enum_tag_type(repr, variants.len());
     if is_exhaustive_enum(variants.len(), &tag_ty) {
         return quote! {};

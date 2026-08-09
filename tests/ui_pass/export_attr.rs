@@ -30,8 +30,10 @@ ffi! {
 
     #![symbol_prefix = "kita"]
 
-    #[erased(<Opaque>)]
-    impl<dyn(u8) T: ToOwned = u8> Value<T> {
+    impl<dyn(u8) T: ToOwned = u8> Value<T>
+    where
+        <T> @ <Opaque>,
+    {
         move fn new(t_id: <dyn T>::ID) -> Self;
 
         #[symbol_name = "ping"]
@@ -105,10 +107,10 @@ mod provider {
             move fn to_owned(&self) -> <Self as ToOwned>::Owned;
         }
 
-        #[erased(<Opaque>)]
-        impl<#[erased(u8)] T: Add<Output = u8> + ToOwned<Owned = T> + ?Sized = u8> Value<T>
+        impl<dyn(u8) T: Add<Output = u8> + ToOwned<Owned = T> + ?Sized = u8> Value<T>
         where
             Box<T>: Default,
+            <T> @ <Opaque>,
         {
             move fn new() -> Self;
 

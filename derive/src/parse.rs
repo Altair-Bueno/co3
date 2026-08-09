@@ -86,7 +86,11 @@ impl syn::parse::Parse for ParsedForeignItem {
             return Err(ahead.error(err_msg));
         }
         if ahead.peek(syn::Token![type]) {
-            let mut ty = input.parse::<syn::ForeignItemType>()?;
+            let mut ty = if contains_dispatch_predicate(input)? {
+                parse_type_item(input)?
+            } else {
+                input.parse::<syn::ForeignItemType>()?
+            };
             let id = parse_handle_id_attr(&mut ty.attrs)?.map(Box::new);
 
             return Ok(Self::Type(crate::ForeignItemType {
@@ -102,6 +106,24 @@ impl syn::parse::Parse for ParsedForeignItem {
 
         Err(input.error("item not supported"))
     }
+}
+
+fn contains_dispatch_predicate(input: ParseStream) -> Result<bool> {
+    let ahead = input.fork();
+    let mut in_where_clause = false;
+
+    while !ahead.is_empty() && !ahead.peek(syn::Token![;]) {
+        let token = ahead.parse::<TokenTree>()?;
+        match token {
+            TokenTree::Ident(ident) if ident == "where" => in_where_clause = true,
+            TokenTree::Punct(punct) if in_where_clause && punct.as_char() == '@' => {
+                return Ok(true);
+            }
+            _ => {}
+        }
+    }
+
+    Ok(false)
 }
 
 fn parse_items(input: ParseStream) -> Result<Vec<ParsedForeignItem>> {
@@ -373,7 +395,7 @@ pub(crate) fn parse_dispatch_attr(
         .collect::<Vec<_>>();
 
     let err_msg = format!(
-        "erased must provide {} generic argument{}",
+        "tagged dispatch must provide {} concrete generic argument{}",
         params.len(),
         if params.len() == 1 { "" } else { "s" }
     );
@@ -423,7 +445,7 @@ pub(crate) fn parse_dispatch_attr(
     for entry in &generic_args {
         for arg in &entry.args {
             if matches!(arg, syn::GenericArgument::Lifetime(_)) {
-                let err_msg = "lifetime arguments not required in #[erased]";
+                let err_msg = "lifetime arguments are not required in tagged-dispatch type lists";
                 lifetime_validator.push(syn::Error::new_spanned(arg, err_msg));
                 continue;
             }
@@ -561,6 +583,117 @@ fn is_fn_head(input: syn::parse::ParseStream) -> syn::Result<bool> {
     Ok(ahead.peek(syn::Token![fn]))
 }
 
+fn preprocess_dispatch_where_clause(
+    header: TokenStream,
+) -> syn::Result<(TokenStream, Vec<Attribute>)> {
+    fn split_top_level(tokens: TokenStream, separator: char) -> Vec<TokenStream> {
+        let mut parts = vec![TokenStream::new()];
+        let mut angle_depth = 0usize;
+        for token in tokens {
+            match &token {
+                proc_macro2::TokenTree::Punct(punct) if punct.as_char() == '<' => angle_depth += 1,
+                proc_macro2::TokenTree::Punct(punct) if punct.as_char() == '>' => {
+                    angle_depth = angle_depth.saturating_sub(1)
+                }
+                proc_macro2::TokenTree::Punct(punct)
+                    if punct.as_char() == separator && angle_depth == 0 =>
+                {
+                    parts.push(TokenStream::new());
+                    continue;
+                }
+                _ => {}
+            }
+            parts.last_mut().unwrap().extend(core::iter::once(token));
+        }
+        parts
+    }
+
+    fn is_where(token: &proc_macro2::TokenTree) -> bool {
+        matches!(token, proc_macro2::TokenTree::Ident(ident) if ident == "where")
+    }
+
+    fn parse_targets(tokens: TokenStream) -> syn::Result<TokenStream> {
+        let tokens = tokens.into_iter().collect::<Vec<_>>();
+        let target_tokens = if let [proc_macro2::TokenTree::Group(group)] = tokens.as_slice()
+            && group.delimiter() == proc_macro2::Delimiter::Parenthesis
+        {
+            group
+                .stream()
+                .into_iter()
+                .fold(vec![TokenStream::new()], |mut parts, token| {
+                    if matches!(&token, proc_macro2::TokenTree::Punct(punct) if punct.as_char() == '|') {
+                        parts.push(TokenStream::new());
+                    } else {
+                        parts.last_mut().unwrap().extend(core::iter::once(token));
+                    }
+                    parts
+                })
+        } else {
+            vec![tokens.into_iter().collect()]
+        };
+
+        for target in &target_tokens {
+            syn::parse2::<syn::AngleBracketedGenericArguments>(target.clone()).map_err(|_| {
+                syn::Error::new_spanned(
+                    target,
+                    "expected a tagged-dispatch type list such as `<Type>`",
+                )
+            })?;
+        }
+
+        if target_tokens.len() == 1
+            && syn::parse2::<syn::AngleBracketedGenericArguments>(target_tokens[0].clone())
+                .is_ok_and(|args| args.args.is_empty())
+        {
+            return Ok(TokenStream::new());
+        }
+
+        Ok(quote!(#(#target_tokens),*))
+    }
+
+    let tokens = header.into_iter().collect::<Vec<_>>();
+    let Some(where_idx) = tokens.iter().position(is_where) else {
+        return Ok((tokens.into_iter().collect(), Vec::new()));
+    };
+
+    let prefix = tokens[..where_idx].iter().cloned().collect::<TokenStream>();
+    let predicates = tokens[where_idx + 1..]
+        .iter()
+        .cloned()
+        .collect::<TokenStream>();
+    let mut kept = Vec::new();
+    let mut attrs = Vec::new();
+
+    for predicate in split_top_level(predicates, ',') {
+        let predicate_tokens = predicate.clone().into_iter().collect::<Vec<_>>();
+        let Some(at_idx) = predicate_tokens.iter().position(
+            |token| matches!(token, proc_macro2::TokenTree::Punct(punct) if punct.as_char() == '@'),
+        ) else {
+            kept.push(predicate);
+            continue;
+        };
+
+        let params = predicate_tokens[..at_idx]
+            .iter()
+            .cloned()
+            .collect::<TokenStream>();
+        syn::parse2::<syn::AngleBracketedGenericArguments>(params).map_err(|_| {
+            syn::Error::new_spanned(
+                &predicate,
+                "expected dispatch parameters such as `<T>` before `@`",
+            )
+        })?;
+        let targets = predicate_tokens[at_idx + 1..].iter().cloned().collect();
+        let targets = parse_targets(targets)?;
+        attrs.push(parse_quote_spanned!(predicate.span()=> #[erased(#targets)]));
+    }
+
+    if kept.is_empty() {
+        return Ok((prefix, attrs));
+    }
+    Ok((quote!(#prefix where #(#kept),*), attrs))
+}
+
 fn preprocess_impl_header(header: TokenStream) -> syn::Result<TokenStream> {
     let mut out = TokenStream::new();
     let tokens = header.into_iter().collect::<Vec<_>>();
@@ -592,7 +725,7 @@ fn preprocess_impl_header(header: TokenStream) -> syn::Result<TokenStream> {
             proc_macro2::TokenTree::Ident(ident)
                 if angle_depth == 1 && at_param_start && ident == "dyn" =>
             {
-                let err_msg = "`#[erased]` impl type parameters must use `dyn(id_repr) T`";
+                let err_msg = "tagged-dispatch impl type parameters must use `dyn(id_repr) T`";
 
                 let Some(proc_macro2::TokenTree::Group(group)) = tokens.get(idx + 1) else {
                     return Err(syn::Error::new(ident.span(), err_msg));
@@ -794,11 +927,27 @@ fn parse_signature(
         signature_tokens.extend(std::iter::once(tt));
     }
 
+    let (signature_tokens, dispatch_attrs) = preprocess_dispatch_where_clause(signature_tokens)?;
+    attrs.extend(dispatch_attrs);
     let rewritten = preprocess_signature_tokens(signature_tokens, attrs)?;
     let mut sig = syn::parse2::<syn::Signature>(rewritten)?;
     normalize_const_args_in_fn(&mut sig);
 
     Ok(sig)
+}
+
+fn parse_type_item(input: ParseStream) -> syn::Result<syn::ForeignItemType> {
+    let mut attrs = input.call(syn::Attribute::parse_outer)?;
+    let mut type_tokens = TokenStream::new();
+    while !input.peek(syn::Token![;]) {
+        let token = input.parse::<TokenTree>()?;
+        type_tokens.extend(core::iter::once(token));
+    }
+    input.parse::<syn::Token![;]>()?;
+
+    let (type_tokens, dispatch_attrs) = preprocess_dispatch_where_clause(type_tokens)?;
+    attrs.extend(dispatch_attrs);
+    syn::parse2(quote!(#(#attrs)* #type_tokens;))
 }
 
 fn parse_fn_item(input: syn::parse::ParseStream) -> syn::Result<ItemFn> {
@@ -877,7 +1026,7 @@ fn parse_impl_item(input: syn::parse::ParseStream) -> syn::Result<ItemImpl> {
         Ok(out)
     }
 
-    let attrs = input.call(syn::Attribute::parse_outer)?;
+    let mut attrs = input.call(syn::Attribute::parse_outer)?;
     let defaultness = input.parse::<Option<syn::Token![default]>>()?;
     let unsafety = input.parse::<Option<syn::Token![unsafe]>>()?;
     input.parse::<syn::Token![impl]>()?;
@@ -892,6 +1041,8 @@ fn parse_impl_item(input: syn::parse::ParseStream) -> syn::Result<ItemImpl> {
     syn::braced!(content in input);
 
     let items = preprocess_impl_items(&content)?;
+    let (header, dispatch_attrs) = preprocess_dispatch_where_clause(header)?;
+    attrs.extend(dispatch_attrs);
     let header = preprocess_impl_header(header)?;
 
     let impl_tokens = quote! {

@@ -23,8 +23,10 @@ ffi! {
     pub type GenericHandle<'a, T, const N: usize>;
 
     #[explicit_lifetimes]
-    #[erased(<Kita, 23>)]
-    impl<'a, dyn(u32) U, const K: usize> Drop for GenericHandle<'a, U, K> {
+    impl<'a, dyn(u32) U, const K: usize> Drop for GenericHandle<'a, U, K>
+    where
+        <U, K> @ <Kita, 23>,
+    {
         fn drop(#[soft] move &mut self);
     }
 }
@@ -67,7 +69,7 @@ ffi! {
 
     #[explicit_lifetimes]
     impl<'a> GenericHandle<'a, u32, 12> {
-        pub fn export2(#[by_val] &self);
+        pub fn export2(move &self);
     }
 
     impl<T> GenericHandle<'static, T, 12> {
@@ -84,8 +86,10 @@ ffi! {
     pub extern "C" fn export3<const N: usize>(v: [u32; N]) -> [u32; N];
 
     #[explicit_lifetimes]
-    #[erased(<Kita, 23>)]
-    impl<'a, dyn(u32) U, const K: usize> Trait for GenericHandle<'a, U, K> {}
+    impl<'a, dyn(u32) U, const K: usize> Trait for GenericHandle<'a, U, K>
+    where
+        <U, K> @ <Kita, 23>,
+    {}
 }
 
 ffi! {
@@ -113,8 +117,10 @@ ffi! {
     pub extern "C" fn extern3<const N: usize>(v: [u32; N]) -> [u32; N];
 
     #[explicit_lifetimes]
-    #[erased(<Kita, 23>)]
-    impl<'a, dyn(u32) U, const K: usize> Trait for GenericHandle<'a, U, K> {
+    impl<'a, dyn(u32) U, const K: usize> Trait for GenericHandle<'a, U, K>
+    where
+        <U, K> @ <Kita, 23>,
+    {
         fn drop(self_id: <dyn U>::ID, &mut self);
     }
 }

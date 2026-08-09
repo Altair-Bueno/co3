@@ -652,7 +652,7 @@ fn ensure_single_dispatch_attr(attrs: &[Attribute]) -> Result<()> {
     };
 
     for attr in dispatch_attrs {
-        let err = syn::Error::new_spanned(attr, "duplicate `#[erased]` attribute");
+        let err = syn::Error::new_spanned(attr, "duplicate tagged-dispatch predicate");
 
         if let Some(errors) = &mut errors {
             errors.combine(err);

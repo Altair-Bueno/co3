@@ -77,8 +77,10 @@ ffi! {
         move fn to_owned(&self) -> <Self as ToOwned>::Owned;
     }
 
-    #[erased(<Opaque1>, <Opaque2>)]
-    impl<dyn(u32) T: ToOwned = CVoid> Kita for T {
+    impl<dyn(u32) T: ToOwned = CVoid> Kita for T
+    where
+        <T> @ (<Opaque1> | <Opaque2>),
+    {
         type MySelf = <T as ToOwned>::Owned;
 
         move fn kita(self_id: <dyn Self>::ID, self: &Self) -> Vec<<Self as Kita>::MySelf>;

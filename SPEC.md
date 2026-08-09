@@ -38,10 +38,10 @@ Each mode makes explicit tradeoffs and is selected through compile-time configur
 - Uses intermediate owned/cloned values and store synchronization for mutable writeback paths.
 - Pointer identity is not preserved and pointer equality for these types **MUST NOT** be relied on.
 
-3. **`#[erased(<Type1, ...>)]` (opt-in, on impl blocks)**
+3. **Tagged dispatch (opt-in, on impl blocks)**
 - Enables tagged generic dispatch where type's C-compatible representation is erased into a shared type and reinterpreted back via the tag value.
-- Dispatched impl block generics are defined by `<dyn({int}) T = {ErasedTy}>` where `ErasedTy` has the same size and alignment as the erased type.
-- Concrete tag dispatched types are declared AOT and have a tag type, derived with `#[reprC(id(int))]`/`#[id(int)]`, passed alongside erased type.
+- Dispatched impl block generics are defined by `<dyn({TagTy}) T = {ErasedTy}>` where `ErasedTy::CType` constrains size and alignment of erased types.
+- A `where <T> @ (<Type1> | ...)` predicate declares the concrete types dispatched through `T` that have a tag value assigned (via `handles!` or manually).
 
 ## 2. Public API
 
@@ -58,7 +58,7 @@ A C-compatible companion type is a type with a defined C ABI and no trap represe
 - Conversion of types with explicit representation (i.e. `#[repr(C)]`/`repr(transmute)`) are optimized.
 - `#[reprC(is_valid = |field0, ...| {...})]` provides additional validity invariant of a struct/variant.
 - `#[reprC(NICHE_VALUE = <expr>)]` defines the struct's trap value that is used for niche optimization.
-- `#[reprC(id(int))]` defines the tag type that identifies the item when it is erased by dynamic dispatch.
+- `#[reprC(id(TagTy))]` defines the tag type that identifies the item when it is erased by dynamic dispatch.
 
 ### 2.2 The `ffi!` Macro
 
@@ -75,8 +75,8 @@ It must always start with a declaration of direction and ABI (e.g. `#![unsafe(ex
 - `#[symbol_name = "..."]` overrides the name mangling enforced by the `ffi` macro.
 - `#![failure = "panic" | "error"]` controls whether internal failures panic(default) or are returned.
 - `type Type;` declares an opaque type (it's representation is unknown). This type should not be dereferenced.
-- `#[id(int)]` on a type declaration defines the tag type that identifies the type when it is erased by dynamic dispatch.
-- `#[erased(<Type1, ...>)]` opts-into a kind of polymorphic dispatch where concrete types are known at compile time but erased at runtime.
+- `#[id(TagTy)]` on a type declaration defines the tag type that identifies the type when it is erased by dynamic dispatch.
+- `where <T> @ (<Type1> | ...)` opts into a kind of polymorphic dispatch where concrete types are known at compile time but erased at runtime.
 - `..` splits a wide companion type into separate data and metadata arguments at the ABI boundary.
 - `#[explicit_lifetimes]` opts into declarations with explicit lifetimes inside `ffi`.
 - `cfg_attr` is fully supported in all attribute positions inside the `ffi` macro.

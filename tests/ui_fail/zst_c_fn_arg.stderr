@@ -416,8 +416,8 @@ error[E0277]: the trait bound `(): CFnArg` is not satisfied
              CBoxedSlice<C>
              CNoReprZst
              CNoReprZstConstView
+             CNoReprZstData
              CNoReprZstMutView
-             CParamNoReprZst<T>
            and $N others
 note: required by a bound in `require_arg`
   --> tests/ui_fail/zst_c_fn_arg.rs:67:19
@@ -438,8 +438,8 @@ error[E0277]: the trait bound `(): CFnReturn` is not satisfied
              CBoxedSlice<C>
              CNoReprZst
              CNoReprZstConstView
+             CNoReprZstData
              CNoReprZstMutView
-             CParamNoReprZst<T>
            and $N others
    = note: required for `()` to implement `CFnReturn`
 note: required by a bound in `require_return`
