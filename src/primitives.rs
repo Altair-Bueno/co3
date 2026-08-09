@@ -1,7 +1,11 @@
 //! Logic related to the conversion of primitives to and from FFI-compatible representation
 
+#[cfg(feature = "alloc")]
+use alloc::vec::Vec;
 use core::cmp::Ordering;
 
+#[cfg(feature = "alloc")]
+use crate::stored::Owned;
 use crate::{
     CFnArg, Decode, Encode, ExternC, ReprC, assert_arr_has_non_zero_len,
     borrow::{Borrow, BorrowCast, BorrowCastMut, FromBorrow},
@@ -239,6 +243,11 @@ primitive_derive! { f64 }
 raw_pointer_derive! { const }
 raw_pointer_derive! { mut }
 
+#[cfg(feature = "alloc")]
+impl<R> Owned for [R] {
+    type Owned = Vec<R>;
+}
+
 unsafe impl<R: ReprC> ReprC for [R] {}
 
 impl<R: ExternC<CType: Sized>> ExternC for [R] {
@@ -348,6 +357,7 @@ fieldless_enum_derive! {
 mod tests {
     #[cfg(feature = "alloc")]
     use alloc::{boxed::Box, vec::Vec};
+
     use static_assertions::assert_impl_all;
 
     use super::*;

@@ -9,8 +9,6 @@ use core::{
     ptr::NonNull,
 };
 
-#[cfg(feature = "alloc")]
-use crate::boxed::CBoxedSlice;
 use crate::{
     Decode, Encode, ExternC, ReprC,
     borrow::{Borrow, BorrowCast, BorrowCastMut, FromBorrow},
@@ -18,6 +16,8 @@ use crate::{
     stored::{DecodeOwned, EmptyStore, EncodeOwned},
     transmute::CheckedTransmute,
 };
+#[cfg(feature = "alloc")]
+use crate::{boxed::CBoxedSlice, stored::Owned};
 
 macro_rules! non_zero_derive {
     ($($primitive:ty),+ $(,)?) => {$(
@@ -300,6 +300,11 @@ unsafe impl<T: ReprC + ?Sized> CheckedTransmute for NonNull<T> {
     unsafe fn is_valid(target: &Self::CType) -> bool {
         !target.is_null()
     }
+}
+
+#[cfg(feature = "alloc")]
+impl Owned for str {
+    type Owned = String;
 }
 
 impl ExternC for str {

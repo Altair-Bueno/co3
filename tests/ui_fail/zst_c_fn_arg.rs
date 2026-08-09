@@ -24,7 +24,6 @@ enum ParamFieldlessEnum {
     A,
 }
 
-// FIXME: This should fail
 #[derive(Clone, Copy, RustSpec, ReprC)]
 struct ZeroLenArrayZst {
     field: [u8; 0],
@@ -69,6 +68,9 @@ fn require_arg<T: CFnArg>() {}
 fn require_return<T: CFnReturn>() {}
 
 fn main() {
+    require_arg::<<ZeroLenArrayZst as ExternC>::CType>();
+    require_return::<<ZeroLenArrayZst as ExternC>::CType>();
+
     require_arg::<<ReprCZst as ExternC>::CType>();
     require_return::<<ReprCZst as ExternC>::CType>();
 

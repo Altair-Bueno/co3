@@ -165,9 +165,8 @@ fn gen_data_def(
         };
 
     quote! {
-        // FIXME:
-        #[derive(#(#derives, )*)] //co3::rust_spec::RustSpec, co3::ReprC)]
-        //#[reprC(__wide_data)]
+        #[derive(#(#derives, )* co3::rust_spec::RustSpec, co3::ReprC)]
+        #[reprC(__wide_data)]
         #(#attrs)*
         #vis struct #name #impl_generics #suffix
     }

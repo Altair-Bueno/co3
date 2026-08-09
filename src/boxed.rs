@@ -2,6 +2,7 @@
 
 use alloc::boxed::Box;
 use core::ptr::NonNull;
+
 use rust_spec::RustSpec;
 
 use crate::{
@@ -98,6 +99,7 @@ impl<C> Ord for CBox<C> {
 impl<C> Ord for CBoxedSlice<C> {
     fn cmp(&self, other: &Self) -> core::cmp::Ordering {
         use core::cmp::Ordering;
+
         match (self.data.is_null(), other.data.is_null()) {
             (true, true) => Ordering::Equal,
             (true, false) => Ordering::Less,

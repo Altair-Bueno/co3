@@ -92,14 +92,8 @@ fn derive_repr_c_data_enum_ctype(
 ) -> TokenStream {
     let payload_name = format_ident!("{name}Payload");
 
-    let (payload_def, variant_structs) = gen_data_enum_union(
-        None,
-        &syn::Visibility::Inherited,
-        &payload_name,
-        name,
-        generics,
-        variants,
-    );
+    let (payload_def, variant_structs) =
+        gen_data_enum_union(None, vis, &payload_name, name, generics, variants);
 
     let payload_impls = gen_union_ctype_impls(&payload_def);
     let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
@@ -197,7 +191,7 @@ fn gen_data_enum_union(
         .iter()
         .zip(&variant_generics)
         .map(|(variant, generics)| {
-            gen_variant_struct(variant_tag.as_ref(), enum_name, generics, variant)
+            gen_variant_struct(variant_tag.as_ref(), vis, enum_name, generics, variant)
         });
 
     let (impl_generics, _, where_clause) = generics.split_for_impl();
@@ -220,6 +214,7 @@ fn gen_data_enum_union(
 
 fn gen_variant_struct(
     tag_type: Option<&syn::Type>,
+    vis: &syn::Visibility,
     enum_name: &syn::Ident,
     generics: &syn::Generics,
     variant: &syn::Variant,
@@ -227,7 +222,6 @@ fn gen_variant_struct(
     let name = format_ident!("{enum_name}{}", &variant.ident);
 
     let repr = Some(&ReprKind::C(None));
-    let vis = syn::Visibility::Inherited;
     let mut fields = variant.fields.clone();
 
     if let Some(tag_type) = tag_type {
@@ -244,7 +238,7 @@ fn gen_variant_struct(
         }
     }
 
-    let ctype = gen_ctype_struct_item::<true>(repr, &vis, &name, generics, &fields);
+    let ctype = gen_ctype_struct_item::<true>(repr, vis, &name, generics, &fields);
     let ctype_impls = gen_struct_ctype_impls::<true>(&ctype);
     quote! { #ctype #ctype_impls }
 }
@@ -396,16 +390,30 @@ fn gen_type_spec_impl(
 ) -> TokenStream {
     let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
     let predicates = where_clause.as_ref().map(|w| &w.predicates);
-    let (alignment, alignment_bounds) = gen_alignment_family(fields);
+    let (size, size_bounds) = gen_field_family(
+        generics,
+        fields,
+        quote! { core::ops::Add },
+        quote! { Size },
+        quote! { co3::rust_spec::size::Sized<co3::rust_spec::Zero> },
+    );
+    let (alignment, alignment_bounds) = gen_field_family(
+        generics,
+        fields,
+        quote! { co3::rust_spec::Max },
+        quote! { Alignment },
+        quote! { co3::rust_spec::One },
+    );
 
     quote! {
         unsafe impl #impl_generics co3::rust_spec::RustSpec for #ident #ty_generics
         where
+            #(#size_bounds,)*
             #(#alignment_bounds,)*
             #predicates
         {
             type Layout = co3::rust_spec::Stable;
-            type Size = co3::rust_spec::size::Sized<co3::rust_spec::Gt<rust_spec::Zero>>;
+            type Size = #size;
             type Alignment = #alignment;
             type Trap = co3::rust_spec::layout::Robust;
             type Niche = co3::rust_spec::niche::WithoutNiche;
@@ -415,23 +423,69 @@ fn gen_type_spec_impl(
     }
 }
 
-fn gen_alignment_family(fields: &[&syn::Type]) -> (TokenStream, Vec<TokenStream>) {
-    let mut alignment = quote! { co3::rust_spec::One };
-    let mut bounds = Vec::with_capacity(fields.len());
+fn gen_field_family(
+    generics: &syn::Generics,
+    fields: &[&syn::Type],
+    operator: TokenStream,
+    axis: TokenStream,
+    identity: TokenStream,
+) -> (TokenStream, Vec<TokenStream>) {
+    let (concrete_family, parametrized_family, mut bounds) =
+        gen_field_family_parts(operator.clone(), axis, generics, fields);
 
-    for field in fields {
-        let field_alignment = quote! { <#field as co3::rust_spec::RustSpec>::Alignment };
+    let family = match (concrete_family, parametrized_family) {
+        (Some(concrete), Some(parametrized)) => {
+            bounds.push(quote! { #concrete: #operator<#parametrized> });
+            quote! { <#concrete as #operator<#parametrized>>::Output }
+        }
+        (Some(concrete), None) => concrete,
+        (None, Some(parametrized)) => parametrized,
+        (None, None) => identity,
+    };
 
-        bounds.push(quote! {
-            #field: co3::rust_spec::RustSpec<
-                Alignment: co3::rust_spec::Max<#alignment>,
-            >
-        });
+    (family, bounds)
+}
 
-        alignment = quote! { <#field_alignment as co3::rust_spec::Max<#alignment>>::Output };
-    }
+fn gen_field_family_parts(
+    operator: TokenStream,
+    axis: TokenStream,
+    generics: &syn::Generics,
+    fields: &[&syn::Type],
+) -> (Option<TokenStream>, Option<TokenStream>, Vec<TokenStream>) {
+    let mut bounds = Vec::new();
+    let (concrete_fields, parametrized_fields): (Vec<_>, Vec<_>) = fields
+        .iter()
+        .copied()
+        .partition(|field| !is_type_parametrized(field, generics));
 
-    (alignment, bounds)
+    let mut concrete_fields = concrete_fields.into_iter();
+    let concrete_family = concrete_fields.next().map(|first| {
+        let mut family = quote! { <#first as co3::rust_spec::RustSpec>::#axis };
+
+        for field in concrete_fields {
+            let field_family = quote! { <#field as co3::rust_spec::RustSpec>::#axis };
+            family = quote! { <#family as #operator<#field_family>>::Output };
+        }
+
+        family
+    });
+
+    let mut parametrized_fields = parametrized_fields.into_iter();
+    let parametrized_family = parametrized_fields.next().map(|first| {
+        bounds.push(quote! { #first: co3::rust_spec::RustSpec });
+        let mut family = quote! { <#first as co3::rust_spec::RustSpec>::#axis };
+
+        for field in parametrized_fields {
+            let field_family = quote! { <#field as co3::rust_spec::RustSpec>::#axis };
+            bounds.push(quote! { #field: co3::rust_spec::RustSpec });
+            bounds.push(quote! { #family: #operator<#field_family> });
+            family = quote! { <#family as #operator<#field_family>>::Output };
+        }
+
+        family
+    });
+
+    (concrete_family, parametrized_family, bounds)
 }
 
 fn gen_identity_codec_impls<const ADD_COPY: bool>(

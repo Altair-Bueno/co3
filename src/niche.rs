@@ -1,9 +1,8 @@
 //! Logic related to the conversion of [`Option<T>`] to and from FFI-compatible representation
 
-use core::ptr::NonNull;
-
 #[cfg(feature = "alloc")]
 use alloc::{boxed::Box, vec::Vec};
+use core::ptr::NonNull;
 
 use disjoint_impls::disjoint_impls;
 

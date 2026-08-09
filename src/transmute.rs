@@ -54,6 +54,7 @@ disjoint_impls! {
     }
 }
 
+// NOTE: It is UB to transmute between `UnsafeCell<T>` and `T`
 unsafe impl<R: CheckedTransmute + RustSpec<Mutability = Exclusive> + ?Sized> CheckedTransmute for &R
 where
     Self: ExternC<CType: Copy>,

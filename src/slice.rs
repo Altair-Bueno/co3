@@ -1,12 +1,13 @@
 //! Logic related to the conversion of slices to and from FFI-compatible representation
 
+use rust_spec::RustSpec;
+
 use crate::{
     CFnArg, Decode, Encode, ExternC, ReprC,
     borrow::{Borrow, BorrowCast, BorrowCastMut, FromBorrow},
     stored::{DecodeOwned, EncodeOwned},
     transmute::CheckedTransmute,
 };
-use rust_spec::RustSpec;
 
 pub trait Spread: ReprC + core::marker::Sized {
     type Part1: ReprC;

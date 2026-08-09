@@ -69,7 +69,7 @@ mod tests {
 
     use static_assertions::{assert_impl_all, assert_not_impl_any};
 
-    use super::InteriorMut;
+    use super::*;
     use crate::{Encode, ReprC, rust_spec::RustSpec};
 
     #[derive(RustSpec, ReprC)]

@@ -2,13 +2,14 @@
 
 use core::{mem::MaybeUninit, ops::Add};
 
+use rust_spec::{RustSpec, niche::WithoutNiche};
+
 use crate::{
     CFnArg, Decode, Encode, ExternC, ReprC,
     borrow::{Borrow, BorrowCast, BorrowCastMut, FromBorrow},
     stored::{DecodeOwned, EmptyStore, EncodeOwned},
     transmute::CheckedTransmute,
 };
-use rust_spec::{RustSpec, niche::WithoutNiche};
 
 /// FFI-safe equivalent of [`core::result::Result`]
 #[repr(C)]
