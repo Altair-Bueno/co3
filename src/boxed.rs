@@ -8,7 +8,7 @@ use rust_spec::RustSpec;
 use crate::{
     CFnArg, Decode, Encode, ExternC, ReprC,
     borrow::{Borrow, BorrowCast, BorrowCastMut, FromBorrow},
-    slice::{CSlice, CSliceMut, Spread},
+    slice::{CSlice, CSliceMut, Spread2},
     stored::{DecodeOwned, EncodeOwned},
     transmute::CheckedTransmute,
 };
@@ -297,7 +297,7 @@ unsafe impl<C: ReprC> BorrowCastMut for CBoxedSlice<C> {
     type AsMut = CSliceMut<C>;
 }
 
-impl<C: ReprC> Spread for CBoxedSlice<C> {
+impl<C: ReprC> Spread2 for CBoxedSlice<C> {
     type Part1 = *mut C;
     type Part2 = usize;
 

@@ -9,7 +9,7 @@ use crate::{
     transmute::CheckedTransmute,
 };
 
-pub trait Spread: ReprC + core::marker::Sized {
+pub trait Spread2: ReprC + core::marker::Sized {
     type Part1: ReprC;
     type Part2: ReprC;
 
@@ -246,7 +246,7 @@ macro_rules! impl_slice_carrier {
 impl_slice_carrier! { CSlice }
 impl_slice_carrier! { CSliceMut }
 
-impl<C: ReprC> Spread for CSlice<C> {
+impl<C: ReprC> Spread2 for CSlice<C> {
     type Part1 = *const C;
     type Part2 = usize;
 
@@ -261,7 +261,7 @@ impl<C: ReprC> Spread for CSlice<C> {
     }
 }
 
-impl<C: ReprC> Spread for CSliceMut<C> {
+impl<C: ReprC> Spread2 for CSliceMut<C> {
     type Part1 = *mut C;
     type Part2 = usize;
 

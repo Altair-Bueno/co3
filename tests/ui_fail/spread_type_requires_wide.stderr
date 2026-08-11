@@ -1,4 +1,4 @@
-error[E0277]: the trait bound `u32: Spread` is not satisfied
+error[E0277]: the trait bound `u32: Spread2` is not satisfied
   --> tests/ui_fail/spread_type_requires_wide.rs:15:1
    |
 15 | / ffi! {
@@ -6,29 +6,29 @@ error[E0277]: the trait bound `u32: Spread` is not satisfied
 17 | |
 18 | |     fn bad(value: ..u32);
 19 | | }
-   | |_^ the trait `Spread` is not implemented for `u32`
+   | |_^ the trait `Spread2` is not implemented for `u32`
    |
-help: the following other types implement trait `Spread`
+help: the following other types implement trait `Spread2`
   --> src/tuple.rs
    |
-   | impl<A: ReprC, B: ReprC> Spread for ReprCTuple2<A, B> {
-   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `ReprCTuple2<A, B>`
+   | impl<A: ReprC, B: ReprC> Spread2 for ReprCTuple2<A, B> {
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `ReprCTuple2<A, B>`
    |
   ::: src/slice.rs
    |
-   | impl<C: ReprC> Spread for CSlice<C> {
-   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `CSlice<C>`
+   | impl<C: ReprC> Spread2 for CSlice<C> {
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `CSlice<C>`
 ...
-   | impl<C: ReprC> Spread for CSliceMut<C> {
-   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `CSliceMut<C>`
+   | impl<C: ReprC> Spread2 for CSliceMut<C> {
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `CSliceMut<C>`
    |
   ::: src/boxed.rs
    |
-   | impl<C: ReprC> Spread for CBoxedSlice<C> {
-   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `CBoxedSlice<C>`
+   | impl<C: ReprC> Spread2 for CBoxedSlice<C> {
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `CBoxedSlice<C>`
    = note: this error originates in the macro `ffi` (in Nightly builds, run with -Z macro-backtrace for more info)
 
-error[E0277]: the trait bound `u32: Spread` is not satisfied
+error[E0277]: the trait bound `u32: Spread2` is not satisfied
   --> tests/ui_fail/spread_type_requires_wide.rs:21:1
    |
 21 | / ffi! {
@@ -36,54 +36,54 @@ error[E0277]: the trait bound `u32: Spread` is not satisfied
 23 | |
 24 | |     fn bad(value: ..u32);
 25 | | }
-   | |_^ the trait `Spread` is not implemented for `u32`
+   | |_^ the trait `Spread2` is not implemented for `u32`
    |
-help: the following other types implement trait `Spread`
+help: the following other types implement trait `Spread2`
   --> src/tuple.rs
    |
-   | impl<A: ReprC, B: ReprC> Spread for ReprCTuple2<A, B> {
-   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `ReprCTuple2<A, B>`
+   | impl<A: ReprC, B: ReprC> Spread2 for ReprCTuple2<A, B> {
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `ReprCTuple2<A, B>`
    |
   ::: src/slice.rs
    |
-   | impl<C: ReprC> Spread for CSlice<C> {
-   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `CSlice<C>`
+   | impl<C: ReprC> Spread2 for CSlice<C> {
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `CSlice<C>`
 ...
-   | impl<C: ReprC> Spread for CSliceMut<C> {
-   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `CSliceMut<C>`
+   | impl<C: ReprC> Spread2 for CSliceMut<C> {
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `CSliceMut<C>`
    |
   ::: src/boxed.rs
    |
-   | impl<C: ReprC> Spread for CBoxedSlice<C> {
-   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `CBoxedSlice<C>`
+   | impl<C: ReprC> Spread2 for CBoxedSlice<C> {
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `CBoxedSlice<C>`
    = note: this error originates in the macro `ffi` (in Nightly builds, run with -Z macro-backtrace for more info)
 
-error[E0277]: the trait bound `u32: Spread` is not satisfied
+error[E0277]: the trait bound `u32: Spread2` is not satisfied
   --> tests/ui_fail/spread_type_requires_wide.rs:24:12
    |
 21 | / ffi! {
 22 | |     #![unsafe(extern("C"))]
 23 | |
 24 | |     fn bad(value: ..u32);
-   | |            ^^^^^ the trait `Spread` is not implemented for `u32`
+   | |            ^^^^^ the trait `Spread2` is not implemented for `u32`
 25 | | }
    | |_- required by a bound introduced by this call
    |
-help: the following other types implement trait `Spread`
+help: the following other types implement trait `Spread2`
   --> src/tuple.rs
    |
-   | impl<A: ReprC, B: ReprC> Spread for ReprCTuple2<A, B> {
-   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `ReprCTuple2<A, B>`
+   | impl<A: ReprC, B: ReprC> Spread2 for ReprCTuple2<A, B> {
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `ReprCTuple2<A, B>`
    |
   ::: src/slice.rs
    |
-   | impl<C: ReprC> Spread for CSlice<C> {
-   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `CSlice<C>`
+   | impl<C: ReprC> Spread2 for CSlice<C> {
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `CSlice<C>`
 ...
-   | impl<C: ReprC> Spread for CSliceMut<C> {
-   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `CSliceMut<C>`
+   | impl<C: ReprC> Spread2 for CSliceMut<C> {
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `CSliceMut<C>`
    |
   ::: src/boxed.rs
    |
-   | impl<C: ReprC> Spread for CBoxedSlice<C> {
-   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `CBoxedSlice<C>`
+   | impl<C: ReprC> Spread2 for CBoxedSlice<C> {
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `CBoxedSlice<C>`

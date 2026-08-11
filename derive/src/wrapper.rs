@@ -412,7 +412,7 @@ fn gen_input_conversion_stmts(inputs: &Punctuated<FnArg, syn::Token![,]>) -> Tok
             let (data_name, metadata_name) = spread_arg_names(&arg_name);
 
             stmts.extend(quote! {
-                let (#data_name, #metadata_name) = co3::slice::Spread::into_parts(#arg_name);
+                let (#data_name, #metadata_name) = co3::slice::Spread2::into_parts(#arg_name);
             });
         }
     }

@@ -339,8 +339,8 @@ fn input_abi_tys(attrs: &[syn::Attribute], ty: &syn::Type) -> Vec<syn::Type> {
 
     if is_spread_arg(attrs) {
         return vec![
-            parse_quote!(<#abi_ty as co3::slice::Spread>::Part1),
-            parse_quote!(<#abi_ty as co3::slice::Spread>::Part2),
+            parse_quote!(<#abi_ty as co3::slice::Spread2>::Part1),
+            parse_quote!(<#abi_ty as co3::slice::Spread2>::Part2),
         ];
     }
 

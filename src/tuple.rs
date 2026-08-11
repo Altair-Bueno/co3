@@ -70,7 +70,7 @@ use crate::{
     CFnArg, Decode, Encode, ExternC, ReprC, Store,
     borrow::{Borrow, BorrowCast, BorrowCastMut, FromBorrow},
     niche::Niche,
-    slice::Spread,
+    slice::Spread2,
     stored::{DecodeOwned, EncodeOwned},
     transmute::CheckedTransmute,
 };
@@ -300,7 +300,7 @@ impl_tuple! {(A, B, C, D, E, F, G, H, I, J) -> ReprCTuple10}
 impl_tuple! {(A, B, C, D, E, F, G, H, I, J, K) -> ReprCTuple11}
 impl_tuple! {(A, B, C, D, E, F, G, H, I, J, K, L) -> ReprCTuple12}
 
-impl<A: ReprC, B: ReprC> Spread for ReprCTuple2<A, B> {
+impl<A: ReprC, B: ReprC> Spread2 for ReprCTuple2<A, B> {
     type Part1 = A;
     type Part2 = B;
 
