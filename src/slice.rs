@@ -1,5 +1,4 @@
-//! Logic related to the conversion of slices to and from FFI-compatible representation
-
+//! C-ABI slice carriers.
 use rust_spec::RustSpec;
 
 use crate::{
@@ -9,6 +8,9 @@ use crate::{
     transmute::CheckedTransmute,
 };
 
+/// Splits a C-compatible representation into two ABI arguments.
+///
+/// This is used by the `..` form in [`crate::ffi!`] declarations.
 pub trait Spread2: ReprC + core::marker::Sized {
     type Part1: ReprC;
     type Part2: ReprC;

@@ -102,7 +102,7 @@ ffi! {
     impl Kita for u32 {
         fn kita(self)
         where
-            <T> @ <>;
+            use<T> @ <>;
     }
 }
 
@@ -111,7 +111,7 @@ ffi! {
 
     type OpaqueType<T>
     where
-        <T> @ <>;
+        use<T> @ <>;
 }
 
 ffi! {
@@ -142,14 +142,14 @@ ffi! {
 
     impl<T> Drop for dyn OpaqueType<T>
     where
-        <T> @ <u32>,
+        use<T> @ <u32>,
     {
         fn drop(&mut self);
     }
 
     impl<dyn(u32) T> Clone for OpaqueType<T>
     where
-        <T> @ <>
+        use<T> @ <>
     {
         fn clone(&self);
     }
@@ -163,14 +163,14 @@ ffi! {
 
     impl<T> Drop for dyn OpaqueType<T>
     where
-        <T> @ <u32>,
+        use<T> @ <u32>,
     {
         fn drop(&mut self);
     }
 
     impl<dyn(u32) T> Clone for OpaqueType<T>
     where
-        <T> @ <u32, u8>,
+        use<T> @ <u32, u8>,
     {
         fn clone(&self);
     }

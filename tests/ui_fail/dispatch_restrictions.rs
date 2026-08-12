@@ -52,7 +52,7 @@ ffi! {
 
     impl<dyn(u8) T> Kita for T
     where
-        <T> @ <u32>,
+        use<T> @ <u32>,
     {
         fn kita(self, self_id: <dyn T>::ID) -> u32;
     }
@@ -61,10 +61,86 @@ ffi! {
 ffi! {
     #![unsafe(export("C"))]
 
+    fn never<dyn(u8) T>()
+    where
+        use<T> @ ();
+}
+
+ffi! {
+    #![unsafe(extern("C"))]
+
+    fn never<dyn(u8) T>()
+    where
+        use<T> @ ();
+}
+
+ffi! {
+    #![unsafe(export("C"))]
+
+    impl<dyn(u8) T> Dispatch for T
+    where
+        use<T> @ <u32> | <u64>,
+    {
+        fn dispatch(&self);
+    }
+}
+
+ffi! {
+    #![unsafe(extern("C"))]
+
+    impl<dyn(u8) T> Dispatch for T
+    where
+        use<T> @ <u32> | <u64>,
+    {
+        fn dispatch(&self);
+    }
+}
+
+ffi! {
+    #![unsafe(export("C"))]
+
+    fn dispatch<dyn(u8) T>()
+    where
+        use<T> @ <u32>,
+        T: Copy;
+}
+
+ffi! {
+    #![unsafe(extern("C"))]
+
+    fn dispatch<dyn(u8) T>()
+    where
+        use<T> @ <u32>,
+        T: Copy;
+}
+
+ffi! {
+    #![unsafe(export("C"))]
+
+    impl<dyn(u8) T, dyn(u8) U> Dispatch for T
+    where
+        use<T> @ (<u64> | <u16>),
+        use<T> @ <u8>,
+    {}
+}
+
+ffi! {
+    #![unsafe(extern("C"))]
+
+    impl<dyn(u8) T, dyn(u8) U> Dispatch for T
+    where
+        use<T> @ (<u64> | <u16>),
+        use<T> @ <u8>,
+    {}
+}
+
+ffi! {
+    #![unsafe(export("C"))]
+
     #[explicit_lifetimes]
     impl<'a, dyn(u8) T> Kita<'a> for T
     where
-        <T> @ <'a, u32>,
+        use<T> @ <'a, u32>,
     {
         fn drop(&mut self);
     }
@@ -78,7 +154,7 @@ ffi! {
     #[explicit_lifetimes]
     impl<'a, dyn(u8) T> Kita<'a> for T
     where
-        <T> @ <'a, u32>,
+        use<T> @ <'a, u32>,
     {
         fn drop(&mut self, self_id: <dyn Self>::ID);
     }
@@ -90,7 +166,7 @@ ffi! {
     #[explicit_lifetimes]
     impl<'a, dyn(u8) T> Kita<'a> for T
     where
-        <T> @ (<&i16> | <&'_ i32> | <&'a u32>),
+        use<T> @ (<&i16> | <&'_ i32> | <&'a u32>),
     {
         fn kita(self);
     }
@@ -102,7 +178,7 @@ ffi! {
     #[explicit_lifetimes]
     impl<'a, dyn(u8) T> Kita<'a> for T
     where
-        <T> @ (<&i16> | <&'_ i32> | <&'a u32>),
+        use<T> @ (<&i16> | <&'_ i32> | <&'a u32>),
     {
         #[symbol_name = "kita"]
         fn kita(handle_id: <dyn T>::ID, self);
@@ -112,9 +188,25 @@ ffi! {
 ffi! {
     #![unsafe(export("C"))]
 
+    pub fn optional<dyn(u8) T = u8>(#[soft] value: &Option<T>)
+    where
+        use<T> @ <u8>;
+}
+
+ffi! {
+    #![unsafe(extern("C"))]
+
+    pub fn optional<dyn(u8) T = u8>(#[soft] value: &Option<T>)
+    where
+        use<T> @ <u8>;
+}
+
+ffi! {
+    #![unsafe(export("C"))]
+
     impl<T> Kita for T
     where
-        <T> @ <u32>,
+        use<T> @ <u32>,
     {
         fn kita(self) -> u32;
     }
@@ -125,7 +217,7 @@ ffi! {
 
     impl<T> Kita for T
     where
-        <T> @ <u32>,
+        use<T> @ <u32>,
     {
         #[symbol_name = "kita"]
         fn kita(self) -> u32;
@@ -137,7 +229,7 @@ ffi! {
 
     impl<dyn T> Kita for T
     where
-        <T> @ <u32>,
+        use<T> @ <u32>,
     {
         fn kita(self) -> u32;
     }
@@ -148,7 +240,7 @@ ffi! {
 
     impl<dyn T> Kita for T
     where
-        <T> @ <u32>,
+        use<T> @ <u32>,
     {
         #[symbol_name = "kita"]
         fn kita(self) -> u32;
@@ -160,7 +252,7 @@ ffi! {
 
     impl<T> Kita for dyn T
     where
-        <T> @ <u32>,
+        use<T> @ <u32>,
     {
         fn kita(self) -> u32;
     }
@@ -171,7 +263,7 @@ ffi! {
 
     impl<T> Kita for dyn T
     where
-        <T> @ <u32>,
+        use<T> @ <u32>,
     {
         #[symbol_name = "kita"]
         fn kita(self) -> u32;
@@ -183,7 +275,7 @@ ffi! {
 
     impl<T> Kita for dyn u32
     where
-        <T> @ <u32>,
+        use<T> @ <u32>,
     {
         fn kita(self) -> u32;
     }
@@ -195,7 +287,7 @@ ffi! {
 
     impl<T> Kita for dyn u32
     where
-        <T> @ <u32>,
+        use<T> @ <u32>,
     {
         #[symbol_name = "kita"]
         fn kita(&self, self_id: <dyn Self>::ID) -> u32;
@@ -207,7 +299,7 @@ ffi! {
 
     impl<T> Kita for dyn Option<T>
     where
-        <T> @ <u32>,
+        use<T> @ <u32>,
     {
         fn kita(self) -> u32;
     }
@@ -218,7 +310,7 @@ ffi! {
 
     impl<T> Kita for dyn Option<T>
     where
-        <T> @ <u32>,
+        use<T> @ <u32>,
     {
         #[symbol_name = "kita"]
         fn kita(&self, self_id: <dyn Self>::ID) -> u32;
@@ -230,7 +322,7 @@ ffi! {
 
     impl<dyn(i64) T> Kita for T
     where
-        <T> @ <u32>,
+        use<T> @ <u32>,
     {
         #[symbol_name = "kita"]
         fn kita(self, self_id: <dyn Self>::ID) -> <dyn T>::ID;
@@ -243,7 +335,7 @@ ffi! {
 
     impl<dyn(u64) T> Kita for T
     where
-        <T> @ <u32>,
+        use<T> @ <u32>,
     {
         #[symbol_name = "kita"]
         fn kita(self, self_id: (<dyn Self>::ID,)) -> u32;
@@ -258,7 +350,7 @@ ffi! {
 
     impl<dyn(char) T> RefKita for T
     where
-        <T> @ <Exported0>,
+        use<T> @ <Exported0>,
     {
         fn kita(&self) -> u32;
     }
@@ -273,7 +365,7 @@ ffi! {
 
     impl<dyn(char) T> RefKita for T
     where
-        <T> @ <Externed0>,
+        use<T> @ <Externed0>,
     {
         #[symbol_name = "kita"]
         fn kita(&self, self_id: <dyn Self>::ID) -> u32;
@@ -288,7 +380,7 @@ ffi! {
 
     impl<dyn(u32) T> RefKita for T
     where
-        <T> @ (<Exported1> | <Exported1>),
+        use<T> @ (<Exported1> | <Exported1>),
     {
         fn kita(&self) -> u32;
     }
@@ -303,7 +395,7 @@ ffi! {
 
     impl<dyn(u32) T> RefKita for T
     where
-        <T> @ (<Externed1> | <Externed1>),
+        use<T> @ (<Externed1> | <Externed1>),
     {
         #[symbol_name = "kita"]
         fn kita(self_id: <dyn T>::ID, &self) -> u32;

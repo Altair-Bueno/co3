@@ -6,7 +6,8 @@ use syn::{parse_quote, visit::Visit};
 
 use crate::layout::{
     attr::ReprKind,
-    infer_repr, is_transparent_enum_repr, is_type_parametrized, primitive_tag_type,
+    infer_repr, is_phantom_data, is_transparent_enum_repr, is_type_parametrized,
+    primitive_tag_type,
     wide::{
         data_field_ty, gen_alloc_methods, gen_data_ctype_bounds, gen_data_struct_name,
         gen_dst_methods, last_field, wide_predicate,
@@ -14,6 +15,10 @@ use crate::layout::{
 };
 
 fn lowered_field_ty(field_ty: &syn::Type) -> TokenStream {
+    if is_phantom_data(field_ty) {
+        return quote!(#field_ty);
+    }
+
     quote!(<#field_ty as co3::ExternC>::CType)
 }
 
@@ -95,6 +100,14 @@ fn gen_ctype_wide_impl(
     source_generics: &syn::Generics,
 ) -> TokenStream {
     let is_transparent = matches!(repr, Some(ReprKind::Transparent));
+
+    if source_fields
+        .iter()
+        .next_back()
+        .is_some_and(|field| is_phantom_data(&field.ty))
+    {
+        return quote! {};
+    }
 
     let Some((field, field_ref, field_member)) = last_field(&ctype.fields) else {
         return quote! {};
@@ -615,7 +628,9 @@ fn gen_identity_codec_impls<const ADD_COPY: bool>(
 ) -> TokenStream {
     let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
     let predicates = where_clause.as_ref().map(|w| &w.predicates);
-    let params = &generics.params;
+    let mut decode_generics = generics.clone();
+    decode_generics.params.insert(0, parse_quote!('d));
+    let (decode_impl_generics, _, _) = decode_generics.split_for_impl();
 
     let copy_bounds = gen_copy_bounds::<ADD_COPY>(generics, fields);
 
@@ -641,7 +656,7 @@ fn gen_identity_codec_impls<const ADD_COPY: bool>(
                 self
             }
         }
-        unsafe impl<'d, #params> co3::stored::DecodeOwned<'d> for #ident #ty_generics
+        unsafe impl #decode_impl_generics co3::stored::DecodeOwned<'d> for #ident #ty_generics
         where
             #(#copy_bounds,)*
             #predicates
@@ -806,6 +821,11 @@ fn rewrite_ctype_view_field_tys<'a>(
     fields
         .map(|field_ty| {
             let ty = field_ty.clone();
+
+            if is_phantom_data(&ty) {
+                return ty;
+            }
+
             let (borrow_cast_trait, view_ty) = if is_mut {
                 (quote!(co3::borrow::BorrowCastMut), quote!(AsMut))
             } else {
@@ -1048,6 +1068,10 @@ pub(super) fn gen_extern_c_bounds_for_ctype<const ADD_COPY: bool>(
     fields: &[&syn::Type],
 ) -> Vec<syn::WherePredicate> {
     let gen_bound = |ty: &syn::Type, ctype_bound: TokenStream| {
+        if is_phantom_data(ty) {
+            return vec![];
+        }
+
         if is_type_parametrized(ty, generics) {
             vec![parse_quote! { #ty: co3::ExternC #ctype_bound }]
         } else {
@@ -1166,7 +1190,7 @@ fn gen_ctype_borrow_cast_bounds<const ADD_COPY: bool>(
 
     let mut predicates = fields
         .iter()
-        .filter(|ty| is_type_parametrized(ty, generics))
+        .filter(|ty| !is_phantom_data(ty) && is_type_parametrized(ty, generics))
         .map(|&ty| {
             let ctype_bound = if ADD_COPY {
                 quote! { <#assoc_type: Copy> }
@@ -1178,7 +1202,7 @@ fn gen_ctype_borrow_cast_bounds<const ADD_COPY: bool>(
         })
         .collect::<Vec<_>>();
 
-    if is_type_parametrized(last, generics) {
+    if !is_phantom_data(last) && is_type_parametrized(last, generics) {
         let copy_bound = ADD_COPY.then(|| quote! { <#assoc_type: Copy> });
         predicates.push(parse_quote! { #last: #borrow_cast_trait #copy_bound });
     }

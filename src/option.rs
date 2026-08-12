@@ -1,5 +1,4 @@
-//! FFI-safe equivalent of [`core::option`] related functionality
-
+//! C-compatible representation of [`core::option::Option`].
 use core::mem::MaybeUninit;
 
 use rust_spec::{RustSpec, niche::WithoutNiche};

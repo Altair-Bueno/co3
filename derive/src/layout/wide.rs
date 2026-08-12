@@ -2,7 +2,9 @@ use proc_macro2::TokenStream;
 use quote::{format_ident, quote};
 use syn::parse_quote;
 
-use super::{ReprKind, ctype::gen_extern_c_bounds_for_ctype, is_type_parametrized};
+use super::{
+    ReprKind, ctype::gen_extern_c_bounds_for_ctype, is_phantom_data, is_type_parametrized,
+};
 
 pub(super) fn gen_data_struct_name(ident: &syn::Ident) -> syn::Ident {
     format_ident!("{}Data", ident)
@@ -22,6 +24,10 @@ pub(crate) fn expand(
     let Some((field, field_ref, field_member)) = last_field(&data.fields) else {
         return Ok(quote! {});
     };
+
+    if is_phantom_data(&field.ty) {
+        return Ok(quote! {});
+    }
 
     let name = &input.ident;
     let field_ty = &field.ty;

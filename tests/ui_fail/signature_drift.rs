@@ -84,7 +84,7 @@ ffi! {
 
     impl<dyn(u8) T = DriftHandle> ExportDispatchTrait for T
     where
-        <T> @ <DriftHandle>,
+        use<T> @ <DriftHandle>,
     {
         fn dispatch(&self, arg: &T);
     }
@@ -97,7 +97,7 @@ ffi! {
 
     impl<dyn(u8) T = DriftHandle> ExternDispatchTrait for T
     where
-        <T> @ <DriftHandle>,
+        use<T> @ <DriftHandle>,
     {
         fn dispatch(self_id: <dyn Self>::ID, &self, arg: &T);
     }

@@ -9,14 +9,14 @@ use crate::boxed::CBox;
 use crate::{ExternC, assert_arr_has_non_zero_len};
 
 disjoint_impls! {
-    /// Type that can be **safely transmuted** into another type.
+    /// Type that can be **safely transmuted** into its C representation.
     ///
     /// # Safety
     ///
     /// - `Self` and `Self::CType` must be mutually transmutable (this includes [`Drop`] semantics)
     /// - `Self::is_valid` must not return false positives, i.e. return `true` for trap representations
     pub unsafe trait CheckedTransmute: ExternC {
-        /// Called when transmuting [`Self::CType`] back into [`Self`] to check for trap representations.
+        /// Called when transmuting an [`ExternC::CType`] back into [`Self`] to check for trap representations.
         ///
         /// This function must never return false positives, i.e. return `true` for a trap representation.
         ///

@@ -1,7 +1,7 @@
-//! Utilities for defining opaque pointer handles and shared handle logic.
-
+//! Utilities for opaque pointer handles required for tagged dispatch.
 use crate::Encode;
 
+/// Groups handles that use the same tag type.
 pub trait HandleFamily {
     // TODO: Should Copy be required?
     type Kind: Encode + Copy;
@@ -72,6 +72,8 @@ pub unsafe trait Handle: HandleFamily {
 ///     const ID: Id = 9;
 /// } */
 /// ```
+// TODO: Should this be a public API or should users just implement it by hand
+#[doc(hidden)]
 #[macro_export]
 macro_rules! handles {
     ( unsafe { $($decls:tt)* } ) => {

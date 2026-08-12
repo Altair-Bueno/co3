@@ -17,7 +17,7 @@ use crate::{
     utils::{co3_path, gen_store_name, soft_for_arg, strip_internal_generic_param},
 };
 
-fn strip_internal_arg_attrs(signature: &mut syn::Signature) {
+pub(crate) fn strip_internal_arg_attrs(signature: &mut syn::Signature) {
     struct InternalAttrStripper;
 
     impl VisitMut for InternalAttrStripper {
@@ -41,7 +41,7 @@ fn strip_internal_arg_attrs(signature: &mut syn::Signature) {
     InternalAttrStripper.visit_signature_mut(signature);
 }
 
-pub fn wrap_fn_definition(
+pub(crate) fn wrap_fn_definition(
     abi: &syn::Abi,
     failure_mode: FailureMode,
     block_attrs: &[syn::Attribute],
@@ -211,7 +211,7 @@ pub(crate) fn gen_extern_decl(
     }
 }
 
-fn gen_wrapper_body<const DISPATCHED: bool>(
+pub(crate) fn gen_wrapper_body<const DISPATCHED: bool>(
     failure_mode: FailureMode,
     fn_by_val: bool,
     self_ty: Option<&syn::Type>,

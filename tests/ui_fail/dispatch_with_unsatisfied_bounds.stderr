@@ -40,8 +40,8 @@ error[E0277]: the trait bound `Externed2<u32>: Unimplemented` is not satisfied
    |  ______________________^
 60 | |     where
 61 | |         i32: Unimplemented,
-62 | |         <T> @ <Externed2<u32>>,
-   | |________________________^ unsatisfied trait bound
+62 | |         use<T> @ <Externed2<u32>>,
+   | |___________________________^ unsatisfied trait bound
    |
 help: the trait `Unimplemented` is not implemented for `Externed2<u32>`
   --> tests/ui_fail/dispatch_with_unsatisfied_bounds.rs:45:1

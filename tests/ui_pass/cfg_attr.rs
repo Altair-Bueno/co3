@@ -129,7 +129,7 @@ mod provider {
         #[cfg(all())]
         impl<dyn(u16) T: Attr = EnvAttr> ByteValue for T
         where
-            <T> @ <Custom>,
+            use<T> @ <Custom>,
         {
             #[cfg(all())]
             fn into_byte(self) -> u8;
@@ -145,7 +145,7 @@ ffi! {
     #[cfg(all())]
     impl<dyn(u16) T: Attr = EnvAttr> ByteValue for T
     where
-        <T> @ <Custom>,
+        use<T> @ <Custom>,
     {
         #[cfg(all())]
         fn into_byte(handle_id: <dyn T>::ID, self) -> u8;

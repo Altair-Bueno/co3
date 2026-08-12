@@ -166,7 +166,9 @@ fn gen_borrow_impls<const ADD_SIZED: bool>(
 ) -> TokenStream {
     let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
     let predicates = where_clause.as_ref().map(|w| &w.predicates);
-    let params = &generics.params;
+    let mut from_borrow_generics = generics.clone();
+    from_borrow_generics.params.insert(0, parse_quote!('_išč));
+    let (from_borrow_impl_generics, _, _) = from_borrow_generics.split_for_impl();
 
     let mut view_ty_generics = Vec::new();
     if !fields.is_empty() {
@@ -212,7 +214,7 @@ fn gen_borrow_impls<const ADD_SIZED: bool>(
             }
         }
 
-        impl<'_išč, #params> co3::borrow::FromBorrow<'_išč> for #name #ty_generics
+        impl #from_borrow_impl_generics co3::borrow::FromBorrow<'_išč> for #name #ty_generics
         where
             #(#from_borrow_bounds,)*
             #sized_bound
@@ -412,7 +414,9 @@ fn gen_view_name(name: &Ident) -> Ident {
 
 pub fn gen_identity_borrow_impls(name: &Ident, generics: &syn::Generics) -> TokenStream {
     let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
-    let params = &generics.params;
+    let mut from_borrow_generics = generics.clone();
+    from_borrow_generics.params.insert(0, parse_quote!('d));
+    let (from_borrow_impl_generics, _, _) = from_borrow_generics.split_for_impl();
 
     quote! {
         unsafe impl #impl_generics co3::borrow::Borrow for #name #ty_generics #where_clause {
@@ -432,7 +436,7 @@ pub fn gen_identity_borrow_impls(name: &Ident, generics: &syn::Generics) -> Toke
             }
         }
 
-        impl<'d, #params> co3::borrow::FromBorrow<'d> for #name #ty_generics #where_clause {
+        impl #from_borrow_impl_generics co3::borrow::FromBorrow<'d> for #name #ty_generics #where_clause {
             fn from_borrow(source: Self) -> Self {
                 source
             }

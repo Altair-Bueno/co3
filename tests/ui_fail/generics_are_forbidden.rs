@@ -25,7 +25,7 @@ ffi! {
     #[explicit_lifetimes]
     impl<'a, dyn(u32) U, const K: usize> Drop for GenericHandle<'a, U, K>
     where
-        <U, K> @ <Kita, 23>,
+        use<U, K> @ <Kita, 23>,
     {
         fn drop(#[soft] move &mut self);
     }
@@ -88,7 +88,7 @@ ffi! {
     #[explicit_lifetimes]
     impl<'a, dyn(u32) U, const K: usize> Trait for GenericHandle<'a, U, K>
     where
-        <U, K> @ <Kita, 23>,
+        use<U, K> @ <Kita, 23>,
     {}
 }
 
@@ -119,7 +119,7 @@ ffi! {
     #[explicit_lifetimes]
     impl<'a, dyn(u32) U, const K: usize> Trait for GenericHandle<'a, U, K>
     where
-        <U, K> @ <Kita, 23>,
+        use<U, K> @ <Kita, 23>,
     {
         fn drop(self_id: <dyn U>::ID, &mut self);
     }

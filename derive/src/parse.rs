@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use std::collections::{BTreeMap, HashSet};
 
 use proc_macro2::{Delimiter, Group, Ident, TokenStream, TokenTree};
 use quote::quote;
@@ -13,9 +13,12 @@ use syn::{
     visit_mut::VisitMut,
 };
 
-use crate::DeclKind;
+use crate::{DeclKind, DispatchGroups, utils::push_error};
 
 const FN_BODIES_NOT_ALLOWED_MSG: &str = "fn bodies are not allowed in declarations";
+const ITEM_NOT_SUPPORTED_MSG: &str = "item not supported";
+const EXPECTED_FEATURE_NAME_MSG: &str = "Expected feature name in `#![feature(...)]`";
+const EXPECTED_HANDLE_ID_ATTR_MSG: &str = "expected `#[id(repr)]`";
 
 pub(crate) enum ParsedForeignItem {
     Type(crate::ForeignItemType),
@@ -54,6 +57,29 @@ struct ConstGenericArgNormalizer {
     const_params: HashSet<syn::Ident>,
 }
 
+struct LifetimeArgValidator {
+    errors: Option<syn::Error>,
+}
+
+impl LifetimeArgValidator {
+    fn push(&mut self, err: syn::Error) {
+        if let Some(errors) = &mut self.errors {
+            errors.combine(err);
+        } else {
+            self.errors = Some(err);
+        }
+    }
+}
+
+impl Visit<'_> for LifetimeArgValidator {
+    fn visit_lifetime(&mut self, lifetime: &syn::Lifetime) {
+        if lifetime.ident != "_" {
+            let err = "undeclared lifetime; consider using '_";
+            self.push(syn::Error::new_spanned(lifetime, err));
+        }
+    }
+}
+
 impl VisitMut for ConstGenericArgNormalizer {
     fn visit_generic_argument_mut(&mut self, node: &mut GenericArgument) {
         syn::visit_mut::visit_generic_argument_mut(self, node);
@@ -82,8 +108,7 @@ impl syn::parse::Parse for ParsedForeignItem {
 
         let _ = ahead.parse::<syn::Visibility>()?;
         if ahead.peek(syn::Token![struct]) {
-            let err_msg = "item not supported";
-            return Err(ahead.error(err_msg));
+            return Err(ahead.error(ITEM_NOT_SUPPORTED_MSG));
         }
         if ahead.peek(syn::Token![type]) {
             let mut ty = if contains_dispatch_predicate(input)? {
@@ -96,7 +121,7 @@ impl syn::parse::Parse for ParsedForeignItem {
             return Ok(Self::Type(crate::ForeignItemType {
                 ty,
                 id,
-                dyn_self_impls: Vec::new(),
+                self_impls: Vec::new(),
                 drop: None,
             }));
         }
@@ -104,7 +129,7 @@ impl syn::parse::Parse for ParsedForeignItem {
             return Ok(Self::Fn(parse_fn_item(input)?));
         }
 
-        Err(input.error("item not supported"))
+        Err(input.error(ITEM_NOT_SUPPORTED_MSG))
     }
 }
 
@@ -303,13 +328,11 @@ fn parse_feature_attrs(attrs: &mut Vec<Attribute>) -> Result<MacroFeatures> {
 
         for meta in metas {
             let syn::Meta::Path(path) = &meta else {
-                let err_msg = "Expected feature name in `#![feature(...)]`";
-                return Err(syn::Error::new_spanned(meta, err_msg));
+                return Err(syn::Error::new_spanned(meta, EXPECTED_FEATURE_NAME_MSG));
             };
 
             let Some(ident) = path.get_ident() else {
-                let err_msg = "Expected feature name in `#![feature(...)]`";
-                return Err(syn::Error::new_spanned(path, err_msg));
+                return Err(syn::Error::new_spanned(path, EXPECTED_FEATURE_NAME_MSG));
             };
 
             let feature = ident.to_string();
@@ -376,145 +399,166 @@ fn parse_failure_attr(attrs: &mut Vec<Attribute>) -> Result<FailureMode> {
 }
 
 pub(crate) fn parse_dispatch_attr(
-    impl_: &syn::ItemImpl,
-    allow_empty: bool,
-) -> Result<Punctuated<syn::AngleBracketedGenericArguments, syn::Token![,]>> {
-    let Some(attr) = impl_
-        .attrs
-        .iter()
-        .find(|attr| attr.path().is_ident("erased"))
-    else {
-        return Ok(Punctuated::default());
+    attrs: &[syn::Attribute],
+    generics: &syn::Generics,
+) -> Result<DispatchGroups> {
+    let Some(attr) = attrs.iter().find(|attr| attr.path().is_ident("erased")) else {
+        return Ok(Default::default());
     };
-
-    let params = &impl_
-        .generics
-        .params
-        .iter()
-        .filter(|arg| !matches!(arg, GenericParam::Lifetime(_)))
-        .collect::<Vec<_>>();
-
-    let err_msg = format!(
-        "tagged dispatch must provide {} concrete generic argument{}",
-        params.len(),
-        if params.len() == 1 { "" } else { "s" }
-    );
 
     let syn::Meta::List(list) = &attr.meta else {
-        if !allow_empty && !params.is_empty() {
-            return Err(syn::Error::new_spanned(attr, err_msg));
-        }
-
-        return Ok(Punctuated::default());
+        let err = "tagged dispatch must provide concrete generic arguments";
+        return Err(syn::Error::new_spanned(attr, err));
     };
 
-    let mut generic_args: Punctuated<syn::AngleBracketedGenericArguments, syn::Token![,]> =
-        Punctuated::parse_terminated.parse2(list.tokens.clone())?;
+    let groups = (|input: ParseStream| parse_dispatch_groups(generics, input))
+        .parse2(list.tokens.clone())?;
 
-    if generic_args.is_empty() && !allow_empty && !params.is_empty() {
-        return Err(syn::Error::new_spanned(attr, err_msg));
-    }
+    validate_dispatch_targets(generics, &groups)?;
+    Ok(DispatchGroups { groups })
+}
 
-    struct LifetimeArgValidator {
-        errors: Option<syn::Error>,
-    }
-
-    impl LifetimeArgValidator {
-        fn push(&mut self, err: syn::Error) {
-            if let Some(errors) = &mut self.errors {
-                errors.combine(err);
-            } else {
-                self.errors = Some(err);
-            }
-        }
-    }
-
-    impl Visit<'_> for LifetimeArgValidator {
-        fn visit_lifetime(&mut self, node: &syn::Lifetime) {
-            if node.ident == "_" {
-                return;
-            }
-
-            let err_msg = "undeclared lifetime; consider using '_";
-            self.push(syn::Error::new_spanned(node, err_msg));
-        }
-    }
-
+fn validate_dispatch_targets(
+    generics: &syn::Generics,
+    groups: &BTreeMap<Vec<syn::Ident>, Vec<syn::AngleBracketedGenericArguments>>,
+) -> Result<()> {
     let mut lifetime_validator = LifetimeArgValidator { errors: None };
 
-    for entry in &generic_args {
-        for arg in &entry.args {
-            if matches!(arg, syn::GenericArgument::Lifetime(_)) {
-                let err_msg = "lifetime arguments are not required in tagged-dispatch type lists";
-                lifetime_validator.push(syn::Error::new_spanned(arg, err_msg));
+    let mut errors = None::<syn::Error>;
+    for (group, targets) in groups {
+        let err_msg = format!("expected {} concrete generic argument(s)", group.len(),);
+
+        if targets.is_empty() {
+            let err = "dispatch groups must contain at least one concrete target";
+            push_error(&mut errors, syn::Error::new_spanned(&group[0], err));
+            continue;
+        }
+
+        for target in targets {
+            if target.args.len() != group.len() {
+                let err = syn::Error::new_spanned(target, &err_msg);
+                push_error(&mut errors, err);
                 continue;
             }
-            lifetime_validator.visit_generic_argument(arg);
-        }
-    }
 
-    if let Some(errors) = lifetime_validator.errors {
-        return Err(errors);
-    }
+            for (param, arg) in group.iter().zip(&target.args) {
+                lifetime_validator.visit_generic_argument(arg);
 
-    for entry in &generic_args {
-        let args_len = entry
-            .args
-            .iter()
-            .filter(|arg| !matches!(arg, GenericArgument::Lifetime(_)))
-            .count();
+                let matches_parameter_kind = generics.params.iter().any(|generic| match generic {
+                    GenericParam::Type(generic) => {
+                        generic.ident == *param && matches!(arg, GenericArgument::Type(_))
+                    }
+                    GenericParam::Const(generic) => {
+                        generic.ident == *param && matches!(arg, GenericArgument::Const(_))
+                    }
+                    GenericParam::Lifetime(_) => false,
+                });
+                if !matches_parameter_kind {
+                    let err = "argument kind must match declared parameter kind";
+                    let err = syn::Error::new_spanned(arg, err);
 
-        if args_len != params.len() {
-            return Err(syn::Error::new_spanned(entry, err_msg));
-        }
-    }
-
-    let mut errors = None::<syn::Error>;
-    for entry in &mut generic_args {
-        let err_msg = "argument kind must match declared parameter kind";
-
-        for (param, arg) in params.iter().zip(
-            entry
-                .args
-                .iter_mut()
-                .filter(|arg| !matches!(arg, GenericArgument::Lifetime(_))),
-        ) {
-            if let (GenericParam::Const(_), GenericArgument::Type(ty)) = (param, &arg)
-                && matches!(ty, syn::Type::Path(_))
-            {
-                *arg = parse_quote!({ #ty });
-            }
-        }
-
-        for (param, arg) in params.iter().zip(
-            entry
-                .args
-                .iter()
-                .filter(|arg| !matches!(arg, GenericArgument::Lifetime(_))),
-        ) {
-            let mismatch = match param {
-                GenericParam::Lifetime(_) => false,
-                GenericParam::Type(_) => !matches!(arg, GenericArgument::Type(_)),
-                GenericParam::Const(_) => !matches!(arg, GenericArgument::Const(_)),
-            };
-
-            if mismatch {
-                let err = syn::Error::new_spanned(arg, err_msg);
-
-                if let Some(errors) = &mut errors {
-                    errors.combine(err);
-                } else {
-                    errors = Some(err);
+                    push_error(&mut errors, err);
                 }
             }
         }
     }
 
-    if let Some(errors) = errors {
-        return Err(errors);
+    if let Some(lifetime_errors) = lifetime_validator.errors {
+        push_error(&mut errors, lifetime_errors);
     }
 
-    Ok(generic_args)
+    errors.map_or(Ok(()), Err)
+}
+
+fn parse_dispatch_groups(
+    generics: &syn::Generics,
+    input: ParseStream,
+) -> Result<BTreeMap<Vec<syn::Ident>, Vec<syn::AngleBracketedGenericArguments>>> {
+    let mut assigned = HashSet::new();
+    let mut groups = BTreeMap::new();
+
+    let declared_types = generics
+        .params
+        .iter()
+        .filter_map(|param| match param {
+            GenericParam::Type(param) => Some(param.ident.clone()),
+            GenericParam::Const(_) | GenericParam::Lifetime(_) => None,
+        })
+        .collect::<HashSet<_>>();
+
+    let declared_consts = generics
+        .params
+        .iter()
+        .filter_map(|param| match param {
+            GenericParam::Const(param) => Some(param.ident.clone()),
+            GenericParam::Type(_) | GenericParam::Lifetime(_) => None,
+        })
+        .collect::<HashSet<_>>();
+
+    while !input.is_empty() {
+        let dispatch_params = input.parse::<syn::PreciseCapture>()?;
+
+        input.parse::<syn::Token![@]>()?;
+        let targets;
+        syn::parenthesized!(targets in input);
+        let generic_args = Punctuated::<_, syn::Token![|]>::parse_terminated(&targets)?;
+
+        let group = parse_dispatch_group(
+            &declared_types,
+            &declared_consts,
+            &mut assigned,
+            &dispatch_params,
+        )?;
+        groups.insert(group, generic_args.into_iter().collect());
+
+        if input.is_empty() {
+            break;
+        }
+        input.parse::<syn::Token![,]>()?;
+    }
+
+    Ok(groups)
+}
+
+fn parse_dispatch_group(
+    declared_types: &HashSet<syn::Ident>,
+    declared_consts: &HashSet<syn::Ident>,
+    assigned: &mut HashSet<syn::Ident>,
+    params: &syn::PreciseCapture,
+) -> Result<Vec<syn::Ident>> {
+    let mut group = Vec::with_capacity(params.params.len());
+
+    if params.params.is_empty() {
+        let err = "dispatch groups must contain at least one parameter";
+        return Err(syn::Error::new_spanned(params, err));
+    }
+
+    for param in &params.params {
+        let ident = match param {
+            syn::CapturedParam::Ident(ident) => ident.clone(),
+            syn::CapturedParam::Lifetime(lifetime) => {
+                let err = "dispatch parameters cannot be lifetimes";
+                return Err(syn::Error::new_spanned(lifetime, err));
+            }
+            _ => {
+                let err = "dispatch parameters must be type or const parameters";
+                return Err(syn::Error::new_spanned(param, err));
+            }
+        };
+
+        if !declared_types.contains(&ident) && !declared_consts.contains(&ident) {
+            let err = "dispatch parameter is not declared on this item";
+            return Err(syn::Error::new_spanned(ident, err));
+        }
+        if !assigned.insert(ident.clone()) {
+            let err = "dispatch parameter cannot appear in more than one group";
+            return Err(syn::Error::new_spanned(ident, err));
+        }
+
+        group.push(ident);
+    }
+
+    Ok(group)
 }
 
 pub(crate) fn parse_handle_id_attr(attrs: &mut Vec<syn::Attribute>) -> Result<Option<syn::Type>> {
@@ -528,12 +572,12 @@ pub(crate) fn parse_handle_id_attr(attrs: &mut Vec<syn::Attribute>) -> Result<Op
         }
 
         let syn::Meta::List(list) = &attr.meta else {
-            return Err(syn::Error::new_spanned(attr, "expected `#[id(repr)]`"));
+            return Err(syn::Error::new_spanned(attr, EXPECTED_HANDLE_ID_ATTR_MSG));
         };
 
         let ty = list
             .parse_args::<syn::Type>()
-            .map_err(|_| syn::Error::new_spanned(&attr, "expected `#[id(repr)]`"))?;
+            .map_err(|_| syn::Error::new_spanned(&attr, EXPECTED_HANDLE_ID_ATTR_MSG))?;
 
         if id_ty.replace(ty).is_some() {
             return Err(syn::Error::new_spanned(attr, "duplicate `#[id(...)]`"));
@@ -550,6 +594,7 @@ fn normalize_extern_attr_tokens(tokens: TokenStream) -> TokenStream {
         .map(|token| match token {
             TokenTree::Ident(ident) if ident == "extern" => {
                 let mut ident = Ident::new_raw("extern", ident.span());
+
                 ident.set_span(ident.span());
                 TokenTree::Ident(ident)
             }
@@ -587,9 +632,12 @@ fn preprocess_dispatch_where_clause(
     header: TokenStream,
 ) -> syn::Result<(TokenStream, Vec<Attribute>)> {
     fn split_top_level(tokens: TokenStream, separator: char) -> Vec<TokenStream> {
-        let mut parts = vec![TokenStream::new()];
+        let mut parts = Vec::new();
         let mut angle_depth = 0usize;
         for token in tokens {
+            if parts.is_empty() {
+                parts.push(TokenStream::new());
+            }
             match &token {
                 proc_macro2::TokenTree::Punct(punct) if punct.as_char() == '<' => angle_depth += 1,
                 proc_macro2::TokenTree::Punct(punct) if punct.as_char() == '>' => {
@@ -612,43 +660,24 @@ fn preprocess_dispatch_where_clause(
         matches!(token, proc_macro2::TokenTree::Ident(ident) if ident == "where")
     }
 
-    fn parse_targets(tokens: TokenStream) -> syn::Result<TokenStream> {
+    fn normalize_targets(tokens: TokenStream) -> syn::Result<Vec<TokenStream>> {
         let tokens = tokens.into_iter().collect::<Vec<_>>();
         let target_tokens = if let [proc_macro2::TokenTree::Group(group)] = tokens.as_slice()
             && group.delimiter() == proc_macro2::Delimiter::Parenthesis
         {
-            group
-                .stream()
-                .into_iter()
-                .fold(vec![TokenStream::new()], |mut parts, token| {
-                    if matches!(&token, proc_macro2::TokenTree::Punct(punct) if punct.as_char() == '|') {
-                        parts.push(TokenStream::new());
-                    } else {
-                        parts.last_mut().unwrap().extend(core::iter::once(token));
-                    }
-                    parts
-                })
+            split_top_level(group.stream(), '|')
         } else {
             vec![tokens.into_iter().collect()]
         };
 
         for target in &target_tokens {
             syn::parse2::<syn::AngleBracketedGenericArguments>(target.clone()).map_err(|_| {
-                syn::Error::new_spanned(
-                    target,
-                    "expected a tagged-dispatch type list such as `<Type>`",
-                )
+                let err = "expected a tagged-dispatch type list such as `<Type>`";
+                syn::Error::new_spanned(target, err)
             })?;
         }
 
-        if target_tokens.len() == 1
-            && syn::parse2::<syn::AngleBracketedGenericArguments>(target_tokens[0].clone())
-                .is_ok_and(|args| args.args.is_empty())
-        {
-            return Ok(TokenStream::new());
-        }
-
-        Ok(quote!(#(#target_tokens),*))
+        Ok(target_tokens)
     }
 
     let tokens = header.into_iter().collect::<Vec<_>>();
@@ -661,14 +690,24 @@ fn preprocess_dispatch_where_clause(
         .iter()
         .cloned()
         .collect::<TokenStream>();
-    let mut kept = Vec::new();
-    let mut attrs = Vec::new();
 
+    let mut dispatch_span = None;
+    let mut kept = Vec::new();
+
+    let mut dispatch_predicates = Vec::new();
     for predicate in split_top_level(predicates, ',') {
+        if predicate.is_empty() {
+            continue;
+        }
+
         let predicate_tokens = predicate.clone().into_iter().collect::<Vec<_>>();
         let Some(at_idx) = predicate_tokens.iter().position(
             |token| matches!(token, proc_macro2::TokenTree::Punct(punct) if punct.as_char() == '@'),
         ) else {
+            if !dispatch_predicates.is_empty() {
+                let err = "tagged-dispatch predicates must be last in a `where` clause";
+                return Err(syn::Error::new_spanned(predicate, err));
+            }
             kept.push(predicate);
             continue;
         };
@@ -677,15 +716,29 @@ fn preprocess_dispatch_where_clause(
             .iter()
             .cloned()
             .collect::<TokenStream>();
-        syn::parse2::<syn::AngleBracketedGenericArguments>(params).map_err(|_| {
-            syn::Error::new_spanned(
-                &predicate,
-                "expected dispatch parameters such as `<T>` before `@`",
-            )
+        let params = syn::parse2::<syn::PreciseCapture>(params).map_err(|_| {
+            let err_msg = "expected dispatch parameters such as `use<T>` before `@`";
+            syn::Error::new_spanned(&predicate, err_msg)
         })?;
-        let targets = predicate_tokens[at_idx + 1..].iter().cloned().collect();
-        let targets = parse_targets(targets)?;
-        attrs.push(parse_quote_spanned!(predicate.span()=> #[erased(#targets)]));
+        for param in &params.params {
+            if let syn::CapturedParam::Lifetime(lifetime) = param {
+                let err = "dispatch parameters cannot be lifetimes";
+                return Err(syn::Error::new_spanned(lifetime, err));
+            }
+        }
+        let targets = predicate_tokens[at_idx + 1..]
+            .iter()
+            .cloned()
+            .collect::<TokenStream>();
+        let targets = normalize_targets(targets)?;
+        dispatch_span.get_or_insert(predicate.span());
+        dispatch_predicates.push(quote!(#params @ (#(#targets)|*)));
+    }
+
+    let mut attrs = Vec::new();
+    if !dispatch_predicates.is_empty() {
+        let span = dispatch_span.expect("dispatch predicate has a span");
+        attrs.push(parse_quote_spanned!(span=> #[erased(#(#dispatch_predicates),*)]));
     }
 
     if kept.is_empty() {
@@ -694,17 +747,31 @@ fn preprocess_dispatch_where_clause(
     Ok((quote!(#prefix where #(#kept),*), attrs))
 }
 
-fn preprocess_impl_header(header: TokenStream) -> syn::Result<TokenStream> {
+fn preprocess_dispatch_params(header: TokenStream) -> syn::Result<TokenStream> {
     let mut out = TokenStream::new();
     let tokens = header.into_iter().collect::<Vec<_>>();
     let mut angle_depth = 0usize;
     let mut at_param_start = false;
+    let mut generic_params_finished = false;
 
     let mut idx = 0usize;
     while idx < tokens.len() {
         let tt = tokens[idx].clone();
 
+        if generic_params_finished {
+            out.extend(std::iter::once(tt));
+            idx += 1;
+            continue;
+        }
+
         match &tt {
+            proc_macro2::TokenTree::Group(group)
+                if angle_depth == 0 && group.delimiter() == proc_macro2::Delimiter::Parenthesis =>
+            {
+                generic_params_finished = true;
+                out.extend(std::iter::once(tt));
+                idx += 1;
+            }
             proc_macro2::TokenTree::Punct(punct) if punct.as_char() == '<' => {
                 angle_depth += 1;
                 at_param_start = angle_depth == 1;
@@ -725,7 +792,7 @@ fn preprocess_impl_header(header: TokenStream) -> syn::Result<TokenStream> {
             proc_macro2::TokenTree::Ident(ident)
                 if angle_depth == 1 && at_param_start && ident == "dyn" =>
             {
-                let err_msg = "tagged-dispatch impl type parameters must use `dyn(id_repr) T`";
+                let err_msg = "tagged-dispatch type parameters must use `dyn(TagTy) T`";
 
                 let Some(proc_macro2::TokenTree::Group(group)) = tokens.get(idx + 1) else {
                     return Err(syn::Error::new(ident.span(), err_msg));
@@ -735,7 +802,7 @@ fn preprocess_impl_header(header: TokenStream) -> syn::Result<TokenStream> {
                 }
 
                 let repr = syn::parse2::<Type>(group.stream()).map_err(|_| {
-                    syn::Error::new(group.span(), "expected id repr in `dyn(id_repr) T`")
+                    syn::Error::new(group.span(), "expected id repr in `dyn(TagTy) T`")
                 })?;
 
                 out.extend(quote!(#[erased(#repr)]));
@@ -929,8 +996,10 @@ fn parse_signature(
 
     let (signature_tokens, dispatch_attrs) = preprocess_dispatch_where_clause(signature_tokens)?;
     attrs.extend(dispatch_attrs);
+    let signature_tokens = preprocess_dispatch_params(signature_tokens)?;
     let rewritten = preprocess_signature_tokens(signature_tokens, attrs)?;
     let mut sig = syn::parse2::<syn::Signature>(rewritten)?;
+    rewrite_erased_param_bounds_to_where_clause(&mut sig.generics);
     normalize_const_args_in_fn(&mut sig);
 
     Ok(sig)
@@ -963,33 +1032,32 @@ fn parse_fn_item(input: syn::parse::ParseStream) -> syn::Result<ItemFn> {
     })
 }
 
-fn parse_impl_item(input: syn::parse::ParseStream) -> syn::Result<ItemImpl> {
-    fn rewrite_erased_param_bounds_to_where_clause(impl_: &mut ItemImpl) {
-        let mut erased_bounds = Vec::<syn::WherePredicate>::new();
+fn rewrite_erased_param_bounds_to_where_clause(generics: &mut syn::Generics) {
+    let mut erased_bounds = Vec::<syn::WherePredicate>::new();
 
-        for param in impl_.generics.type_params_mut() {
-            let ident = &param.ident;
+    for param in generics.type_params_mut() {
+        let ident = &param.ident;
 
-            if !param.attrs.iter().any(crate::utils::is_type_erased) {
-                continue;
-            }
-
-            let bounds = core::mem::take(&mut param.bounds)
-                .into_iter()
-                .collect::<Vec<_>>();
-
-            if !bounds.is_empty() {
-                erased_bounds.push(parse_quote!(#ident: #(#bounds)+*));
-            }
+        if !param.attrs.iter().any(crate::utils::is_type_erased) {
+            continue;
         }
 
-        impl_
-            .generics
-            .make_where_clause()
-            .predicates
-            .extend(erased_bounds);
+        let bounds = core::mem::take(&mut param.bounds)
+            .into_iter()
+            .collect::<Vec<_>>();
+
+        if !bounds.is_empty() {
+            erased_bounds.push(parse_quote!(#ident: #(#bounds)+*));
+        }
     }
 
+    generics
+        .make_where_clause()
+        .predicates
+        .extend(erased_bounds);
+}
+
+fn parse_impl_item(input: syn::parse::ParseStream) -> syn::Result<ItemImpl> {
     fn preprocess_impl_items(input: syn::parse::ParseStream) -> syn::Result<TokenStream> {
         let mut out = TokenStream::new();
         while !input.is_empty() {
@@ -1043,7 +1111,7 @@ fn parse_impl_item(input: syn::parse::ParseStream) -> syn::Result<ItemImpl> {
     let items = preprocess_impl_items(&content)?;
     let (header, dispatch_attrs) = preprocess_dispatch_where_clause(header)?;
     attrs.extend(dispatch_attrs);
-    let header = preprocess_impl_header(header)?;
+    let header = preprocess_dispatch_params(header)?;
 
     let impl_tokens = quote! {
         #(#attrs)* #defaultness #unsafety impl #header {
@@ -1052,7 +1120,7 @@ fn parse_impl_item(input: syn::parse::ParseStream) -> syn::Result<ItemImpl> {
     };
 
     let mut impl_: ItemImpl = syn::parse2(impl_tokens)?;
-    rewrite_erased_param_bounds_to_where_clause(&mut impl_);
+    rewrite_erased_param_bounds_to_where_clause(&mut impl_.generics);
     normalize_const_generic_args_in_impl(&mut impl_);
 
     normalize_self_handle_ids(&mut impl_);
@@ -1306,6 +1374,32 @@ mod tests {
         assert!(
             err.to_string()
                 .contains("blanket `dyn T` is not supported; declare `<dyn T> instead")
+        );
+    }
+
+    #[test]
+    fn rejects_where_predicate_after_dispatch_predicate() {
+        let err = preprocess_dispatch_where_clause(quote! {
+            fn name<T>() where use<T> @ <u32>, T: Copy
+        })
+        .unwrap_err();
+
+        assert!(
+            err.to_string()
+                .contains("tagged-dispatch predicates must be last in a `where` clause")
+        );
+    }
+
+    #[test]
+    fn rejects_lifetime_dispatch_parameter() {
+        let err = preprocess_dispatch_where_clause(quote! {
+            fn name<'a, T>() where use<'a, T> @ <u32>
+        })
+        .unwrap_err();
+
+        assert!(
+            err.to_string()
+                .contains("dispatch parameters cannot be lifetimes")
         );
     }
 }

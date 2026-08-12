@@ -19,7 +19,7 @@
 //! ```rust
 //! use core::mem::size_of;
 //!
-//! use co3::{option::ReprCOption, soft_encode, tuple::ReprCTuple3, ExternC};
+//! use co3::{encode, option::ReprCOption, tuple::ReprCTuple3, ExternC};
 //!
 //! type TupleWithNiche1<'a> = (u8, bool, &'a bool);
 //! type TupleWithNiche2<'a> = (u8, &'a bool, bool);
@@ -39,25 +39,13 @@
 //! );
 //!
 //! let none_value_1: Option<TupleWithNiche1> = None;
+//! assert_eq!(encode(none_value_1), ReprCTuple3(0, 2, core::ptr::null()));
+//!
 //! let none_value_2: Option<TupleWithNiche2> = None;
+//! assert_eq!(encode(none_value_2), ReprCTuple3(0, core::ptr::null(), 0));
+//!
 //! let none_value_3: Option<TupleWithoutNiche> = None;
-//!
-//! let mut store1 = Default::default();
-//! let mut store2 = Default::default();
-//! let mut store3 = Default::default();
-//!
-//! assert_eq!(
-//!     soft_encode(none_value_1, &mut store1),
-//!     ReprCTuple3(0, 2, core::ptr::null())
-//! );
-//! assert_eq!(
-//!     soft_encode(none_value_2, &mut store2),
-//!     ReprCTuple3(0, core::ptr::null(), 0)
-//! );
-//! assert_eq!(
-//!     soft_encode(none_value_3, &mut store3),
-//!     ReprCOption::None()
-//! );
+//! assert_eq!(encode(none_value_3), ReprCOption::None());
 //! ```
 
 use disjoint_impls::disjoint_impls;

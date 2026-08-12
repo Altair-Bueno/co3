@@ -54,17 +54,17 @@ error: item not supported
 57 |     union Kita {}
    |     ^^^^^
 
-error: tagged-dispatch predicates are only supported on impl blocks
+error: tagged dispatch is not supported on trait methods
   --> tests/ui_fail/import_restrictions.rs:68:13
    |
-68 |             <T> @ <>;
-   |             ^
+68 |             use<T> @ <>;
+   |             ^^^
 
-error: tagged dispatch must provide 2 concrete generic arguments
-  --> tests/ui_fail/import_restrictions.rs:79:18
+error: expected 2 concrete generic argument(s)
+  --> tests/ui_fail/import_restrictions.rs:79:21
    |
-79 |         <U, T> @ <u32>,
-   |                  ^^^^^
+79 |         use<U, T> @ <u32>,
+   |                     ^^^^^
 
 error: fn bodies are not allowed in declarations
   --> tests/ui_fail/import_restrictions.rs:89:19
@@ -84,14 +84,14 @@ error: patterns aren't allowed in function declarations
 102 |     fn kita1((a, b): (u32, u32));
     |              ^^^^^^
 
-error: tagged dispatch must provide 1 concrete generic argument
-   --> tests/ui_fail/import_restrictions.rs:120:9
+error: expected 1 concrete generic argument(s)
+   --> tests/ui_fail/import_restrictions.rs:120:18
     |
-120 |         <T> @ <>,
-    |         ^
+120 |         use<T> @ <>,
+    |                  ^^
 
-error: tagged dispatch must provide 1 concrete generic argument
-   --> tests/ui_fail/import_restrictions.rs:141:15
+error: expected 1 concrete generic argument(s)
+   --> tests/ui_fail/import_restrictions.rs:134:18
     |
-141 |         <T> @ <u8, i8>,
-    |               ^^^^^^^^
+134 |         use<T> @ <>,
+    |                  ^^

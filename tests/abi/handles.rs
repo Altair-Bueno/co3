@@ -18,7 +18,7 @@ ffi! {
 
     impl<T, U> Drop for dyn Opaque<T, U>
     where
-        <T, U> @ <bool, u8>,
+        use<T, U> @ <bool, u8>,
     {
         #[symbol_name = "handles_drop"]
         fn drop(&mut self);
@@ -41,7 +41,7 @@ ffi! {
 
     impl<dyn(u8) T> PartialEq for T
     where
-        <T> @ (<Opaque<bool, u8>> | <Opaque<u8, bool>>),
+        use<T> @ (<Opaque<bool, u8>> | <Opaque<u8, bool>>),
     {
         #[symbol_name = "handles_eq"]
         fn eq(t_id: <dyn T>::ID, &self, other: &Self) -> bool;
@@ -49,7 +49,7 @@ ffi! {
 
     impl<dyn(u8) T, dyn(u8) U> PartialEq<U> for T
     where
-        <T, U> @ <Opaque<bool, u8>, Opaque<u8, bool>>,
+        use<T, U> @ <Opaque<bool, u8>, Opaque<u8, bool>>,
     {
         #[symbol_name = "handles_cross_eq"]
         fn eq(t_id: <dyn T>::ID, u_id: <dyn U>::ID, &self, other: &U) -> bool;
@@ -57,7 +57,7 @@ ffi! {
 
     impl<dyn(u8) T> Custom for T
     where
-        <T> @ (<Opaque<bool, u8>> | <Opaque<u8, bool>>),
+        use<T> @ (<Opaque<bool, u8>> | <Opaque<u8, bool>>),
     {
         #[symbol_name = "handles_inc"]
         fn inc(t_id: <dyn T>::ID, &mut self, by: u8);
@@ -103,7 +103,7 @@ mod provider {
 
         impl<T, U> Drop for dyn Opaque<T, U>
         where
-            <T, U> @ <bool, u8>,
+            use<T, U> @ (<bool, u8>),
         {
             #[symbol_name = "handles_drop"]
             fn drop(&mut self);
@@ -126,7 +126,7 @@ mod provider {
 
         impl<dyn(u8) T> PartialEq for T
         where
-            <T> @ (<Opaque<bool, u8>> | <Opaque<u8, bool>>),
+            use<T> @ (<Opaque<bool, u8>> | <Opaque<u8, bool>>),
         {
             #[symbol_name = "handles_eq"]
             fn eq(&self, other: &Self) -> bool;
@@ -134,7 +134,7 @@ mod provider {
 
         impl<dyn(u8) T, dyn(u8) U> PartialEq<U> for T
         where
-            <T, U> @ <Opaque<bool, u8>, Opaque<u8, bool>>,
+            use<T, U> @ <Opaque<bool, u8>, Opaque<u8, bool>>,
         {
             #[symbol_name = "handles_cross_eq"]
             fn eq(&self, other: &U) -> bool;
@@ -142,7 +142,7 @@ mod provider {
 
         impl<dyn(u8) T> Custom for T
         where
-            <T> @ (<Opaque<bool, u8>> | <Opaque<u8, bool>>),
+            use<T> @ (<Opaque<bool, u8>> | <Opaque<u8, bool>>),
         {
             #[symbol_name = "handles_inc"]
             fn inc(&mut self, by: u8);

@@ -1,4 +1,4 @@
-use co3::{rust_spec::RustSpec, ReprC, ffi, handles};
+use co3::{ffi, handles};
 
 trait Kita {
     type MySelf;
@@ -6,11 +6,7 @@ trait Kita {
     fn kita2(a: &u32);
 }
 
-#[derive(RustSpec, ReprC)]
-#[repr(transparent)]
-struct CVoid(core::ffi::c_void);
-
-impl Kita for CVoid {
+impl Kita for core::ffi::c_void {
     type MySelf = usize;
 
     fn kita(&self) -> Vec<Self::MySelf> {
@@ -77,9 +73,9 @@ ffi! {
         move fn to_owned(&self) -> <Self as ToOwned>::Owned;
     }
 
-    impl<dyn(u32) T: ToOwned = CVoid> Kita for T
+    impl<dyn(u32) T: ToOwned> Kita for T
     where
-        <T> @ (<Opaque1> | <Opaque2>),
+        use<T> @ (<Opaque1> | <Opaque2>),
     {
         type MySelf = <T as ToOwned>::Owned;
 

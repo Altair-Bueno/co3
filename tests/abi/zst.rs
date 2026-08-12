@@ -62,9 +62,13 @@ fn boxed_zst_traits() {
                 Encode,
             );
 
-            assert_not_impl_any!($ty: ReprC);
-            assert_not_impl_any!($ty: CFnArg);
-            assert_not_impl_any!($ty: CFnReturn);
+            assert_impl_all!($ctype:
+                ReprC,
+                CFnArg,
+                CFnReturn,
+            );
+
+            assert_not_impl_any!($ty: ReprC, CFnArg, CFnReturn);
         };
     }
 

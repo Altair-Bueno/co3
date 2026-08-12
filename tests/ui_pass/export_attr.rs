@@ -32,12 +32,22 @@ ffi! {
 
     impl<dyn(u8) T: ToOwned = u8> Value<T>
     where
-        <T> @ <Opaque>,
+        use<T> @ <Opaque>,
     {
         move fn new(t_id: <dyn T>::ID) -> Self;
+    }
 
+    impl<dyn(u8) T: ToOwned = u8, dyn(u8) U> Value<T>
+    where
+        use<T, U> @ <Opaque, Opaque>,
+    {
         #[symbol_name = "ping"]
-        fn ping2(t_id: <dyn T>::ID, move self, #[soft] inc: &TransparentCTuple1<T>) -> u8;
+        fn ping2(
+            t_id: <dyn T>::ID,
+            u_id: <dyn U>::ID,
+            move self,
+            #[soft] inc: &TransparentCTuple1<U>,
+        ) -> u8;
     }
 
     fn combine(move lhs: Value<u32>, #[soft] rhs: &(u8,)) -> u8;
@@ -110,12 +120,21 @@ mod provider {
         impl<dyn(u8) T: Add<Output = u8> + ToOwned<Owned = T> + ?Sized = u8> Value<T>
         where
             Box<T>: Default,
-            <T> @ <Opaque>,
+            use<T> @ <Opaque>,
         {
             move fn new() -> Self;
+        }
 
+        impl<
+            dyn(u8) T: Add<Output = u8> + ToOwned<Owned = T> + ?Sized = u8,
+            dyn(u8) U,
+        > Value<T>
+        where
+            Box<T>: Default,
+            use<T, U> @ <Opaque, Opaque>,
+        {
             #[symbol_name = "ping"]
-            fn ping(move self, #[soft] inc: &TransparentCTuple1<T>) -> u8;
+            fn ping(move self, #[soft] inc: &TransparentCTuple1<U>) -> u8;
         }
 
         fn combine(move lhs: Value<u32>, #[soft] rhs: &(u8,)) -> u8;

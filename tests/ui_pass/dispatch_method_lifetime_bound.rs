@@ -48,7 +48,7 @@ mod provider {
         impl<'a, dyn(u8) T: 'a + 'a> Dispatch for T
         where
             T: Attribute + 'a + 'a,
-            <T> @ <&CustomAttribute>,
+            use<T> @ <&CustomAttribute>,
         {
             #[symbol_name = "len"]
             fn len(values: &[u32], #[soft] attr: &T) -> usize;
@@ -62,7 +62,7 @@ ffi! {
     #[explicit_lifetimes]
     impl<'a, dyn(u8) T: Attribute + 'a> Dispatch for T
     where
-        <T> @ <&CustomAttribute>,
+        use<T> @ <&CustomAttribute>,
     {
         #[symbol_name = "len"]
         fn len(handle_id: <dyn T>::ID, values: &[u32], attr: &T) -> usize;

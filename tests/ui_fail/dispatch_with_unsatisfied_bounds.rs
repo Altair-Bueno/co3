@@ -28,7 +28,7 @@ ffi! {
 
     impl<T> Drop for dyn Exported2<T>
     where
-        <T> @ <u32>,
+        use<T> @ <u32>,
     {
         fn drop(&mut self);
     }
@@ -36,7 +36,7 @@ ffi! {
     impl<dyn(u8) T: Unimplemented> RefKita for T
     where
         i32: Unimplemented,
-        <T> @ <Exported2<u32>>,
+        use<T> @ <Exported2<u32>>,
     {
         fn kita(&self) -> u32;
     }
@@ -50,7 +50,7 @@ ffi! {
 
     impl<T> Drop for dyn Externed2<T>
     where
-        <T> @ <>,
+        use<T> @ <u32>,
     {
         #[symbol_name = "drop"]
         fn drop(&mut self, self_id: <dyn Externed2<T>>::ID);
@@ -59,7 +59,7 @@ ffi! {
     impl<dyn(u64) T: Unimplemented> RefKita for T
     where
         i32: Unimplemented,
-        <T> @ <Externed2<u32>>,
+        use<T> @ <Externed2<u32>>,
     {
         #[symbol_name = "kita"]
         fn kita(&self, self_id: <dyn Self>::ID) -> u32;

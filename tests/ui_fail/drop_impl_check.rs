@@ -56,7 +56,7 @@ ffi! {
     impl<T> Drop for dyn Export1<T>
     where
         Self: Kita,
-        <T> @ <u32>,
+        use<T> @ <u32>,
     {
         fn drop(&mut self);
     }
@@ -73,7 +73,7 @@ ffi! {
     impl<T> Drop for dyn Extern2<T>
     where
         Self: Kita,
-        <T> @ <>,
+        use<T> @ (<u32>),
     {
         fn drop(&mut self, self_id: <dyn Self>::ID);
     }

@@ -328,6 +328,30 @@ fn validate_fields_no_ffi_type_attr(fields: &syn::Fields, errors: &mut Option<sy
     }
 }
 
+/// Returns whether `ty` is a directly spelled `PhantomData` type.
+///
+/// Proc macros cannot resolve type aliases, so aliases deliberately remain subject to normal
+/// lowering. Direct `PhantomData` fields are always zero-sized and alignment-1.
+pub(super) fn is_phantom_data(ty: &syn::Type) -> bool {
+    let syn::Type::Path(type_path) = ty else {
+        return false;
+    };
+    if type_path.qself.is_some() {
+        return false;
+    }
+
+    let segments = &type_path.path.segments;
+    match segments.len() {
+        1 => segments[0].ident == "PhantomData",
+        3 => {
+            (segments[0].ident == "core" || segments[0].ident == "std")
+                && segments[1].ident == "marker"
+                && segments[2].ident == "PhantomData"
+        }
+        _ => false,
+    }
+}
+
 /// Check if a type contains any of the type parameters from generics
 pub(super) fn is_type_parametrized(ty: &syn::Type, generics: &syn::Generics) -> bool {
     /// Visitor to check if a type contains any of the specified type parameters

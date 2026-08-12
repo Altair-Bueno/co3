@@ -38,14 +38,14 @@ Each mode makes explicit tradeoffs and is selected through compile-time configur
 - Uses intermediate owned/cloned values and store synchronization for mutable writeback paths.
 - Pointer identity is not preserved and pointer equality for these types **MUST NOT** be relied on.
 
-3. **Tagged dispatch (opt-in, on impl blocks)**
+3. **Tagged dispatch (opt-in, on impl blocks, free functions, and inherent methods)**
 - Enables tagged generic dispatch where type's C-compatible representation is erased into a shared type and reinterpreted back via the tag value.
-- Dispatched impl block generics are defined by `<dyn({TagTy}) T = {ErasedTy}>` where `ErasedTy::CType` constrains size and alignment of erased types.
-- A `where <T> @ (<Type1> | ...)` predicate declares the concrete types dispatched through `T` that have a tag value assigned (via `handles!` or manually).
+- Dispatched generics are defined by `<dyn({TagTy}) T = {ErasedTy}>` where `ErasedTy::CType` constrains size and alignment of erased types.
+- A `use<T, ...> @ (<Param1> | ...)` where predicate declares the concrete types dispatched that have a tag value assigned (best via `handles!`).
 
 ## 2. Public API
 
-Public API constitutes user-facing macro entry points.
+Public API constitutes user-facing macros only (not the public trait and type exports).
 Any generated glue code **MUST** remain private and **MUST NOT** leak into the public API.
 Any conversion written manually against traits of this crate **DOES NOT** constitute public API.
 
@@ -76,7 +76,7 @@ It must always start with a declaration of direction and ABI (e.g. `#![unsafe(ex
 - `#![failure = "panic" | "error"]` controls whether internal failures panic(default) or are returned.
 - `type Type;` declares an opaque type (it's representation is unknown). This type should not be dereferenced.
 - `#[id(TagTy)]` on a type declaration defines the tag type that identifies the type when it is erased by dynamic dispatch.
-- `where <T> @ (<Type1> | ...)` opts into a kind of polymorphic dispatch where concrete types are known at compile time but erased at runtime.
+- `where use<T> @ (<Type1> | ...)` opts into a kind of polymorphic dispatch where concrete types are known at compile time but erased at runtime.
 - `..` splits a wide companion type into separate data and metadata arguments at the ABI boundary.
 - `#[explicit_lifetimes]` opts into declarations with explicit lifetimes inside `ffi`.
 - `cfg_attr` is fully supported in all attribute positions inside the `ffi` macro.

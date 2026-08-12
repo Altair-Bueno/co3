@@ -65,7 +65,7 @@ ffi! {
     impl Kita for u32 {
         fn kita<T>(self)
         where
-            <T> @ <>;
+            use<T> @ <>;
     }
 }
 
@@ -76,7 +76,7 @@ ffi! {
 
     impl<dyn(u32) U, dyn(u8) T> Kita for (T, U)
     where
-        <U, T> @ <u32>,
+        use<U, T> @ <u32>,
     {
         fn kita(self, t_id: <dyn T>::ID, u_id: <dyn U>::ID);
     }
@@ -110,14 +110,14 @@ ffi! {
 
     impl<T> Drop for dyn Handle<T>
     where
-        <T> @ <u32>,
+        use<T> @ <u32>,
     {
         fn drop(self_id: <dyn Self>::ID, &mut self);
     }
 
     impl<dyn(u8) T> Clone for Handle<T>
     where
-        <T> @ <>,
+        use<T> @ <>,
     {
         fn clone(self_id: <dyn T>::ID, &self) -> Self;
     }
@@ -131,14 +131,14 @@ ffi! {
 
     impl<T> Drop for dyn Handle<T>
     where
-        <T> @ <>,
+        use<T> @ <>,
     {
         fn drop(self_id: <dyn Self>::ID, &mut self);
     }
 
     impl<dyn(u8) T> Clone for Handle<T>
     where
-        <T> @ <u8, i8>,
+        use<T> @ <u8, i8>,
     {
         fn clone(self_id: <dyn T>::ID, &self) -> Self;
     }

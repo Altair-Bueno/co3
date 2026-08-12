@@ -175,23 +175,33 @@ pub(crate) struct DispatchMonomorphizer<'a> {
 }
 
 impl<'a> DispatchMonomorphizer<'a> {
-    pub(crate) fn new(
-        impl_generics: &'a syn::Generics,
-        entry: &'a syn::AngleBracketedGenericArguments,
+    pub(crate) fn for_substitutions(
+        generics: &'a syn::Generics,
+        substitutions: impl Iterator<Item = (&'a syn::Ident, &'a GenericArgument)>,
     ) -> Self {
-        let subst = impl_generics
-            .params
-            .iter()
-            .filter(|param| !matches!(param, syn::GenericParam::Lifetime(_)))
-            .zip(&entry.args)
-            .filter_map(|(param, arg)| match param {
-                syn::GenericParam::Type(param) => Some((&param.ident, arg)),
-                syn::GenericParam::Const(param) => Some((&param.ident, arg)),
-                syn::GenericParam::Lifetime(_) => None,
+        let subst = substitutions
+            .filter_map(|(ident, arg)| {
+                generics.params.iter().find_map(|param| match param {
+                    syn::GenericParam::Type(param) if param.ident == *ident => Some((ident, arg)),
+                    syn::GenericParam::Const(param) if param.ident == *ident => Some((ident, arg)),
+                    _ => None,
+                })
             })
             .collect();
 
         Self { subst }
+    }
+
+    pub(crate) fn for_dispatch_group(
+        generics: &'a syn::Generics,
+        selections: &[crate::DispatchSelection<'a>],
+    ) -> Self {
+        Self::for_substitutions(
+            generics,
+            selections
+                .iter()
+                .flat_map(|selection| selection.params.iter().zip(&selection.target.args)),
+        )
     }
 }
 

@@ -128,7 +128,7 @@ mod provider {
 
         impl<dyn(u8) T, dyn(u32) U> Custom<T> for U
         where
-            <T, U> @ <Opaque2, Opaque1>,
+            use<T, U> @ <Opaque2, Opaque1>,
         {
             #[symbol_name = "this_crate__kita1"]
             fn kita1(&mut self, inc: &T) -> u8;

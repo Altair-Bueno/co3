@@ -3,17 +3,17 @@
 //! # Example
 //!
 //! ```rust
-//! #![cfg(not(feature = "ffi-extern"))]
+//! #![cfg(not(feature = "import"))]
 //! struct Local(u8);
 //!
-//! #[cfg(not(feature = "ffi-extern"))]
+//! #[cfg(not(feature = "import"))]
 //! type LocalType = Box<Local>;
-//! #[cfg(feature = "ffi-extern")]
+//! #[cfg(feature = "import")]
 //! type LocalType = OwnedLocal;
 //!
 //! co3::ffi! {
-//!     #![cfg_attr(not(feature = "ffi-extern"), unsafe(export("C")))]
-//!     #![cfg_attr(feature = "ffi-extern", unsafe(extern("C")))]
+//!     #![cfg_attr(not(feature = "import"), unsafe(export("C")))]
+//!     #![cfg_attr(feature = "import", unsafe(extern("C")))]
 //!
 //!     #![symbol_prefix = "provider"]
 //!
@@ -22,14 +22,14 @@
 //!     fn make_local() -> LocalType;
 //! }
 //! ```
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 
 use manyhow::manyhow;
 use proc_macro2::TokenStream;
 use quote::quote;
 use syn::{
     Attribute, ItemFn, ItemImpl, LitStr, Path, Result, Type, parse_quote, parse_quote_spanned,
-    punctuated::Punctuated, spanned::Spanned, visit_mut::VisitMut,
+    spanned::Spanned, visit_mut::VisitMut,
 };
 
 use crate::{
@@ -71,55 +71,490 @@ struct Input {
 
 enum ForeignItem {
     Type(ForeignItemType),
-    DynImpl(DynImpl),
-    Impl(ItemImpl),
-    Fn(ItemFn),
+    Impl(Co3Impl),
+    Fn(Co3Fn),
 }
 
-struct DynImpl {
-    impl_: ItemImpl,
-    args: Punctuated<syn::AngleBracketedGenericArguments, syn::Token![,]>,
+#[derive(Clone, Default)]
+struct DispatchGroups {
+    groups: BTreeMap<Vec<syn::Ident>, Vec<syn::AngleBracketedGenericArguments>>,
+}
+
+pub(crate) struct DispatchSelection<'a> {
+    pub(crate) params: &'a [syn::Ident],
+    pub(crate) target: &'a syn::AngleBracketedGenericArguments,
+}
+
+impl DispatchGroups {
+    fn is_empty(&self) -> bool {
+        self.groups.is_empty()
+    }
+
+    pub(crate) fn groups(
+        &self,
+    ) -> impl Iterator<Item = (&[syn::Ident], &[syn::AngleBracketedGenericArguments])> {
+        self.groups
+            .iter()
+            .map(|(params, targets)| (params.as_slice(), targets.as_slice()))
+    }
+
+    fn for_each_combination(&self, mut f: impl for<'a> FnMut(&[DispatchSelection<'a>])) {
+        fn visit<'a>(
+            groups: &[(&'a [syn::Ident], &'a [syn::AngleBracketedGenericArguments])],
+            selections: &mut Vec<DispatchSelection<'a>>,
+            f: &mut impl FnMut(&[DispatchSelection<'a>]),
+        ) {
+            let Some((params, targets)) = groups.first() else {
+                f(selections);
+                return;
+            };
+
+            for target in *targets {
+                selections.push(DispatchSelection { params, target });
+                visit(&groups[1..], selections, f);
+                selections.pop();
+            }
+        }
+
+        let groups = self.groups().collect::<Vec<_>>();
+        visit(&groups, &mut Vec::new(), &mut f);
+    }
+
+    fn combined_with(&self, other: &Self) -> Self {
+        let mut groups = self.groups.clone();
+        groups.extend(other.groups.clone());
+        Self { groups }
+    }
+
+    pub(crate) fn inject_unnamed_lifetimes(&mut self, generics: &mut syn::Generics) {
+        for targets in self.groups.values_mut() {
+            for target in targets {
+                *target =
+                    crate::dispatch::inject_unnamed_lifetimes(&mut generics.params, target.clone());
+            }
+        }
+    }
+}
+
+struct Co3Impl {
+    item: ItemImpl,
+    dispatch_args: DispatchGroups,
+    method_dispatch_args: HashMap<syn::Ident, DispatchGroups>,
+}
+
+impl Co3Impl {
+    fn new(item: ItemImpl) -> Self {
+        Self {
+            item,
+            dispatch_args: DispatchGroups::default(),
+            method_dispatch_args: HashMap::default(),
+        }
+    }
+}
+
+impl core::ops::Deref for Co3Impl {
+    type Target = ItemImpl;
+
+    fn deref(&self) -> &Self::Target {
+        &self.item
+    }
+}
+
+impl core::ops::DerefMut for Co3Impl {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.item
+    }
+}
+
+struct Co3Fn {
+    item: ItemFn,
+    dispatch_args: DispatchGroups,
+}
+
+impl core::ops::Deref for Co3Fn {
+    type Target = ItemFn;
+
+    fn deref(&self) -> &Self::Target {
+        &self.item
+    }
+}
+
+impl core::ops::DerefMut for Co3Fn {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.item
+    }
+}
+
+fn parse_dyn_methods(impl_: &mut ItemImpl) -> Result<HashMap<syn::Ident, DispatchGroups>> {
+    let mut dyn_methods = HashMap::new();
+
+    for item in &mut impl_.items {
+        let syn::ImplItem::Fn(syn::ImplItemFn { attrs, sig, .. }) = item else {
+            continue;
+        };
+        if find_dispatch_attr(attrs).is_none() {
+            continue;
+        }
+
+        let args = parse_dispatch_attr(attrs, &sig.generics)?;
+        attrs.retain(|attr| !attr.path().is_ident("erased"));
+
+        if dyn_methods.insert(sig.ident.clone(), args).is_some() {
+            return Err(syn::Error::new_spanned(&sig.ident, "duplicate method"));
+        }
+
+        synthesize_dispatch_handle_ids(Some(&impl_.self_ty), &sig.generics, &mut sig.inputs);
+    }
+
+    Ok(dyn_methods)
 }
 
 struct ForeignItemType {
     ty: syn::ForeignItemType,
     id: Option<Box<syn::Type>>,
-    drop: Option<DropImpl>,
+    drop: Option<Co3Impl>,
 
-    dyn_self_impls: Vec<DynImpl>,
+    self_impls: Vec<Co3Impl>,
 }
 
-enum DropImpl {
-    /// Impl dispatched on `dyn Self`
-    DynSelfImpl(DynImpl),
-    /// Any other dispatch
-    DynImpl(DynImpl),
-    /// Concrete impl
-    Impl(ItemImpl),
-}
-
-/// Derive implementations of traits required to convert to and from an FFI-compatible type
+/// Generate a C-compatible counterpart and conversions to and from the Rust type.
 ///
-/// # Attributes
+/// A type deriving [`co3::ReprC`] can participate in [`ffi!`] declarations that use C ABI.
+/// Note that most types will also require an implementation of [`rust_spec::RustSpec`].
+///
+/// # Helper Attributes
 ///
 /// * `#[reprC(NICHE_VALUE = <expr>)]` on a struct customizes [`co3::niche::Niche::NICHE_VALUE`]
 /// * `#[reprC(is_valid = |[fieldN]| ...)]` on a struct or enum variant customizes validation
-/// * `#[reprC(id($type))]` defines `co3::handle::HandleFamily::Kind`
+/// * `#[reprC(id($type))]` defines [`co3::handle::HandleFamily::Kind`]
 ///
-/// ```
-/// use co3::{rust_spec::RustSpec, ReprC as ReprCAlias};
+/// # Example
 ///
-/// #[derive(RustSpec, ReprCAlias)]
+/// ```rust
+/// use co3::ReprC
+/// use rust_spec::RustSpec;
+///
+/// #[derive(RustSpec, ReprC)]
 /// pub struct Hello(u32);
 /// ```
-///
-/// It assumes that the derive is imported and referred to by its original name.
 #[manyhow]
 #[proc_macro_derive(ReprC, attributes(reprC))]
 pub fn repr_c_derive(item: syn::DeriveInput) -> Result<TokenStream> {
     derive_repr_c(&item)
 }
 
+/// Declare your FFI exports or imports.
+///
+/// `ffi!` generates the ABI-facing wrappers and the conversion glue through a familiar API. The
+/// macro can be used to either produce the FFI bindings or to bind against an existing library.
+/// It accepts free functions, inherent and trait `impl` blocks, and extern/opaque types. All
+/// type conversions are checked for trap representations (with indirections followed) while
+/// ownership transfer is made opt-in.
+///
+/// **The syntax of exports and imports is completely interchangeable.**
+///
+/// # Import from an external library
+///
+/// Use `#![unsafe(extern("ABI"))]` to declare the Rust-facing interface implemented by an external
+/// library.
+///
+/// ## Safety
+///
+/// Import declarations must match the provider's contract for:
+/// - ABI, symbol names, and function signatures
+/// - ownership and lifetime requirements, when opted into
+/// - pointer validity, mutability, and aliasing requirements
+///
+/// ```rust
+/// use co3::{ffi, ReprC};
+///
+/// // `ReprC` generates a stable C-compatible companion even without an explicit `#[repr(...)]`.
+/// // If given, an explicit representation would be leveraged to produce a more optimal mapping.
+/// #[derive(Clone, Copy, ReprC)]
+/// struct Value(u32);
+///
+/// trait Counter {
+///     fn increment(&mut self, by: Value);
+/// }
+///
+/// ffi! {
+///     #![unsafe(extern("C"))]
+///
+///     type CounterHandle;
+///
+///     impl Counter for CounterHandle {
+///         fn increment(&mut self, by: Value);
+///     }
+/// }
+/// ```
+///
+/// # Export from Rust
+///
+/// Use `#![unsafe(export("ABI"))]` to expose existing Rust items. Although an ABI can be exported
+/// on its own, the provider will often also provide a Rust client as well. In this common case,
+/// export declarations are naturally paired with matching import declarations via a shared crate
+/// that defines the application interface.
+///
+/// ## Safety
+///
+/// Export declarations must ensure:
+/// - ABI symbol names do not collide with other symbols
+/// - ownership and lifetime requirements, when opted into
+/// - pointer-backed received input arguments are valid
+///
+/// ```rust
+/// use co3::ffi;
+///
+/// #[cfg(not(feature = "import"))]
+/// pub struct CounterHandle(u32);
+///
+/// #[cfg(not(feature = "import"))]
+/// impl core::ops::AddAssign<u32> for CounterHandle {
+///     fn add_assign(self, rhs: u32) {
+///         self.0 += rhs;
+///     }
+/// }
+///
+/// #[cfg(not(feature = "import"))]
+/// fn increment<T: core::ops::AddAssign<u32>>(value: &mut T) {
+///     *value += 1;
+/// }
+///
+/// ffi! {
+///     #![cfg_attr(not(feature = "import"), unsafe(export("C")))]
+///     #![cfg_attr(feature = "import", unsafe(extern("C")))]
+///
+///     type CounterHandle;
+///
+///     fn increment(value: &mut CounterHandle);
+/// }
+/// ```
+///
+/// # Naming convention
+///
+/// ABI symbols follow a stable naming convention:
+///
+/// - Free functions: `{prefix}__{function}`
+/// - Inherent methods: `{prefix}__{SelfType}__{method}`
+/// - Trait methods: `{prefix}__{TraitPath}__{SelfType}__{method}`
+///
+/// By default, `ffi!` uses `CARGO_CRATE_NAME` as the symbol prefix. `#![symbol_prefix = "..."]`
+/// overrides the prefix for the entire scope, whereas `#[symbol_name = "..."]` overrides the name
+/// for the declaration it is applied to:
+///
+/// ```rust
+/// use co3::ffi;
+///
+/// trait Operations {
+///     fn add(&self, left: u32, right: u32) -> u32;
+/// }
+///
+/// ffi! {
+///     #![unsafe(extern("C"))]
+///     #![symbol_prefix = "my_lib"]
+///
+///     type Calculator;
+///
+///     // Linked as `my_lib__subtract`.
+///     fn subtract(left: u32, right: u32) -> u32;
+///
+///     impl Calculator {
+///         // Linked as `my_lib__Calculator__multiply`.
+///         fn multiply(&self, left: u32, right: u32) -> u32;
+///     }
+///
+///     impl Operations for Calculator {
+///         // Linked as `library_add`.
+///         #[symbol_name = "library_add"]
+///         fn add(&self, left: u32, right: u32) -> u32;
+///     }
+/// }
+/// ```
+///
+/// # Ownership transfer
+///
+/// In Rust, passing a value to a function transfers its ownership. Across an FFI boundary, however,
+/// ownership transfer carries additional requirements which are a common cause of UB, such as
+/// agreeing on the allocator and who is responsible for freeing the allocation.
+///
+/// Because it is designed to eliminate common footguns in FFI, `CO3` takes an opinionated stance here.
+/// By default, all owned values (e.g. `Vec<T>`) are exported as references and immediately cloned on
+/// the importing side. The universal guarantee is that any reference be valid for the duration of
+/// the function call; past that, it is the user's responsibility to ensure reference validity.
+///
+/// Apply `move` to transfer ownership of an argument or return value:
+///
+/// ```rust
+/// use co3::ffi;
+///
+/// fn passthrough(input: Vec<u8>) -> Vec<u8> {
+///     input
+/// }
+///
+/// fn clone_into(input: Vec<u8>) {
+///     input
+/// }
+///
+/// ffi! {
+///     #![unsafe(export("C"))]
+///
+///     // `input` and the return both transfer ownership
+///     move fn passthrough(move input: Vec<u8>) -> Vec<u8>;
+///
+///     // `input` is passed by reference
+///     fn clone_into(input: Vec<u8>);
+/// }
+/// ```
+///
+/// # Tagged dispatch
+///
+/// Tagged dispatch is a dynamic dispatch over a closed set of concrete implementations commonly used
+/// in C APIs. The concrete type is erased at the FFI boundary and carried as a shared representation
+/// accompanied by a tag that identifies the concrete implementation to invoke. The tag position is
+/// inferred at the start of the function parameter list but can also be specified explicitly. Every
+/// tag-dispatched concrete instantiation is compile-time checked to have a C-compatible representation
+/// with the same size and alignment of the declared shared ABI type.
+///
+/// In the following example:
+/// - `T` is a tag-dispatched type parameter
+/// - The tag type of parameter `T` is chosen as `u8`
+/// - `u16` specifies the shared ABI representation used in the place of every concrete `T`.
+/// - `where use<T> @ (...)` defines the set of concrete instantiations of dispatched types.
+/// - `dyn Self` dispatches the `Self` parameter, but is only allowed for extern/opaque types.
+///
+/// The example corresponds to this C counterpart:
+///
+/// ```rust
+/// use co3::{ffi, handle::Handle, rust_spec::RustSpec, ReprC};
+///
+/// #[derive(RustSpec, ReprC)]
+/// #[reprC(id(u8))]
+/// struct LocalCounter(u16);
+///
+/// trait Counter {
+///     fn increment(&mut self, by: u8);
+/// }
+///
+/// trait Reset {
+///     fn reset(&mut self);
+/// }
+///
+/// unsafe impl Handle for LocalCounter {
+///     const ID: u8 = 1;
+/// }
+///
+/// unsafe impl Handle for CounterHandle<i16> {
+///     const ID: u8 = 3;
+/// }
+///
+/// unsafe impl Handle for CounterHandle<u16> {
+///     const ID: u8 = 4;
+/// }
+///
+/// ffi! {
+///     #![unsafe(extern("C"))]
+///
+///     #[id(u8)]
+///     type CounterHandle<T>;
+///
+///     // Declare `T` as tag dispatched
+///     impl<dyn(u8) T = u16> Counter for T
+///     where
+///         // Select the set of concrete instantiations of tyep parameter `T`
+///         use<T> @ (<LocalCounter> | <CounterHandle<i16>> | <CounterHandle<u16>>)
+///     {
+///         // Make the tag-carrying argument position explicit.
+///         fn increment(t_id: <dyn T>::ID, &mut self, by: u8);
+///     }
+///
+///     // Dispatch the extern type itself
+///     impl<T> Reset for dyn CounterHandle<T>
+///     where
+///         use<T> @ (<i16> | <u16>)
+///     {
+///         fn reset(self_id: <dyn Self>::ID, &mut self);
+///     }
+/// }
+/// ```
+///
+/// # Soft references
+///
+/// Converting references to types with an unstable layout implies a clone of the pointed-to value.
+/// The cloned value is lowered to it's C-compatible counterpart and a pointer to the store, rather
+/// than the actual pointer, is returned. **The pointer identity is not preserved**.
+///
+/// Apply `#[soft]` to a function argument to opt into conversion of such types:
+///
+/// ```rust
+/// use co3::ffi;
+///
+/// fn increment(value: (&(u8, u32), u32)) -> u8 {
+///     value.0 + 1
+/// }
+///
+/// ffi! {
+///     #![unsafe(export("C"))]
+///
+///     fn increment(#[soft] value: (&(u8, u32), u32)) -> u8;
+/// }
+/// ```
+///
+/// # Spread operator
+///
+/// Rust slices are lowered into [`CSlice`](https://docs.rs/co3/latest/co3/slice/struct.CSlice.html)/[`CSliceMut`](https://docs.rs/co3/latest/co3/slice/struct.CSliceMut.html)
+/// which are C-ABI containers holding a data pointer and a length. However, it is common for FFI APIs to instead accept those components as separate function arguments.
+/// Prefix the argument type with `..` to export/import that form:
+///
+/// ```rust
+/// # use co3::ffi;
+///
+/// ffi! {
+///     #![unsafe(extern("system"))]
+///
+///     // imported as `sum(*const u32, usize)`
+///     fn sum(values: ..&[u32]) -> u32;
+/// }
+/// ```
+///
+/// **This pattern is not limited to slices**; it applies to every type implementing the [`Spread2`](https://docs.rs/co3/latest/co3/slice/trait.Spread2.html) trait.
+///
+/// # Failure modes
+///
+/// Select how failures are reported over the FFI boundary:
+/// - `#![failure = "error"]`: return type must implement [`co3::Error`].
+/// - `#![failure = "panic"]`: panic on failure (the default).
+///
+/// ```rust
+/// use co3::{ffi, Error, ReprC, rust_spec::RustSpec};
+///
+/// #[derive(RustSpec, ReprC)]
+/// #[repr(u8)]
+/// enum ApiError { InvalidRepresentation, UnknownHandle, SoftSync }
+///
+/// impl Error for ApiError {
+///     fn trap_value() -> Self { Self::InvalidRepresentation }
+///     fn unknown_handle() -> Self { Self::UnknownHandle }
+///     fn soft_sync_error() -> Self { Self::SoftSync }
+/// }
+///
+/// fn check_error(value: u8) -> ApiError {
+///     let _ = value;
+///     ApiError::InvalidRepresentation
+/// }
+///
+/// ffi! {
+///     #![unsafe(export("C"))]
+///     #![failure = "error"]
+///
+///     fn check_error(value: u8) -> ApiError;
+/// }
+///
+/// ffi! {
+///     #![unsafe(extern("C"))]
+///
+///     fn check_panic(value: u8) -> u32;
+/// }
+/// ```
 #[manyhow]
 #[proc_macro]
 pub fn ffi(input: TokenStream) -> Result<TokenStream> {
@@ -153,6 +588,8 @@ pub fn ffi(input: TokenStream) -> Result<TokenStream> {
 
 impl Input {
     fn parse(tokens: TokenStream) -> Result<(DeclKind, Self)> {
+        let mut decls = Vec::new();
+
         let FfiInput {
             kind,
             abi,
@@ -160,36 +597,30 @@ impl Input {
             features,
             failure_mode,
             attrs,
-            items: mut decls,
+            mut items,
         } = FfiInput::parse(tokens)?;
 
         match kind {
-            DeclKind::Export => prepare_export_decls(&attrs, &symbol_prefix, &mut decls),
-            DeclKind::Extern => prepare_extern_decls(&symbol_prefix, &mut decls),
+            DeclKind::Export => prepare_export_decls(&attrs, &symbol_prefix, &mut items),
+            DeclKind::Extern => prepare_extern_decls(&symbol_prefix, &mut items),
         }?;
 
-        for item in &decls {
+        for item in &items {
             match item {
                 ParsedForeignItem::Type(ForeignItemType {
                     ty,
                     id,
-                    dyn_self_impls,
+                    self_impls,
                     drop,
                 }) => {
                     ensure_single_dispatch_attr(&ty.attrs)?;
 
-                    for dispatch in dyn_self_impls {
-                        ensure_single_dispatch_attr(&dispatch.impl_.attrs)?;
+                    for dispatch in self_impls {
+                        ensure_single_dispatch_attr(&dispatch.attrs)?;
                     }
 
                     if let Some(drop) = drop {
-                        let attrs = match drop {
-                            DropImpl::DynSelfImpl(dispatch) => &dispatch.impl_.attrs,
-                            DropImpl::DynImpl(dispatch) => &dispatch.impl_.attrs,
-                            DropImpl::Impl(impl_) => &impl_.attrs,
-                        };
-
-                        ensure_single_dispatch_attr(attrs)?;
+                        ensure_single_dispatch_attr(&drop.attrs)?;
                     }
 
                     if has_non_lifetime_generics(&ty.generics) && id.is_none() {
@@ -204,51 +635,66 @@ impl Input {
             }
         }
 
-        let decls = decls
-            .into_iter()
-            .map(|item| {
-                Ok(match item {
-                    ParsedForeignItem::Impl(mut impl_)
-                        if find_dispatch_attr(&impl_.attrs).is_some() =>
-                    {
-                        let args = parse_dispatch_attr(
-                            &impl_,
-                            matches!(kind, DeclKind::Extern) && is_drop_impl(&impl_),
-                        )?;
+        for item in items {
+            match item {
+                ParsedForeignItem::Type(item) => decls.push(ForeignItem::Type(item)),
+                ParsedForeignItem::Impl(mut impl_) => {
+                    let dispatch_args = parse_dispatch_attr(&impl_.attrs, &impl_.generics)?;
+
+                    if !dispatch_args.is_empty() {
+                        let self_ty = &impl_.self_ty;
 
                         for item in &mut impl_.items {
-                            let syn::ImplItem::Fn(method) = item else {
+                            let syn::ImplItem::Fn(syn::ImplItemFn { sig, .. }) = item else {
                                 continue;
                             };
 
                             synthesize_dispatch_handle_ids(
-                                Some(&impl_.self_ty),
+                                Some(self_ty),
                                 &impl_.generics,
-                                &mut method.sig,
+                                &mut sig.inputs,
                             );
                         }
 
                         impl_.attrs.retain(|a| !a.path().is_ident("erased"));
-                        strip_impl_explicit_lifetimes_attrs(&mut impl_);
-                        ForeignItem::DynImpl(DynImpl { impl_, args })
                     }
-                    ParsedForeignItem::Type(item) => ForeignItem::Type(item),
-                    ParsedForeignItem::Impl(mut impl_) => {
-                        strip_impl_explicit_lifetimes_attrs(&mut impl_);
-                        ForeignItem::Impl(impl_)
-                    }
-                    ParsedForeignItem::Fn(mut item) => {
-                        strip_explicit_lifetimes_attrs(&mut item.attrs);
-                        ForeignItem::Fn(item)
-                    }
-                })
-            })
-            .collect::<Result<Vec<_>>>()?;
 
-        let decls = pack_type_dispatch_impls(decls)?;
+                    strip_impl_explicit_lifetimes_attrs(&mut impl_);
+                    let method_dispatch_args = parse_dyn_methods(&mut impl_)?;
+
+                    decls.push(ForeignItem::Impl(Co3Impl {
+                        item: impl_,
+                        dispatch_args,
+                        method_dispatch_args,
+                    }));
+                }
+                ParsedForeignItem::Fn(mut item) => {
+                    let dispatch_args = parse_dispatch_attr(&item.attrs, &item.sig.generics)?;
+
+                    if !dispatch_args.is_empty() {
+                        synthesize_dispatch_handle_ids(
+                            None,
+                            &item.sig.generics,
+                            &mut item.sig.inputs,
+                        );
+
+                        item.attrs.retain(|a| !a.path().is_ident("erased"));
+                    }
+
+                    strip_explicit_lifetimes_attrs(&mut item.attrs);
+                    decls.push(ForeignItem::Fn(Co3Fn {
+                        item,
+                        dispatch_args,
+                    }));
+                }
+            }
+        }
+
+        let decls = pack_type_self_impls(decls)?;
         let mut items = pack_type_drop_impls(decls)?;
+
         if kind == DeclKind::Export {
-            default_init(&symbol_prefix, &mut items)?;
+            synthesize_default_drop_impls(&symbol_prefix, &mut items)?;
         }
 
         Ok((
@@ -264,26 +710,22 @@ impl Input {
     }
 }
 
-fn default_init(symbol_prefix: &syn::LitStr, items: &mut [ForeignItem]) -> Result<()> {
+fn synthesize_default_drop_impls(
+    symbol_prefix: &syn::LitStr,
+    items: &mut [ForeignItem],
+) -> Result<()> {
     for item in items {
-        match item {
-            ForeignItem::DynImpl(_) => {}
-            ForeignItem::Type(item) => {
-                if let Some(drop) = &item.drop {
-                    match drop {
-                        DropImpl::DynSelfImpl(_) => {}
-                        DropImpl::DynImpl(_) => {}
-                        DropImpl::Impl(_) => {}
-                    }
-
-                    continue;
-                }
-
-                let impl_ = synthesize_default_drop_impl(symbol_prefix, &item.ty);
-                item.drop = Some(DropImpl::Impl(impl_));
-            }
-            _ => {}
+        let ForeignItem::Type(item) = item else {
+            continue;
+        };
+        if item.drop.is_some() {
+            continue;
         }
+
+        item.drop = Some(Co3Impl::new(synthesize_default_drop_impl(
+            symbol_prefix,
+            &item.ty,
+        )));
     }
 
     Ok(())
@@ -365,29 +807,26 @@ pub(crate) fn strip_explicit_lifetimes_attrs(attrs: &mut Vec<Attribute>) {
 
 fn strip_impl_explicit_lifetimes_attrs(impl_: &mut ItemImpl) {
     strip_explicit_lifetimes_attrs(&mut impl_.attrs);
+
     for item in &mut impl_.items {
         let syn::ImplItem::Fn(method) = item else {
             continue;
         };
+
         strip_explicit_lifetimes_attrs(&mut method.attrs);
     }
 }
 
 fn pack_type_drop_impls(decls: Vec<ForeignItem>) -> Result<Vec<ForeignItem>> {
     fn insert_drop(
-        explicit_drops: &mut BTreeMap<syn::Ident, DropImpl>,
+        explicit_drops: &mut BTreeMap<syn::Ident, Co3Impl>,
         errors: &mut Option<syn::Error>,
         self_ty: syn::Ident,
-        drop_impl: DropImpl,
+        drop_impl: Co3Impl,
     ) {
         if let Some(prev) = explicit_drops.insert(self_ty, drop_impl) {
-            let impl_ = match prev {
-                DropImpl::DynSelfImpl(d) | DropImpl::DynImpl(d) => d.impl_,
-                DropImpl::Impl(impl_) => impl_,
-            };
-
             let err_msg = "duplicate explicit `impl Drop` declaration";
-            push_error(errors, syn::Error::new_spanned(impl_.self_ty, err_msg));
+            push_error(errors, syn::Error::new_spanned(prev.item.self_ty, err_msg));
         }
     }
 
@@ -412,57 +851,30 @@ fn pack_type_drop_impls(decls: Vec<ForeignItem>) -> Result<Vec<ForeignItem>> {
     for decl in decls {
         match decl {
             ForeignItem::Type(mut item) => {
-                let mut kept_dyn_self_impls = Vec::with_capacity(item.dyn_self_impls.len());
+                let mut kept_self_impls = Vec::with_capacity(item.self_impls.len());
 
                 let self_ty = &item.ty.ident;
-                for dyn_impl in item.dyn_self_impls {
-                    if is_drop_impl(&dyn_impl.impl_) {
-                        insert_drop(
-                            &mut explicit_drops,
-                            &mut errors,
-                            self_ty.clone(),
-                            DropImpl::DynSelfImpl(dyn_impl),
-                        );
+                for dyn_impl in item.self_impls {
+                    if is_drop_impl(&dyn_impl.item) {
+                        insert_drop(&mut explicit_drops, &mut errors, self_ty.clone(), dyn_impl);
                     } else {
-                        kept_dyn_self_impls.push(dyn_impl);
+                        kept_self_impls.push(dyn_impl);
                     }
                 }
 
-                item.dyn_self_impls = kept_dyn_self_impls;
+                item.self_impls = kept_self_impls;
                 kept_decls.push(ForeignItem::Type(item));
             }
             ForeignItem::Impl(impl_) => {
                 if is_drop_impl(&impl_) {
                     if let Some(self_ty) = self_ty_ident(&impl_) {
-                        insert_drop(
-                            &mut explicit_drops,
-                            &mut errors,
-                            self_ty,
-                            DropImpl::Impl(impl_),
-                        );
+                        insert_drop(&mut explicit_drops, &mut errors, self_ty, impl_);
                     } else {
                         let err = syn::Error::new_spanned(&impl_.self_ty, UNKNOWN_DROP);
                         push_error(&mut errors, err);
                     }
                 } else {
                     kept_decls.push(ForeignItem::Impl(impl_));
-                }
-            }
-            ForeignItem::DynImpl(dispatch) => {
-                if is_drop_impl(&dispatch.impl_) {
-                    if let Some(self_ty) = self_ty_ident(&dispatch.impl_) {
-                        insert_drop(
-                            &mut explicit_drops,
-                            &mut errors,
-                            self_ty,
-                            DropImpl::DynImpl(dispatch),
-                        );
-                    } else {
-                        let err = syn::Error::new_spanned(&dispatch.impl_.self_ty, UNKNOWN_DROP);
-                        push_error(&mut errors, err);
-                    }
-                } else {
-                    kept_decls.push(ForeignItem::DynImpl(dispatch));
                 }
             }
             ForeignItem::Fn(item) => kept_decls.push(ForeignItem::Fn(item)),
@@ -482,13 +894,10 @@ fn pack_type_drop_impls(decls: Vec<ForeignItem>) -> Result<Vec<ForeignItem>> {
     }
 
     for drop_impl in explicit_drops.into_values() {
-        let self_ty = match drop_impl {
-            DropImpl::DynSelfImpl(dispatch) => dispatch.impl_.self_ty,
-            DropImpl::DynImpl(dispatch) => dispatch.impl_.self_ty,
-            DropImpl::Impl(impl_) => impl_.self_ty,
-        };
-
-        push_error(&mut errors, syn::Error::new_spanned(self_ty, UNKNOWN_DROP));
+        push_error(
+            &mut errors,
+            syn::Error::new_spanned(drop_impl.item.self_ty, UNKNOWN_DROP),
+        );
     }
 
     if let Some(errors) = errors {
@@ -516,13 +925,25 @@ pub(crate) fn trait_object_single_trait_bound(self_ty: &syn::Type) -> Option<&sy
     Some(trait_bound)
 }
 
-fn pack_type_dispatch_impls(decls: Vec<ForeignItem>) -> Result<Vec<ForeignItem>> {
+fn pack_type_self_impls(decls: Vec<ForeignItem>) -> Result<Vec<ForeignItem>> {
     fn is_self_only_dyn_dispatch(impl_: &ItemImpl) -> bool {
         trait_object_single_trait_bound(&impl_.self_ty).is_some()
             && !impl_
                 .generics
                 .type_params()
                 .any(|param| param.attrs.iter().any(is_type_erased))
+    }
+
+    fn declared_self_type(impl_: &ItemImpl) -> Option<syn::Ident> {
+        match &*impl_.self_ty {
+            Type::Path(syn::TypePath { qself: None, path }) if path.segments.len() == 1 => {
+                path.segments.first().map(|segment| segment.ident.clone())
+            }
+            _ => trait_object_single_trait_bound(&impl_.self_ty)
+                .filter(|bound| bound.path.segments.len() == 1)
+                .and_then(|bound| bound.path.segments.first())
+                .map(|segment| segment.ident.clone()),
+        }
     }
 
     let mut type_dispatch = decls
@@ -540,32 +961,18 @@ fn pack_type_dispatch_impls(decls: Vec<ForeignItem>) -> Result<Vec<ForeignItem>>
     let mut errors = None::<syn::Error>;
 
     for decl in decls {
-        let ForeignItem::DynImpl(mut dispatch) = decl else {
+        let ForeignItem::Impl(dispatch) = decl else {
             kept_decls.push(decl);
             continue;
         };
-
-        let Some(syn::TraitBound { path, .. }) =
-            trait_object_single_trait_bound(&dispatch.impl_.self_ty)
-        else {
-            kept_decls.push(ForeignItem::DynImpl(dispatch));
-            continue;
-        };
-        if path.segments.len() > 1 {
-            kept_decls.push(ForeignItem::DynImpl(dispatch));
-            continue;
-        }
-        let Some(ident) = path.segments.first().map(|seg| seg.ident.clone()) else {
-            kept_decls.push(ForeignItem::DynImpl(dispatch));
+        let Some(ident) = declared_self_type(&dispatch.item) else {
+            kept_decls.push(ForeignItem::Impl(dispatch));
             continue;
         };
         if !type_dispatch.contains_key(&ident) {
-            kept_decls.push(ForeignItem::DynImpl(dispatch));
+            kept_decls.push(ForeignItem::Impl(dispatch));
             continue;
         }
-
-        *dispatch.impl_.self_ty = parse_quote!(#path);
-        normalize_self_handle_ids(&mut dispatch.impl_);
 
         type_dispatch.entry(ident).or_default().push(dispatch);
     }
@@ -575,17 +982,17 @@ fn pack_type_dispatch_impls(decls: Vec<ForeignItem>) -> Result<Vec<ForeignItem>>
             continue;
         };
 
-        item.dyn_self_impls = type_dispatch.remove(&item.ty.ident).unwrap_or_default();
+        item.self_impls = type_dispatch.remove(&item.ty.ident).unwrap_or_default();
     }
 
     for decl in &kept_decls {
-        let ForeignItem::DynImpl(dispatch) = decl else {
+        let ForeignItem::Impl(dispatch) = decl else {
             continue;
         };
 
-        if is_self_only_dyn_dispatch(&dispatch.impl_) {
+        if !dispatch.dispatch_args.is_empty() && is_self_only_dyn_dispatch(dispatch) {
             let err_msg = "`dyn Self` is only supported for declared types";
-            let err = syn::Error::new_spanned(&dispatch.impl_.self_ty, err_msg);
+            let err = syn::Error::new_spanned(&dispatch.self_ty, err_msg);
 
             push_error(&mut errors, err);
         }
@@ -619,6 +1026,16 @@ fn normalize_self_handle_ids(impl_: &mut syn::ItemImpl) {
     };
 
     normalizer.visit_item_impl_mut(impl_);
+}
+
+pub(crate) fn materialize_dyn_self_dispatch(impl_: &mut syn::ItemImpl) -> bool {
+    let Some(syn::TraitBound { path, .. }) = trait_object_single_trait_bound(&impl_.self_ty) else {
+        return false;
+    };
+
+    *impl_.self_ty = parse_quote!(#path);
+    normalize_self_handle_ids(impl_);
+    true
 }
 
 fn synthesize_default_drop_impl(symbol_prefix: &LitStr, ty: &syn::ForeignItemType) -> ItemImpl {

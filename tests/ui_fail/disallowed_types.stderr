@@ -240,52 +240,28 @@ error[E0080]: evaluation panicked: assertion failed: core::mem::size_of::<Opaque
    | |_____^ evaluation of `provider::_::_::_::_` failed here
 
 error[E0080]: evaluation panicked: tagged-dispatch argument size mismatch
-   --> tests/ui_fail/disallowed_types.rs:121:5
+   --> tests/ui_fail/disallowed_types.rs:124:49
     |
-121 | /     ffi! {
-122 | |         #![unsafe(export("C"))]
-123 | |
-124 | |         impl<dyn(usize) T = Array> Dispatch for T
-...   |
-130 | |     }
-    | |_____^ evaluation of `provider::_::_::{constant#0}` failed here
+124 |         impl<dyn(usize) T = Array> Dispatch for T
+    |                                                 ^ evaluation of `provider::_::_::{constant#0}` failed here
 
 note: erroneous constant encountered
-   --> tests/ui_fail/disallowed_types.rs:121:5
+   --> tests/ui_fail/disallowed_types.rs:124:49
     |
-121 | /     ffi! {
-122 | |         #![unsafe(export("C"))]
-123 | |
-124 | |         impl<dyn(usize) T = Array> Dispatch for T
-...   |
-130 | |     }
-    | |_____^
-    |
-    = note: this note originates in the macro `ffi` (in Nightly builds, run with -Z macro-backtrace for more info)
+124 |         impl<dyn(usize) T = Array> Dispatch for T
+    |                                                 ^
 
 error[E0080]: evaluation panicked: tagged-dispatch argument alignment mismatch
-   --> tests/ui_fail/disallowed_types.rs:131:5
+   --> tests/ui_fail/disallowed_types.rs:134:50
     |
-131 | /     ffi! {
-132 | |         #![unsafe(export("C"))]
-133 | |
-134 | |         impl<dyn(usize) T = Array2> Dispatch for T
-...   |
-140 | |     }
-    | |_____^ evaluation of `provider::_::_::{constant#0}` failed here
+134 |         impl<dyn(usize) T = Array2> Dispatch for T
+    |                                                  ^ evaluation of `provider::_::_::{constant#0}` failed here
 
 note: erroneous constant encountered
-   --> tests/ui_fail/disallowed_types.rs:131:5
+   --> tests/ui_fail/disallowed_types.rs:134:50
     |
-131 | /     ffi! {
-132 | |         #![unsafe(export("C"))]
-133 | |
-134 | |         impl<dyn(usize) T = Array2> Dispatch for T
-...   |
-140 | |     }
-    | |_____^
-    |
-    = note: this note originates in the macro `ffi` (in Nightly builds, run with -Z macro-backtrace for more info)
+134 |         impl<dyn(usize) T = Array2> Dispatch for T
+    |                                                  ^
 
 error[E0277]: the trait bound `(): CFnArg` is not satisfied
    --> tests/ui_fail/disallowed_types.rs:162:46
@@ -497,52 +473,28 @@ help: the trait `co3::borrow::Borrow` is not implemented for `OwnedMyType`
     = note: this error originates in the macro `ffi` (in Nightly builds, run with -Z macro-backtrace for more info)
 
 error[E0080]: evaluation panicked: tagged-dispatch argument size mismatch
-   --> tests/ui_fail/disallowed_types.rs:197:1
+   --> tests/ui_fail/disallowed_types.rs:202:46
     |
-197 | / ffi! {
-198 | |     #![unsafe(extern("C"))]
-199 | |
-200 | |     #![symbol_prefix = "kita"]
-...   |
-208 | | }
-    | |_^ evaluation of `_::{constant#0}` failed here
+202 |     impl<dyn(usize) T = Handle> Dispatch for T
+    |                                              ^ evaluation of `_::{constant#0}` failed here
 
 note: erroneous constant encountered
-   --> tests/ui_fail/disallowed_types.rs:197:1
+   --> tests/ui_fail/disallowed_types.rs:202:46
     |
-197 | / ffi! {
-198 | |     #![unsafe(extern("C"))]
-199 | |
-200 | |     #![symbol_prefix = "kita"]
-...   |
-208 | | }
-    | |_^
-    |
-    = note: this note originates in the macro `ffi` (in Nightly builds, run with -Z macro-backtrace for more info)
+202 |     impl<dyn(usize) T = Handle> Dispatch for T
+    |                                              ^
 
 error[E0080]: evaluation panicked: tagged-dispatch argument alignment mismatch
-   --> tests/ui_fail/disallowed_types.rs:210:1
+   --> tests/ui_fail/disallowed_types.rs:215:47
     |
-210 | / ffi! {
-211 | |     #![unsafe(extern("C"))]
-212 | |
-213 | |     #![symbol_prefix = "kita"]
-...   |
-221 | | }
-    | |_^ evaluation of `_::{constant#0}` failed here
+215 |     impl<dyn(usize) T = Handle2> Dispatch for T
+    |                                               ^ evaluation of `_::{constant#0}` failed here
 
 note: erroneous constant encountered
-   --> tests/ui_fail/disallowed_types.rs:210:1
+   --> tests/ui_fail/disallowed_types.rs:215:47
     |
-210 | / ffi! {
-211 | |     #![unsafe(extern("C"))]
-212 | |
-213 | |     #![symbol_prefix = "kita"]
-...   |
-221 | | }
-    | |_^
-    |
-    = note: this note originates in the macro `ffi` (in Nightly builds, run with -Z macro-backtrace for more info)
+215 |     impl<dyn(usize) T = Handle2> Dispatch for T
+    |                                               ^
 
 error[E0080]: evaluation panicked: single-field DST structs require #[repr(transparent)]
   --> tests/ui_fail/disallowed_types.rs:27:20

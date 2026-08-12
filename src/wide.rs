@@ -3,9 +3,11 @@ use alloc::boxed::Box;
 #[cfg(feature = "alloc")]
 use core::ptr::NonNull;
 
-/// Pointer that consists of data and metadata (also called a `fat` pointer).
+/// A dynamically sized value with data and metadata (also called a `fat` pointer).
 ///
-/// This includes slices, trait objects, and DSTs whose last field is one of aformentioned.
+/// This includes slices, trait objects, and DSTs whose last field is one of the
+/// aforementioned. This is an advanced trait used to form ABI slice and wide
+/// representations; [`crate::ffi!`] handles ordinary slices automatically.
 pub trait Wide {
     /// Data component of a wide pointer.
     ///

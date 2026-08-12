@@ -809,7 +809,9 @@ pub(super) fn derive_fieldless_enum(
     variants: &syn::punctuated::Punctuated<syn::Variant, syn::Token![,]>,
 ) -> TokenStream {
     let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
-    let params = &generics.params;
+    let mut decode_generics = generics.clone();
+    decode_generics.params.insert(0, parse_quote!('_dšč));
+    let (decode_impl_generics, _, _) = decode_generics.split_for_impl();
 
     let tag_type = match repr {
         None if variants.len() == 1 => None,
@@ -911,7 +913,7 @@ pub(super) fn derive_fieldless_enum(
             }
         }
 
-        unsafe impl<'_dšč, #params> co3::stored::DecodeOwned<'_dšč> for #name #ty_generics #where_clause {
+        unsafe impl #decode_impl_generics co3::stored::DecodeOwned<'_dšč> for #name #ty_generics #where_clause {
             type Store = ();
 
             unsafe fn soft_decode<'_išč: '_dšč>(source: Self::CType, (): &mut ()) -> Option<Self> {
@@ -920,7 +922,7 @@ pub(super) fn derive_fieldless_enum(
         }
 
         impl #impl_generics co3::Encode for #name #ty_generics #where_clause {}
-        impl<#params> co3::Decode<'_> for #name #ty_generics #where_clause {}
+        impl #impl_generics co3::Decode<'_> for #name #ty_generics #where_clause {}
 
         #checked_transmute_impl
     }
@@ -1038,7 +1040,6 @@ fn gen_codec_impls<const ADD_COPY: bool>(
 
     let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
     let predicates = where_clause.as_ref().map(|w| &w.predicates);
-    let params = &generics.params;
 
     let extern_c_bounds = if is_view {
         Vec::new()
@@ -1068,19 +1069,20 @@ fn gen_codec_impls<const ADD_COPY: bool>(
             Some(syn::GenericParam::Lifetime(param)) if param.lifetime.ident == "_dšč"
         );
 
-    let (decode_lifetime, borrow_cast_bounds, cast_eq_bounds) = if is_view {
+    let (borrow_cast_bounds, cast_eq_bounds) = if is_view {
         (
-            if !has_view_lifetime {
-                quote! { '_dšč, }
-            } else {
-                quote! {}
-            },
             gen_borrow_cast_view_bounds::<ADD_COPY>(generics, fields),
             gen_borrow_cast_eq_bounds(fields),
         )
     } else {
-        (quote! { '_dšč, }, vec![], quote! {})
+        (vec![], quote! {})
     };
+
+    let mut decode_generics = generics.clone();
+    if !has_view_lifetime {
+        decode_generics.params.insert(0, parse_quote!('_dšč));
+    }
+    let (decode_impl_generics, _, _) = decode_generics.split_for_impl();
 
     let ctype_name = if is_view {
         gen_view_ctype_name(name)
@@ -1121,7 +1123,7 @@ fn gen_codec_impls<const ADD_COPY: bool>(
                 #encode_impl
             }
         }
-        unsafe impl<#decode_lifetime #params> co3::stored::DecodeOwned<'_dšč> for #name #ty_generics
+        unsafe impl #decode_impl_generics co3::stored::DecodeOwned<'_dšč> for #name #ty_generics
         where
             #sized_bound
             #(#borrow_cast_bounds,)*
@@ -1143,7 +1145,7 @@ fn gen_codec_impls<const ADD_COPY: bool>(
             #cast_eq_bounds
             #predicates
         {}
-        impl<#decode_lifetime #params> co3::Decode<'_dšč> for #name #ty_generics where
+        impl #decode_impl_generics co3::Decode<'_dšč> for #name #ty_generics where
             #sized_bound
             #(#borrow_cast_bounds,)*
             #(#decode_bounds,)*

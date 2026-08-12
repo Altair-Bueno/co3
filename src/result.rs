@@ -1,5 +1,4 @@
-//! FFI-safe equivalent of [`core::result`] related functionality
-
+//! C-compatible representation of [`core::result::Result`].
 use core::{mem::MaybeUninit, ops::Add};
 
 use rust_spec::{RustSpec, niche::WithoutNiche};

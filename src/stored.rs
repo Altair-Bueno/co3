@@ -31,6 +31,7 @@ use crate::{
 
 // TODO: Could the store just be synced on drop?
 // FIXME: Encode types can never error during sync
+/// Holds temporary conversion state and applies deferred mutable write-back.
 pub trait Store: Sized {
     fn sync(self) -> Option<()>;
 }
@@ -57,6 +58,7 @@ pub trait Owned {
 }
 
 // TODO: Can we remove this trait?
+#[cfg(feature = "alloc")]
 pub trait AssignFromOwned: ToOwned {
     fn assign_from_owned(&mut self, owned: Self::Owned) -> Option<()>;
 }
@@ -75,13 +77,13 @@ disjoint_impls! {
         /// Auxiliary storage used during conversion. If storage is not used, set the type to `()`.
         ///
         /// Use cases include:
-        /// - Keeping the result of the conversion of references of [`Stored`] types
+        /// - Keeping the result of the conversion of references to stored types
         /// - Storing mutable references that need to be updated in [`Store::sync`]
         ///
         /// Conceptually, serves a role similar to the "context" captured by a closure.
         type Store: Store + Default;
 
-        /// Convert from [`Self`] into [`Self::CType`].
+        /// Convert from [`Self`] into its [`ExternC::CType`].
         ///
         /// Prefer using [`crate::soft_encode`] whenever possible
         fn soft_encode<'itm>(self, store: &'itm mut Self::Store) -> Self::CType
@@ -581,7 +583,7 @@ disjoint_impls! {
 }
 
 disjoint_impls! {
-    /// Perform the conversion from [`Self::CType`] into [`Self`]
+    /// Perform the conversion from an [`ExternC::CType`] into [`Self`].
     ///
     /// # Safety
     ///
@@ -592,7 +594,7 @@ disjoint_impls! {
     pub unsafe trait DecodeOwned<'d>: ExternC<CType: Sized> + Sized {
         type Store: Store + Default;
 
-        /// Perform the conversion from [`Self::CType`] into [`Self`]
+        /// Perform the conversion from an [`ExternC::CType`] into [`Self`].
         ///
         /// Prefer using [`crate::soft_decode`] whenever possible
         ///
@@ -1159,6 +1161,7 @@ disjoint_impls! {
     }
 }
 
+#[cfg(feature = "alloc")]
 impl<T: Clone> AssignFromOwned for [T] {
     fn assign_from_owned(&mut self, owned: Self::Owned) -> Option<()> {
         if self.len() != owned.len() {
@@ -1173,6 +1176,7 @@ impl<T: Clone> AssignFromOwned for [T] {
     }
 }
 
+#[cfg(feature = "alloc")]
 impl AssignFromOwned for str {
     fn assign_from_owned(&mut self, owned: Self::Owned) -> Option<()> {
         if self.len() != owned.len() {

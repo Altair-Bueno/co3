@@ -18,10 +18,10 @@ help: change the parameter type to match the trait
    |
 
 error[E0053]: method `dispatch` has an incompatible type for trait
-   --> tests/ui_fail/signature_drift.rs:100:16
+   --> tests/ui_fail/signature_drift.rs:100:19
     |
-100 |           <T> @ <DriftHandle>,
-    |  ________________^
+100 |           use<T> @ <DriftHandle>,
+    |  ___________________^
 101 | |     {
 102 | |         fn dispatch(self_id: <dyn Self>::ID, &self, arg: &T);
     | |__________________________________________________________^ expected `u32`, found `DriftHandle`
@@ -35,10 +35,10 @@ note: type in trait
                found signature `fn(&DriftHandle, &DriftHandle)`
 help: change the parameter type to match the trait
     |
-100 -         <T> @ <DriftHandle>,
+100 -         use<T> @ <DriftHandle>,
 101 -     {
 102 -         fn dispatch(self_id: <dyn Self>::ID, &self, arg: &T);
-100 +         <T> @ <&u32T);
+100 +         use<T> @ <&u32T);
     |
 
 error[E0308]: mismatched types

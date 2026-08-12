@@ -1,5 +1,4 @@
-//! Logic related to the conversion of boxed values to and from FFI-compatible representation.
-
+//! Owning C-ABI carrier types.
 use alloc::boxed::Box;
 use core::ptr::NonNull;
 
@@ -13,7 +12,7 @@ use crate::{
     transmute::CheckedTransmute,
 };
 
-/// Owned pointer `Box<C>`.
+/// Owned pointer derived from `Box<C>`.
 ///
 /// If the data pointer is set to `null`, the struct represents `Option<Box<C>>`.
 #[derive(RustSpec)]

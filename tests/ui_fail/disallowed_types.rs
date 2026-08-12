@@ -123,7 +123,7 @@ mod provider {
 
         impl<dyn(usize) T = Array> Dispatch for T
         where
-            <T> @ <Handle>,
+            use<T> @ <Handle>,
         {
             fn me(self);
         }
@@ -133,7 +133,7 @@ mod provider {
 
         impl<dyn(usize) T = Array2> Dispatch for T
         where
-            <T> @ <Handle2>,
+            use<T> @ <Handle2>,
         {
             fn me(self);
         }
@@ -201,7 +201,7 @@ ffi! {
 
     impl<dyn(usize) T = Handle> Dispatch for T
     where
-        <T> @ <Array>,
+        use<T> @ <Array>,
     {
         fn me(id: <dyn T>::ID, self);
     }
@@ -214,7 +214,7 @@ ffi! {
 
     impl<dyn(usize) T = Handle2> Dispatch for T
     where
-        <T> @ <Array2>,
+        use<T> @ <Array2>,
     {
         fn me(id: <dyn T>::ID, self);
     }
