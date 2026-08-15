@@ -3,8 +3,8 @@ use std::collections::{BTreeMap, HashSet};
 use proc_macro2::{Delimiter, Group, Ident, TokenStream, TokenTree};
 use quote::quote;
 use syn::{
-    Attribute, FnArg, GenericArgument, GenericParam, ItemFn, ItemImpl, LitStr, PatType, Result,
-    Type, TypePath,
+    Attribute, Expr, FnArg, GenericArgument, GenericParam, ItemFn, ItemImpl, LitStr, PatType,
+    Result, StaticMutability, Type, TypePath,
     parse::{ParseStream, Parser},
     parse_quote, parse_quote_spanned,
     punctuated::Punctuated,
@@ -22,8 +22,19 @@ const EXPECTED_HANDLE_ID_ATTR_MSG: &str = "expected `#[id(repr)]`";
 
 pub(crate) enum ParsedForeignItem {
     Type(crate::ForeignItemType),
+    Static(FfiStatic),
     Impl(ItemImpl),
     Fn(ItemFn),
+}
+
+pub(crate) struct FfiStatic {
+    pub(crate) attrs: Vec<Attribute>,
+    pub(crate) vis: syn::Visibility,
+    pub(crate) static_token: syn::Token![static],
+    pub(crate) mutability: StaticMutability,
+    pub(crate) ident: syn::Ident,
+    pub(crate) ty: Box<Type>,
+    pub(crate) expr: Option<Box<Expr>>,
 }
 
 pub(crate) struct FfiInput {
@@ -125,12 +136,42 @@ impl syn::parse::Parse for ParsedForeignItem {
                 drop: None,
             }));
         }
+        if ahead.peek(syn::Token![static]) {
+            return Ok(Self::Static(parse_static_item(input)?));
+        }
         if is_fn_head(&ahead)? {
             return Ok(Self::Fn(parse_fn_item(input)?));
         }
 
         Err(input.error(ITEM_NOT_SUPPORTED_MSG))
     }
+}
+
+fn parse_static_item(input: ParseStream) -> Result<FfiStatic> {
+    let attrs = input.call(syn::Attribute::parse_outer)?;
+    let vis = input.parse()?;
+    let static_token = input.parse()?;
+    let mutability = input.parse()?;
+    let ident = input.parse()?;
+    input.parse::<syn::Token![:]>()?;
+    let ty = input.parse()?;
+    let expr = if input.peek(syn::Token![=]) {
+        input.parse::<syn::Token![=]>()?;
+        Some(input.parse()?)
+    } else {
+        None
+    };
+    input.parse::<syn::Token![;]>()?;
+
+    Ok(FfiStatic {
+        attrs,
+        vis,
+        static_token,
+        mutability,
+        ident,
+        ty,
+        expr,
+    })
 }
 
 fn contains_dispatch_predicate(input: ParseStream) -> Result<bool> {

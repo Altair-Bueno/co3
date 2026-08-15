@@ -109,13 +109,6 @@ pub trait Error {
 /// Type implementing the trait must have a guaranteed C ABI.
 pub unsafe trait ReprC {}
 
-/// `ReprC` type that is allowed as a C static.
-///
-/// # Safety
-///
-/// Type must be allowed as a C static.
-pub unsafe trait CStatic: ReprC + Copy {}
-
 /// `ReprC` type that is allowed as a C function argument.
 ///
 /// # Safety
@@ -130,10 +123,7 @@ pub unsafe trait CFnArg: ReprC + Copy {}
 /// Type must be allowed as a C function return type.
 pub unsafe trait CFnReturn: ReprC + Copy {}
 
-unsafe impl<T: CFnArg> CStatic for T {}
 unsafe impl<T: CFnArg> CFnReturn for T {}
-
-unsafe impl<T: CFnArg, const N: usize> CStatic for [T; N] {}
 
 disjoint_impls! {
     /// A Rust type that has an `extern "C"` ABI

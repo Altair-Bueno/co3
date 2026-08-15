@@ -222,6 +222,17 @@ fn validate_export_decl(decl: &ParsedForeignItem) -> Result<()> {
     let mut errors = None;
 
     match decl {
+        ParsedForeignItem::Static(static_) => {
+            for attr in &static_.attrs {
+                if !is_symbol_name_attr(attr) && !is_cfg_attr(attr) {
+                    push_error(&mut errors, unsupported_attr(attr));
+                }
+            }
+            if static_.expr.is_none() {
+                let err_msg = "export static declarations require an initializer";
+                push_error(&mut errors, Error::new_spanned(&static_.ident, err_msg));
+            }
+        }
         ParsedForeignItem::Impl(impl_) => {
             for item in &impl_.items {
                 let syn::ImplItem::Fn(method) = item else {
@@ -264,6 +275,17 @@ fn validate_extern_decl(decl: &ParsedForeignItem) -> Result<()> {
     let mut errors = None;
 
     match decl {
+        ParsedForeignItem::Static(static_) => {
+            for attr in &static_.attrs {
+                if !is_symbol_name_attr(attr) && !is_cfg_attr(attr) {
+                    push_error(&mut errors, unsupported_attr(attr));
+                }
+            }
+            if static_.expr.is_some() {
+                let err_msg = "extern static declarations cannot have an initializer";
+                push_error(&mut errors, Error::new_spanned(&static_.ident, err_msg));
+            }
+        }
         ParsedForeignItem::Fn(item) if find_dispatch_attr(&item.attrs).is_some() => {
             let dispatch_params = item
                 .sig
@@ -319,6 +341,9 @@ fn validate_shared(decls: &[ParsedForeignItem]) -> Result<()> {
 
     for decl in decls {
         match decl {
+            ParsedForeignItem::Static(static_) => {
+                validate_no_dispatch_attrs(&static_.attrs, &mut errors);
+            }
             ParsedForeignItem::Type(decl) => {
                 for attr in &decl.ty.attrs {
                     if is_explicit_lifetimes_attr(attr) {

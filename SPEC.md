@@ -62,15 +62,16 @@ A C-compatible companion type is a type with a defined C ABI and no trap represe
 
 ### 2.2 The `ffi!` Macro
 
-`ffi!` is a fn-like macro that enables writing export/extern declarations of types, methods and impl blocks.
+`ffi!` is a fn-like macro that enables writing export/extern declarations of types, statics, methods and impl blocks.
 It must always start with a declaration of direction and ABI (e.g. `#![unsafe(export("system"))]`/`#![unsafe(extern("system"))]`).
 
 - `#![unsafe(export("ABI"))]` creates export declarations with the given ABI. The declared items must exist and be resolvable.
 - `#![unsafe(extern("ABI"))]` creates import declarations with the given ABI. The macro is said to contain extern declarations.
 - `#![feature(extern_types)]` opts into the corresponding unstable macro codegen path; no other feature names are supported.
-- Trait method symbol names are inferred as `{symbol_prefix}__{TraitPath}__{SelfTy}__{method}`.
-- Inherent method symbol names are inferred as `{symbol_prefix}__{SelfTy}__{method}`.
+- Static item symbol names are inferred as `{symbol_prefix}__{static_name}`.
 - Free function symbol names are inferred as `{symbol_prefix}__{fn_name}`.
+- Inherent method symbol names are inferred as `{symbol_prefix}__{SelfTy}__{method}`.
+- Trait method symbol names are inferred as `{symbol_prefix}__{TraitPath}__{SelfTy}__{method}`.
 - `#![symbol_prefix = "..."]` defines the symbol prefix (defaults to `CARGO_CRATE_NAME`).
 - `#[symbol_name = "..."]` overrides the name mangling enforced by the `ffi` macro.
 - `#![failure = "panic" | "error"]` controls whether internal failures panic(default) or are returned.
