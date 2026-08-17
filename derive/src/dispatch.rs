@@ -17,8 +17,7 @@ use crate::{
     },
     parse::FailureMode,
     utils::{
-        DispatchMonomorphizer, ParamUseDetector, erased_abi_repr, erased_id_repr, is_drop_impl,
-        is_type_erased,
+        DispatchMonomorphizer, ParamUseDetector, erased_id_repr, is_drop_impl, is_type_erased,
     },
 };
 
@@ -79,12 +78,17 @@ pub(crate) fn gen_dispatch_fn_export(
 
     let fn_name = &item.sig.ident;
     let generics = item.sig.generics.clone();
+    let callee_type_params = generics
+        .type_params()
+        .map(|param| param.ident.clone())
+        .collect::<Vec<_>>();
     let callee = parse_quote!(self::#fn_name);
 
     let definition = gen_dispatch_definition(
         abi,
         failure_mode,
         &generics,
+        &callee_type_params,
         DispatchReceiver::None,
         &dispatch_args,
         item.sig,
@@ -113,38 +117,134 @@ pub(crate) enum HandleId<'a> {
 }
 
 struct ErasedParamReplacer {
-    erased_params: BTreeMap<syn::Ident, syn::Type>,
+    erased_params: BTreeMap<syn::Ident, Option<syn::Type>>,
+    payloadless_params: BTreeSet<syn::Ident>,
 }
 
 impl ErasedParamReplacer {
     fn new(generics: &syn::Generics) -> Self {
+        let erased_params = generics
+            .type_params()
+            .filter(|p| p.attrs.iter().any(is_type_erased))
+            .map(|p| (p.ident.clone(), p.default.clone()))
+            .collect::<BTreeMap<_, _>>();
+        let payloadless_params = erased_params
+            .iter()
+            .filter_map(|(ident, payload)| payload.is_none().then_some(ident.clone()))
+            .collect();
         Self {
-            erased_params: generics
-                .type_params()
-                .filter(|p| p.attrs.iter().any(is_type_erased))
-                .map(|p| (p.ident.clone(), erased_abi_repr(p)))
-                .collect(),
+            erased_params,
+            payloadless_params,
         }
+    }
+
+    fn abi_repr(payload: Option<&syn::Type>) -> syn::Type {
+        payload
+            .cloned()
+            .unwrap_or_else(|| syn::parse_quote!(core::ffi::c_void))
     }
 
     fn replace(&mut self, mut ty: syn::Type) -> syn::Type {
         self.visit_type_mut(&mut ty);
         ty
     }
+
+    fn replace_with_change(&mut self, mut ty: syn::Type) -> (syn::Type, bool) {
+        let original = ty.clone();
+        self.visit_type_mut(&mut ty);
+        let changed = original != ty;
+        (ty, changed)
+    }
+
+    fn has_opaque_tail(ty: &syn::Type) -> bool {
+        match ty {
+            syn::Type::Group(group) => Self::has_opaque_tail(&group.elem),
+            syn::Type::Paren(paren) => Self::has_opaque_tail(&paren.elem),
+            syn::Type::Tuple(tuple) => tuple.elems.last().is_some_and(Self::has_opaque_tail),
+            syn::Type::Path(path) if path.qself.is_none() => {
+                if path.path.segments.last().unwrap().ident == "c_void" {
+                    return true;
+                }
+                path.path.segments.iter().rev().find_map(|segment| {
+                    let syn::PathArguments::AngleBracketed(args) = &segment.arguments else {
+                        return None;
+                    };
+                    args.args.iter().rev().find_map(|arg| match arg {
+                        syn::GenericArgument::Type(ty) => Some(Self::has_opaque_tail(ty)),
+                        _ => None,
+                    })
+                }) == Some(true)
+            }
+            _ => false,
+        }
+    }
+
+    fn path_contains_payloadless(&self, path: &syn::TypePath) -> bool {
+        let detector = ParamUseDetector::new(&self.payloadless_params);
+        path.qself
+            .as_ref()
+            .is_some_and(|qself| detector.type_mentions_param(&qself.ty))
+            || detector.path_mentions_param(&path.path)
+    }
 }
 
 impl VisitMut for ErasedParamReplacer {
+    fn visit_type_reference_mut(&mut self, node: &mut syn::TypeReference) {
+        if let syn::Type::Path(path) = node.elem.as_ref()
+            && self.path_contains_payloadless(path)
+        {
+            *node.elem = Self::abi_repr(None);
+            return;
+        }
+
+        syn::visit_mut::visit_type_reference_mut(self, node);
+    }
+
+    fn visit_type_ptr_mut(&mut self, node: &mut syn::TypePtr) {
+        if let syn::Type::Path(path) = node.elem.as_ref()
+            && self.path_contains_payloadless(path)
+        {
+            *node.elem = Self::abi_repr(None);
+            return;
+        }
+
+        syn::visit_mut::visit_type_ptr_mut(self, node);
+    }
+
     fn visit_type_mut(&mut self, node: &mut syn::Type) {
         if let syn::Type::Path(syn::TypePath {
             qself: None, path, ..
         }) = node
-            && let Some(repr) = path.get_ident().and_then(|i| self.erased_params.get(i))
+            && path.segments.len() == 1
+            && path.segments[0].arguments.is_none()
+            && let Some(payload) = self.erased_params.get(&path.segments[0].ident)
         {
-            *node = repr.clone();
+            *node = Self::abi_repr(payload.as_ref());
+            return;
+        }
+
+        if let syn::Type::Path(path) = node
+            && self.path_contains_payloadless(path)
+        {
             return;
         }
 
         syn::visit_mut::visit_type_mut(self, node);
+
+        let syn::Type::Tuple(tuple) = node else {
+            return;
+        };
+        let Some(opaque) = tuple.elems.iter().position(Self::has_opaque_tail) else {
+            return;
+        };
+        if opaque == 0 {
+            *node = tuple.elems[0].clone();
+        } else {
+            tuple.elems = core::mem::take(&mut tuple.elems)
+                .into_iter()
+                .take(opaque + 1)
+                .collect();
+        }
     }
 }
 
@@ -189,6 +289,12 @@ pub(crate) fn gen_dispatch_export(
     });
 
     let definitions = items.map(|mut item| {
+        let callee_type_params = item
+            .sig
+            .generics
+            .type_params()
+            .map(|param| param.ident.clone())
+            .collect::<Vec<_>>();
         merge_generics(impl_.generics.clone(), &mut item.sig.generics);
         normalize_fn_signature(&mut item.sig, Some(self_ty));
 
@@ -208,6 +314,7 @@ pub(crate) fn gen_dispatch_export(
             abi,
             failure_mode,
             &impl_.generics,
+            &callee_type_params,
             receiver,
             &dispatch_args,
             item.sig,
@@ -232,6 +339,7 @@ fn gen_dispatch_definition(
     abi: &syn::Abi,
     failure_mode: FailureMode,
     generics: &syn::Generics,
+    callee_type_params: &[syn::Ident],
     receiver: DispatchReceiver,
     dispatch_args: &DispatchGroups,
     mut sig: syn::Signature,
@@ -261,6 +369,7 @@ fn gen_dispatch_definition(
 
     let dispatch_arms = gen_dispatch_arms(
         generics,
+        callee_type_params,
         receiver,
         &sig,
         fn_by_val,
@@ -301,47 +410,120 @@ pub(crate) fn gen_handle_id_uniqueness_checks(
     generics: &syn::Generics,
     args: &DispatchGroups,
 ) -> TokenStream {
-    fn gen_check(param: &syn::TypeParam, args: &DispatchGroups) -> Option<TokenStream> {
+    fn gen_check(
+        param: &syn::TypeParam,
+        generics: &syn::Generics,
+        args: &DispatchGroups,
+    ) -> Option<TokenStream> {
         let repr = erased_id_repr(param)?;
-
         let (params, entries) = args
             .groups()
             .find(|(params, _)| params.contains(&param.ident))?;
-
-        let enum_ident = format_ident!("DuplicatedHandleIdFor{}", param.ident);
         let param_index = params.iter().position(|ident| *ident == param.ident)?;
+        let enum_ident = format_ident!("DuplicatedHandleIdFor{}", param.ident);
 
-        let variants = entries
-            .iter()
-            .enumerate()
-            .filter_map(|(entry_index, entry)| {
-                let mut ty = entry.args.get(param_index)?.clone();
-                StaticLifetimeNormalizer.visit_generic_argument_mut(&mut ty);
-
-                let variant = format_ident!("HandleId{entry_index}");
-                Some(quote! { #variant = <#ty as co3::handle::Handle>::ID })
-            })
+        let other_params = args
+            .groups()
+            .filter(|(group, _)| *group != params)
+            .flat_map(|(group, _)| group)
             .collect::<Vec<_>>();
+        let other_param_detector = ParamUseDetector::new(other_params);
+        let is_dependent = entries.iter().any(|entry| {
+            entry
+                .args
+                .get(param_index)
+                .is_some_and(|arg| other_param_detector.generic_arg_mentions_param(arg))
+        });
 
-        if variants.is_empty() {
-            return None;
-        }
+        let variants = if is_dependent {
+            let mut variants = Vec::new();
+            args.for_each_combination(|selections| {
+                let Some(selection) = selections
+                    .iter()
+                    .find(|selection| selection.params.contains(&param.ident))
+                else {
+                    return;
+                };
+                let Some(param_index) = selection
+                    .params
+                    .iter()
+                    .position(|ident| *ident == param.ident)
+                else {
+                    return;
+                };
+                let Some(mut ty) = selection.target.args.get(param_index).cloned() else {
+                    return;
+                };
 
-        Some(quote! {
-            const _: () = {
-                #[repr(#repr)]
-                enum #enum_ident {
-                    #(#variants,)*
-                }
-            };
+                DispatchMonomorphizer::for_dispatch_group(generics, selections)
+                    .visit_generic_argument_mut(&mut ty);
+                StaticLifetimeNormalizer.visit_generic_argument_mut(&mut ty);
+                let variant = format_ident!("HandleId{}", variants.len());
+                variants.push(quote!(#variant = <#ty as co3::handle::Handle>::ID));
+            });
+            variants
+        } else {
+            entries
+                .iter()
+                .enumerate()
+                .filter_map(|(entry_index, entry)| {
+                    let mut ty = entry.args.get(param_index)?.clone();
+                    StaticLifetimeNormalizer.visit_generic_argument_mut(&mut ty);
+                    let variant = format_ident!("HandleId{entry_index}");
+                    Some(quote!(#variant = <#ty as co3::handle::Handle>::ID))
+                })
+                .collect()
+        };
+        (!variants.is_empty()).then(|| {
+            quote! {
+                const _: () = {
+                    #[repr(#repr)]
+                    enum #enum_ident { #(#variants,)* }
+                };
+            }
         })
     }
 
     let checks = generics
         .type_params()
-        .filter_map(|param| gen_check(param, args));
+        .filter_map(|param| gen_check(param, generics, args));
+    quote!(#(#checks)*)
+}
 
-    quote! { #(#checks)* }
+/// Imports permit repeated IDs; only their tag representation is asserted.
+pub(crate) fn gen_handle_id_type_checks(
+    generics: &syn::Generics,
+    args: &DispatchGroups,
+) -> TokenStream {
+    let mut checks = Vec::new();
+    for param in generics.type_params() {
+        let Some(repr) = erased_id_repr(param) else {
+            continue;
+        };
+        args.for_each_combination(|selections| {
+            let Some(selection) = selections
+                .iter()
+                .find(|selection| selection.params.contains(&param.ident))
+            else {
+                return;
+            };
+            let Some(index) = selection
+                .params
+                .iter()
+                .position(|ident| *ident == param.ident)
+            else {
+                return;
+            };
+            let Some(mut ty) = selection.target.args.get(index).cloned() else {
+                return;
+            };
+            DispatchMonomorphizer::for_dispatch_group(generics, selections)
+                .visit_generic_argument_mut(&mut ty);
+            StaticLifetimeNormalizer.visit_generic_argument_mut(&mut ty);
+            checks.push(quote!(let _: #repr = <#ty as co3::handle::Handle>::ID;));
+        });
+    }
+    quote!(#(#checks)*)
 }
 
 pub(crate) fn gen_dispatch_erased_layout_checks(
@@ -481,15 +663,13 @@ impl VisitMut for StaticLifetimeNormalizer {
 }
 
 fn input_abi_tys(attrs: &[syn::Attribute], ty: &syn::Type) -> Vec<syn::Type> {
-    let abi_ty = item_fn_input_arg_type(attrs, ty);
-
     if is_spread_arg(attrs) {
-        return vec![
-            parse_quote!(<#abi_ty as co3::slice::Spread2>::Part1),
-            parse_quote!(<#abi_ty as co3::slice::Spread2>::Part2),
-        ];
+        let (part1, part2) =
+            crate::ffi_fn::spread2_abi_parts(attrs, ty).expect("validated #[spread2] attribute");
+        return vec![part1, part2];
     }
 
+    let abi_ty = item_fn_input_arg_type(attrs, ty);
     vec![parse_quote!(#abi_ty)]
 }
 
@@ -541,8 +721,10 @@ fn mark_dispatch_handle_ids_by_value(inputs: &mut Punctuated<syn::FnArg, syn::To
     }
 }
 
+#[expect(clippy::too_many_arguments)]
 fn gen_dispatch_arms(
     generics: &syn::Generics,
+    callee_type_params: &[syn::Ident],
     receiver: DispatchReceiver,
     sig: &syn::Signature,
     fn_by_val: bool,
@@ -586,11 +768,11 @@ fn gen_dispatch_arms(
 
         let retype_sig = arm_sig.clone();
         monomorphizer.visit_signature_mut(&mut arm_sig);
-        let mut check_callee = callee.clone();
+        let mut check_callee = instantiate_dispatch_callee(callee, callee_type_params, selections);
 
         monomorphizer.visit_expr_mut(&mut check_callee);
-        let signature_check = gen_fn_signature_check(arm_sig.clone(), check_callee);
-        let arm_body = gen_definition_body(arm_sig, quote!(#callee), fn_by_val, failure_mode);
+        let signature_check = gen_fn_signature_check(arm_sig.clone(), check_callee.clone());
+        let arm_body = gen_definition_body(arm_sig, quote!(#check_callee), fn_by_val, failure_mode);
         let mut arm_body: syn::Block = if let ReturnType::Type(_, output_ty) = &retype_sig.output {
             let mut concrete_ty = item_fn_output_type(output_ty);
             monomorphizer.visit_type_mut(&mut concrete_ty);
@@ -646,6 +828,44 @@ fn gen_dispatch_arms(
     arms
 }
 
+fn instantiate_dispatch_callee(
+    callee: &syn::Expr,
+    callee_type_params: &[syn::Ident],
+    selections: &[crate::DispatchSelection<'_>],
+) -> syn::Expr {
+    let mut args = callee_type_params
+        .iter()
+        .filter_map(|param| {
+            selections.iter().find_map(|selection| {
+                let index = selection
+                    .params
+                    .iter()
+                    .position(|candidate| candidate == param)?;
+                selection.target.args.get(index).cloned()
+            })
+        })
+        .collect::<Punctuated<syn::GenericArgument, syn::Token![,]>>();
+
+    if args.is_empty() {
+        return callee.clone();
+    }
+
+    let mut callee = callee.clone();
+    let syn::Expr::Path(path) = &mut callee else {
+        return callee;
+    };
+    let Some(segment) = path.path.segments.last_mut() else {
+        return callee;
+    };
+    segment.arguments = syn::PathArguments::AngleBracketed(syn::AngleBracketedGenericArguments {
+        colon2_token: Some(Default::default()),
+        lt_token: Default::default(),
+        args: core::mem::take(&mut args),
+        gt_token: Default::default(),
+    });
+    callee
+}
+
 pub(crate) fn erase_handle_types(
     generics: &syn::Generics,
     receiver: DispatchReceiver,
@@ -670,8 +890,11 @@ pub(crate) fn erase_handle_types(
             syn::FnArg::Typed(syn::PatType { pat, ty, .. }) => {
                 **ty = erased_params.replace((**ty).clone());
 
-                if receiver.is_dyn_self() && is_synthetic_receiver(pat) {
-                    **ty = erase_dyn_self_type(ty);
+                if receiver.is_dyn_self()
+                    && (is_synthetic_receiver(pat)
+                        || is_declared_self_type(receiver.ty().unwrap(), ty))
+                {
+                    **ty = erase_dyn_self_type(receiver.ty().unwrap(), ty);
                 }
             }
         }
@@ -693,6 +916,7 @@ pub(crate) fn erase_handle_types(
 pub(crate) fn gen_handle_erase_stmts(
     self_ty: &syn::Type,
     generics: &syn::Generics,
+    erase_declared_self: bool,
     sig: &syn::Signature,
 ) -> Vec<TokenStream> {
     let mut sig = sig.clone();
@@ -701,7 +925,31 @@ pub(crate) fn gen_handle_erase_stmts(
     gen_handle_retype_stmts(
         RetypeDirection::Erase,
         generics,
-        DispatchReceiver::Impl {
+        if erase_declared_self {
+            DispatchReceiver::DynSelf {
+                ty: self_ty,
+                id: None,
+            }
+        } else {
+            DispatchReceiver::Impl {
+                ty: self_ty,
+                id: None,
+            }
+        },
+        &sig,
+    )
+}
+
+pub(crate) fn gen_dyn_self_erase_stmts(
+    self_ty: &syn::Type,
+    sig: &syn::Signature,
+) -> Vec<TokenStream> {
+    let mut sig = sig.clone();
+    normalize_fn_signature(&mut sig, Some(self_ty));
+    gen_handle_retype_stmts(
+        RetypeDirection::Erase,
+        &syn::Generics::default(),
+        DispatchReceiver::DynSelf {
             ty: self_ty,
             id: None,
         },
@@ -713,13 +961,58 @@ fn is_synthetic_receiver(pat: &syn::Pat) -> bool {
     matches!(pat, syn::Pat::Ident(ident) if ident.ident == "__co3_self")
 }
 
-fn erase_dyn_self_type(ty: &syn::Type) -> syn::Type {
-    let mut erased = ty.clone();
+pub(crate) fn is_declared_self_type(self_ty: &syn::Type, ty: &syn::Type) -> bool {
+    fn is_self(ty: &syn::Type) -> bool {
+        matches!(ty, syn::Type::Path(path) if path.qself.is_none() && path.path.is_ident("Self"))
+    }
 
+    ty == self_ty
+        || is_self(ty)
+        || matches!(ty,
+            syn::Type::Reference(reference)
+                if reference.elem.as_ref() == self_ty || is_self(&reference.elem)
+        )
+        || matches!(ty,
+            syn::Type::Ptr(pointer)
+                if pointer.elem.as_ref() == self_ty || is_self(&pointer.elem)
+        )
+}
+
+pub(crate) fn has_declared_self_input(self_ty: &syn::Type, sig: &syn::Signature) -> bool {
+    sig.inputs.iter().any(|input| match input {
+        syn::FnArg::Receiver(_) => true,
+        syn::FnArg::Typed(arg) => is_declared_self_type(self_ty, &arg.ty),
+    })
+}
+
+fn erase_dyn_self_type(self_ty: &syn::Type, ty: &syn::Type) -> syn::Type {
+    struct Replacer<'a> {
+        self_ty: &'a syn::Type,
+        replaced: bool,
+    }
+
+    impl VisitMut for Replacer<'_> {
+        fn visit_type_mut(&mut self, node: &mut syn::Type) {
+            if node == self.self_ty {
+                *node = parse_quote!(core::ffi::c_void);
+                self.replaced = true;
+                return;
+            }
+
+            syn::visit_mut::visit_type_mut(self, node);
+        }
+    }
+
+    let mut erased = ty.clone();
     if let syn::Type::Reference(reference) = &mut erased {
         *reference.elem = parse_quote!(core::ffi::c_void);
     } else {
-        unreachable!("Opaque type must be behind an indirection")
+        let mut replacer = Replacer {
+            self_ty,
+            replaced: false,
+        };
+
+        replacer.visit_type_mut(&mut erased);
     }
 
     erased
@@ -736,7 +1029,8 @@ pub(crate) fn gen_return_derase_expr(
     value: TokenStream,
 ) -> TokenStream {
     let concrete_ty = item_fn_output_type(output_ty);
-    let erased_ty = ErasedParamReplacer::new(generics).replace(concrete_ty.clone());
+    let erased_output_ty = ErasedParamReplacer::new(generics).replace(output_ty.clone());
+    let erased_ty = item_fn_output_type(&erased_output_ty);
 
     gen_retype(&value, &erased_ty, &concrete_ty)
 }
@@ -749,6 +1043,12 @@ fn gen_handle_retype_stmts(
 ) -> Vec<TokenStream> {
     let handles = sig.inputs.iter().filter(|input| !is_handle_id_arg(input));
     let mut erased_params = ErasedParamReplacer::new(generics);
+    let erased_idents = generics
+        .type_params()
+        .filter(|param| param.attrs.iter().any(is_type_erased))
+        .map(|param| &param.ident)
+        .collect::<Vec<_>>();
+    let detector = ParamUseDetector::new(erased_idents);
 
     let mut stmts = vec![];
     for input in handles {
@@ -756,19 +1056,37 @@ fn gen_handle_retype_stmts(
             syn::FnArg::Receiver(receiver) => {
                 (&receiver.attrs, quote!(__co3_self), &*receiver.ty, true)
             }
-            syn::FnArg::Typed(syn::PatType { attrs, pat, ty, .. }) => {
-                (attrs, quote!(#pat), &**ty, is_synthetic_receiver(pat))
-            }
+            syn::FnArg::Typed(syn::PatType { attrs, pat, ty, .. }) => (
+                attrs,
+                quote!(#pat),
+                &**ty,
+                is_synthetic_receiver(pat)
+                    || (receiver.is_dyn_self()
+                        && is_declared_self_type(receiver.ty().unwrap(), ty)),
+            ),
         };
+
+        if !is_self && !detector.type_mentions_param(ty) {
+            continue;
+        }
+
+        if !is_self {
+            let (_, changed) = erased_params.replace_with_change(ty.clone());
+            if !changed {
+                continue;
+            }
+        }
 
         let c_ty = item_fn_input_arg_type(attrs, ty);
         let c_ty: syn::Type = parse_quote! { #c_ty };
         let erased_ty = if receiver.is_dyn_self() && is_self {
-            let erased_self_ty = erase_dyn_self_type(ty);
+            let erased_self_ty = erase_dyn_self_type(receiver.ty().unwrap(), ty);
             let erased_c_ty = item_fn_input_arg_type(attrs, &erased_self_ty);
             parse_quote!(#erased_c_ty)
         } else {
-            erased_params.replace(c_ty.clone())
+            let erased_input_ty = erased_params.replace(ty.clone());
+            let erased_c_ty = item_fn_input_arg_type(attrs, &erased_input_ty);
+            parse_quote!(#erased_c_ty)
         };
 
         let retype = match direction {
@@ -1180,4 +1498,104 @@ fn inject_predicate_unnamed_lifetimes(
     push_universal_lifetimes(predicate, named.universal_lifetimes);
 
     named.entry
+}
+
+#[cfg(test)]
+mod erased_param_replacer_tests {
+    use super::*;
+
+    fn erase(ty: syn::Type) -> String {
+        let generics = syn::parse_quote!(<#[erased(u8)] T>);
+        let erased = ErasedParamReplacer::new(&generics).replace(ty);
+        quote!(#erased).to_string()
+    }
+
+    fn erase_receiver(ty: syn::Type) -> String {
+        let self_ty = syn::parse_quote!(Self);
+        let erased = erase_dyn_self_type(&self_ty, &ty);
+        quote!(#erased).to_string()
+    }
+
+    #[test]
+    fn no_payload_before_suffix_erases_the_root() {
+        assert_eq!(erase(syn::parse_quote!((T, u32))), "core :: ffi :: c_void");
+        assert_eq!(
+            erase(syn::parse_quote!(&(T, u32))),
+            "& core :: ffi :: c_void"
+        );
+    }
+
+    #[test]
+    fn no_payload_at_tail_preserves_the_prefix() {
+        assert_eq!(
+            erase(syn::parse_quote!((u32, T))),
+            "(u32 , core :: ffi :: c_void)"
+        );
+        assert_eq!(
+            erase(syn::parse_quote!(&(u32, T))),
+            "& (u32 , core :: ffi :: c_void)"
+        );
+    }
+
+    #[test]
+    fn no_payload_truncates_only_the_suffix() {
+        assert_eq!(
+            erase(syn::parse_quote!((u32, T, u32))),
+            "(u32 , core :: ffi :: c_void)"
+        );
+        assert_eq!(
+            erase(syn::parse_quote!((u32, u32, T))),
+            "(u32 , u32 , core :: ffi :: c_void)"
+        );
+        assert_eq!(
+            erase(syn::parse_quote!((u32, core::ffi::c_void, u32))),
+            "(u32 , core :: ffi :: c_void)"
+        );
+        assert_eq!(
+            erase(syn::parse_quote!((u32, u32, core::ffi::c_void))),
+            "(u32 , u32 , core :: ffi :: c_void)"
+        );
+    }
+
+    #[test]
+    fn no_payload_is_not_erased_through_paths_or_projections() {
+        assert_eq!(erase(syn::parse_quote!(Wrapper<T>)), "Wrapper < T >");
+        assert_eq!(erase(syn::parse_quote!(T::Assoc)), "T :: Assoc");
+        assert_eq!(
+            erase(syn::parse_quote!(<T as Trait>::Assoc)),
+            "< T as Trait > :: Assoc"
+        );
+    }
+
+    #[test]
+    fn indirect_wrapper_or_projection_erases_the_whole_pointee() {
+        assert_eq!(
+            erase(syn::parse_quote!(&Wrapper<T>)),
+            "& core :: ffi :: c_void"
+        );
+        assert_eq!(
+            erase(syn::parse_quote!(*mut T::Assoc)),
+            "* mut core :: ffi :: c_void"
+        );
+        assert_eq!(
+            erase(syn::parse_quote!(&<T as Trait>::Assoc)),
+            "& core :: ffi :: c_void"
+        );
+    }
+
+    #[test]
+    fn receiver_pointee_is_always_erased() {
+        assert_eq!(
+            erase_receiver(syn::parse_quote!(&Wrapper<Self>)),
+            "& core :: ffi :: c_void"
+        );
+        assert_eq!(
+            erase_receiver(syn::parse_quote!(&<Self as Trait>::Assoc)),
+            "& core :: ffi :: c_void"
+        );
+        assert_eq!(
+            erase_receiver(syn::parse_quote!(Box<Self>)),
+            "Box < core :: ffi :: c_void >"
+        );
+    }
 }

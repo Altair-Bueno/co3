@@ -1,0 +1,247 @@
+use std::{ffi::c_void, marker::PhantomData};
+
+use co3::{
+    ExternC, ReprC, ffi,
+    handle::{Handle, HandleFamily},
+    slice::Spread2,
+};
+
+pub trait OdbcVersion {}
+
+type SQLSMALLINT = i16;
+pub enum Payload {}
+
+impl OdbcVersion for Payload {}
+
+#[derive(Debug, ReprC)]
+#[repr(transparent)]
+#[reprC(id(SQLSMALLINT))]
+pub struct MyType<V: OdbcVersion = Payload> {
+    pub(crate) handle: *mut c_void,
+    version: PhantomData<V>,
+}
+
+pub enum SQL_OV_ODBC3 {}
+pub enum SQL_OV_ODBC3_80 {}
+pub enum SQL_OV_ODBC4 {}
+
+impl OdbcVersion for SQL_OV_ODBC3 {}
+impl OdbcVersion for SQL_OV_ODBC3_80 {}
+impl OdbcVersion for SQL_OV_ODBC4 {}
+
+ffi! {
+    #![unsafe(extern("system"))]
+
+    #[id(SQLSMALLINT)]
+    type Opaque<V: OdbcVersion = SQL_OV_ODBC3_80>;
+
+    impl<V: OdbcVersion> Drop for dyn Opaque<V>
+    where
+        use<V> @ (
+            <SQL_OV_ODBC3> |
+            <SQL_OV_ODBC3_80>
+        )
+    {
+        fn drop(&mut self);
+    }
+}
+
+unsafe impl Handle for Opaque<SQL_OV_ODBC3> {
+    const ID: Self::Kind = 8;
+}
+
+unsafe impl Handle for Opaque<SQL_OV_ODBC3_80> {
+    const ID: Self::Kind = 8;
+}
+
+trait Allocate {
+    type Source;
+}
+
+impl<V: OdbcVersion> Allocate for SQLHENV<V> {
+    type Source = i32;
+}
+
+impl<'conn, 'buf, V: OdbcVersion> Allocate for SQLHDESC<u32, V> {
+    type Source = u32;
+}
+
+co3::ffi! {
+    #![unsafe(extern("system"))]
+
+    #[id(SQLSMALLINT)]
+    type SQLHENV<V: OdbcVersion = SQL_OV_ODBC3_80>;
+
+    #[id(SQLSMALLINT)]
+    type SQLHDESC<DT, V: OdbcVersion = SQL_OV_ODBC3_80>;
+
+    impl<V: OdbcVersion> Drop for dyn SQLHENV<V>
+    where
+        use<V> @ (<SQL_OV_ODBC3> | <SQL_OV_ODBC3_80> | <SQL_OV_ODBC4>)
+    {
+        #[symbol_name = "SQLFreeHandle"]
+        fn drop(&mut self);
+    }
+
+    impl<DT, V: OdbcVersion> Drop for dyn SQLHDESC<DT, V>
+    where
+        use<DT, V> @ (
+            <u32, SQL_OV_ODBC3> |
+            <Payload, SQL_OV_ODBC3_80> |
+            <Payload, SQL_OV_ODBC4>
+        )
+    {
+        #[symbol_name = "SQLFreeHandle"]
+        fn drop(&mut self);
+    }
+
+    #[explicit_lifetimes]
+    #[symbol_name = "SQLAllocHandle"]
+    pub fn SQLAllocHandle<'a, 'b, dyn(SQLSMALLINT) T: Allocate, V: OdbcVersion>(
+        InputHandle: &'a T::Source,
+        OutputHandlePtr: &'b mut T,
+    )
+    where
+        use<T> @ (<OwnedSQLHENV<V>> | <OwnedSQLHDESC<u32, V>>);
+
+    impl<V: OdbcVersion> SQLHENV<V> {
+        pub fn get_attr0(&self);
+        pub fn get_attr1(a: &Self);
+        pub fn get_attr2(one: u32, &self);
+        pub fn get_attr3<dyn(u32) T = u32>(one: T, &self)
+        where
+            use<T> @ <SQLHENV2>;
+    }
+
+    impl<V: OdbcVersion> SQLHENV<V> {
+        #[explicit_lifetimes]
+        #[symbol_name = "SQLGetEnvAttr"]
+        pub fn get_attr<'attr, dyn(i32) A: EnvAttr>(
+            &self,
+            attribute: <dyn A>::ID,
+            #[spread2(u32, i32)]
+            move value1: <A as EnvAttr>::Value,
+            #[spread2(u32, i32)]
+            value2: <A as EnvAttr>::Value,
+            string_length: &mut i32,
+        )
+        where
+            use<A> @ (<SQL_ATTR_ODBC_VERSION> | <SQL_ATTR_CP_MATCH>);
+    }
+}
+
+#[derive(Clone)]
+struct SQLHENV2(u32);
+
+impl SQLHENV2 {
+    pub fn get_attr0(&self) {}
+    pub fn get_attr1(_a: &Self) {}
+    pub fn get_attr2(self: Box<Self>) {}
+    pub fn get_attr3<T>(&self, _one: T) {}
+}
+
+co3::ffi! {
+    #![unsafe(export("system"))]
+
+    #[id(u32)]
+    type SQLHENV2;
+
+    impl<T> Drop for dyn T
+    where
+        use<T> @ <SQLHENV2>
+    {
+        fn drop(&mut self);
+    }
+
+    impl SQLHENV2 {
+        pub fn get_attr0(&self);
+        pub fn get_attr1(a: &Self);
+        pub fn get_attr2(self: Box<Self>);
+        pub fn get_attr3<dyn(u32) T = u32>(&self, move one: T)
+        where
+            use<T> @ <SQLHENV2>;
+    }
+}
+
+unsafe impl Handle for SQLHENV2 {
+    const ID: Self::Kind = 7;
+}
+
+unsafe impl<V: OdbcVersion> Handle for SQLHENV<V> {
+    const ID: Self::Kind = 8;
+}
+
+unsafe impl<DT, V: OdbcVersion> Handle for SQLHDESC<DT, V> {
+    const ID: Self::Kind = 9;
+}
+
+pub trait EnvAttr {
+    type Value;
+}
+
+#[derive(Clone)]
+enum SQL_ATTR_ODBC_VERSION {}
+#[derive(Clone)]
+enum SQL_ATTR_CP_MATCH {}
+impl EnvAttr for SQL_ATTR_ODBC_VERSION {
+    type Value = CpMatch;
+}
+
+impl EnvAttr for SQL_ATTR_CP_MATCH {
+    type Value = ConnectionPooling;
+}
+
+impl HandleFamily for SQL_ATTR_ODBC_VERSION {
+    type Kind = i32;
+}
+impl HandleFamily for SQL_ATTR_CP_MATCH {
+    type Kind = i32;
+}
+unsafe impl Handle for SQL_ATTR_ODBC_VERSION {
+    const ID: Self::Kind = 80;
+}
+
+unsafe impl Handle for SQL_ATTR_CP_MATCH {
+    const ID: Self::Kind = 80;
+}
+
+impl Spread2 for <CpMatch as ExternC>::CType {
+    type Part1 = u32;
+    type Part2 = i32;
+
+    fn into_parts(self) -> (Self::Part1, Self::Part2) {
+        (self.0, 0)
+    }
+
+    fn from_parts(part1: Self::Part1, _part2: Self::Part2) -> Self {
+        Self(part1)
+    }
+}
+
+impl Spread2 for CConnectionPooling {
+    type Part1 = u32;
+    type Part2 = i32;
+
+    fn into_parts(self) -> (Self::Part1, Self::Part2) {
+        (self.0, 0)
+    }
+
+    fn from_parts(part1: Self::Part1, _part2: Self::Part2) -> Self {
+        Self(part1)
+    }
+}
+
+#[derive(Clone, ReprC)]
+#[repr(u32)]
+enum CpMatch {
+    A,
+}
+
+#[derive(Clone, ReprC)]
+#[repr(u32)]
+enum ConnectionPooling {
+    A,
+    B,
+}
+
+fn main() {}

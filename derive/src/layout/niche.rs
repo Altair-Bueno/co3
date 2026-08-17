@@ -116,7 +116,8 @@ pub fn gen_enum_niche_ir(
     let niche_tag_value = quote! { #niche_discriminant as #tag_ty };
 
     let niche_value = if is_fieldless {
-        niche_tag_value
+        let ctype_name = gen_ctype_name(enum_name);
+        quote! { #ctype_name(#niche_tag_value) }
     } else {
         match repr {
             Some(ReprKind::C(Some(_))) => quote! {

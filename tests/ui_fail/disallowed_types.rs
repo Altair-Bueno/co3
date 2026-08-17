@@ -28,6 +28,10 @@ struct Array2([u8; 8]);
 #[repr(C)]
 struct NonTransparentDst([u8]);
 
+#[derive(RustSpec)]
+#[repr(C)]
+struct StableButNotCStatic(u32);
+
 handles! {
     unsafe {
         Handle,
@@ -138,6 +142,13 @@ mod provider {
             fn me(self);
         }
     }
+
+    ffi! {
+        #![unsafe(export("C"))]
+
+        static UNSTABLE_STATIC: String = String::new();
+        static mut NON_C_STATIC: StableButNotCStatic = StableButNotCStatic(0);
+    }
 }
 
 ffi! {
@@ -218,6 +229,13 @@ ffi! {
     {
         fn me(id: <dyn T>::ID, self);
     }
+}
+
+ffi! {
+    #![unsafe(extern("C"))]
+
+    static UNSTABLE_STATIC: String;
+    static mut NON_C_STATIC: StableButNotCStatic;
 }
 
 fn main() {}

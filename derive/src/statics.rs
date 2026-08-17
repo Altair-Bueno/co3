@@ -15,15 +15,31 @@ fn gen_static_assert(ty: &syn::Type, checked_transmute: bool) -> TokenStream {
     let co3 = co3_path();
 
     let checked_transmute = checked_transmute.then(|| {
-        quote! { assert!(#co3::impls!(#ty: #co3::transmute::CheckedTransmute)); }
+        quote! {
+            assert!(
+                #co3::impls!(#ty: #co3::transmute::CheckedTransmute),
+                concat!(
+                    "ffi static `",
+                    stringify!(#ty),
+                    "` must support checked transmutation"
+                )
+            );
+        }
     });
 
     quote! {
         const _: () = {
-            assert!(#co3::impls!(#ty: #co3::rust_spec::RustSpec<
-                Layout = #co3::rust_spec::Stable,
-                Size = #co3::rust_spec::size::Sized<#co3::rust_spec::Gt<#co3::rust_spec::Zero>>
-            >));
+            assert!(
+                #co3::impls!(#ty: #co3::rust_spec::RustSpec<
+                    Layout = #co3::rust_spec::Stable,
+                    Size = #co3::rust_spec::size::Sized<#co3::rust_spec::Gt<#co3::rust_spec::Zero>>
+                >),
+                concat!(
+                    "ffi static `",
+                    stringify!(#ty),
+                    "` must have a stable, non-zero layout"
+                )
+            );
 
             #checked_transmute
         };
@@ -33,6 +49,7 @@ fn gen_static_assert(ty: &syn::Type, checked_transmute: bool) -> TokenStream {
 fn wrapper_definition(
     vis: &syn::Visibility,
     ident: &syn::Ident,
+    ty: &syn::Type,
     mutable: bool,
 ) -> (syn::Ident, TokenStream, TokenStream) {
     let wrapper_ident = static_wrapper_ident(ident);
@@ -43,7 +60,7 @@ fn wrapper_definition(
                 #[derive(Clone, Copy)]
                 #[doc(hidden)]
                 #vis struct #wrapper_ident(
-                    core::marker::PhantomData<core::cell::UnsafeCell<()>>,
+                    core::marker::PhantomData<core::cell::UnsafeCell<#ty>>,
                 );
             },
             quote! {
@@ -55,9 +72,11 @@ fn wrapper_definition(
             quote! {
                 #[derive(Clone, Copy)]
                 #[doc(hidden)]
-                #vis struct #wrapper_ident;
+                #vis struct #wrapper_ident(core::marker::PhantomData<#ty>);
             },
-            quote! { #vis static #ident: #wrapper_ident = #wrapper_ident; },
+            quote! {
+                #vis const #ident: #wrapper_ident = #wrapper_ident(core::marker::PhantomData);
+            },
         )
     };
 
@@ -71,14 +90,17 @@ fn gen_export_wrapper(
     raw_ident: &syn::Ident,
     mutable: bool,
 ) -> TokenStream {
-    let (wrapper_ident, definition, value) = wrapper_definition(vis, ident, mutable);
+    let (wrapper_ident, definition, value) = wrapper_definition(vis, ident, ty, mutable);
 
     let co3 = co3_path();
     let (deref, get) = (!mutable)
         .then(|| {
             (
                 quote! {
-                    impl core::ops::Deref for #wrapper_ident {
+                    impl core::ops::Deref for #wrapper_ident
+                    where
+                        #ty: Sync,
+                    {
                         type Target = #ty;
 
                         #[inline]
@@ -89,7 +111,10 @@ fn gen_export_wrapper(
                 },
                 quote! {
                     #[inline]
-                    pub fn get(&self) -> &#ty {
+                    pub fn get(&self) -> &#ty
+                    where
+                        #ty: Sync,
+                    {
                         unsafe { &*(&#raw_ident as *const _ as *const #ty) }
                     }
                 },
@@ -121,17 +146,21 @@ fn gen_export_wrapper(
             #[inline]
             pub fn read(&self) -> #ty
             where for<'_dummy> #ty: core::clone::Clone,
-            { self.get().clone() }
+            {
+                unsafe { (&*(&#raw_ident as *const _ as *const #ty)).clone() }
+            }
         }
     };
     let mutable_methods = mutable.then(|| quote! {
         #[inline]
+        #[allow(clippy::useless_transmute)]
         pub unsafe fn set(&self, value: #ty) {
             let value = unsafe { core::mem::transmute::<#ty, _>(value) };
             unsafe { core::ptr::write(core::ptr::addr_of_mut!(#raw_ident), value); }
         }
 
         #[inline]
+        #[allow(clippy::useless_transmute)]
         pub unsafe fn take(&self) -> Option<#ty>
         where for<'_dummy> #ty: core::default::Default,
         {
@@ -169,7 +198,7 @@ fn gen_import_wrapper(
     raw_ident: &syn::Ident,
     mutable: bool,
 ) -> TokenStream {
-    let (wrapper_ident, definition, value) = wrapper_definition(vis, ident, mutable);
+    let (wrapper_ident, definition, value) = wrapper_definition(vis, ident, ty, mutable);
 
     let co3 = co3_path();
     let decode_bounds = quote! {
@@ -235,7 +264,8 @@ fn gen_import_wrapper(
         quote! {
             #[inline]
             pub fn get(&self) -> Option<&#ty>
-            where for<'_dummy> #ty: #co3::transmute::CheckedTransmute,
+            where
+                for<'_dummy> #ty: #co3::transmute::CheckedTransmute + Sync,
             {
                 let valid = unsafe {
                     <#ty as #co3::transmute::CheckedTransmute>::is_valid(
@@ -328,6 +358,7 @@ pub(crate) fn gen_export_static(item: FfiStatic) -> TokenStream {
 
         #(#cfg_attrs)*
         #(#attrs)*
+        #[allow(clippy::useless_transmute)]
         #static_token #mutability #raw_ident: <#ty as #co3::ExternC>::CType =
             unsafe { core::mem::transmute::<#ty, _>(#expr) };
     }

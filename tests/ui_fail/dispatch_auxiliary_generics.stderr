@@ -1,0 +1,35 @@
+error: non-dispatched generic type parameters are not supported
+  --> tests/ui_fail/dispatch_auxiliary_generics.rs:11:26
+   |
+11 |     fn leaked<dyn(u8) T, U>(value: &U)
+   |                          ^
+
+error: Type parameters require a tagged-dispatch predicate
+  --> tests/ui_fail/dispatch_auxiliary_generics.rs:19:19
+   |
+19 |     fn missing_use<dyn(u8) T>();
+   |                   ^^^^^^^^^^^
+
+error: non-dispatched generic type parameters are not supported
+  --> tests/ui_fail/dispatch_auxiliary_generics.rs:25:33
+   |
+25 |     fn payload<dyn(u8) T = u32, U>()
+   |                                 ^
+
+error: non-dispatched generic type parameters are not supported
+  --> tests/ui_fail/dispatch_auxiliary_generics.rs:33:27
+   |
+33 |     fn partial<dyn(u8) T, U>()
+   |                           ^
+
+error: function and method dispatch groups require a `dyn(TagTy)` parameter
+  --> tests/ui_fail/dispatch_auxiliary_generics.rs:44:13
+   |
+44 |         use<V> @ (<u8>);
+   |             ^
+
+error: function and method dispatch groups require a `dyn(TagTy)` parameter
+  --> tests/ui_fail/dispatch_auxiliary_generics.rs:54:17
+   |
+54 |             use<V> @ (<u8>);
+   |                 ^

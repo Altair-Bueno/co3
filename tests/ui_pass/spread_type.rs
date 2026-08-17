@@ -16,6 +16,31 @@ fn spread_len_impl(values: &[u32]) -> usize {
     values.len()
 }
 
+mod c_symbols {
+    #[unsafe(no_mangle)]
+    extern "C" fn spread_len(_: *const u32, len: usize) -> usize {
+        len
+    }
+
+    #[unsafe(no_mangle)]
+    extern "C" fn counter_inherent_spread_len(
+        counter: *const super::Counter,
+        _: *const u32,
+        len: usize,
+    ) -> usize {
+        unsafe { (*counter).0 + len }
+    }
+
+    #[unsafe(no_mangle)]
+    extern "C" fn counter_trait_spread_len(
+        counter: *const super::Counter,
+        _: *const u32,
+        len: usize,
+    ) -> usize {
+        unsafe { (*counter).0 + len + 1 }
+    }
+}
+
 impl Counter {
     fn inherent_spread_len(&self, values: &[u32]) -> usize {
         self.0 + values.len()
@@ -29,36 +54,19 @@ impl ExportSpreadLen for Counter {
 }
 
 ffi! {
-    #![unsafe(export("C"))]
-
-    #[symbol_name = "spread_len"]
-    fn spread_len_impl(values: ..&[u32]) -> usize;
-
-    impl Counter {
-        #[symbol_name = "counter_inherent_spread_len"]
-        fn inherent_spread_len(&self, values: ..&[u32]) -> usize;
-    }
-
-    impl ExportSpreadLen for Counter {
-        #[symbol_name = "counter_trait_spread_len"]
-        fn export_trait_spread_len(&self, values: ..&[u32]) -> usize;
-    }
-}
-
-ffi! {
     #![unsafe(extern("C"))]
 
     #[symbol_name = "spread_len"]
-    fn spread_len(values: ..&[u32]) -> usize;
+    fn spread_len(#[spread2] values: &[u32]) -> usize;
 
     impl Counter {
         #[symbol_name = "counter_inherent_spread_len"]
-        fn imported_inherent_spread_len(&self, values: ..&[u32]) -> usize;
+        fn imported_inherent_spread_len(&self, #[spread2] values: &[u32]) -> usize;
     }
 
     impl ImportSpreadLen for Counter {
         #[symbol_name = "counter_trait_spread_len"]
-        fn import_trait_spread_len(&self, values: ..&[u32]) -> usize;
+        fn import_trait_spread_len(&self, #[spread2] values: &[u32]) -> usize;
     }
 }
 

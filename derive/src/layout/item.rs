@@ -13,10 +13,11 @@ use crate::layout::{
         gen_view_owner_name,
     },
     ctype::{
-        gen_ctype_name, gen_extern_c_bounds_for_ctype, gen_item_ctype, gen_variant_struct_name,
+        gen_ctype_name, gen_extern_c_bounds_for_ctype, gen_fieldless_enum_ctype, gen_item_ctype,
+        gen_variant_struct_name,
     },
-    enum_tag_type, generic_param_idents, infer_repr, is_exhaustive_enum, is_transparent_enum_repr,
-    is_type_parametrized,
+    enum_tag_type, generic_param_idents, infer_repr, is_exhaustive_enum, is_phantom_data,
+    is_transparent_enum_repr, is_type_parametrized,
     niche::{gen_enum_niche_ir, gen_struct_niche_ir},
     primitive_tag_type, repr_type_is_signed,
 };
@@ -39,9 +40,13 @@ pub(super) fn derive_item(
     let is_wide_data = attrs.is_wide_data;
 
     let ctype_def = (!is_view).then(|| gen_item_ctype(repr, input, !is_wide_data));
-    let view_def = (!is_view && !is_wide_data).then(|| gen_item_view(input, attrs, variant_attrs));
+    let is_transparent = matches!(repr, Some(ReprKind::Transparent));
+    let view_def = (!is_view && !is_wide_data)
+        .then(|| gen_item_view(input, attrs, variant_attrs, is_transparent));
 
-    let borrow_impls = (!is_view && !is_wide_data).then(|| gen_item_borrow_impls(input));
+    let borrow_impls =
+        (!is_view && !is_wide_data).then(|| gen_item_borrow_impls(input, is_transparent));
+
     let codec_impls = gen_item_codec_impls(repr, input, attrs, variant_attrs);
     let niche_impls = (!is_view).then(|| gen_item_niche_impls(repr, input, attrs));
     let interior_mut_impl = gen_item_interior_mut_impl(repr, input);
@@ -755,6 +760,7 @@ fn gen_checked_transmute_bounds<const ADD_COPY: bool>(
 
     let mut predicates = fields
         .iter()
+        .filter(|ty| !is_phantom_data(ty))
         .map(|&ty| {
             let for_dummy = (!is_type_parametrized(ty, generics)).then_some(quote!(for<'_dummy>));
 
@@ -768,12 +774,14 @@ fn gen_checked_transmute_bounds<const ADD_COPY: bool>(
         })
         .collect::<Vec<_>>();
 
-    let for_dummy = (!is_type_parametrized(last, generics)).then_some(quote!(for<'_dummy>));
-    let copy_bound = ADD_COPY.then(|| quote! { <CType: Copy> });
+    if !is_phantom_data(last) {
+        let for_dummy = (!is_type_parametrized(last, generics)).then_some(quote!(for<'_dummy>));
+        let copy_bound = ADD_COPY.then(|| quote! { <CType: Copy> });
 
-    predicates.push(parse_quote! {
-        #for_dummy #last: co3::transmute::CheckedTransmute #copy_bound
-    });
+        predicates.push(parse_quote! {
+            #for_dummy #last: co3::transmute::CheckedTransmute #copy_bound
+        });
+    }
 
     predicates
 }
@@ -793,10 +801,19 @@ fn gen_record_is_valid(
         }}
     });
 
-    quote! { #(
-        if !unsafe { <#field_types as co3::transmute::CheckedTransmute>::is_valid(#field_names)} {
-            return false;
-        })*
+    let field_validation = field_names
+        .iter()
+        .zip(field_types)
+        .filter(|(_, field_ty)| !is_phantom_data(field_ty))
+        .map(|(field_name, field_ty)| {
+                quote! {
+                    if !unsafe { <#field_ty as co3::transmute::CheckedTransmute>::is_valid(#field_name)} {
+                        return false;
+                    }
+                }
+        });
+
+    quote! { #(#field_validation)*
 
         true #niche_validation #custom_validation
     }
@@ -804,6 +821,7 @@ fn gen_record_is_valid(
 
 pub(super) fn derive_fieldless_enum(
     repr: Option<&ReprKind>,
+    vis: &syn::Visibility,
     name: &Ident,
     generics: &syn::Generics,
     variants: &syn::punctuated::Punctuated<syn::Variant, syn::Token![,]>,
@@ -827,7 +845,7 @@ pub(super) fn derive_fieldless_enum(
         None => quote! {},
         Some(ReprKind::C(None)) => unreachable!(),
         Some(ReprKind::Transparent) => {
-            quote! { unsafe fn is_valid((): &()) -> bool { true } }
+            quote! { unsafe fn is_valid(_: &Self::CType) -> bool { true } }
         }
         Some(ReprKind::C(Some(repr)) | ReprKind::Primitive(repr))
             if is_exhaustive_enum(variants.len(), repr) =>
@@ -838,9 +856,9 @@ pub(super) fn derive_fieldless_enum(
             let niche_value = proc_macro2::Literal::usize_unsuffixed(variants.len());
 
             let is_valid = if repr_type_is_signed(repr) {
-                quote! { *target >= 0 && (*target as usize) < #niche_value }
+                quote! { target.0 >= 0 && (target.0 as usize) < #niche_value }
             } else {
-                quote! { (*target as usize) < #niche_value }
+                quote! { (target.0 as usize) < #niche_value }
             };
 
             quote! { unsafe fn is_valid(target: &Self::CType) -> bool { #is_valid } }
@@ -866,17 +884,17 @@ pub(super) fn derive_fieldless_enum(
         quote! { #idx => Some(Self::#variant_name) }
     });
 
-    let ctype = tag_type
-        .as_ref()
-        .map(|repr| quote! { #repr })
-        .unwrap_or_else(|| quote! { () });
+    let ctype_name = gen_ctype_name(name);
+    let ctype_ty = quote!(#ctype_name #ty_generics);
+    let tag_ctype: syn::Type = tag_type.clone().unwrap_or_else(|| parse_quote!(()));
+    let ctype_def = gen_fieldless_enum_ctype(&tag_ctype, vis, name, generics);
     let encode_impl = tag_type
         .as_ref()
-        .map(|repr| quote! { self as #repr })
-        .unwrap_or_else(|| quote! { () });
+        .map(|repr| quote! { #ctype_name(self as #repr) })
+        .unwrap_or_else(|| quote! { #ctype_name(()) });
     let decode_impl = if tag_type.is_some() {
         quote! {
-            match source {
+            match source.0 {
                 #(#variants_decode,)*
                 _ => None
             }
@@ -885,7 +903,7 @@ pub(super) fn derive_fieldless_enum(
         let transparent_variant = &variants[0].ident;
 
         quote! {
-            let () = source;
+            let #ctype_name(()) = source;
             Some(Self::#transparent_variant)
         }
     };
@@ -896,11 +914,12 @@ pub(super) fn derive_fieldless_enum(
     let borrow_impls = gen_identity_borrow_impls(name, generics);
 
     quote! {
+        #ctype_def
         #niche_impl
         #borrow_impls
 
         impl #impl_generics co3::ExternC for #name #ty_generics #where_clause {
-            type CType = #ctype;
+            type CType = #ctype_ty;
         }
         unsafe impl #impl_generics co3::stored::EncodeOwned for #name #ty_generics #where_clause {
             type Store = ();
@@ -1160,10 +1179,14 @@ fn gen_field_encode_bounds<'a>(
     fields: &'a [&syn::Type],
     bound: TokenStream,
 ) -> impl Iterator<Item = syn::WherePredicate> + use<'a> {
-    fields.iter().map(move |ty| {
-        let for_dummy = (!is_type_parametrized(ty, generics)).then_some(quote! { for<'_dummy> });
-        parse_quote! { #for_dummy #ty: #bound<CType: Copy> }
-    })
+    fields
+        .iter()
+        .filter(move |ty| !is_phantom_data(ty))
+        .map(move |ty| {
+            let for_dummy =
+                (!is_type_parametrized(ty, generics)).then_some(quote! { for<'_dummy> });
+            parse_quote! { #for_dummy #ty: #bound<CType: Copy> }
+        })
 }
 
 fn gen_field_decode_bounds<'a>(
@@ -1171,10 +1194,14 @@ fn gen_field_decode_bounds<'a>(
     fields: &'a [&syn::Type],
     bound: TokenStream,
 ) -> impl Iterator<Item = syn::WherePredicate> + use<'a> {
-    fields.iter().map(move |ty| {
-        let for_dummy = (!is_type_parametrized(ty, generics)).then_some(quote! { for<'_dummy> });
-        parse_quote! { #for_dummy #ty: #bound<'_dšč, CType: Copy> }
-    })
+    fields
+        .iter()
+        .filter(move |ty| !is_phantom_data(ty))
+        .map(move |ty| {
+            let for_dummy =
+                (!is_type_parametrized(ty, generics)).then_some(quote! { for<'_dummy> });
+            parse_quote! { #for_dummy #ty: #bound<'_dšč, CType: Copy> }
+        })
 }
 
 fn encode_store_type(fields: &syn::Fields) -> TokenStream {
@@ -1213,6 +1240,7 @@ fn gen_borrow_cast_view_bounds<const ADD_COPY: bool>(
 
     let mut predicates = fields
         .iter()
+        .filter(|ty| !is_phantom_data(ty))
         .map(|ty| borrow_ty(ty))
         .filter(|ty| is_type_parametrized(ty, generics))
         .map(|ty| {
@@ -1226,10 +1254,13 @@ fn gen_borrow_cast_view_bounds<const ADD_COPY: bool>(
         })
         .collect::<Vec<_>>();
 
-    let last = borrow_ty(last);
-    if is_type_parametrized(last, generics) {
-        let ctype_bound = ADD_COPY.then(|| quote! { <AsConst: Copy> + Copy });
-        predicates.push(quote!(#last: co3::ExternC<CType: co3::borrow::BorrowCast #ctype_bound>));
+    if !is_phantom_data(last) {
+        let last = borrow_ty(last);
+        if is_type_parametrized(last, generics) {
+            let ctype_bound = ADD_COPY.then(|| quote! { <AsConst: Copy> + Copy });
+            predicates
+                .push(quote!(#last: co3::ExternC<CType: co3::borrow::BorrowCast #ctype_bound>));
+        }
     }
 
     predicates

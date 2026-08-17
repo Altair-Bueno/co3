@@ -112,17 +112,17 @@ error: tagged-dispatch type parameters must use `dyn(TagTy) T`
 241 |     impl<dyn T> Kita for T
     |          ^^^
 
-error: blanket `dyn T` is not supported; declare `<dyn T> instead
-   --> tests/ui_fail/dispatch_restrictions.rs:253:22
+error: blanket `dyn T` may dispatch only to foreign types declared in this `ffi!` block
+   --> tests/ui_fail/dispatch_restrictions.rs:255:19
     |
-253 |     impl<T> Kita for dyn T
-    |                      ^^^^^
+255 |         use<T> @ <u32>,
+    |                   ^^^
 
-error: blanket `dyn T` is not supported; declare `<dyn T> instead
-   --> tests/ui_fail/dispatch_restrictions.rs:264:22
+error: blanket `dyn T` may dispatch only to foreign types declared in this `ffi!` block
+   --> tests/ui_fail/dispatch_restrictions.rs:266:19
     |
-264 |     impl<T> Kita for dyn T
-    |                      ^^^^^
+266 |         use<T> @ <u32>,
+    |                   ^^^
 
 error: `dyn Self` is only supported on generic `Self`
    --> tests/ui_fail/dispatch_restrictions.rs:276:22
@@ -169,15 +169,6 @@ error[E0552]: unrecognized representation hint
     = help: valid reprs are `Rust` (default), `C`, `align`, `packed`, `transparent`, `simd`, `i8`, `u8`, `i16`, `u16`, `i32`, `u32`, `i64`, `u64`, `i128`, `u128`, `isize`, `usize`
     = note: for more information, visit <https://doc.rust-lang.org/reference/type-layout.html?highlight=repr#representations>
 
-error[E0552]: unrecognized representation hint
-   --> tests/ui_fail/dispatch_restrictions.rs:366:14
-    |
-366 |     impl<dyn(char) T> RefKita for T
-    |              ^^^^
-    |
-    = help: valid reprs are `Rust` (default), `C`, `align`, `packed`, `transparent`, `simd`, `i8`, `u8`, `i16`, `u16`, `i32`, `u32`, `i64`, `u64`, `i128`, `u128`, `isize`, `usize`
-    = note: for more information, visit <https://doc.rust-lang.org/reference/type-layout.html?highlight=repr#representations>
-
 error[E0119]: conflicting implementations of trait `RefKita` for type `Externed1`
    --> tests/ui_fail/dispatch_restrictions.rs:389:1
     |
@@ -207,19 +198,6 @@ error[E0308]: mismatched types
     = note: enum variant discriminant can only be of a primitive type compatible with the enum's `repr`
     = note: this error originates in the macro `ffi` (in Nightly builds, run with -Z macro-backtrace for more info)
 
-error[E0308]: mismatched types
-   --> tests/ui_fail/dispatch_restrictions.rs:359:1
-    |
-359 | / ffi! {
-360 | |     #![unsafe(extern("C"))]
-361 | |     #![symbol_prefix = "kita"]
-...   |
-373 | | }
-    | |_^ expected `isize`, found `char`
-    |
-    = note: enum variant discriminant can only be of a primitive type compatible with the enum's `repr`
-    = note: this error originates in the macro `ffi` (in Nightly builds, run with -Z macro-backtrace for more info)
-
 error[E0081]: discriminant value `0` assigned more than once
    --> tests/ui_fail/dispatch_restrictions.rs:375:1
     |
@@ -236,23 +214,5 @@ error[E0081]: discriminant value `0` assigned more than once
     | |  |
     | |__`0` assigned here
     |    `0` assigned here
-    |
-    = note: this error originates in the macro `ffi` (in Nightly builds, run with -Z macro-backtrace for more info)
-
-error[E0081]: discriminant value `1` assigned more than once
-   --> tests/ui_fail/dispatch_restrictions.rs:389:1
-    |
-389 | // ffi! {
-390 | ||     #![unsafe(extern("C"))]
-391 | ||     #![symbol_prefix = "kita"]
-...   ||
-396 | ||     impl<dyn(u32) T> RefKita for T
-    | ||___________________^
-...   |
-403 | |  }
-    | |  -
-    | |  |
-    | |__`1` assigned here
-    |    `1` assigned here
     |
     = note: this error originates in the macro `ffi` (in Nightly builds, run with -Z macro-backtrace for more info)

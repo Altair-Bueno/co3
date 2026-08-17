@@ -5,7 +5,7 @@ use syn::{DeriveInput, Ident, parse_quote};
 use crate::layout::{
     ReprCAttrs, VariantReprCAttrs,
     ctype::gen_ctype_name,
-    generic_param_idents, is_type_parametrized,
+    generic_param_idents, is_phantom_data, is_type_parametrized,
     item::{field_vars, gen_fields_destructure},
 };
 
@@ -13,8 +13,13 @@ pub(super) fn gen_item_view(
     input: &DeriveInput,
     attrs: &ReprCAttrs,
     variant_attrs: &[VariantReprCAttrs],
+    is_transparent: bool,
 ) -> TokenStream {
     if attrs.is_view {
+        return quote! {};
+    }
+
+    if is_transparent && fields_are_only_phantom_data(&input.data) {
         return quote! {};
     }
 
@@ -24,7 +29,7 @@ pub(super) fn gen_item_view(
     view_def.ident = gen_view_name(&input.ident);
 
     rewrite_view_generics(&mut view_def);
-    rewrite_view_fields(&mut view_def.data);
+    rewrite_view_fields(&mut view_def.data, &input.generics, is_transparent);
 
     quote! {
         #[derive(co3::rust_spec::RustSpec, co3::ReprC)]
@@ -34,14 +39,21 @@ pub(super) fn gen_item_view(
     }
 }
 
-pub(super) fn gen_item_borrow_impls(input: &DeriveInput) -> TokenStream {
+pub(super) fn gen_item_borrow_impls(input: &DeriveInput, is_transparent: bool) -> TokenStream {
+    if is_transparent && fields_are_only_phantom_data(&input.data) {
+        return gen_identity_borrow_impls(&input.ident, &input.generics);
+    }
+
     match &input.data {
         syn::Data::Struct(data) => {
-            gen_struct_borrow_impls(&input.ident, &input.generics, &data.fields)
+            gen_struct_borrow_impls(&input.ident, &input.generics, &data.fields, is_transparent)
         }
-        syn::Data::Enum(data) => {
-            gen_enum_borrow_impls(&input.ident, &input.generics, &data.variants)
-        }
+        syn::Data::Enum(data) => gen_enum_borrow_impls(
+            &input.ident,
+            &input.generics,
+            &data.variants,
+            is_transparent,
+        ),
         syn::Data::Union(_) => unreachable!(),
     }
 }
@@ -50,15 +62,16 @@ fn gen_struct_borrow_impls(
     name: &Ident,
     generics: &syn::Generics,
     fields: &syn::Fields,
+    is_transparent: bool,
 ) -> TokenStream {
     let fields_destructure = gen_fields_destructure(fields);
 
     let view_name = gen_view_name(name);
     let field_tys = fields.iter().map(|field| &field.ty).collect::<Vec<_>>();
     let owner_type = struct_view_owner_type(fields);
-    let borrowed_fields = gen_field_borrow_exprs(fields);
+    let borrowed_fields = gen_field_borrow_exprs(fields, generics, is_transparent);
     let borrowed_view = gen_record_construction(quote! { #view_name }, fields, &borrowed_fields);
-    let from_borrow_body = gen_record_from_borrow(quote!(Self), fields);
+    let from_borrow_body = gen_record_from_borrow(quote!(Self), fields, generics, is_transparent);
 
     let (borrow_impl, from_borrow_impl) = (
         quote! {
@@ -85,6 +98,7 @@ fn gen_enum_borrow_impls(
     name: &Ident,
     generics: &syn::Generics,
     variants: &syn::punctuated::Punctuated<syn::Variant, syn::Token![,]>,
+    is_transparent: bool,
 ) -> TokenStream {
     let fields = variants
         .iter()
@@ -105,7 +119,8 @@ fn gen_enum_borrow_impls(
             let view_head = quote! { #view_name::#variant_name };
             let owned_head = quote! { Self::#variant_name };
             let borrowed_variant = gen_record_construction(view_head, &variant.fields, &field_vars);
-            let from_borrow_body = gen_record_from_borrow(owned_head, &variant.fields);
+            let from_borrow_body =
+                gen_record_from_borrow(owned_head, &variant.fields, generics, is_transparent);
 
             let owner_variant = either_variant_name(idx);
             let owner_vars = (0..field_vars.len())
@@ -113,9 +128,15 @@ fn gen_enum_borrow_impls(
                 .collect::<Vec<_>>();
             let borrow_stmts = field_vars
                 .iter()
+                .zip(&variant.fields)
                 .zip(&owner_vars)
-                .map(|(field_var, owner_var)| quote! {
-                    let #field_var = co3::borrow::Borrow::borrow(#field_var, #owner_var);
+                .filter(|((_, field), _)| {
+                    !is_transparent_marker_field(&field.ty, generics, is_transparent)
+                })
+                .map(|((field_var, _), owner_var)| {
+                        quote! {
+                            let #field_var = co3::borrow::Borrow::borrow(#field_var, #owner_var);
+                        }
                 });
 
             (
@@ -248,13 +269,25 @@ fn enum_view_owner_type(
     quote! { core::option::Option<co3::either::#either_name<#(#owners),*>> }
 }
 
-fn gen_field_borrow_exprs(fields: &syn::Fields) -> Vec<TokenStream> {
+fn gen_field_borrow_exprs(
+    fields: &syn::Fields,
+    generics: &syn::Generics,
+    is_transparent: bool,
+) -> Vec<TokenStream> {
     let field_vars = field_vars(fields);
 
     field_vars
         .iter()
         .enumerate()
         .map(|(idx, field_var)| {
+            let field = fields
+                .iter()
+                .nth(idx)
+                .expect("field variable matches field");
+            if is_transparent_marker_field(&field.ty, generics, is_transparent) {
+                return quote!(#field_var);
+            }
+
             let idx = syn::Index::from(idx);
             quote! { co3::borrow::Borrow::borrow(#field_var, &mut owner.#idx) }
         })
@@ -276,27 +309,41 @@ fn gen_record_construction(
     }
 }
 
-fn gen_record_from_borrow(head: TokenStream, fields: &syn::Fields) -> TokenStream {
+fn gen_record_from_borrow(
+    head: TokenStream,
+    fields: &syn::Fields,
+    generics: &syn::Generics,
+    is_transparent: bool,
+) -> TokenStream {
     let field_vars = field_vars(fields);
 
-    match fields {
-        syn::Fields::Named(_) | syn::Fields::Unit => {
-            let field_names: Vec<_> = fields.iter().filter_map(|f| f.ident.as_ref()).collect();
+    let values = fields.iter().zip(&field_vars).map(|(field, field_var)| {
+        if is_transparent_marker_field(&field.ty, generics, is_transparent) {
+            quote!(#field_var)
+        } else {
+            quote!(co3::borrow::FromBorrow::from_borrow(#field_var))
+        }
+    });
 
-            quote! { #head { #(#field_names: co3::borrow::FromBorrow::from_borrow(#field_vars)),* } }
-        }
-        syn::Fields::Unnamed(_) => {
-            quote! { #head(#(co3::borrow::FromBorrow::from_borrow(#field_vars)),*) }
-        }
-    }
+    gen_record_construction(head, fields, &values.collect::<Vec<_>>())
 }
 
-fn rewrite_view_fields(data: &mut syn::Data) {
+fn is_transparent_marker_field(
+    ty: &syn::Type,
+    generics: &syn::Generics,
+    is_transparent: bool,
+) -> bool {
+    is_transparent && is_phantom_data(ty) && is_type_parametrized(ty, generics)
+}
+
+fn rewrite_view_fields(data: &mut syn::Data, generics: &syn::Generics, is_transparent: bool) {
     match data {
-        syn::Data::Struct(data) => rewrite_view_field_tys(&mut data.fields),
+        syn::Data::Struct(data) => {
+            rewrite_view_field_tys(&mut data.fields, generics, is_transparent)
+        }
         syn::Data::Enum(data) => {
             for variant in &mut data.variants {
-                rewrite_view_field_tys(&mut variant.fields);
+                rewrite_view_field_tys(&mut variant.fields, generics, is_transparent);
             }
         }
         syn::Data::Union(_) => unreachable!(),
@@ -376,14 +423,36 @@ fn rewrite_view_generics(input: &mut DeriveInput) {
     where_clause.predicates.extend(borrow_bounds);
 }
 
-fn rewrite_view_field_tys(fields: &mut syn::Fields) {
+fn rewrite_view_field_tys(
+    fields: &mut syn::Fields,
+    generics: &syn::Generics,
+    is_transparent: bool,
+) {
     for field in fields {
         let ty = &field.ty;
+
+        if is_transparent && is_phantom_data(ty) && is_type_parametrized(ty, generics) {
+            continue;
+        }
 
         field.ty = parse_quote! {
             <#ty as co3::borrow::Borrow>::Borrowed<'_dšč>
         };
     }
+}
+
+fn fields_are_only_phantom_data(data: &syn::Data) -> bool {
+    let fields = match data {
+        syn::Data::Struct(data) => data.fields.iter().collect::<Vec<_>>(),
+        syn::Data::Enum(data) => data
+            .variants
+            .iter()
+            .flat_map(|variant| &variant.fields)
+            .collect(),
+        syn::Data::Union(_) => return false,
+    };
+
+    !fields.is_empty() && fields.into_iter().all(|field| is_phantom_data(&field.ty))
 }
 
 pub fn gen_either_name(len: usize) -> Ident {
@@ -445,7 +514,11 @@ pub fn gen_identity_borrow_impls(name: &Ident, generics: &syn::Generics) -> Toke
 }
 
 pub fn gen_borrow_cast_eq_bounds(fields: &[&syn::Type]) -> TokenStream {
-    let bounds = fields.iter().map(|borrowed_ty| {
+    let bounds = fields.iter().filter_map(|borrowed_ty| {
+        if is_phantom_data(borrowed_ty) {
+            return None;
+        }
+
         let syn::Type::Path(syn::TypePath {
             qself: Some(syn::QSelf { ty, .. }),
             ..
@@ -454,11 +527,11 @@ pub fn gen_borrow_cast_eq_bounds(fields: &[&syn::Type]) -> TokenStream {
             unreachable!()
         };
 
-        quote! {
+        Some(quote! {
             #borrowed_ty: co3::ExternC<
                 CType = <<#ty as co3::ExternC>::CType as co3::borrow::BorrowCast>::AsConst
             >
-        }
+        })
     });
 
     quote! { #(#bounds,)* }
@@ -470,7 +543,8 @@ fn gen_field_trait_bounds<'a>(
     bound: TokenStream,
 ) -> impl Iterator<Item = syn::WherePredicate> + use<'a> {
     fields.iter().map(move |ty| {
-        let for_dummy = (!is_type_parametrized(ty, generics)).then_some(quote! { for<'_dummy> });
+        let for_dummy = (!is_type_parametrized(ty, generics)).then_some(quote!(for<'_dummy>));
+
         parse_quote! { #for_dummy #ty: #bound }
     })
 }

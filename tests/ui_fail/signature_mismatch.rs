@@ -75,7 +75,7 @@ ffi! {
 
     impl<dyn(u32) T: ToOwned> Kita for T
     where
-        use<T> @ (<Opaque1> | <Opaque2>),
+        use<T> @ (<Opaque1> | <Opaque2Alias>),
     {
         type MySelf = <T as ToOwned>::Owned;
 
@@ -83,5 +83,7 @@ ffi! {
         fn kita2(a: &u32, self_id: <dyn T>::ID);
     }
 }
+
+type Opaque2Alias = Opaque2;
 
 fn main() {}

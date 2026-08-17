@@ -22,6 +22,33 @@ fn lowered_field_ty(field_ty: &syn::Type) -> TokenStream {
     quote!(<#field_ty as co3::ExternC>::CType)
 }
 
+/// Generates the C carrier for a fieldless enum. Unlike a data enum's C
+/// union, this is always a transparent newtype over its discriminant.
+pub(super) fn gen_fieldless_enum_ctype(
+    tag_type: &syn::Type,
+    vis: &syn::Visibility,
+    name: &syn::Ident,
+    generics: &syn::Generics,
+) -> TokenStream {
+    let ctype_name = gen_ctype_name(name);
+    let (impl_generics, _, where_clause) = generics.split_for_impl();
+    let predicates = where_clause
+        .as_ref()
+        .map(|where_clause| &where_clause.predicates);
+    let ctype: syn::ItemStruct = parse_quote! {
+        #[doc(hidden)]
+        #[repr(transparent)]
+        #vis struct #ctype_name #impl_generics(pub #tag_type)
+        where
+            #predicates;
+    };
+    // Keep the normal non-ZST CFnArg size guard. In particular, a one-variant
+    // fieldless enum is represented by `CEnum(())` and must not become a CFnArg.
+    let impls = gen_struct_ctype_impls::<false>(&ctype, true);
+
+    quote! { #ctype #impls }
+}
+
 pub(super) fn gen_item_ctype(
     repr: Option<&ReprKind>,
     input: &syn::DeriveInput,
@@ -71,6 +98,20 @@ pub(super) fn gen_item_ctype(
             unreachable!()
         }
     }
+}
+
+fn derive_data_enum_ctype(
+    tag_type: syn::Type,
+    vis: &syn::Visibility,
+    name: &syn::Ident,
+    generics: &syn::Generics,
+    variants: &syn::punctuated::Punctuated<syn::Variant, syn::Token![,]>,
+) -> TokenStream {
+    let union_name = gen_ctype_name(name);
+    let (union_def, variant_structs) =
+        gen_data_enum_union(Some(tag_type), vis, &union_name, name, generics, variants);
+    let union_impls = gen_union_ctype_impls(&union_def);
+    quote! { #(#variant_structs)* #union_def #union_impls }
 }
 
 fn derive_ctype_struct<const ADD_COPY: bool>(
@@ -178,28 +219,6 @@ fn gen_ctype_wide_impl(
     }
 }
 
-fn derive_data_enum_ctype(
-    tag_type: syn::Type,
-    vis: &syn::Visibility,
-    name: &syn::Ident,
-    generics: &syn::Generics,
-    variants: &syn::punctuated::Punctuated<syn::Variant, syn::Token![,]>,
-) -> TokenStream {
-    let union_name = gen_ctype_name(name);
-
-    let (union_def, variant_structs) =
-        gen_data_enum_union(Some(tag_type), vis, &union_name, name, generics, variants);
-
-    let union_impls = gen_union_ctype_impls(&union_def);
-
-    quote! {
-        #(#variant_structs)*
-
-        #union_def
-        #union_impls
-    }
-}
-
 fn derive_repr_c_data_enum_ctype(
     tag_type: syn::Type,
     vis: &syn::Visibility,
@@ -267,7 +286,12 @@ fn gen_ctype_struct_item<const ADD_COPY: bool>(
 
     let ctype = match fields {
         syn::Fields::Named(_) | syn::Fields::Unit => {
-            let field_names = fields.iter().map(|field| &field.ident);
+            let field_names = fields.iter().map(|field| {
+                field
+                    .ident
+                    .as_ref()
+                    .expect("named CType field must have an identifier")
+            });
 
             quote! {
                 struct #ctype_name #impl_generics
@@ -275,12 +299,12 @@ fn gen_ctype_struct_item<const ADD_COPY: bool>(
                     #(#extern_c_bounds,)*
                     #predicates
                 {
-                    #(#field_names: #field_c_tys),*
+                    #(pub #field_names: #field_c_tys),*
                 }
             }
         }
         syn::Fields::Unnamed(_) => quote! {
-            struct #ctype_name #impl_generics (#(#field_c_tys),*)
+            struct #ctype_name #impl_generics (#(pub #field_c_tys),*)
             where
                 #(#extern_c_bounds,)*
                 #predicates;

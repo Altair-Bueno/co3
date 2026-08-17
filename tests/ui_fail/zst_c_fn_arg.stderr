@@ -403,47 +403,59 @@ note: required by a bound in `require_return`
    |                      ^^^^^^^^^ required by this bound in `require_return`
    = note: this error originates in the derive macro `ReprC` (in Nightly builds, run with -Z macro-backtrace for more info)
 
-error[E0277]: the trait bound `(): CFnArg` is not satisfied
+error[E0271]: type mismatch resolving `<CParamFieldlessEnum as RustSpec>::Size == Sized<Gt<Zero>>`
   --> tests/ui_fail/zst_c_fn_arg.rs:98:19
    |
 98 |     require_arg::<<ParamFieldlessEnum as ExternC>::CType>();
-   |                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ the trait `CFnArg` is not implemented for `()`
+   |                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ type mismatch resolving `<CParamFieldlessEnum as RustSpec>::Size == Sized<Gt<Zero>>`
    |
-   = help: the following other types implement trait `CFnArg`:
-             *const R
-             *mut R
-             CBox<C>
-             CBoxedSlice<C>
-             CNoReprZst
-             CNoReprZstConstView
-             CNoReprZstData
-             CNoReprZstMutView
-           and $N others
+note: expected this to be `rust_spec::size::Sized<Gt<rust_spec::Zero>>`
+  --> tests/ui_fail/zst_c_fn_arg.rs:22:33
+   |
+22 | #[derive(Clone, Copy, RustSpec, ReprC)]
+   |                                 ^^^^^
+   = note: expected struct `rust_spec::size::Sized<Gt<rust_spec::Zero>>`
+              found struct `rust_spec::size::Sized<rust_spec::Zero>`
+note: required for `CParamFieldlessEnum` to implement `CFnArg`
+  --> tests/ui_fail/zst_c_fn_arg.rs:22:33
+   |
+22 | #[derive(Clone, Copy, RustSpec, ReprC)]
+   |                                 ^^^^^ type parameter would need to implement `CFnArg`
+   = help: consider manually implementing `CFnArg` to avoid undesired bounds
+   = note: associated types for the current `impl` cannot be restricted in `where` clauses
+   = note: associated types for the current `impl` cannot be restricted in `where` clauses
 note: required by a bound in `require_arg`
   --> tests/ui_fail/zst_c_fn_arg.rs:67:19
    |
 67 | fn require_arg<T: CFnArg>() {}
    |                   ^^^^^^ required by this bound in `require_arg`
+   = note: this error originates in the derive macro `ReprC` (in Nightly builds, run with -Z macro-backtrace for more info)
 
-error[E0277]: the trait bound `(): CFnReturn` is not satisfied
+error[E0271]: type mismatch resolving `<CParamFieldlessEnum as RustSpec>::Size == Sized<Gt<Zero>>`
   --> tests/ui_fail/zst_c_fn_arg.rs:99:22
    |
 99 |     require_return::<<ParamFieldlessEnum as ExternC>::CType>();
-   |                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ the trait `CFnArg` is not implemented for `()`
+   |                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ type mismatch resolving `<CParamFieldlessEnum as RustSpec>::Size == Sized<Gt<Zero>>`
    |
-   = help: the following other types implement trait `CFnArg`:
-             *const R
-             *mut R
-             CBox<C>
-             CBoxedSlice<C>
-             CNoReprZst
-             CNoReprZstConstView
-             CNoReprZstData
-             CNoReprZstMutView
-           and $N others
-   = note: required for `()` to implement `CFnReturn`
+note: expected this to be `rust_spec::size::Sized<Gt<rust_spec::Zero>>`
+  --> tests/ui_fail/zst_c_fn_arg.rs:22:33
+   |
+22 | #[derive(Clone, Copy, RustSpec, ReprC)]
+   |                                 ^^^^^
+   = note: expected struct `rust_spec::size::Sized<Gt<rust_spec::Zero>>`
+              found struct `rust_spec::size::Sized<rust_spec::Zero>`
+note: required for `CParamFieldlessEnum` to implement `CFnArg`
+  --> tests/ui_fail/zst_c_fn_arg.rs:22:33
+   |
+22 | #[derive(Clone, Copy, RustSpec, ReprC)]
+   |                                 ^^^^^ type parameter would need to implement `CFnArg`
+   = help: consider manually implementing `CFnArg` to avoid undesired bounds
+   = note: associated types for the current `impl` cannot be restricted in `where` clauses
+   = note: associated types for the current `impl` cannot be restricted in `where` clauses
+   = note: required for `CParamFieldlessEnum` to implement `CFnReturn`
 note: required by a bound in `require_return`
   --> tests/ui_fail/zst_c_fn_arg.rs:68:22
    |
 68 | fn require_return<T: CFnReturn>() {}
    |                      ^^^^^^^^^ required by this bound in `require_return`
+   = note: this error originates in the derive macro `ReprC` (in Nightly builds, run with -Z macro-backtrace for more info)

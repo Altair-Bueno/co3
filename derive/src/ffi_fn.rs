@@ -3,7 +3,9 @@ use std::collections::{BTreeMap, BTreeSet};
 use proc_macro2::{Span, TokenStream};
 use quote::{format_ident, quote};
 use syn::{
-    Ident, Path, Type, parse_quote,
+    Ident, Meta, Path, Type, parse_quote,
+    punctuated::Punctuated,
+    token::Comma,
     visit::{Visit, visit_type},
     visit_mut::VisitMut,
 };
@@ -199,7 +201,61 @@ pub(crate) fn item_fn_input_ident(input: &syn::Pat) -> &Ident {
 }
 
 pub(crate) fn is_spread_arg(attrs: &[syn::Attribute]) -> bool {
-    attrs.iter().any(|attr| attr.path().is_ident("spread"))
+    attrs.iter().any(|attr| attr.path().is_ident("spread2"))
+}
+
+pub(crate) fn spread2_types(attrs: &[syn::Attribute]) -> syn::Result<Option<(Type, Type)>> {
+    let Some(attr) = attrs.iter().find(|attr| attr.path().is_ident("spread2")) else {
+        return Ok(None);
+    };
+    let types = match &attr.meta {
+        Meta::Path(_) => Punctuated::new(),
+        Meta::List(_) => attr.parse_args_with(Punctuated::<Type, Comma>::parse_terminated)?,
+        Meta::NameValue(_) => {
+            return Err(syn::Error::new_spanned(
+                attr,
+                "#[spread2] expects either no types or exactly two types",
+            ));
+        }
+    };
+    match types.len() {
+        0 => Ok(None),
+        2 => Ok(Some((types[0].clone(), types[1].clone()))),
+        _ => Err(syn::Error::new_spanned(
+            attr,
+            "#[spread2] expects either no types or exactly two types",
+        )),
+    }
+}
+
+/// Returns the C representation that is to be split for a `#[spread2]` input.
+///
+/// Explicit spread types describe the Rust-side pair. They must therefore go
+/// through `ExternC` as a regular Rust tuple before selecting the two ABI
+/// parts from its C representation.
+pub(crate) fn spread2_abi_type(
+    attrs: &[syn::Attribute],
+    arg_ty: &Type,
+) -> syn::Result<TokenStream> {
+    if let Some((part1, part2)) = spread2_types(attrs)? {
+        let tuple: Type = parse_quote!((#part1, #part2));
+        // Explicit parts describe the value being spread, so select
+        // `Spread2` on its C representation before applying borrow casting.
+        return Ok(quote!(<#tuple as co3::ExternC>::CType));
+    } else {
+        Ok(item_fn_input_arg_type(attrs, arg_ty))
+    }
+}
+
+pub(crate) fn spread2_abi_parts(
+    attrs: &[syn::Attribute],
+    arg_ty: &Type,
+) -> syn::Result<(Type, Type)> {
+    let abi_ty = spread2_abi_type(attrs, arg_ty)?;
+    Ok((
+        parse_quote!(<#abi_ty as co3::slice::Spread2>::Part1),
+        parse_quote!(<#abi_ty as co3::slice::Spread2>::Part2),
+    ))
 }
 
 fn borrowed_arg_ty(attrs: &[syn::Attribute], arg_ty: &Type) -> TokenStream {
@@ -259,7 +315,8 @@ pub(crate) fn gen_input_decode_stmts<'a>(
         let decode_ty = borrowed_arg_ty(attrs, &arg_ty);
         let decode_arg = if is_spread_arg(attrs) {
             let (data_name, metadata_name) = spread_arg_names(&arg_name);
-            let decode_c_ty = quote!(<#decode_ty as co3::ExternC>::CType);
+            let decode_c_ty =
+                spread2_abi_type(attrs, &arg_ty).expect("validated #[spread2] attribute");
 
             quote! {{
                 <#decode_c_ty as co3::slice::Spread2>::from_parts(
@@ -376,24 +433,24 @@ fn gen_fn_definition_body(item: &syn::ItemFn, failure_mode: FailureMode) -> Toke
 pub fn gen_impl_definition(
     abi: &syn::Abi,
     failure_mode: FailureMode,
-    mut impl_: syn::ItemImpl,
+    impl_: syn::ItemImpl,
 ) -> TokenStream {
     let trait_ = impl_.trait_.as_ref().map(|(_, path, _)| path);
     let impl_attrs = &impl_.attrs;
 
     let self_ty = &impl_.self_ty;
-    impl_.items.iter_mut().for_each(|item| {
-        let syn::ImplItem::Fn(item) = item else {
-            return;
-        };
-
-        normalize_fn_signature(&mut item.sig, Some(self_ty));
-    });
 
     let definitions = impl_.items.into_iter().filter_map(|item| {
         let syn::ImplItem::Fn(mut item) = item else {
             return None;
         };
+
+        let has_receiver = item
+            .sig
+            .inputs
+            .iter()
+            .any(|input| matches!(input, syn::FnArg::Receiver(_)));
+        normalize_fn_signature(&mut item.sig, Some(self_ty));
 
         let fn_name = &item.sig.ident;
         let callee = if let Some(trait_) = trait_ {
@@ -402,7 +459,11 @@ pub fn gen_impl_definition(
             quote!(<#self_ty>::#fn_name)
         };
 
-        merge_generics(impl_.generics.clone(), &mut item.sig.generics);
+        merge_impl_generics_for_raw_decl(
+            impl_.generics.clone(),
+            has_receiver,
+            &mut item.sig.generics,
+        );
         let check_callee = if let Some(trait_) = trait_ {
             parse_quote!(<#self_ty as #trait_>::#fn_name)
         } else {
@@ -434,6 +495,23 @@ pub fn gen_impl_definition(
             #(#definitions)*
         };
     }
+}
+
+pub(crate) fn merge_impl_generics_for_raw_decl(
+    mut impl_generics: syn::Generics,
+    has_receiver: bool,
+    fn_generics: &mut syn::Generics,
+) {
+    if !has_receiver {
+        impl_generics.params = impl_generics
+            .params
+            .into_iter()
+            .filter(|param| matches!(param, syn::GenericParam::Lifetime(_)))
+            .collect();
+        impl_generics.where_clause = None;
+    }
+
+    merge_generics(impl_generics, fn_generics);
 }
 
 pub(crate) fn merge_generics(impl_generics: syn::Generics, fn_generics: &mut syn::Generics) {
@@ -517,9 +595,8 @@ fn lower_signature_input(generics: &mut syn::Generics, input: syn::FnArg) -> Vec
     if is_spread_arg(&attrs) {
         let arg_name = item_fn_input_ident(&pat);
         let (data_name, metadata_name) = spread_arg_names(arg_name);
-        let spread_ty = item_fn_input_arg_type(&attrs, &arg_ty);
-        let part1_ty = quote! { <#spread_ty as co3::slice::Spread2>::Part1 };
-        let part2_ty = quote! { <#spread_ty as co3::slice::Spread2>::Part2 };
+        let (part1_ty, part2_ty) =
+            spread2_abi_parts(&attrs, &arg_ty).expect("validated #[spread2] attribute");
 
         generics
             .make_where_clause()

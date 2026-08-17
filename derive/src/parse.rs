@@ -947,11 +947,6 @@ impl PreprocessedArg {
 
         let pat = syn::Pat::parse_single(input)?;
         let colon_token = input.parse::<syn::Token![:]>()?;
-        let spread = input.peek(syn::Token![..]);
-        if spread {
-            input.parse::<syn::Token![..]>()?;
-            merged_attrs.push(parse_quote!(#[spread]));
-        }
         let ty = input.parse::<Type>()?;
         let arg = PatType {
             attrs: merged_attrs,
@@ -1165,7 +1160,6 @@ fn parse_impl_item(input: syn::parse::ParseStream) -> syn::Result<ItemImpl> {
     normalize_const_generic_args_in_impl(&mut impl_);
 
     normalize_self_handle_ids(&mut impl_);
-    validate_dispatched_self_ty(&impl_)?;
 
     for item in &mut impl_.items {
         let syn::ImplItem::Fn(method) = item else {
@@ -1204,31 +1198,6 @@ fn normalize_self_handle_ids(impl_: &mut ItemImpl) {
     };
 
     normalizer.visit_item_impl_mut(impl_);
-}
-
-fn validate_dispatched_self_ty(impl_: &ItemImpl) -> syn::Result<()> {
-    let Type::TraitObject(trait_object) = &*impl_.self_ty else {
-        return Ok(());
-    };
-    if trait_object.bounds.len() != 1 {
-        return Ok(());
-    }
-
-    let Some(syn::TypeParamBound::Trait(trait_bound)) = trait_object.bounds.first() else {
-        return Ok(());
-    };
-
-    let Some(self_ident) = trait_bound.path.get_ident() else {
-        return Ok(());
-    };
-
-    let mut type_params = impl_.generics.type_params();
-    if type_params.any(|param| param.ident == *self_ident) {
-        let err_msg = "blanket `dyn T` is not supported; declare `<dyn T> instead";
-        return Err(syn::Error::new_spanned(&impl_.self_ty, err_msg));
-    }
-
-    Ok(())
 }
 
 fn restore_synthetic_receiver(signature: &mut syn::Signature) {
@@ -1408,14 +1377,9 @@ mod tests {
     }
 
     #[test]
-    fn rejects_dispatched_dyn_self_type_param() {
+    fn parses_dispatched_dyn_self_type_param() {
         let impl_ = "impl<T> Trait for dyn T { fn name(&self); }";
-        let err = Parser::parse_str(parse_impl_item, impl_).unwrap_err();
-
-        assert!(
-            err.to_string()
-                .contains("blanket `dyn T` is not supported; declare `<dyn T> instead")
-        );
+        Parser::parse_str(parse_impl_item, impl_).unwrap();
     }
 
     #[test]

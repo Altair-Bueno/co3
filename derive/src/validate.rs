@@ -1,21 +1,26 @@
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 use syn::{Error, Result, Type, visit::Visit};
 
 use crate::{
     dispatch::HandleId,
-    ffi_fn::is_by_val_attr,
+    ffi_fn::{is_by_val_attr, spread2_types},
     find_dispatch_attr, is_explicit_lifetimes_attr, is_symbol_name_attr,
-    parse::ParsedForeignItem,
+    parse::{ParsedForeignItem, parse_dispatch_attr},
     trait_object_single_trait_bound,
-    utils::{has_non_lifetime_generics, is_drop_impl, is_type_erased, push_error},
+    utils::{erased_id_repr, has_non_lifetime_generics, is_drop_impl, is_type_erased, push_error},
 };
 
 const NO_PREDICATE_ERR: &str = "Type parameters require a tagged-dispatch predicate";
+const EXPORT_GENERIC_IMPL_ERR: &str =
+    "non-dispatched generic impls are only supported in extern declarations";
+const UNSUPPORTED_GENERIC_ERR: &str = "non-dispatched generic type parameters are not supported";
 const NO_GENERICS_ERR: &str = "tagged dispatch requires at least one `dyn Type` or `dyn Self`";
 const DYN_SELF_DECLARED_TYPE_ERR: &str = "`dyn Self` is only supported for declared types";
 const DYN_SELF_GENERIC_SELF_ERR: &str = "`dyn Self` is only supported on generic `Self`";
 const DISPATCH_WRAPPER_ERR: &str = "tagged-dispatch parameters cannot be used inside wrapper types";
+const EXPORT_RECEIVER_POSITION_ERR: &str =
+    "an exported method receiver must be the first non-handle argument";
 
 fn is_type_param_path(ty: &syn::TypePath, type_params: &BTreeSet<&syn::Ident>) -> bool {
     ty.qself.is_none()
@@ -177,12 +182,127 @@ fn ensure_no_handle_arg_attrs(sig: &syn::Signature) -> Result<()> {
     Ok(())
 }
 
+fn declared_type_idents(decls: &[ParsedForeignItem]) -> BTreeSet<&syn::Ident> {
+    decls
+        .iter()
+        .filter_map(|decl| match decl {
+            ParsedForeignItem::Type(decl) => Some(&decl.ty.ident),
+            _ => None,
+        })
+        .collect()
+}
+
+fn is_direct_declared_type(ty: &syn::Type, declared_types: &BTreeSet<&syn::Ident>) -> bool {
+    matches!(
+        ty,
+        syn::Type::Path(ty)
+            if ty.qself.is_none()
+                && ty.path.segments.len() == 1
+                && declared_types.contains(&ty.path.segments[0].ident)
+    )
+}
+
 pub(crate) fn validate_export_decls(decls: &[ParsedForeignItem]) -> Result<()> {
-    validate_decls(decls, validate_export_decl)
+    let declared_types = declared_type_idents(decls);
+    validate_decls(decls, |decl| validate_export_decl(decl, &declared_types))
 }
 
 pub(crate) fn validate_extern_decls(decls: &[ParsedForeignItem]) -> Result<()> {
-    validate_decls(decls, validate_extern_decl)
+    let mut errors = None;
+
+    if let Err(err) = validate_import_dispatch_tag_types(decls) {
+        push_error(&mut errors, err);
+    }
+    if let Err(err) = validate_decls(decls, validate_extern_decl) {
+        push_error(&mut errors, err);
+    }
+
+    errors.map_or(Ok(()), Err)
+}
+
+/// Imports do not need to prove that foreign handle IDs are unique. They do need to use the
+/// same tag representation as the imported types selected by each dispatch group.
+fn validate_import_dispatch_tag_types(decls: &[ParsedForeignItem]) -> Result<()> {
+    let declared_ids = decls
+        .iter()
+        .filter_map(|decl| {
+            let ParsedForeignItem::Type(decl) = decl else {
+                return None;
+            };
+            Some((decl.ty.ident.clone(), decl.id.as_deref()))
+        })
+        .collect::<BTreeMap<_, _>>();
+    let mut errors = None;
+
+    let mut validate_dispatch = |attrs: &[syn::Attribute], generics: &syn::Generics| {
+        let Ok(groups) = parse_dispatch_attr(attrs, generics) else {
+            return;
+        };
+
+        for param in generics.type_params() {
+            let Some(tag) = erased_id_repr(param) else {
+                continue;
+            };
+            let Some((params, targets)) = groups
+                .groups()
+                .find(|(params, _)| params.contains(&param.ident))
+            else {
+                continue;
+            };
+            let param_index = params
+                .iter()
+                .position(|candidate| candidate == &param.ident)
+                .expect("dispatch group contains its parameter");
+
+            for target in targets {
+                let Some(syn::GenericArgument::Type(syn::Type::Path(target_ty))) =
+                    target.args.get(param_index)
+                else {
+                    continue;
+                };
+                let Some(target_ident) = target_ty
+                    .path
+                    .segments
+                    .first()
+                    .map(|segment| &segment.ident)
+                    .filter(|_| target_ty.qself.is_none() && target_ty.path.segments.len() == 1)
+                else {
+                    continue;
+                };
+                let Some(Some(target_tag)) = declared_ids.get(target_ident) else {
+                    continue;
+                };
+
+                if **target_tag != tag {
+                    push_error(
+                        &mut errors,
+                        Error::new_spanned(
+                            target_ty,
+                            "imported dispatch targets must use the same #[id(...)] tag type",
+                        ),
+                    );
+                }
+            }
+        }
+    };
+
+    for decl in decls {
+        match decl {
+            ParsedForeignItem::Fn(item) => validate_dispatch(&item.attrs, &item.sig.generics),
+            ParsedForeignItem::Impl(impl_) => {
+                validate_dispatch(&impl_.attrs, &impl_.generics);
+                for item in &impl_.items {
+                    let syn::ImplItem::Fn(method) = item else {
+                        continue;
+                    };
+                    validate_dispatch(&method.attrs, &method.sig.generics);
+                }
+            }
+            ParsedForeignItem::Type(_) | ParsedForeignItem::Static(_) => {}
+        }
+    }
+
+    errors.map_or(Ok(()), Err)
 }
 
 fn validate_decls(
@@ -218,7 +338,10 @@ pub(crate) fn validate_export_attrs(attrs: &[syn::Attribute]) -> Result<()> {
     Ok(())
 }
 
-fn validate_export_decl(decl: &ParsedForeignItem) -> Result<()> {
+fn validate_export_decl(
+    decl: &ParsedForeignItem,
+    declared_types: &BTreeSet<&syn::Ident>,
+) -> Result<()> {
     let mut errors = None;
 
     match decl {
@@ -234,20 +357,40 @@ fn validate_export_decl(decl: &ParsedForeignItem) -> Result<()> {
             }
         }
         ParsedForeignItem::Impl(impl_) => {
+            if find_dispatch_attr(&impl_.attrs).is_none()
+                && has_non_lifetime_generics(&impl_.generics)
+                && !impl_.items.is_empty()
+                && is_direct_declared_type(&impl_.self_ty, declared_types)
+            {
+                push_error(
+                    &mut errors,
+                    Error::new_spanned(&impl_.generics, EXPORT_GENERIC_IMPL_ERR),
+                );
+            }
+
             for item in &impl_.items {
                 let syn::ImplItem::Fn(method) = item else {
                     continue;
                 };
 
+                if let Err(err) = validate_spread2_export(&method.sig) {
+                    push_error(&mut errors, err);
+                }
                 if let Err(err) = validate_export_fn_attrs(&method.attrs) {
                     push_error(&mut errors, err);
                 }
                 if let Err(err) = reject_explicit_dispatch_ids(&method.sig, &impl_.self_ty) {
                     push_error(&mut errors, err);
                 }
+                if let Err(err) = validate_export_receiver_position(&impl_.self_ty, &method.sig) {
+                    push_error(&mut errors, err);
+                }
             }
         }
         ParsedForeignItem::Fn(decl_fn) => {
+            if let Err(err) = validate_spread2_export(&decl_fn.sig) {
+                push_error(&mut errors, err);
+            }
             if let Err(err) = validate_export_fn_attrs(&decl_fn.attrs) {
                 push_error(&mut errors, err);
             }
@@ -269,6 +412,26 @@ fn validate_export_decl(decl: &ParsedForeignItem) -> Result<()> {
     }
 
     Ok(())
+}
+
+fn validate_export_receiver_position(self_ty: &syn::Type, sig: &syn::Signature) -> Result<()> {
+    let Some((receiver_position, receiver)) = sig
+        .inputs
+        .iter()
+        .enumerate()
+        .find(|(_, input)| matches!(input, syn::FnArg::Receiver(_)))
+    else {
+        return Ok(());
+    };
+    let first_non_handle_position = sig.inputs.iter().position(|input| {
+        !matches!(input, syn::FnArg::Typed(arg) if handle_id(&arg.ty, Some(self_ty)).is_some())
+    });
+
+    if first_non_handle_position == Some(receiver_position) {
+        return Ok(());
+    }
+
+    Err(Error::new_spanned(receiver, EXPORT_RECEIVER_POSITION_ERR))
 }
 
 fn validate_extern_decl(decl: &ParsedForeignItem) -> Result<()> {
@@ -338,6 +501,7 @@ fn validate_extern_decl(decl: &ParsedForeignItem) -> Result<()> {
 
 fn validate_shared(decls: &[ParsedForeignItem]) -> Result<()> {
     let mut errors = None;
+    let declared_types = declared_type_idents(decls);
 
     for decl in decls {
         match decl {
@@ -355,10 +519,14 @@ fn validate_shared(decls: &[ParsedForeignItem]) -> Result<()> {
             ParsedForeignItem::Fn(decl_fn) => {
                 let is_dispatch = find_dispatch_attr(&decl_fn.attrs).is_some();
 
+                if let Err(err) = validate_spread2(&decl_fn.sig, None) {
+                    push_error(&mut errors, err);
+                }
+
                 if let Err(err) = ensure_no_handle_arg_attrs(&decl_fn.sig) {
                     push_error(&mut errors, err);
                 }
-                if let Err(err) = validate_fn_generics(&decl_fn.sig.generics, is_dispatch) {
+                if let Err(err) = validate_fn_generics(&decl_fn.sig, &decl_fn.attrs) {
                     push_error(&mut errors, err);
                 }
                 if let Err(err) = validate_signature_shape(None, &decl_fn.sig) {
@@ -392,13 +560,21 @@ fn validate_shared(decls: &[ParsedForeignItem]) -> Result<()> {
                 }
 
                 let is_dispatch_impl = find_dispatch_attr(&impl_.attrs).is_some();
-                if !is_dispatch_impl && has_non_lifetime_generics(&impl_.generics) {
-                    let err = Error::new_spanned(&impl_.generics, NO_PREDICATE_ERR);
+                if !is_dispatch_impl
+                    && let Err(err) = validate_non_dispatch_impl_generics(
+                        impl_,
+                        is_direct_declared_type(&impl_.self_ty, &declared_types),
+                    )
+                {
                     push_error(&mut errors, err);
                 }
 
                 if is_dispatch_impl {
                     if let Err(err) = validate_dispatch_form(&impl_.generics, Some(self_ty)) {
+                        push_error(&mut errors, err);
+                    }
+
+                    if let Err(err) = validate_dispatch_impl_generics(impl_) {
                         push_error(&mut errors, err);
                     }
 
@@ -413,6 +589,9 @@ fn validate_shared(decls: &[ParsedForeignItem]) -> Result<()> {
 
                 for item in &impl_.items {
                     if let syn::ImplItem::Fn(syn::ImplItemFn { attrs, sig, .. }) = item {
+                        if let Err(err) = validate_spread2(sig, Some(&impl_.generics)) {
+                            push_error(&mut errors, err);
+                        }
                         let dispatch_attr = find_dispatch_attr(attrs);
 
                         if let Err(err) = ensure_no_handle_arg_attrs(sig) {
@@ -427,9 +606,7 @@ fn validate_shared(decls: &[ParsedForeignItem]) -> Result<()> {
                             let err = Error::new_spanned(dispatch_attr, err_msg);
 
                             push_error(&mut errors, err);
-                        } else if let Err(err) =
-                            validate_fn_generics(&sig.generics, dispatch_attr.is_some())
-                        {
+                        } else if let Err(err) = validate_fn_generics(sig, attrs) {
                             push_error(&mut errors, err);
                         }
 
@@ -478,6 +655,65 @@ fn validate_shared(decls: &[ParsedForeignItem]) -> Result<()> {
     Ok(())
 }
 
+fn validate_spread2_export(sig: &syn::Signature) -> Result<()> {
+    for input in &sig.inputs {
+        let syn::FnArg::Typed(input) = input else {
+            continue;
+        };
+        if let Some(attr) = input
+            .attrs
+            .iter()
+            .find(|attr| attr.path().is_ident("spread2"))
+        {
+            return Err(Error::new_spanned(
+                attr,
+                "#[spread2] is only supported in extern declarations",
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn validate_spread2(sig: &syn::Signature, outer: Option<&syn::Generics>) -> Result<()> {
+    let dispatched = outer
+        .into_iter()
+        .flat_map(|generics| generics.type_params())
+        .chain(sig.generics.type_params())
+        .filter(|param| param.attrs.iter().any(is_type_erased))
+        .map(|param| &param.ident)
+        .collect::<Vec<_>>();
+    let detector = crate::utils::ParamUseDetector::new(dispatched);
+
+    for input in &sig.inputs {
+        let syn::FnArg::Typed(input) = input else {
+            continue;
+        };
+        let Some(attr) = input
+            .attrs
+            .iter()
+            .find(|attr| attr.path().is_ident("spread2"))
+        else {
+            continue;
+        };
+        spread2_types(&input.attrs)?;
+        let mentions_dispatch = detector.type_mentions_param(&input.ty);
+        if mentions_dispatch && spread2_types(&input.attrs)?.is_none() {
+            return Err(Error::new_spanned(
+                attr,
+                "tag-dispatched #[spread2] arguments require explicit #[spread2(T1, T2)] types",
+            ));
+        }
+        if attr.meta.require_list().is_ok() && !mentions_dispatch {
+            return Err(Error::new_spanned(
+                attr,
+                "explicit #[spread2(T1, T2)] types require a tag-dispatched argument",
+            ));
+        }
+    }
+
+    Ok(())
+}
+
 fn validate_dispatch_form(generics: &syn::Generics, self_ty: Option<&syn::Type>) -> Result<()> {
     if generics
         .type_params()
@@ -496,8 +732,10 @@ fn validate_dispatch_form(generics: &syn::Generics, self_ty: Option<&syn::Type>)
     }
 }
 
-fn validate_fn_generics(generics: &syn::Generics, is_dispatch: bool) -> Result<()> {
+fn validate_fn_generics(sig: &syn::Signature, attrs: &[syn::Attribute]) -> Result<()> {
+    let generics = &sig.generics;
     let mut errors = None;
+    let is_dispatch = find_dispatch_attr(attrs).is_some();
 
     if !is_dispatch && has_non_lifetime_generics(generics) {
         return Err(Error::new_spanned(generics, NO_PREDICATE_ERR));
@@ -507,22 +745,207 @@ fn validate_fn_generics(generics: &syn::Generics, is_dispatch: bool) -> Result<(
         return Ok(());
     }
 
-    for param in &generics.params {
-        match param {
-            syn::GenericParam::Lifetime(_) => {}
-            syn::GenericParam::Type(param) if param.attrs.iter().any(is_type_erased) => {}
-            syn::GenericParam::Type(_) | syn::GenericParam::Const(_) => {
-                let err_msg = "tagged dispatch requires every generic param to be `dyn(TagTy)`";
-                push_error(&mut errors, Error::new_spanned(param, err_msg));
-            }
-        }
+    for param in generics.const_params() {
+        let err_msg = "tagged dispatch does not support const parameters";
+        push_error(&mut errors, Error::new_spanned(param, err_msg));
     }
 
     if let Some(errors) = errors {
         return Err(errors);
     }
 
-    validate_dispatch_form(generics, None)
+    validate_dispatch_form(generics, None)?;
+    validate_dispatch_generics(sig, attrs)
+}
+
+/// Ordinary generics on an impl can provide Rust namespace context for static
+/// methods. They must not reach a non-dispatched method's ABI.
+fn validate_non_dispatch_impl_generics(impl_: &syn::ItemImpl, declared_self: bool) -> Result<()> {
+    if !has_non_lifetime_generics(&impl_.generics) {
+        return Ok(());
+    }
+
+    let params = impl_
+        .generics
+        .params
+        .iter()
+        .filter_map(|param| match param {
+            syn::GenericParam::Type(param) => Some(&param.ident),
+            syn::GenericParam::Const(param) => Some(&param.ident),
+            syn::GenericParam::Lifetime(_) => None,
+        });
+    let detector = crate::utils::ParamUseDetector::new(params);
+
+    let leaks_into_abi = impl_.items.iter().any(|item| {
+        let syn::ImplItem::Fn(method) = item else {
+            return false;
+        };
+
+        // Method dispatch has its own generic validation and lowering path.
+        if find_dispatch_attr(&method.attrs).is_some() {
+            return false;
+        }
+
+        let has_receiver = method
+            .sig
+            .inputs
+            .iter()
+            .any(|input| matches!(input, syn::FnArg::Receiver(_)));
+
+        (has_receiver && !declared_self) || signature_uses_type_param(&method.sig, &detector)
+    });
+
+    if leaks_into_abi {
+        Err(Error::new_spanned(&impl_.generics, NO_PREDICATE_ERR))
+    } else {
+        Ok(())
+    }
+}
+
+fn validate_dispatch_generics(sig: &syn::Signature, attrs: &[syn::Attribute]) -> Result<()> {
+    let generics = &sig.generics;
+    let dispatch_args = parse_dispatch_attr(attrs, generics)?;
+    validate_dispatch_group_anchors(generics, &dispatch_args, false)?;
+    validate_dispatch_generic_params(generics, &dispatch_args, |param| {
+        signature_uses_type_param(sig, &crate::utils::ParamUseDetector::new([param]))
+    })
+}
+
+fn validate_dispatch_impl_generics(impl_: &syn::ItemImpl) -> Result<()> {
+    let generics = &impl_.generics;
+    let dispatch_args = parse_dispatch_attr(&impl_.attrs, generics)?;
+    let dispatches_self = matches!(&*impl_.self_ty, syn::Type::TraitObject(_));
+    if generics
+        .type_params()
+        .any(|param| param.attrs.iter().any(is_type_erased))
+    {
+        validate_dispatch_group_anchors(generics, &dispatch_args, dispatches_self)?;
+    }
+    validate_dispatch_generic_params(generics, &dispatch_args, |param| {
+        let detector = crate::utils::ParamUseDetector::new([param]);
+        detector.type_mentions_param(&impl_.self_ty)
+            || impl_
+                .trait_
+                .as_ref()
+                .is_some_and(|(_, path, _)| detector.path_mentions_param(path))
+            || generics
+                .where_clause
+                .iter()
+                .flat_map(|clause| &clause.predicates)
+                .any(|predicate| detector.predicate_mentions_param(predicate))
+    })
+}
+
+fn validate_dispatch_group_anchors(
+    generics: &syn::Generics,
+    dispatch_args: &crate::DispatchGroups,
+    dispatches_self: bool,
+) -> Result<()> {
+    if dispatches_self {
+        return Ok(());
+    }
+
+    let mut errors = None;
+    for (params, _) in dispatch_args.groups() {
+        let has_runtime_dispatch = params.iter().any(|param| {
+            generics.type_params().any(|candidate| {
+                candidate.ident == *param && candidate.attrs.iter().any(is_type_erased)
+            })
+        });
+        if !has_runtime_dispatch {
+            let err = "function and method dispatch groups require a `dyn(TagTy)` parameter";
+            push_error(&mut errors, Error::new_spanned(&params[0], err));
+        }
+    }
+
+    errors.map_or(Ok(()), Err)
+}
+
+fn validate_dispatch_generic_params(
+    generics: &syn::Generics,
+    dispatch_args: &crate::DispatchGroups,
+    is_used_outside_dispatch: impl Fn(&syn::Ident) -> bool,
+) -> Result<()> {
+    let mut errors = None;
+
+    for param in generics.type_params() {
+        let is_dispatched = param.attrs.iter().any(is_type_erased);
+        if is_dispatched {
+            if !dispatch_args.contains_param(&param.ident) {
+                let err = "tagged-dispatch type parameters require a `use` predicate";
+                push_error(&mut errors, Error::new_spanned(param, err));
+            }
+            continue;
+        }
+
+        if dispatch_args.contains_param(&param.ident) {
+            continue;
+        }
+
+        let dependency = payloadless_dispatch_dependency(generics, dispatch_args, &param.ident);
+        if is_used_outside_dispatch(&param.ident) || matches!(dependency, Some(false)) {
+            push_error(
+                &mut errors,
+                Error::new_spanned(param, UNSUPPORTED_GENERIC_ERR),
+            );
+        }
+    }
+
+    errors.map_or(Ok(()), Err)
+}
+
+fn signature_uses_type_param(
+    sig: &syn::Signature,
+    detector: &crate::utils::ParamUseDetector<'_>,
+) -> bool {
+    sig.inputs.iter().any(|input| match input {
+        syn::FnArg::Receiver(receiver) => detector.type_mentions_param(&receiver.ty),
+        syn::FnArg::Typed(input) => detector.type_mentions_param(&input.ty),
+    }) || match &sig.output {
+        syn::ReturnType::Default => false,
+        syn::ReturnType::Type(_, ty) => detector.type_mentions_param(ty),
+    } || sig
+        .generics
+        .where_clause
+        .iter()
+        .flat_map(|clause| &clause.predicates)
+        .any(|predicate| detector.predicate_mentions_param(predicate))
+}
+
+fn payloadless_dispatch_dependency(
+    generics: &syn::Generics,
+    dispatch_args: &crate::DispatchGroups,
+    param: &syn::Ident,
+) -> Option<bool> {
+    let detector = crate::utils::ParamUseDetector::new([param]);
+    let mut found = false;
+
+    for (owners, targets) in dispatch_args.groups() {
+        for (owner_index, owner) in owners.iter().enumerate() {
+            let mentions = targets.iter().map(|target| {
+                target
+                    .args
+                    .get(owner_index)
+                    .is_some_and(|arg| detector.generic_arg_mentions_param(arg))
+            });
+            let mentions = mentions.collect::<Vec<_>>();
+            if !mentions.iter().any(|mentions| *mentions) {
+                continue;
+            }
+
+            found = true;
+            let is_payloadless = generics.type_params().any(|candidate| {
+                candidate.ident == *owner
+                    && candidate.attrs.iter().any(is_type_erased)
+                    && candidate.default.is_none()
+            });
+            if !is_payloadless || !mentions.into_iter().all(|mentions| mentions) {
+                return Some(false);
+            }
+        }
+    }
+
+    found.then_some(true)
 }
 
 fn reject_explicit_dispatch_ids(sig: &syn::Signature, self_ty: &syn::Type) -> Result<()> {

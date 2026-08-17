@@ -1,10 +1,22 @@
+error: explicit #[spread2(T1, T2)] types require a tag-dispatched argument
+ --> tests/ui_fail/spread_type.rs:6:30
+  |
+6 |     fn explicit_non_dispatch(#[spread2(u32, i32)] value: ReprCTuple2<u8, u8>);
+  |                              ^^^^^^^^^^^^^^^^^^^^
+
+error: #[spread2] is only supported in extern declarations
+  --> tests/ui_fail/spread_type.rs:24:13
+   |
+24 |     fn good(#[spread2] value: u32);
+   |             ^^^^^^^^^^
+
 error[E0277]: the trait bound `u32: Spread2` is not satisfied
-  --> tests/ui_fail/spread_type_requires_wide.rs:15:1
+  --> tests/ui_fail/spread_type.rs:15:1
    |
 15 | / ffi! {
-16 | |     #![unsafe(export("C"))]
+16 | |     #![unsafe(extern("C"))]
 17 | |
-18 | |     fn bad(value: ..u32);
+18 | |     fn bad(#[spread2] value: u32);
 19 | | }
    | |_^ the trait `Spread2` is not implemented for `u32`
    |
@@ -29,44 +41,14 @@ help: the following other types implement trait `Spread2`
    = note: this error originates in the macro `ffi` (in Nightly builds, run with -Z macro-backtrace for more info)
 
 error[E0277]: the trait bound `u32: Spread2` is not satisfied
-  --> tests/ui_fail/spread_type_requires_wide.rs:21:1
+  --> tests/ui_fail/spread_type.rs:18:23
    |
-21 | / ffi! {
-22 | |     #![unsafe(extern("C"))]
-23 | |
-24 | |     fn bad(value: ..u32);
-25 | | }
-   | |_^ the trait `Spread2` is not implemented for `u32`
-   |
-help: the following other types implement trait `Spread2`
-  --> src/tuple.rs
-   |
-   | impl<A: ReprC, B: ReprC> Spread2 for ReprCTuple2<A, B> {
-   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `ReprCTuple2<A, B>`
-   |
-  ::: src/slice.rs
-   |
-   | impl<C: ReprC> Spread2 for CSlice<C> {
-   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `CSlice<C>`
-...
-   | impl<C: ReprC> Spread2 for CSliceMut<C> {
-   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `CSliceMut<C>`
-   |
-  ::: src/boxed.rs
-   |
-   | impl<C: ReprC> Spread2 for CBoxedSlice<C> {
-   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `CBoxedSlice<C>`
-   = note: this error originates in the macro `ffi` (in Nightly builds, run with -Z macro-backtrace for more info)
-
-error[E0277]: the trait bound `u32: Spread2` is not satisfied
-  --> tests/ui_fail/spread_type_requires_wide.rs:24:12
-   |
-21 | / ffi! {
-22 | |     #![unsafe(extern("C"))]
-23 | |
-24 | |     fn bad(value: ..u32);
-   | |            ^^^^^ the trait `Spread2` is not implemented for `u32`
-25 | | }
+15 | / ffi! {
+16 | |     #![unsafe(extern("C"))]
+17 | |
+18 | |     fn bad(#[spread2] value: u32);
+   | |                       ^^^^^ the trait `Spread2` is not implemented for `u32`
+19 | | }
    | |_- required by a bound introduced by this call
    |
 help: the following other types implement trait `Spread2`

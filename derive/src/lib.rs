@@ -22,7 +22,7 @@
 //!     fn make_local() -> LocalType;
 //! }
 //! ```
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 
 use manyhow::manyhow;
 use proc_macro2::TokenStream;
@@ -97,6 +97,12 @@ impl DispatchGroups {
         self.groups
             .iter()
             .map(|(params, targets)| (params.as_slice(), targets.as_slice()))
+    }
+
+    pub(crate) fn contains_param(&self, param: &syn::Ident) -> bool {
+        self.groups
+            .keys()
+            .any(|params| params.iter().any(|candidate| candidate == param))
     }
 
     fn for_each_combination(&self, mut f: impl for<'a> FnMut(&[DispatchSelection<'a>])) {
@@ -504,7 +510,7 @@ pub fn repr_c_derive(item: syn::DeriveInput) -> Result<TokenStream> {
 ///
 /// Rust slices are lowered into [`CSlice`](https://docs.rs/co3/latest/co3/slice/struct.CSlice.html)/[`CSliceMut`](https://docs.rs/co3/latest/co3/slice/struct.CSliceMut.html)
 /// which are C-ABI containers holding a data pointer and a length. However, it is common for FFI APIs to instead accept those components as separate function arguments.
-/// Prefix the argument type with `..` to export/import that form:
+/// Mark an argument with `#[spread2]` to import its two ABI parts:
 ///
 /// ```rust
 /// # use co3::ffi;
@@ -513,11 +519,11 @@ pub fn repr_c_derive(item: syn::DeriveInput) -> Result<TokenStream> {
 ///     #![unsafe(extern("system"))]
 ///
 ///     // imported as `sum(*const u32, usize)`
-///     fn sum(values: ..&[u32]) -> u32;
+///     fn sum(#[spread2] values: &[u32]) -> u32;
 /// }
 /// ```
 ///
-/// **This pattern is not limited to slices**; it applies to every type implementing the [`Spread2`](https://docs.rs/co3/latest/co3/slice/trait.Spread2.html) trait.
+/// **This pattern is not limited to slices**; it applies to every type implementing the [`Spread2`](https://docs.rs/co3/latest/co3/slice/trait.Spread2.html) trait. The attribute is only supported in import declarations.
 ///
 /// # Failure modes
 ///
@@ -600,6 +606,8 @@ impl Input {
             attrs,
             mut items,
         } = FfiInput::parse(tokens)?;
+
+        materialize_blanket_dyn_dispatch(&mut items)?;
 
         match kind {
             DeclKind::Export => prepare_export_decls(&attrs, &symbol_prefix, &mut items),
@@ -711,15 +719,110 @@ impl Input {
     }
 }
 
+fn materialize_blanket_dyn_dispatch(items: &mut [ParsedForeignItem]) -> Result<()> {
+    let declared_types = items
+        .iter()
+        .filter_map(|item| {
+            let ParsedForeignItem::Type(item) = item else {
+                return None;
+            };
+            Some((item.ty.ident.clone(), item.id.as_deref().cloned()))
+        })
+        .collect::<BTreeMap<_, _>>();
+
+    for item in items {
+        let ParsedForeignItem::Impl(impl_) = item else {
+            continue;
+        };
+        let Type::TraitObject(self_ty) = impl_.self_ty.as_ref() else {
+            continue;
+        };
+        if self_ty.bounds.len() != 1 {
+            continue;
+        }
+        let Some(bound) = trait_object_single_trait_bound(&impl_.self_ty) else {
+            continue;
+        };
+        let Some(param_ident) = bound.path.get_ident().cloned() else {
+            continue;
+        };
+        if !impl_
+            .generics
+            .type_params()
+            .any(|param| param.ident == param_ident)
+        {
+            continue;
+        }
+
+        let dispatch = parse_dispatch_attr(&impl_.attrs, &impl_.generics)?;
+        let Some((params, targets)) = dispatch
+            .groups()
+            .find(|(params, _)| params.contains(&param_ident))
+        else {
+            let err = "blanket `dyn T` requires a `use<T>` dispatch group";
+            return Err(syn::Error::new_spanned(&impl_.self_ty, err));
+        };
+        let param_index = params
+            .iter()
+            .position(|candidate| *candidate == param_ident)
+            .unwrap();
+
+        let mut tag = None::<syn::Type>;
+        for target in targets {
+            let Some(syn::GenericArgument::Type(Type::Path(target_ty))) =
+                target.args.get(param_index)
+            else {
+                unreachable!("dispatch target kind was already validated")
+            };
+            let Some(segment) = target_ty
+                .path
+                .segments
+                .first()
+                .filter(|_| target_ty.qself.is_none() && target_ty.path.segments.len() == 1)
+            else {
+                let err = "blanket `dyn T` may dispatch only to foreign types declared in this `ffi!` block";
+                return Err(syn::Error::new_spanned(target_ty, err));
+            };
+            let Some(id) = declared_types.get(&segment.ident) else {
+                let err = "blanket `dyn T` may dispatch only to foreign types declared in this `ffi!` block";
+                return Err(syn::Error::new_spanned(target_ty, err));
+            };
+            let Some(id) = id else {
+                let err = "blanket `dyn T` dispatch types must declare `#[id(...)]`";
+                return Err(syn::Error::new_spanned(target_ty, err));
+            };
+            if tag.as_ref().is_some_and(|tag| tag != id) {
+                let err = "blanket `dyn T` dispatch types must use the same `#[id(...)]` tag type";
+                return Err(syn::Error::new_spanned(target_ty, err));
+            }
+            tag.get_or_insert_with(|| id.clone());
+        }
+
+        let tag = tag.expect("dispatch groups have at least one target");
+        let param = impl_
+            .generics
+            .type_params_mut()
+            .find(|param| param.ident == param_ident)
+            .unwrap();
+        param
+            .attrs
+            .push(parse_quote_spanned!(param.span()=> #[erased(#tag)]));
+        *impl_.self_ty = parse_quote_spanned!(impl_.self_ty.span()=> #param_ident);
+    }
+
+    Ok(())
+}
+
 fn synthesize_default_drop_impls(
     symbol_prefix: &syn::LitStr,
     items: &mut [ForeignItem],
 ) -> Result<()> {
+    let blanket_drop_types = blanket_drop_types(items);
     for item in items {
         let ForeignItem::Type(item) = item else {
             continue;
         };
-        if item.drop.is_some() {
+        if item.drop.is_some() || blanket_drop_types.contains(&item.ty.ident) {
             continue;
         }
 
@@ -818,6 +921,59 @@ fn strip_impl_explicit_lifetimes_attrs(impl_: &mut ItemImpl) {
     }
 }
 
+fn blanket_drop_target_idents(drop: &Co3Impl) -> Option<Vec<syn::Ident>> {
+    if !is_drop_impl(&drop.item) {
+        return None;
+    }
+
+    let Type::Path(self_ty) = drop.item.self_ty.as_ref() else {
+        return None;
+    };
+    let param = self_ty.path.get_ident()?;
+    if !drop
+        .item
+        .generics
+        .type_params()
+        .any(|candidate| candidate.ident == *param && candidate.attrs.iter().any(is_type_erased))
+    {
+        return None;
+    }
+
+    let (params, targets) = drop
+        .dispatch_args
+        .groups()
+        .find(|(params, _)| params.contains(param))?;
+    let param_index = params.iter().position(|candidate| candidate == param)?;
+    Some(
+        targets
+            .iter()
+            .filter_map(|target| match target.args.get(param_index) {
+                Some(syn::GenericArgument::Type(Type::Path(target)))
+                    if target.qself.is_none() && target.path.segments.len() == 1 =>
+                {
+                    target
+                        .path
+                        .segments
+                        .first()
+                        .map(|segment| segment.ident.clone())
+                }
+                _ => None,
+            })
+            .collect(),
+    )
+}
+
+fn blanket_drop_types(decls: &[ForeignItem]) -> BTreeSet<syn::Ident> {
+    decls
+        .iter()
+        .filter_map(|decl| match decl {
+            ForeignItem::Impl(impl_) => blanket_drop_target_idents(impl_),
+            ForeignItem::Type(_) | ForeignItem::Fn(_) | ForeignItem::Static(_) => None,
+        })
+        .flatten()
+        .collect()
+}
+
 fn pack_type_drop_impls(decls: Vec<ForeignItem>) -> Result<Vec<ForeignItem>> {
     fn insert_drop(
         explicit_drops: &mut BTreeMap<syn::Ident, Co3Impl>,
@@ -845,6 +1001,7 @@ fn pack_type_drop_impls(decls: Vec<ForeignItem>) -> Result<Vec<ForeignItem>> {
 
     const UNKNOWN_DROP: &str = "explicit `impl Drop` is only allowed for declared types";
 
+    let blanket_drop_types = blanket_drop_types(&decls);
     let mut kept_decls = Vec::with_capacity(decls.len());
     let mut explicit_drops = BTreeMap::new();
     let mut errors = None::<syn::Error>;
@@ -868,6 +1025,10 @@ fn pack_type_drop_impls(decls: Vec<ForeignItem>) -> Result<Vec<ForeignItem>> {
             }
             ForeignItem::Impl(impl_) => {
                 if is_drop_impl(&impl_) {
+                    if blanket_drop_target_idents(&impl_).is_some() {
+                        kept_decls.push(ForeignItem::Impl(impl_));
+                        continue;
+                    }
                     if let Some(self_ty) = self_ty_ident(&impl_) {
                         insert_drop(&mut explicit_drops, &mut errors, self_ty, impl_);
                     } else {
@@ -888,7 +1049,10 @@ fn pack_type_drop_impls(decls: Vec<ForeignItem>) -> Result<Vec<ForeignItem>> {
         };
 
         item.drop = explicit_drops.remove(&item.ty.ident);
-        if item.drop.is_none() && has_non_lifetime_generics(&item.ty.generics) {
+        if item.drop.is_none()
+            && !blanket_drop_types.contains(&item.ty.ident)
+            && has_non_lifetime_generics(&item.ty.generics)
+        {
             let err_msg = "generic types must provide explicit `impl Drop` declaration";
             push_error(&mut errors, syn::Error::new_spanned(&item.ty, err_msg));
         }

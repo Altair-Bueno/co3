@@ -95,3 +95,9 @@ error: expected 1 concrete generic argument(s)
     |
 134 |         use<T> @ <>,
     |                  ^^
+
+error: expected 1 concrete generic argument(s)
+   --> tests/ui_fail/import_restrictions.rs:141:18
+    |
+141 |         use<T> @ <u8, i8>,
+    |                  ^^^^^^^^

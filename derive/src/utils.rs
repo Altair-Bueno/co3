@@ -57,13 +57,6 @@ pub(crate) fn erased_id_repr(param: &syn::TypeParam) -> Option<syn::Type> {
     attr.parse_args().ok()
 }
 
-pub(crate) fn erased_abi_repr(param: &syn::TypeParam) -> syn::Type {
-    param
-        .default
-        .clone()
-        .unwrap_or_else(|| syn::parse_quote!(core::ffi::c_void))
-}
-
 pub(crate) struct ParamUseDetector<'a> {
     params: BTreeSet<&'a syn::Ident>,
     found: bool,
@@ -97,9 +90,21 @@ impl<'a> ParamUseDetector<'a> {
         detector.found
     }
 
+    pub fn path_mentions_param(&self, path: &syn::Path) -> bool {
+        let mut detector = Self::new(self.params.clone());
+        detector.visit_path(path);
+        detector.found
+    }
+
     pub fn predicate_mentions_param(&self, predicate: &syn::WherePredicate) -> bool {
         let mut detector = Self::new(self.params.clone());
         detector.visit_where_predicate(predicate);
+        detector.found
+    }
+
+    pub fn generic_arg_mentions_param(&self, arg: &GenericArgument) -> bool {
+        let mut detector = Self::new(self.params.clone());
+        detector.visit_generic_argument(arg);
         detector.found
     }
 }
@@ -224,7 +229,9 @@ impl VisitMut for DispatchMonomorphizer<'_> {
             && let Some(subst) = self.subst.get(&first.ident).cloned()
         {
             if path.segments.len() == 1 {
-                *node = parse_quote!(#subst);
+                let mut replacement = parse_quote!(#subst);
+                self.visit_type_mut(&mut replacement);
+                *node = replacement;
                 return;
             }
 

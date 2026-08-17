@@ -1,11 +1,11 @@
 error[E0277]: the trait bound `[u8; 2]: CFnArg` is not satisfied
-  --> tests/ui_fail/disallowed_types.rs:88:5
+  --> tests/ui_fail/disallowed_types.rs:92:5
    |
-88 | /     ffi! {
-89 | |         #![unsafe(export("C"))]
-90 | |
-91 | |         pub extern "C" fn disallowed_args_by_ref(arg1: (), arg2: [u8; 2]);
-92 | |     }
+92 | /     ffi! {
+93 | |         #![unsafe(export("C"))]
+94 | |
+95 | |         pub extern "C" fn disallowed_args_by_ref(arg1: (), arg2: [u8; 2]);
+96 | |     }
    | |_____^ the trait `CFnArg` is not implemented for `[u8; 2]`
    |
    = help: the following other types implement trait `CFnArg`:
@@ -21,13 +21,13 @@ error[E0277]: the trait bound `[u8; 2]: CFnArg` is not satisfied
    = note: this error originates in the macro `ffi` (in Nightly builds, run with -Z macro-backtrace for more info)
 
 error[E0277]: the trait bound `(): CFnArg` is not satisfied
-  --> tests/ui_fail/disallowed_types.rs:88:5
+  --> tests/ui_fail/disallowed_types.rs:92:5
    |
-88 | /     ffi! {
-89 | |         #![unsafe(export("C"))]
-90 | |
-91 | |         pub extern "C" fn disallowed_args_by_ref(arg1: (), arg2: [u8; 2]);
-92 | |     }
+92 | /     ffi! {
+93 | |         #![unsafe(export("C"))]
+94 | |
+95 | |         pub extern "C" fn disallowed_args_by_ref(arg1: (), arg2: [u8; 2]);
+96 | |     }
    | |_____^ the trait `CFnArg` is not implemented for `()`
    |
    = help: the following other types implement trait `CFnArg`:
@@ -43,57 +43,57 @@ error[E0277]: the trait bound `(): CFnArg` is not satisfied
    = note: this error originates in the macro `ffi` (in Nightly builds, run with -Z macro-backtrace for more info)
 
 error[E0277]: the trait bound `[u8; 2]: CFnArg` is not satisfied
-  --> tests/ui_fail/disallowed_types.rs:93:5
-   |
-93 | /     ffi! {
-94 | |         #![unsafe(export("C"))]
-95 | |
-96 | |         pub extern "C" fn disallowed_args_by_val(move arg1: (), move arg2: [u8; 2]);
-97 | |     }
-   | |_____^ the trait `CFnArg` is not implemented for `[u8; 2]`
-   |
-   = help: the following other types implement trait `CFnArg`:
-             *const R
-             *mut R
-             CArray
-             CArray2
-             CArray2ConstView
-             CArray2MutView
-             CArrayConstView
-             CArrayMutView
-           and $N others
-   = note: this error originates in the macro `ffi` (in Nightly builds, run with -Z macro-backtrace for more info)
+   --> tests/ui_fail/disallowed_types.rs:97:5
+    |
+ 97 | /     ffi! {
+ 98 | |         #![unsafe(export("C"))]
+ 99 | |
+100 | |         pub extern "C" fn disallowed_args_by_val(move arg1: (), move arg2: [u8; 2]);
+101 | |     }
+    | |_____^ the trait `CFnArg` is not implemented for `[u8; 2]`
+    |
+    = help: the following other types implement trait `CFnArg`:
+              *const R
+              *mut R
+              CArray
+              CArray2
+              CArray2ConstView
+              CArray2MutView
+              CArrayConstView
+              CArrayMutView
+            and $N others
+    = note: this error originates in the macro `ffi` (in Nightly builds, run with -Z macro-backtrace for more info)
 
 error[E0277]: the trait bound `(): CFnArg` is not satisfied
-  --> tests/ui_fail/disallowed_types.rs:93:5
-   |
-93 | /     ffi! {
-94 | |         #![unsafe(export("C"))]
-95 | |
-96 | |         pub extern "C" fn disallowed_args_by_val(move arg1: (), move arg2: [u8; 2]);
-97 | |     }
-   | |_____^ the trait `CFnArg` is not implemented for `()`
-   |
-   = help: the following other types implement trait `CFnArg`:
-             *const R
-             *mut R
-             CArray
-             CArray2
-             CArray2ConstView
-             CArray2MutView
-             CArrayConstView
-             CArrayMutView
-           and $N others
-   = note: this error originates in the macro `ffi` (in Nightly builds, run with -Z macro-backtrace for more info)
+   --> tests/ui_fail/disallowed_types.rs:97:5
+    |
+ 97 | /     ffi! {
+ 98 | |         #![unsafe(export("C"))]
+ 99 | |
+100 | |         pub extern "C" fn disallowed_args_by_val(move arg1: (), move arg2: [u8; 2]);
+101 | |     }
+    | |_____^ the trait `CFnArg` is not implemented for `()`
+    |
+    = help: the following other types implement trait `CFnArg`:
+              *const R
+              *mut R
+              CArray
+              CArray2
+              CArray2ConstView
+              CArray2MutView
+              CArrayConstView
+              CArrayMutView
+            and $N others
+    = note: this error originates in the macro `ffi` (in Nightly builds, run with -Z macro-backtrace for more info)
 
 error[E0277]: the trait bound `[u8; 2]: CFnReturn` is not satisfied
-   --> tests/ui_fail/disallowed_types.rs:99:5
+   --> tests/ui_fail/disallowed_types.rs:103:5
     |
- 99 | /     ffi! {
-100 | |         #![unsafe(export("C"))]
-101 | |
-102 | |         pub extern "C" fn disallowed_return1() -> [u8; 2];
-103 | |     }
+103 | /     ffi! {
+104 | |         #![unsafe(export("C"))]
+105 | |
+106 | |         pub extern "C" fn disallowed_return1() -> [u8; 2];
+107 | |     }
     | |_____^ the trait `CFnArg` is not implemented for `[u8; 2]`
     |
     = help: the following other types implement trait `CFnArg`:
@@ -109,16 +109,92 @@ error[E0277]: the trait bound `[u8; 2]: CFnReturn` is not satisfied
     = note: required for `[u8; 2]` to implement `CFnReturn`
     = note: this error originates in the macro `ffi` (in Nightly builds, run with -Z macro-backtrace for more info)
 
-error[E0277]: the trait bound `[u8; 2]: CFnArg` is not satisfied
-   --> tests/ui_fail/disallowed_types.rs:157:1
+error[E0277]: `*mut u8` cannot be shared between threads safely
+   --> tests/ui_fail/disallowed_types.rs:146:5
     |
-157 | / ffi! {
-158 | |     #![unsafe(extern("C"))]
-159 | |
-160 | |     #![symbol_prefix = "kita"]
-161 | |
-162 | |     pub extern "C" fn disallowed_args_by_ref(arg1: (), arg2: [u8; 2]);
-163 | | }
+146 | /     ffi! {
+147 | |         #![unsafe(export("C"))]
+148 | |
+149 | |         static UNSTABLE_STATIC: String = String::new();
+150 | |         static mut NON_C_STATIC: StableButNotCStatic = StableButNotCStatic(0);
+151 | |     }
+    | |_____^ `*mut u8` cannot be shared between threads safely
+    |
+    = help: within `CBoxedSlice<u8>`, the trait `Sync` is not implemented for `*mut u8`
+note: required because it appears within the type `CBoxedSlice<u8>`
+   --> src/boxed.rs
+    |
+    | pub struct CBoxedSlice<C> {
+    |            ^^^^^^^^^^^
+    = note: shared static variables must have a type that implements `Sync`
+    = note: this error originates in the macro `ffi` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error[E0277]: the trait bound `StableButNotCStatic: co3::ExternC` is not satisfied
+   --> tests/ui_fail/disallowed_types.rs:146:5
+    |
+146 | /     ffi! {
+147 | |         #![unsafe(export("C"))]
+148 | |
+149 | |         static UNSTABLE_STATIC: String = String::new();
+150 | |         static mut NON_C_STATIC: StableButNotCStatic = StableButNotCStatic(0);
+151 | |     }
+    | |_____^ unsatisfied trait bound
+    |
+help: the trait `co3::ExternC` is not implemented for `StableButNotCStatic`
+   --> tests/ui_fail/disallowed_types.rs:33:1
+    |
+ 33 | struct StableButNotCStatic(u32);
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^
+    = help: the following other types implement trait `co3::ExternC`:
+              &'_lšč0 _TŠČ0
+              &'_lšč0 mut _TŠČ0
+              ()
+              (A, B)
+              (A, B, C)
+              (A, B, C, D)
+              (A, B, C, D, E)
+              (A, B, C, D, E, F)
+            and $N others
+    = note: this error originates in the macro `ffi` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error[E0277]: the trait bound `StableButNotCStatic: co3::ExternC` is not satisfied
+   --> tests/ui_fail/disallowed_types.rs:234:1
+    |
+234 | / ffi! {
+235 | |     #![unsafe(extern("C"))]
+236 | |
+237 | |     static UNSTABLE_STATIC: String;
+238 | |     static mut NON_C_STATIC: StableButNotCStatic;
+239 | | }
+    | |_^ unsatisfied trait bound
+    |
+help: the trait `co3::ExternC` is not implemented for `StableButNotCStatic`
+   --> tests/ui_fail/disallowed_types.rs:33:1
+    |
+ 33 | struct StableButNotCStatic(u32);
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^
+    = help: the following other types implement trait `co3::ExternC`:
+              &'_lšč0 _TŠČ0
+              &'_lšč0 mut _TŠČ0
+              ()
+              (A, B)
+              (A, B, C)
+              (A, B, C, D)
+              (A, B, C, D, E)
+              (A, B, C, D, E, F)
+            and $N others
+    = note: this error originates in the macro `ffi` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error[E0277]: the trait bound `[u8; 2]: CFnArg` is not satisfied
+   --> tests/ui_fail/disallowed_types.rs:168:1
+    |
+168 | / ffi! {
+169 | |     #![unsafe(extern("C"))]
+170 | |
+171 | |     #![symbol_prefix = "kita"]
+172 | |
+173 | |     pub extern "C" fn disallowed_args_by_ref(arg1: (), arg2: [u8; 2]);
+174 | | }
     | |_^ the trait `CFnArg` is not implemented for `[u8; 2]`
     |
     = help: the following other types implement trait `CFnArg`:
@@ -134,15 +210,15 @@ error[E0277]: the trait bound `[u8; 2]: CFnArg` is not satisfied
     = note: this error originates in the macro `ffi` (in Nightly builds, run with -Z macro-backtrace for more info)
 
 error[E0277]: the trait bound `(): CFnArg` is not satisfied
-   --> tests/ui_fail/disallowed_types.rs:157:1
+   --> tests/ui_fail/disallowed_types.rs:168:1
     |
-157 | / ffi! {
-158 | |     #![unsafe(extern("C"))]
-159 | |
-160 | |     #![symbol_prefix = "kita"]
-161 | |
-162 | |     pub extern "C" fn disallowed_args_by_ref(arg1: (), arg2: [u8; 2]);
-163 | | }
+168 | / ffi! {
+169 | |     #![unsafe(extern("C"))]
+170 | |
+171 | |     #![symbol_prefix = "kita"]
+172 | |
+173 | |     pub extern "C" fn disallowed_args_by_ref(arg1: (), arg2: [u8; 2]);
+174 | | }
     | |_^ the trait `CFnArg` is not implemented for `()`
     |
     = help: the following other types implement trait `CFnArg`:
@@ -158,15 +234,15 @@ error[E0277]: the trait bound `(): CFnArg` is not satisfied
     = note: this error originates in the macro `ffi` (in Nightly builds, run with -Z macro-backtrace for more info)
 
 error[E0277]: the trait bound `[u8; 2]: CFnArg` is not satisfied
-   --> tests/ui_fail/disallowed_types.rs:165:1
+   --> tests/ui_fail/disallowed_types.rs:176:1
     |
-165 | / ffi! {
-166 | |     #![unsafe(extern("C"))]
-167 | |
-168 | |     #![symbol_prefix = "kita"]
-169 | |
-170 | |     pub extern "C" fn disallowed_args_by_val(move arg1: (), move arg2: [u8; 2]);
-171 | | }
+176 | / ffi! {
+177 | |     #![unsafe(extern("C"))]
+178 | |
+179 | |     #![symbol_prefix = "kita"]
+180 | |
+181 | |     pub extern "C" fn disallowed_args_by_val(move arg1: (), move arg2: [u8; 2]);
+182 | | }
     | |_^ the trait `CFnArg` is not implemented for `[u8; 2]`
     |
     = help: the following other types implement trait `CFnArg`:
@@ -182,15 +258,15 @@ error[E0277]: the trait bound `[u8; 2]: CFnArg` is not satisfied
     = note: this error originates in the macro `ffi` (in Nightly builds, run with -Z macro-backtrace for more info)
 
 error[E0277]: the trait bound `(): CFnArg` is not satisfied
-   --> tests/ui_fail/disallowed_types.rs:165:1
+   --> tests/ui_fail/disallowed_types.rs:176:1
     |
-165 | / ffi! {
-166 | |     #![unsafe(extern("C"))]
-167 | |
-168 | |     #![symbol_prefix = "kita"]
-169 | |
-170 | |     pub extern "C" fn disallowed_args_by_val(move arg1: (), move arg2: [u8; 2]);
-171 | | }
+176 | / ffi! {
+177 | |     #![unsafe(extern("C"))]
+178 | |
+179 | |     #![symbol_prefix = "kita"]
+180 | |
+181 | |     pub extern "C" fn disallowed_args_by_val(move arg1: (), move arg2: [u8; 2]);
+182 | | }
     | |_^ the trait `CFnArg` is not implemented for `()`
     |
     = help: the following other types implement trait `CFnArg`:
@@ -206,13 +282,13 @@ error[E0277]: the trait bound `(): CFnArg` is not satisfied
     = note: this error originates in the macro `ffi` (in Nightly builds, run with -Z macro-backtrace for more info)
 
 error[E0277]: the trait bound `[u8; 2]: CFnReturn` is not satisfied
-   --> tests/ui_fail/disallowed_types.rs:173:1
+   --> tests/ui_fail/disallowed_types.rs:184:1
     |
-173 | / ffi! {
-174 | |     #![unsafe(extern("C"))]
-175 | |
-176 | |     pub extern "C" fn disallowed_return1() -> [u8; 2];
-177 | | }
+184 | / ffi! {
+185 | |     #![unsafe(extern("C"))]
+186 | |
+187 | |     pub extern "C" fn disallowed_return1() -> [u8; 2];
+188 | | }
     | |_^ the trait `CFnArg` is not implemented for `[u8; 2]`
     |
     = help: the following other types implement trait `CFnArg`:
@@ -228,45 +304,89 @@ error[E0277]: the trait bound `[u8; 2]: CFnReturn` is not satisfied
     = note: required for `[u8; 2]` to implement `CFnReturn`
     = note: this error originates in the macro `ffi` (in Nightly builds, run with -Z macro-backtrace for more info)
 
-error[E0080]: evaluation panicked: assertion failed: core::mem::size_of::<OpaqueZst>() != 0
-  --> tests/ui_fail/disallowed_types.rs:77:5
+error[E0080]: evaluation panicked: OpaqueZst must not be zero-sized
+  --> tests/ui_fail/disallowed_types.rs:81:5
    |
-77 | /     ffi! {
-78 | |         #![unsafe(export("C"))]
-79 | |
-80 | |         type OpaqueZst;
+81 | /     ffi! {
+82 | |         #![unsafe(export("C"))]
+83 | |
+84 | |         type OpaqueZst;
 ...  |
-86 | |     }
+90 | |     }
    | |_____^ evaluation of `provider::_::_::_::_` failed here
 
 error[E0080]: evaluation panicked: tagged-dispatch argument size mismatch
-   --> tests/ui_fail/disallowed_types.rs:124:49
+   --> tests/ui_fail/disallowed_types.rs:128:49
     |
-124 |         impl<dyn(usize) T = Array> Dispatch for T
+128 |         impl<dyn(usize) T = Array> Dispatch for T
     |                                                 ^ evaluation of `provider::_::_::{constant#0}` failed here
 
 note: erroneous constant encountered
-   --> tests/ui_fail/disallowed_types.rs:124:49
+   --> tests/ui_fail/disallowed_types.rs:128:49
     |
-124 |         impl<dyn(usize) T = Array> Dispatch for T
+128 |         impl<dyn(usize) T = Array> Dispatch for T
     |                                                 ^
 
 error[E0080]: evaluation panicked: tagged-dispatch argument alignment mismatch
-   --> tests/ui_fail/disallowed_types.rs:134:50
+   --> tests/ui_fail/disallowed_types.rs:138:50
     |
-134 |         impl<dyn(usize) T = Array2> Dispatch for T
+138 |         impl<dyn(usize) T = Array2> Dispatch for T
     |                                                  ^ evaluation of `provider::_::_::{constant#0}` failed here
 
 note: erroneous constant encountered
-   --> tests/ui_fail/disallowed_types.rs:134:50
+   --> tests/ui_fail/disallowed_types.rs:138:50
     |
-134 |         impl<dyn(usize) T = Array2> Dispatch for T
+138 |         impl<dyn(usize) T = Array2> Dispatch for T
     |                                                  ^
 
-error[E0277]: the trait bound `(): CFnArg` is not satisfied
-   --> tests/ui_fail/disallowed_types.rs:162:46
+error[E0080]: evaluation panicked: ffi static `String` must have a stable, non-zero layout
+   --> tests/ui_fail/disallowed_types.rs:146:5
     |
-162 |     pub extern "C" fn disallowed_args_by_ref(arg1: (), arg2: [u8; 2]);
+146 | /     ffi! {
+147 | |         #![unsafe(export("C"))]
+148 | |
+149 | |         static UNSTABLE_STATIC: String = String::new();
+150 | |         static mut NON_C_STATIC: StableButNotCStatic = StableButNotCStatic(0);
+151 | |     }
+    | |_____^ evaluation of `provider::_` failed here
+
+error[E0080]: evaluation panicked: ffi static `StableButNotCStatic` must support checked transmutation
+   --> tests/ui_fail/disallowed_types.rs:146:5
+    |
+146 | /     ffi! {
+147 | |         #![unsafe(export("C"))]
+148 | |
+149 | |         static UNSTABLE_STATIC: String = String::new();
+150 | |         static mut NON_C_STATIC: StableButNotCStatic = StableButNotCStatic(0);
+151 | |     }
+    | |_____^ evaluation of `provider::_` failed here
+
+error[E0277]: the trait bound `StableButNotCStatic: CheckedTransmute` is not satisfied
+   --> tests/ui_fail/disallowed_types.rs:150:34
+    |
+150 |         static mut NON_C_STATIC: StableButNotCStatic = StableButNotCStatic(0);
+    |                                  ^^^^^^^^^^^^^^^^^^^ unsatisfied trait bound
+    |
+help: the trait `CheckedTransmute` is not implemented for `StableButNotCStatic`
+   --> tests/ui_fail/disallowed_types.rs:33:1
+    |
+ 33 | struct StableButNotCStatic(u32);
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^
+    = help: the following other types implement trait `CheckedTransmute`:
+              &R
+              &mut R
+              ()
+              *const R
+              *mut R
+              Array
+              Array2
+              Array2View<'_dšč>
+            and $N others
+
+error[E0277]: the trait bound `(): CFnArg` is not satisfied
+   --> tests/ui_fail/disallowed_types.rs:173:46
+    |
+173 |     pub extern "C" fn disallowed_args_by_ref(arg1: (), arg2: [u8; 2]);
     |                       ---------------------- ^^^^ the trait `CFnArg` is not implemented for `()`
     |                       |
     |                       required by a bound introduced by this call
@@ -282,22 +402,22 @@ error[E0277]: the trait bound `(): CFnArg` is not satisfied
               CArrayMutView
             and $N others
 note: required by a bound in `disallowed_args_by_ref::disallowed_args_by_ref`
-   --> tests/ui_fail/disallowed_types.rs:157:1
+   --> tests/ui_fail/disallowed_types.rs:168:1
     |
-157 | / ffi! {
-158 | |     #![unsafe(extern("C"))]
-159 | |
-160 | |     #![symbol_prefix = "kita"]
-161 | |
-162 | |     pub extern "C" fn disallowed_args_by_ref(arg1: (), arg2: [u8; 2]);
-163 | | }
+168 | / ffi! {
+169 | |     #![unsafe(extern("C"))]
+170 | |
+171 | |     #![symbol_prefix = "kita"]
+172 | |
+173 | |     pub extern "C" fn disallowed_args_by_ref(arg1: (), arg2: [u8; 2]);
+174 | | }
     | |_^ required by this bound in `disallowed_args_by_ref`
     = note: this error originates in the macro `ffi` (in Nightly builds, run with -Z macro-backtrace for more info)
 
 error[E0277]: the trait bound `[u8; 2]: CFnArg` is not satisfied
-   --> tests/ui_fail/disallowed_types.rs:162:56
+   --> tests/ui_fail/disallowed_types.rs:173:56
     |
-162 |     pub extern "C" fn disallowed_args_by_ref(arg1: (), arg2: [u8; 2]);
+173 |     pub extern "C" fn disallowed_args_by_ref(arg1: (), arg2: [u8; 2]);
     |                       ----------------------           ^^^^ the trait `CFnArg` is not implemented for `[u8; 2]`
     |                       |
     |                       required by a bound introduced by this call
@@ -313,22 +433,22 @@ error[E0277]: the trait bound `[u8; 2]: CFnArg` is not satisfied
               CArrayMutView
             and $N others
 note: required by a bound in `disallowed_args_by_ref::disallowed_args_by_ref`
-   --> tests/ui_fail/disallowed_types.rs:157:1
+   --> tests/ui_fail/disallowed_types.rs:168:1
     |
-157 | / ffi! {
-158 | |     #![unsafe(extern("C"))]
-159 | |
-160 | |     #![symbol_prefix = "kita"]
-161 | |
-162 | |     pub extern "C" fn disallowed_args_by_ref(arg1: (), arg2: [u8; 2]);
-163 | | }
+168 | / ffi! {
+169 | |     #![unsafe(extern("C"))]
+170 | |
+171 | |     #![symbol_prefix = "kita"]
+172 | |
+173 | |     pub extern "C" fn disallowed_args_by_ref(arg1: (), arg2: [u8; 2]);
+174 | | }
     | |_^ required by this bound in `disallowed_args_by_ref`
     = note: this error originates in the macro `ffi` (in Nightly builds, run with -Z macro-backtrace for more info)
 
 error[E0277]: the trait bound `(): CFnArg` is not satisfied
-   --> tests/ui_fail/disallowed_types.rs:170:51
+   --> tests/ui_fail/disallowed_types.rs:181:51
     |
-170 |     pub extern "C" fn disallowed_args_by_val(move arg1: (), move arg2: [u8; 2]);
+181 |     pub extern "C" fn disallowed_args_by_val(move arg1: (), move arg2: [u8; 2]);
     |                       ----------------------      ^^^^ the trait `CFnArg` is not implemented for `()`
     |                       |
     |                       required by a bound introduced by this call
@@ -344,22 +464,22 @@ error[E0277]: the trait bound `(): CFnArg` is not satisfied
               CArrayMutView
             and $N others
 note: required by a bound in `disallowed_args_by_val::disallowed_args_by_val`
-   --> tests/ui_fail/disallowed_types.rs:165:1
+   --> tests/ui_fail/disallowed_types.rs:176:1
     |
-165 | / ffi! {
-166 | |     #![unsafe(extern("C"))]
-167 | |
-168 | |     #![symbol_prefix = "kita"]
-169 | |
-170 | |     pub extern "C" fn disallowed_args_by_val(move arg1: (), move arg2: [u8; 2]);
-171 | | }
+176 | / ffi! {
+177 | |     #![unsafe(extern("C"))]
+178 | |
+179 | |     #![symbol_prefix = "kita"]
+180 | |
+181 | |     pub extern "C" fn disallowed_args_by_val(move arg1: (), move arg2: [u8; 2]);
+182 | | }
     | |_^ required by this bound in `disallowed_args_by_val`
     = note: this error originates in the macro `ffi` (in Nightly builds, run with -Z macro-backtrace for more info)
 
 error[E0277]: the trait bound `[u8; 2]: CFnArg` is not satisfied
-   --> tests/ui_fail/disallowed_types.rs:170:66
+   --> tests/ui_fail/disallowed_types.rs:181:66
     |
-170 |     pub extern "C" fn disallowed_args_by_val(move arg1: (), move arg2: [u8; 2]);
+181 |     pub extern "C" fn disallowed_args_by_val(move arg1: (), move arg2: [u8; 2]);
     |                       ----------------------                     ^^^^ the trait `CFnArg` is not implemented for `[u8; 2]`
     |                       |
     |                       required by a bound introduced by this call
@@ -375,26 +495,26 @@ error[E0277]: the trait bound `[u8; 2]: CFnArg` is not satisfied
               CArrayMutView
             and $N others
 note: required by a bound in `disallowed_args_by_val::disallowed_args_by_val`
-   --> tests/ui_fail/disallowed_types.rs:165:1
+   --> tests/ui_fail/disallowed_types.rs:176:1
     |
-165 | / ffi! {
-166 | |     #![unsafe(extern("C"))]
-167 | |
-168 | |     #![symbol_prefix = "kita"]
-169 | |
-170 | |     pub extern "C" fn disallowed_args_by_val(move arg1: (), move arg2: [u8; 2]);
-171 | | }
+176 | / ffi! {
+177 | |     #![unsafe(extern("C"))]
+178 | |
+179 | |     #![symbol_prefix = "kita"]
+180 | |
+181 | |     pub extern "C" fn disallowed_args_by_val(move arg1: (), move arg2: [u8; 2]);
+182 | | }
     | |_^ required by this bound in `disallowed_args_by_val`
     = note: this error originates in the macro `ffi` (in Nightly builds, run with -Z macro-backtrace for more info)
 
 error[E0277]: the trait bound `[u8; 2]: CFnReturn` is not satisfied
-   --> tests/ui_fail/disallowed_types.rs:173:1
+   --> tests/ui_fail/disallowed_types.rs:184:1
     |
-173 | / ffi! {
-174 | |     #![unsafe(extern("C"))]
-175 | |
-176 | |     pub extern "C" fn disallowed_return1() -> [u8; 2];
-177 | | }
+184 | / ffi! {
+185 | |     #![unsafe(extern("C"))]
+186 | |
+187 | |     pub extern "C" fn disallowed_return1() -> [u8; 2];
+188 | | }
     | |_^ the trait `CFnArg` is not implemented for `[u8; 2]`
     |
     = help: the following other types implement trait `CFnArg`:
@@ -409,56 +529,56 @@ error[E0277]: the trait bound `[u8; 2]: CFnReturn` is not satisfied
             and $N others
     = note: required for `[u8; 2]` to implement `CFnReturn`
 note: required by a bound in `disallowed_return1::disallowed_return1`
-   --> tests/ui_fail/disallowed_types.rs:173:1
-    |
-173 | / ffi! {
-174 | |     #![unsafe(extern("C"))]
-175 | |
-176 | |     pub extern "C" fn disallowed_return1() -> [u8; 2];
-177 | | }
-    | |_^ required by this bound in `disallowed_return1`
-    = note: this error originates in the macro `ffi` (in Nightly builds, run with -Z macro-backtrace for more info)
-
-error[E0277]: the trait bound `OwnedMyType: co3::borrow::Borrow` is not satisfied
-   --> tests/ui_fail/disallowed_types.rs:189:46
-    |
-184 | / ffi! {
-185 | |     #![unsafe(extern("C"))]
-186 | |
-187 | |     #![symbol_prefix = "kita"]
-188 | |
-189 | |     pub extern "C" fn disallowed_opaque_args(arg1: OwnedMyType);
-    | |                                              ^^^^ the trait `co3::borrow::Borrow` is not implemented for `OwnedMyType`
-190 | | }
-    | |_- required by a bound introduced by this call
-    |
-help: consider borrowing here
-    |
-189 |     pub extern "C" fn disallowed_opaque_args(&arg1: OwnedMyType);
-    |                                              +
-189 |     pub extern "C" fn disallowed_opaque_args(&mut arg1: OwnedMyType);
-    |                                              ++++
-
-error[E0277]: the trait bound `OwnedMyType: co3::borrow::Borrow` is not satisfied
    --> tests/ui_fail/disallowed_types.rs:184:1
     |
 184 | / ffi! {
 185 | |     #![unsafe(extern("C"))]
 186 | |
-187 | |     #![symbol_prefix = "kita"]
-188 | |
-189 | |     pub extern "C" fn disallowed_opaque_args(arg1: OwnedMyType);
-190 | | }
+187 | |     pub extern "C" fn disallowed_return1() -> [u8; 2];
+188 | | }
+    | |_^ required by this bound in `disallowed_return1`
+    = note: this error originates in the macro `ffi` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error[E0277]: the trait bound `OwnedMyType: co3::borrow::Borrow` is not satisfied
+   --> tests/ui_fail/disallowed_types.rs:200:46
+    |
+195 | / ffi! {
+196 | |     #![unsafe(extern("C"))]
+197 | |
+198 | |     #![symbol_prefix = "kita"]
+199 | |
+200 | |     pub extern "C" fn disallowed_opaque_args(arg1: OwnedMyType);
+    | |                                              ^^^^ the trait `co3::borrow::Borrow` is not implemented for `OwnedMyType`
+201 | | }
+    | |_- required by a bound introduced by this call
+    |
+help: consider borrowing here
+    |
+200 |     pub extern "C" fn disallowed_opaque_args(&arg1: OwnedMyType);
+    |                                              +
+200 |     pub extern "C" fn disallowed_opaque_args(&mut arg1: OwnedMyType);
+    |                                              ++++
+
+error[E0277]: the trait bound `OwnedMyType: co3::borrow::Borrow` is not satisfied
+   --> tests/ui_fail/disallowed_types.rs:195:1
+    |
+195 | / ffi! {
+196 | |     #![unsafe(extern("C"))]
+197 | |
+198 | |     #![symbol_prefix = "kita"]
+199 | |
+200 | |     pub extern "C" fn disallowed_opaque_args(arg1: OwnedMyType);
+201 | | }
     | |_^ unsatisfied trait bound
     |
 help: the trait `co3::borrow::Borrow` is not implemented for `OwnedMyType`
-   --> tests/ui_fail/disallowed_types.rs:143:1
+   --> tests/ui_fail/disallowed_types.rs:154:1
     |
-143 | / ffi! {
-144 | |     #![unsafe(extern("C"))]
-145 | |     #![symbol_prefix = "kita"]
+154 | / ffi! {
+155 | |     #![unsafe(extern("C"))]
+156 | |     #![symbol_prefix = "kita"]
 ...   |
-155 | | }
+166 | | }
     | |_^
     = help: the following other types implement trait `co3::borrow::Borrow`:
               &R
@@ -473,34 +593,45 @@ help: the trait `co3::borrow::Borrow` is not implemented for `OwnedMyType`
     = note: this error originates in the macro `ffi` (in Nightly builds, run with -Z macro-backtrace for more info)
 
 error[E0080]: evaluation panicked: tagged-dispatch argument size mismatch
-   --> tests/ui_fail/disallowed_types.rs:202:46
+   --> tests/ui_fail/disallowed_types.rs:213:46
     |
-202 |     impl<dyn(usize) T = Handle> Dispatch for T
-    |                                              ^ evaluation of `_::{constant#0}` failed here
+213 |     impl<dyn(usize) T = Handle> Dispatch for T
+    |                                              ^ evaluation of `_::_::{constant#0}` failed here
 
 note: erroneous constant encountered
-   --> tests/ui_fail/disallowed_types.rs:202:46
+   --> tests/ui_fail/disallowed_types.rs:213:46
     |
-202 |     impl<dyn(usize) T = Handle> Dispatch for T
+213 |     impl<dyn(usize) T = Handle> Dispatch for T
     |                                              ^
 
 error[E0080]: evaluation panicked: tagged-dispatch argument alignment mismatch
-   --> tests/ui_fail/disallowed_types.rs:215:47
+   --> tests/ui_fail/disallowed_types.rs:226:47
     |
-215 |     impl<dyn(usize) T = Handle2> Dispatch for T
-    |                                               ^ evaluation of `_::{constant#0}` failed here
+226 |     impl<dyn(usize) T = Handle2> Dispatch for T
+    |                                               ^ evaluation of `_::_::{constant#0}` failed here
 
 note: erroneous constant encountered
-   --> tests/ui_fail/disallowed_types.rs:215:47
+   --> tests/ui_fail/disallowed_types.rs:226:47
     |
-215 |     impl<dyn(usize) T = Handle2> Dispatch for T
+226 |     impl<dyn(usize) T = Handle2> Dispatch for T
     |                                               ^
+
+error[E0080]: evaluation panicked: ffi static `String` must have a stable, non-zero layout
+   --> tests/ui_fail/disallowed_types.rs:234:1
+    |
+234 | / ffi! {
+235 | |     #![unsafe(extern("C"))]
+236 | |
+237 | |     static UNSTABLE_STATIC: String;
+238 | |     static mut NON_C_STATIC: StableButNotCStatic;
+239 | | }
+    | |_^ evaluation of `_` failed here
 
 error[E0080]: evaluation panicked: single-field DST structs require #[repr(transparent)]
   --> tests/ui_fail/disallowed_types.rs:27:20
    |
 27 | #[derive(RustSpec, ReprC)]
-   |                    ^^^^^ evaluation of `<NonTransparentDst as _::_::AssertTransparentSize>::assert_slice_like::{constant#0}` failed here
+   |                    ^^^^^ evaluation of `<NonTransparentDst as _::AssertTransparentSize>::assert_slice_like::{constant#0}` failed here
 
 note: erroneous constant encountered
   --> tests/ui_fail/disallowed_types.rs:27:20
@@ -511,113 +642,128 @@ note: erroneous constant encountered
    = note: this note originates in the derive macro `ReprC` (in Nightly builds, run with -Z macro-backtrace for more info)
 
 error[E0080]: evaluation panicked: Use `move fn` to transfer ownership
-  --> tests/ui_fail/disallowed_types.rs:77:5
+  --> tests/ui_fail/disallowed_types.rs:81:5
    |
-77 | /     ffi! {
-78 | |         #![unsafe(export("C"))]
-79 | |
-80 | |         type OpaqueZst;
+81 | /     ffi! {
+82 | |         #![unsafe(export("C"))]
+83 | |
+84 | |         type OpaqueZst;
 ...  |
-86 | |     }
+90 | |     }
    | |_____^ evaluation of `provider::_::_::to_owned::<'_>::{closure#0}::{constant#0}` failed here
 
 note: erroneous constant encountered
-  --> tests/ui_fail/disallowed_types.rs:77:5
+  --> tests/ui_fail/disallowed_types.rs:81:5
    |
-77 | /     ffi! {
-78 | |         #![unsafe(export("C"))]
-79 | |
-80 | |         type OpaqueZst;
+81 | /     ffi! {
+82 | |         #![unsafe(export("C"))]
+83 | |
+84 | |         type OpaqueZst;
 ...  |
-86 | |     }
+90 | |     }
    | |_____^
    |
    = note: this note originates in the macro `ffi` (in Nightly builds, run with -Z macro-backtrace for more info)
 
 error[E0080]: evaluation panicked: Use `move fn` to transfer ownership
-   --> tests/ui_fail/disallowed_types.rs:104:5
+   --> tests/ui_fail/disallowed_types.rs:108:5
     |
-104 | /     ffi! {
-105 | |         #![unsafe(export("C"))]
-106 | |
-107 | |         pub extern "C" fn disallowed_return2() -> Box<[u8]>;
-108 | |     }
+108 | /     ffi! {
+109 | |         #![unsafe(export("C"))]
+110 | |
+111 | |         pub extern "C" fn disallowed_return2() -> Box<[u8]>;
+112 | |     }
     | |_____^ evaluation of `provider::_::disallowed_return2::{closure#0}::{constant#0}` failed here
 
 note: erroneous constant encountered
-   --> tests/ui_fail/disallowed_types.rs:104:5
+   --> tests/ui_fail/disallowed_types.rs:108:5
     |
-104 | /     ffi! {
-105 | |         #![unsafe(export("C"))]
-106 | |
-107 | |         pub extern "C" fn disallowed_return2() -> Box<[u8]>;
-108 | |     }
+108 | /     ffi! {
+109 | |         #![unsafe(export("C"))]
+110 | |
+111 | |         pub extern "C" fn disallowed_return2() -> Box<[u8]>;
+112 | |     }
     | |_____^
     |
     = note: this note originates in the macro `ffi` (in Nightly builds, run with -Z macro-backtrace for more info)
 
 error[E0080]: evaluation panicked: Use `move fn` to transfer ownership
-   --> tests/ui_fail/disallowed_types.rs:115:5
+   --> tests/ui_fail/disallowed_types.rs:119:5
     |
-115 | /     ffi! {
-116 | |         #![unsafe(export("C"))]
-117 | |
-118 | |         pub extern "C" fn disallowed_opaque_return() -> Box<OpaqueZst>;
-119 | |     }
+119 | /     ffi! {
+120 | |         #![unsafe(export("C"))]
+121 | |
+122 | |         pub extern "C" fn disallowed_opaque_return() -> Box<OpaqueZst>;
+123 | |     }
     | |_____^ evaluation of `provider::_::disallowed_opaque_return::{closure#0}::{constant#0}` failed here
 
 note: erroneous constant encountered
-   --> tests/ui_fail/disallowed_types.rs:115:5
+   --> tests/ui_fail/disallowed_types.rs:119:5
     |
-115 | /     ffi! {
-116 | |         #![unsafe(export("C"))]
-117 | |
-118 | |         pub extern "C" fn disallowed_opaque_return() -> Box<OpaqueZst>;
-119 | |     }
+119 | /     ffi! {
+120 | |         #![unsafe(export("C"))]
+121 | |
+122 | |         pub extern "C" fn disallowed_opaque_return() -> Box<OpaqueZst>;
+123 | |     }
     | |_____^
     |
     = note: this note originates in the macro `ffi` (in Nightly builds, run with -Z macro-backtrace for more info)
 
-error[E0080]: evaluation panicked: Use `move fn` to transfer ownership
-   --> tests/ui_fail/disallowed_types.rs:178:1
+error[E0512]: cannot transmute between types of different sizes, or dependently-sized types
+   --> tests/ui_fail/disallowed_types.rs:146:5
     |
-178 | / ffi! {
-179 | |     #![unsafe(extern("C"))]
-180 | |
-181 | |     pub extern "C" fn disallowed_return2() -> Box<[u8]>;
-182 | | }
+146 | /     ffi! {
+147 | |         #![unsafe(export("C"))]
+148 | |
+149 | |         static UNSTABLE_STATIC: String = String::new();
+150 | |         static mut NON_C_STATIC: StableButNotCStatic = StableButNotCStatic(0);
+151 | |     }
+    | |_____^
+    |
+    = note: source type: `String` (192 bits)
+    = note: target type: `CBoxedSlice<u8>` (128 bits)
+    = note: this error originates in the macro `ffi` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error[E0080]: evaluation panicked: Use `move fn` to transfer ownership
+   --> tests/ui_fail/disallowed_types.rs:189:1
+    |
+189 | / ffi! {
+190 | |     #![unsafe(extern("C"))]
+191 | |
+192 | |     pub extern "C" fn disallowed_return2() -> Box<[u8]>;
+193 | | }
     | |_^ evaluation of `disallowed_return2::{constant#0}` failed here
 
 note: erroneous constant encountered
-   --> tests/ui_fail/disallowed_types.rs:178:1
+   --> tests/ui_fail/disallowed_types.rs:189:1
     |
-178 | / ffi! {
-179 | |     #![unsafe(extern("C"))]
-180 | |
-181 | |     pub extern "C" fn disallowed_return2() -> Box<[u8]>;
-182 | | }
+189 | / ffi! {
+190 | |     #![unsafe(extern("C"))]
+191 | |
+192 | |     pub extern "C" fn disallowed_return2() -> Box<[u8]>;
+193 | | }
     | |_^
     |
     = note: this note originates in the macro `ffi` (in Nightly builds, run with -Z macro-backtrace for more info)
 
 error[E0080]: evaluation panicked: Use `move fn` to transfer ownership
-   --> tests/ui_fail/disallowed_types.rs:191:1
+   --> tests/ui_fail/disallowed_types.rs:202:1
     |
-191 | / ffi! {
-192 | |     #![unsafe(extern("C"))]
-193 | |
-194 | |     pub extern "C" fn disallowed_opaque_return() -> OwnedMyType;
-195 | | }
+202 | / ffi! {
+203 | |     #![unsafe(extern("C"))]
+204 | |
+205 | |     pub extern "C" fn disallowed_opaque_return() -> OwnedMyType;
+206 | | }
     | |_^ evaluation of `disallowed_opaque_return::{constant#0}` failed here
 
 note: erroneous constant encountered
-   --> tests/ui_fail/disallowed_types.rs:191:1
+   --> tests/ui_fail/disallowed_types.rs:202:1
     |
-191 | / ffi! {
-192 | |     #![unsafe(extern("C"))]
-193 | |
-194 | |     pub extern "C" fn disallowed_opaque_return() -> OwnedMyType;
-195 | | }
+202 | / ffi! {
+203 | |     #![unsafe(extern("C"))]
+204 | |
+205 | |     pub extern "C" fn disallowed_opaque_return() -> OwnedMyType;
+206 | | }
     | |_^
     |
     = note: this note originates in the macro `ffi` (in Nightly builds, run with -Z macro-backtrace for more info)

@@ -176,4 +176,30 @@ ffi! {
     }
 }
 
+ffi! {
+    #![unsafe(export("C"))]
+
+    type GenericExport<T>;
+
+    impl<T> GenericExport<T> {
+        fn method(&self);
+    }
+}
+
+struct ReceiverPosition;
+
+impl ReceiverPosition {
+    fn method(&self, _: u32) {}
+}
+
+ffi! {
+    #![unsafe(export("C"))]
+
+    type ReceiverPosition;
+
+    impl ReceiverPosition {
+        fn method(value: u32, &self);
+    }
+}
+
 fn main() {}

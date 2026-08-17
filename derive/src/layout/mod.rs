@@ -6,7 +6,7 @@ use crate::{
     generate::gen_handle_family_impl,
     layout::attr::{ReprKind, parse_repr},
     layout::item::{derive_fieldless_enum, derive_item},
-    utils::{co3_path, push_error},
+    utils::push_error,
     validate::validate_niche_value_sized_tail,
 };
 
@@ -242,7 +242,13 @@ pub(crate) fn derive_repr_c(input: &syn::DeriveInput) -> syn::Result<TokenStream
                 .iter()
                 .all(|v| matches!(v.fields, syn::Fields::Unit))
             {
-                derive_fieldless_enum(repr_attr.as_ref(), &input.ident, &generics, &data.variants)
+                derive_fieldless_enum(
+                    repr_attr.as_ref(),
+                    &input.vis,
+                    &input.ident,
+                    &generics,
+                    &data.variants,
+                )
             } else {
                 derive_item(repr_attr.as_ref(), input, &repr_c_attrs, &variant_attrs)
             }
@@ -253,7 +259,6 @@ pub(crate) fn derive_repr_c(input: &syn::DeriveInput) -> syn::Result<TokenStream
     if let Some(errors) = errors {
         Err(errors)
     } else {
-        let co3 = co3_path();
         let drop_impl_assert = assert_no_drop(&generics, &input.ident);
 
         let handle_family_impl = repr_c_attrs
@@ -271,11 +276,7 @@ pub(crate) fn derive_repr_c(input: &syn::DeriveInput) -> syn::Result<TokenStream
             Ok(body)
         } else {
             Ok(quote! {
-                const _: () = {
-                    use #co3 as co3;
-
-                    #body
-                };
+                #body
             })
         }
     }

@@ -351,15 +351,15 @@ fn verify_enum_niche_value() {
 
     assert_eq!(
         expected_niche_enum_discriminant_u,
-        encode(None::<FieldlessUEnum>)
+        encode(None::<FieldlessUEnum>).0
     );
     assert_eq!(
         expected_niche_enum_discriminant_i,
-        encode(None::<FieldlessIEnum>)
+        encode(None::<FieldlessIEnum>).0
     );
     assert_eq!(
         expected_niche_enum_discriminant_u,
-        encode(None::<FieldlessNoReprEnum>)
+        encode(None::<FieldlessNoReprEnum>).0
     );
 
     let encoded = soft_encode(None::<ReprCDataEnum<&u8>>, &mut Default::default());
@@ -386,6 +386,6 @@ fn verify_enum_niche_value() {
 
     assert_eq!(
         expected_fieldless_large_enum,
-        encode(None::<FieldlessLargeEnum>)
+        encode(None::<FieldlessLargeEnum>).0
     );
 }

@@ -25,7 +25,7 @@ pub(crate) fn strip_internal_arg_attrs(signature: &mut syn::Signature) {
             node.attrs.retain(|attr| {
                 !is_by_val_attr(attr)
                     && !attr.path().is_ident("soft")
-                    && !attr.path().is_ident("spread")
+                    && !attr.path().is_ident("spread2")
             });
         }
 
@@ -33,7 +33,7 @@ pub(crate) fn strip_internal_arg_attrs(signature: &mut syn::Signature) {
             node.attrs.retain(|attr| {
                 !is_by_val_attr(attr)
                     && !attr.path().is_ident("soft")
-                    && !attr.path().is_ident("spread")
+                    && !attr.path().is_ident("spread2")
             });
         }
     }
@@ -62,6 +62,7 @@ pub(crate) fn wrap_fn_definition(
         item.attrs.iter().any(is_by_val_attr),
         None,
         None,
+        false,
         &item.sig,
     );
     let co3 = co3_path();
@@ -83,6 +84,7 @@ pub(crate) fn wrap_fn_definition(
 pub fn wrap_impl_definition<const DISPATCHED: bool>(
     failure_mode: FailureMode,
     impl_: &ItemImpl,
+    erase_declared_receiver: bool,
 ) -> ItemImpl {
     let ItemImpl {
         attrs: impl_attrs,
@@ -137,6 +139,7 @@ pub fn wrap_impl_definition<const DISPATCHED: bool>(
             item.attrs.iter().any(is_by_val_attr),
             Some(self_ty),
             Some(generics),
+            erase_declared_receiver,
             &sig,
         );
         let co3 = co3_path();
@@ -149,6 +152,19 @@ pub fn wrap_impl_definition<const DISPATCHED: bool>(
         } else {
             core::mem::take(&mut sig.inputs)
         };
+
+        if let Some(position) = sig
+            .inputs
+            .iter()
+            .position(|input| matches!(input, FnArg::Receiver(_)))
+            && position != 0
+        {
+            let mut inputs = core::mem::take(&mut sig.inputs)
+                .into_iter()
+                .collect::<Vec<_>>();
+            let receiver = inputs.remove(position);
+            sig.inputs = core::iter::once(receiver).chain(inputs).collect();
+        }
 
         strip_internal_arg_attrs(&mut sig);
 
@@ -216,18 +232,30 @@ pub(crate) fn gen_wrapper_body<const DISPATCHED: bool>(
     fn_by_val: bool,
     self_ty: Option<&syn::Type>,
     dispatch_generics: Option<&syn::Generics>,
+    erase_declared_receiver: bool,
     sig: &syn::Signature,
 ) -> TokenStream {
     let handle_erase_stmts = if DISPATCHED {
         self_ty
             .zip(dispatch_generics)
-            .map(|(self_ty, generics)| gen_handle_erase_stmts(self_ty, generics, sig))
+            .map(|(self_ty, generics)| {
+                gen_handle_erase_stmts(self_ty, generics, erase_declared_receiver, sig)
+            })
             .unwrap_or_default()
     } else {
         Default::default()
     };
 
     let input_convert = gen_input_conversion_stmts(&sig.inputs);
+    let spread_inputs = gen_spread_input_stmts(&sig.inputs);
+    let declared_receiver_erase = if !DISPATCHED
+        && erase_declared_receiver
+        && crate::dispatch::has_declared_self_input(self_ty.unwrap(), sig)
+    {
+        crate::dispatch::gen_dyn_self_erase_stmts(self_ty.unwrap(), sig)
+    } else {
+        Default::default()
+    };
     let store_sync_stmts = gen_store_sync_stmts(&sig.inputs);
     let sync_check = gen_wrapper_sync_check(failure_mode, sig.inputs.len(), store_sync_stmts);
 
@@ -242,8 +270,10 @@ pub(crate) fn gen_wrapper_body<const DISPATCHED: bool>(
             #return_borrow_check
 
             #input_convert
+            #(#declared_receiver_erase)*
             let __co3_out = {
                 #(#handle_erase_stmts)*
+                #spread_inputs
                 #ffi_fn_call
             };
 
@@ -263,9 +293,11 @@ pub(crate) fn gen_wrapper_body<const DISPATCHED: bool>(
 
     quote! {
         #input_convert
+        #(#declared_receiver_erase)*
 
         {
             #(#handle_erase_stmts)*
+            #spread_inputs
             #ffi_fn_call;
         }
 
@@ -407,17 +439,27 @@ fn gen_input_conversion_stmts(inputs: &Punctuated<FnArg, syn::Token![,]>) -> Tok
         } else {
             quote! { let #arg_name = co3::encode(#arg_name); }
         });
-
-        if is_spread_arg(attrs) {
-            let (data_name, metadata_name) = spread_arg_names(&arg_name);
-
-            stmts.extend(quote! {
-                let (#data_name, #metadata_name) = co3::slice::Spread2::into_parts(#arg_name);
-            });
-        }
     }
 
     stmts
+}
+
+fn gen_spread_input_stmts(inputs: &Punctuated<FnArg, syn::Token![,]>) -> TokenStream {
+    let stmts = inputs.iter().filter_map(|input| {
+        let FnArg::Typed(syn::PatType { attrs, pat, .. }) = input else {
+            return None;
+        };
+        if !is_spread_arg(attrs) {
+            return None;
+        }
+        let arg_name = item_fn_input_ident(pat);
+        let (data_name, metadata_name) = spread_arg_names(arg_name);
+        Some(quote! {
+            let (#data_name, #metadata_name) = co3::slice::Spread2::into_parts(#arg_name);
+        })
+    });
+
+    quote!(#(#stmts)*)
 }
 
 fn gen_ffi_fn_call(sig: &syn::Signature) -> TokenStream {

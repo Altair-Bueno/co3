@@ -119,3 +119,15 @@ error: expected 1 concrete generic argument(s)
     |
 173 |         use<T> @ <u32, u8>,
     |                  ^^^^^^^^^
+
+error: non-dispatched generic impls are only supported in extern declarations
+   --> tests/ui_fail/export_restrictions.rs:184:9
+    |
+184 |     impl<T> GenericExport<T> {
+    |         ^^^
+
+error: an exported method receiver must be the first non-handle argument
+   --> tests/ui_fail/export_restrictions.rs:201:31
+    |
+201 |         fn method(value: u32, &self);
+    |                               ^

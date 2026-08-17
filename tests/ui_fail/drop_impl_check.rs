@@ -79,4 +79,18 @@ ffi! {
     }
 }
 
+ffi! {
+    #![unsafe(extern("C"))]
+
+    #[id(u8)]
+    type IncompleteDispatch<T, U>;
+
+    impl<T, U> Drop for dyn IncompleteDispatch<T, U>
+    where
+        use<T> @ (<u8>)
+    {
+        fn drop(&mut self);
+    }
+}
+
 fn main() {}

@@ -190,10 +190,10 @@ pub const unsafe extern "Rust" fn ambiguous2() -> Ambiguous {
 #[test]
 fn exported_abi() {
     unsafe extern "C" {
-        fn export__OpaqueStructU32__ambiguous() -> u8;
+        fn export__OpaqueStructU32__ambiguous() -> <Ambiguous as co3::ExternC>::CType;
 
-        fn ambiguous() -> u8;
-        fn ambiguous1() -> u8;
+        fn ambiguous() -> <Ambiguous as co3::ExternC>::CType;
+        fn ambiguous1() -> <Ambiguous as co3::ExternC>::CType;
 
         #[link_name = "cclone"]
         fn export_opaque_clone_bool(handle: *const c_void) -> *mut c_void;
@@ -204,16 +204,18 @@ fn exported_abi() {
         #[link_name = "xor_u8"]
         fn export_opaque_xor_u8(handle_ptr: *const c_void, by: u8) -> *mut c_void;
 
-        fn export__AmbiguousX_u64_3__OpaqueStructU64__ambiguous(a: &[u8; 3]) -> u8;
+        fn export__AmbiguousX_u64_3__OpaqueStructU64__ambiguous(
+            a: &[u8; 3],
+        ) -> <Ambiguous as co3::ExternC>::CType;
 
         #[link_name = "export__OpaqueStructU32__re_exported"]
         fn re_exported() -> *mut c_void;
     }
 
     unsafe extern "Rust" {
-        fn kita(a: *const [i8; 4]) -> u8;
-        fn kita1() -> u8;
-        fn kita2() -> u8;
+        fn kita(a: *const [i8; 4]) -> <Ambiguous as co3::ExternC>::CType;
+        fn kita1() -> <Ambiguous as co3::ExternC>::CType;
+        fn kita2() -> <Ambiguous as co3::ExternC>::CType;
 
         #[link_name = "export__Clone__NonOpaqueStruct_u8__clone"]
         fn export_non_opaque_clone_u8(

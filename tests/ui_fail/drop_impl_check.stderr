@@ -22,6 +22,12 @@ error: explicit `impl Drop` is only allowed for declared types
 44 |     impl Drop for ExternType {
    |                   ^^^^^^^^^^
 
+error: non-dispatched generic type parameters are not supported
+  --> tests/ui_fail/drop_impl_check.rs:88:13
+   |
+88 |     impl<T, U> Drop for dyn IncompleteDispatch<T, U>
+   |             ^
+
 error[E0367]: `Drop` impl requires `_::_::Export1<T>: Kita` but the struct it is implemented for does not
   --> tests/ui_fail/drop_impl_check.rs:58:15
    |
