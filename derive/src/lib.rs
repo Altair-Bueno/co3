@@ -51,6 +51,7 @@ mod ffi_fn;
 mod generate;
 mod layout;
 mod parse;
+mod statics;
 mod utils;
 mod validate;
 mod wrapper;

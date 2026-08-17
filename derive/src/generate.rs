@@ -17,108 +17,17 @@ use crate::{
         self, emit_extern_definition, gen_extern_fn_signature, merge_generics,
         normalize_fn_signature, strip_dispatch_params,
     },
-    parse::{FailureMode, FfiStatic, MacroFeatures},
+    parse::{FailureMode, MacroFeatures},
     symbol_name_value,
     utils::{
-        DispatchMonomorphizer, ParamUseDetector, erased_id_repr, has_non_lifetime_generics,
-        is_type_erased, soft_for_arg, strip_internal_generic_param,
+        DispatchMonomorphizer, ParamUseDetector, cfg_attrs, erased_id_repr,
+        has_non_lifetime_generics, is_type_erased, soft_for_arg, strip_internal_generic_param,
     },
     wrapper::{
         gen_extern_decl, gen_wrapper_body, strip_internal_arg_attrs, wrap_fn_definition,
         wrap_impl_definition,
     },
 };
-
-fn cfg_attrs(attrs: &[syn::Attribute]) -> impl Iterator<Item = &syn::Attribute> {
-    attrs
-        .iter()
-        .filter(|attr| attr.path().is_ident("cfg") || attr.path().is_ident("cfg_attr"))
-}
-
-fn gen_static_assert(ty: &syn::Type, mutability: &syn::StaticMutability) -> TokenStream {
-    let co3 = co3_path();
-    let bound = match mutability {
-        syn::StaticMutability::None => {
-            quote!(
-                #co3::rust_spec::RustSpec<
-                    Layout = #co3::rust_spec::Stable,
-                    Size = #co3::rust_spec::size::Sized<#co3::rust_spec::Gt<#co3::rust_spec::Zero>>,
-                >
-            )
-        }
-        _ => quote!(#co3::CStatic),
-    };
-
-    quote! {
-        const _: () = {
-            assert!(#co3::impls!(#ty: #bound));
-        };
-    }
-}
-
-fn gen_export_static(item: FfiStatic) -> TokenStream {
-    let FfiStatic {
-        attrs,
-        vis,
-        static_token,
-        mutability,
-        ident,
-        ty,
-        expr,
-    } = item;
-    let expr = expr.expect("export statics are validated to have an initializer");
-    let cfg_attrs = cfg_attrs(&attrs).map(|attr| quote!(#attr));
-    let attrs = attrs.iter().map(|attr| {
-        if let Some(value) = symbol_name_value(attr) {
-            quote!(#[unsafe(export_name = #value)])
-        } else {
-            quote!(#attr)
-        }
-    });
-    let static_assert = gen_static_assert(&ty, &mutability);
-
-    quote! {
-        #(#cfg_attrs)*
-        #static_assert
-        #(#attrs)*
-        #vis #static_token #mutability #ident: #ty = #expr;
-    }
-}
-
-fn gen_extern_static(
-    abi: &syn::Abi,
-    block_attrs: &[syn::Attribute],
-    item: FfiStatic,
-) -> TokenStream {
-    let FfiStatic {
-        attrs,
-        vis,
-        static_token,
-        mutability,
-        ident,
-        ty,
-        ..
-    } = item;
-    let cfg_attrs = cfg_attrs(&attrs).map(|attr| quote!(#attr));
-    let link_attrs = attrs
-        .iter()
-        .filter_map(|attr| symbol_name_value(attr).map(|value| quote!(#[link_name = #value])));
-    let attrs = attrs
-        .iter()
-        .filter(|attr| symbol_name_value(attr).is_none());
-    let static_assert = gen_static_assert(&ty, &mutability);
-
-    quote! {
-        #(#cfg_attrs)*
-        #static_assert
-        unsafe #abi {
-            #(#block_attrs)*
-            #(#attrs)*
-            #(#link_attrs)*
-            #vis #static_token #mutability #ident: #ty;
-        }
-    }
-}
 
 fn is_dyn_self_dispatch_for(impl_: &ItemImpl, declared_type: &syn::Ident) -> bool {
     let Some(syn::TraitBound { path, .. }) = crate::trait_object_single_trait_bound(&impl_.self_ty)
@@ -538,7 +447,7 @@ pub(crate) fn expand_export_decls(
 
     let exports = decls.into_iter().map(|decl| {
         let export = match decl {
-        ForeignItem::Static(item) => return gen_export_static(item),
+        ForeignItem::Static(item) => return crate::statics::gen_export_static(item),
         ForeignItem::Type(ForeignItemType {
             ty,
             id,
@@ -961,7 +870,7 @@ pub(crate) fn expand_extern_decls(
             }
         }
         ForeignItem::Impl(impl_) => expand_import_impl(&abi, failure_mode, attrs, impl_, None),
-        ForeignItem::Static(item) => gen_extern_static(&abi, attrs, item),
+        ForeignItem::Static(item) => crate::statics::gen_extern_static(&abi, attrs, item),
     });
 
     quote! { #(#imports)* }
@@ -1250,6 +1159,9 @@ fn wrap_extern_type_decl(
         ident,
         ..
     } = type_;
+    let type_cfg_attrs = cfg_attrs(&type_attrs)
+        .map(|attr| quote!(#attr))
+        .collect::<Vec<_>>();
 
     let owned_ident = gen_owned_extern_type_name(&ident);
     let owned_doc = gen_owned_extern_type_doc(&ident);
@@ -1301,21 +1213,25 @@ fn wrap_extern_type_decl(
     quote! {
         #type_decl
 
+        #(#type_cfg_attrs)*
         #[doc = #owned_doc]
         #[repr(transparent)]
         #vis struct #owned_ident #impl_generics (*mut #ident #ty_generics) #where_clause;
 
+        #(#type_cfg_attrs)*
         #[doc(hidden)]
         #[repr(transparent)]
         #[doc = #owned_repr_c_doc]
         #vis struct #owned_repr_c_name #impl_generics (*mut #ident #ty_generics) #where_clause;
 
+        #(#type_cfg_attrs)*
         impl #impl_generics Drop for #owned_ident #ty_generics #where_clause {
             fn drop(&mut self) {
                 unsafe { core::ptr::drop_in_place(self.0) }
             }
         }
 
+        #(#type_cfg_attrs)*
         const _: () = {
             use #co3 as co3;
 

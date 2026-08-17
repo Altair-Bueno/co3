@@ -20,6 +20,12 @@ pub(crate) fn co3_path() -> TokenStream {
     }
 }
 
+pub(crate) fn cfg_attrs(attrs: &[Attribute]) -> impl Iterator<Item = &Attribute> {
+    attrs
+        .iter()
+        .filter(|attr| attr.path().is_ident("cfg") || attr.path().is_ident("cfg_attr"))
+}
+
 pub(crate) fn push_error(errors: &mut Option<syn::Error>, err: syn::Error) {
     if let Some(errors) = errors {
         errors.combine(err);
