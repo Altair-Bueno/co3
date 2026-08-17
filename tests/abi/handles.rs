@@ -13,7 +13,7 @@ co3::handles! { unsafe {
 ffi! {
     #![unsafe(extern("C"))]
 
-    #[id(u8)]
+    #[unsafe(id(u8))]
     type Opaque<T, U>;
 
     impl<T, U> Drop for dyn Opaque<T, U>
@@ -98,7 +98,7 @@ mod provider {
     ffi! {
         #![unsafe(export("C"))]
 
-        #[id(u8)]
+        #[unsafe(id(u8))]
         type Opaque<T, U>;
 
         impl<T, U> Drop for dyn Opaque<T, U>

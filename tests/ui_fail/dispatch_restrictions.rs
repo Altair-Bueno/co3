@@ -345,7 +345,7 @@ ffi! {
 ffi! {
     #![unsafe(export("C"))]
 
-    #[id(char)]
+    #[unsafe(id(char))]
     type Exported0;
 
     impl<dyn(char) T> RefKita for T
@@ -360,7 +360,7 @@ ffi! {
     #![unsafe(extern("C"))]
     #![symbol_prefix = "kita"]
 
-    #[id(char)]
+    #[unsafe(id(char))]
     type Externed0;
 
     impl<dyn(char) T> RefKita for T
@@ -375,7 +375,7 @@ ffi! {
 ffi! {
     #![unsafe(export("C"))]
 
-    #[id(u32)]
+    #[unsafe(id(u32))]
     type Exported1;
 
     impl<dyn(u32) T> RefKita for T
@@ -390,7 +390,7 @@ ffi! {
     #![unsafe(extern("C"))]
     #![symbol_prefix = "kita"]
 
-    #[id(u32)]
+    #[unsafe(id(u32))]
     type Externed1;
 
     impl<dyn(u32) T> RefKita for T

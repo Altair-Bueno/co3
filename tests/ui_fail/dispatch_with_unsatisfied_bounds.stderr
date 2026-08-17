@@ -16,7 +16,7 @@ error[E0277]: the trait bound `Exported2<u32>: Unimplemented` is not satisfied
 23 | / ffi! {
 24 | |     #![unsafe(export("C"))]
 25 | |
-26 | |     #[id(u8)]
+26 | |     #[unsafe(id(u8))]
 ...  |
 43 | | }
    | |_^ unsatisfied trait bound
@@ -49,7 +49,7 @@ help: the trait `Unimplemented` is not implemented for `Externed2<u32>`
 45 | / ffi! {
 46 | |     #![unsafe(extern("C"))]
 47 | |
-48 | |     #[id(u64)]
+48 | |     #[unsafe(id(u64))]
 49 | |     type Externed2<T>;
    | |__________________^
 help: this trait has no implementations, consider adding one

@@ -1,4 +1,4 @@
-error: blanket `dyn T` dispatch types must use the same `#[id(...)]` tag type
+error: blanket `dyn T` dispatch types must use the same `#[unsafe(id(...))]` tag type
   --> tests/ui_fail/blanket_dyn_foreign.rs:18:30
    |
 18 |         use<T> @ (<First> | <DifferentTag>),
@@ -10,7 +10,7 @@ error: blanket `dyn T` may dispatch only to foreign types declared in this `ffi!
 34 |         use<T> @ (<Declared> | <Local>),
    |                                 ^^^^^
 
-error: blanket `dyn T` dispatch types must declare `#[id(...)]`
+error: blanket `dyn T` dispatch types must declare `#[unsafe(id(...))]`
   --> tests/ui_fail/blanket_dyn_foreign.rs:47:20
    |
 47 |         use<T> @ (<MissingTag>),

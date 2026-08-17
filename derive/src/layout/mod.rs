@@ -24,6 +24,7 @@ pub(super) struct ReprCAttrs {
     pub(super) niche_value: Option<syn::Expr>,
     pub(super) is_valid: Option<syn::ExprClosure>,
     pub(super) handle_id: Option<syn::Type>,
+    pub(super) handle_value: Option<syn::Expr>,
     pub(super) is_view: bool,
     pub(super) is_wide_data: bool,
 }
@@ -61,13 +62,29 @@ fn parse_repr_c_attrs(attrs: &[Attribute]) -> syn::Result<ReprCAttrs> {
             }
 
             if meta.path.is_ident("id") {
-                let content;
-                syn::parenthesized!(content in meta.input);
-                let value: syn::Type = content.parse()?;
-                if repr_c.handle_id.replace(value).is_some() {
-                    return Err(meta.error("Duplicate `id` within attribute"));
-                }
-                return Ok(());
+                return Err(meta.error("handle IDs must be declared as `unsafe(id(...))`"));
+            }
+
+            if meta.path.is_ident("unsafe") {
+                return meta.parse_nested_meta(|unsafe_meta| {
+                    if !unsafe_meta.path.is_ident("id") {
+                        return Err(unsafe_meta.error("expected `unsafe(id(...))`"));
+                    }
+                    let content;
+                    syn::parenthesized!(content in unsafe_meta.input);
+                    let value: syn::Type = content.parse()?;
+                    let handle_value = if content.peek(syn::Token![=]) {
+                        content.parse::<syn::Token![=]>()?;
+                        Some(content.parse()?)
+                    } else {
+                        None
+                    };
+                    if repr_c.handle_id.replace(value).is_some() {
+                        return Err(unsafe_meta.error("Duplicate `id` within attribute"));
+                    }
+                    repr_c.handle_value = handle_value;
+                    Ok(())
+                });
             }
 
             if meta.path.is_ident("NICHE_VALUE") {
@@ -265,8 +282,18 @@ pub(crate) fn derive_repr_c(input: &syn::DeriveInput) -> syn::Result<TokenStream
             .handle_id
             .as_ref()
             .map(|id| gen_handle_family_impl(&input.ident, &generics, id));
+        let handle_impl = repr_c_attrs.handle_value.as_ref().map(|value| {
+            let ident = &input.ident;
+            let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
+            quote! {
+                unsafe impl #impl_generics co3::handle::Handle for #ident #ty_generics #where_clause {
+                    const ID: Self::Kind = #value;
+                }
+            }
+        });
         let body = quote! {
             #handle_family_impl
+            #handle_impl
             #drop_impl_assert
 
             #tokens

@@ -6,23 +6,19 @@ trait Dispatch {
 
 #[derive(RustSpec, ReprC)]
 #[repr(transparent)]
-#[reprC(id(usize))]
-struct Handle(usize);
+#[reprC(unsafe(id(usize)))]struct Handle(usize);
 
 #[derive(RustSpec, ReprC)]
 #[repr(transparent)]
-#[reprC(id(usize))]
-struct Handle2(u64);
+#[reprC(unsafe(id(usize)))]struct Handle2(u64);
 
 #[derive(RustSpec, ReprC)]
 #[repr(transparent)]
-#[reprC(id(usize))]
-struct Array([u8; 2]);
+#[reprC(unsafe(id(usize)))]struct Array([u8; 2]);
 
 #[derive(RustSpec, ReprC)]
 #[repr(transparent)]
-#[reprC(id(usize))]
-struct Array2([u8; 8]);
+#[reprC(unsafe(id(usize)))]struct Array2([u8; 8]);
 
 #[derive(RustSpec, ReprC)]
 #[repr(C)]

@@ -9,7 +9,7 @@ struct OpaqueSlice<T>([T]);
 ffi! {
     #![unsafe(export("C"))]
 
-    #[id(u8)]
+    #[unsafe(id(u8))]
     type OpaqueSlice<T>;
 
     impl<T> Drop for dyn OpaqueSlice<T>

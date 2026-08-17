@@ -11,8 +11,7 @@ trait Dispatch {
 struct CustomAttribute(u32);
 
 #[derive(RustSpec, ReprC)]
-#[reprC(id(u8))]
-#[repr(transparent)]
+#[reprC(unsafe(id(u8)))]#[repr(transparent)]
 struct CustomAttributeRef<'a>(&'a u32);
 
 impl Attribute for &CustomAttribute {}

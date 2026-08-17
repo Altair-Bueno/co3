@@ -18,8 +18,7 @@ struct ExportImpl;
 struct ExternImpl;
 
 #[derive(RustSpec, ReprC)]
-#[reprC(id(u8))]
-#[repr(transparent)]
+#[reprC(unsafe(id(u8)))]#[repr(transparent)]
 struct DriftHandle(u32);
 
 fn export_fn(_: &u32) {}

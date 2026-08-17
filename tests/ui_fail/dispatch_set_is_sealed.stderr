@@ -1,12 +1,12 @@
 error[E0405]: cannot find trait `__Co3DispatchSet_sealed` in this scope
-  --> tests/ui_fail/dispatch_set_is_sealed.rs:35:6
+  --> tests/ui_fail/dispatch_set_is_sealed.rs:32:6
    |
-35 | impl __Co3DispatchSet_sealed for (Other,) {}
+32 | impl __Co3DispatchSet_sealed for (Other,) {}
    |      ^^^^^^^^^^^^^^^^^^^^^^^ not found in this scope
    |
 note: trait `crate::__co3_dispatch_sealed_dispatch::__Co3DispatchSet_sealed` exists but is inaccessible
-  --> tests/ui_fail/dispatch_set_is_sealed.rs:26:1
+  --> tests/ui_fail/dispatch_set_is_sealed.rs:23:1
    |
-26 | ffi! {
+23 | ffi! {
    | ^^^^ not accessible
    = note: this error originates in the macro `ffi` (in Nightly builds, run with -Z macro-backtrace for more info)

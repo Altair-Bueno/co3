@@ -16,9 +16,9 @@ ffi! {
 
     #![symbol_prefix = "this_crate"]
 
-    #[id(u32)]
+    #[unsafe(id(u32))]
     type Opaque1;
-    #[id(u8)]
+    #[unsafe(id(u8))]
     #[derive(PartialEq)]
     type Opaque2;
 
@@ -96,9 +96,9 @@ mod provider {
 
         #![symbol_prefix = "this_crate"]
 
-        #[id(u32)]
+        #[unsafe(id(u32))]
         type Opaque1;
-        #[id(u8)]
+        #[unsafe(id(u8))]
         type Opaque2;
 
         impl Default for Box<Opaque1> {

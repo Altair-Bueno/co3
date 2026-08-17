@@ -15,8 +15,7 @@ trait ByteValue {
 struct EnvAttr(usize);
 
 #[derive(Clone, RustSpec, ReprC)]
-#[reprC(id(u16))]
-struct Custom(usize);
+#[reprC(unsafe(id(u16)))]struct Custom(usize);
 
 handles! {
     unsafe {
@@ -81,7 +80,7 @@ ffi! {
     #![symbol_prefix = "cfg_attr"]
 
     #[cfg(all())]
-    #[cfg_attr(all(), id(u8))]
+    #[cfg_attr(all(), unsafe(id(u8)))]
     type ExportOpaque;
 }
 
@@ -93,7 +92,7 @@ mod imported {
 
         #![symbol_prefix = "cfg_attr"]
 
-        #[cfg_attr(all(), id(u8))]
+        #[cfg_attr(all(), unsafe(id(u8)))]
         type Opaque;
     }
 }
@@ -104,8 +103,7 @@ mod provider {
     use super::{Attr, ByteValue, EnvAttr};
 
     #[derive(Clone, RustSpec, ReprC)]
-    #[reprC(id(u16))]
-    pub(super) struct Custom(usize);
+    #[reprC(unsafe(id(u16)))]pub(super) struct Custom(usize);
 
     handles! {
         unsafe {

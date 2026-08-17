@@ -15,8 +15,7 @@ handles! {
 }
 
 #[derive(Debug, Clone, Copy, RustSpec, ReprC)]
-#[reprC(id(u8))]
-#[repr(C)]
+#[reprC(unsafe(id(u8)))]#[repr(C)]
 struct Opaque(u8);
 
 impl Default for Opaque {
@@ -105,7 +104,7 @@ mod provider {
 
         #![symbol_prefix = "kita"]
 
-        #[id(u8)]
+        #[unsafe(id(u8))]
         type Opaque;
 
         impl Default for Box<Opaque> {

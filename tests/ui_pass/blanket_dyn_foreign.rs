@@ -46,10 +46,10 @@ mod provider {
     ffi! {
         #![unsafe(export("C"))]
 
-        #[id(u8)]
+        #[unsafe(id(u8))]
         type First;
 
-        #[id(u8)]
+        #[unsafe(id(u8))]
         type Second;
 
         impl<T> dyn T
@@ -81,10 +81,10 @@ mod provider {
 ffi! {
     #![unsafe(extern("C"))]
 
-    #[id(u8)]
+    #[unsafe(id(u8))]
     type First;
 
-    #[id(u8)]
+    #[unsafe(id(u8))]
     type Second;
 
     impl<T> dyn T

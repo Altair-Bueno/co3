@@ -3,8 +3,7 @@ use core::{borrow::Borrow, ffi::c_void};
 use co3::{rust_spec::RustSpec, ReprC, ffi, handles};
 
 #[derive(RustSpec, ReprC)]
-#[reprC(id(u8))]
-#[repr(transparent)]
+#[reprC(unsafe(id(u8)))]#[repr(transparent)]
 struct Unsized<T: ?Sized>(T);
 
 #[derive(RustSpec, ReprC)]

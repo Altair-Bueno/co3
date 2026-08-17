@@ -7,10 +7,10 @@ trait Trait {
 ffi! {
     #![unsafe(extern("C"))]
 
-    #[id(u8)]
+    #[unsafe(id(u8))]
     type First;
 
-    #[id(u16)]
+    #[unsafe(id(u16))]
     type DifferentTag;
 
     impl<T> Trait for dyn T
@@ -26,7 +26,7 @@ struct Local;
 ffi! {
     #![unsafe(extern("C"))]
 
-    #[id(u8)]
+    #[unsafe(id(u8))]
     type Declared;
 
     impl<T> dyn T

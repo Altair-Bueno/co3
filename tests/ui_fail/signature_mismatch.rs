@@ -56,9 +56,9 @@ ffi! {
 
     #![symbol_prefix = "kita"]
 
-    #[id(u32)]
+    #[unsafe(id(u32))]
     type Opaque1;
-    #[id(u8)]
+    #[unsafe(id(u8))]
     type Opaque2;
 
     impl ToOwned for Opaque1 {

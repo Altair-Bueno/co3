@@ -6,7 +6,7 @@ struct Attribute;
 ffi! {
     #![unsafe(extern("C"))]
 
-    #[id(u8)]
+    #[unsafe(id(u8))]
     type Environment<V>;
 
     impl<V> Drop for dyn Environment<V>

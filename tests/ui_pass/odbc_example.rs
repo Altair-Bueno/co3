@@ -15,7 +15,7 @@ impl OdbcVersion for Payload {}
 
 #[derive(Debug, ReprC)]
 #[repr(transparent)]
-#[reprC(id(SQLSMALLINT))]
+#[reprC(unsafe(id(SQLSMALLINT)))]
 pub struct MyType<V: OdbcVersion = Payload> {
     pub(crate) handle: *mut c_void,
     version: PhantomData<V>,
@@ -32,7 +32,7 @@ impl OdbcVersion for SQL_OV_ODBC4 {}
 ffi! {
     #![unsafe(extern("system"))]
 
-    #[id(SQLSMALLINT)]
+    #[unsafe(id(SQLSMALLINT))]
     type Opaque<V: OdbcVersion = SQL_OV_ODBC3_80>;
 
     impl<V: OdbcVersion> Drop for dyn Opaque<V>
@@ -69,10 +69,10 @@ impl<'conn, 'buf, V: OdbcVersion> Allocate for SQLHDESC<u32, V> {
 co3::ffi! {
     #![unsafe(extern("system"))]
 
-    #[id(SQLSMALLINT)]
+    #[unsafe(id(SQLSMALLINT = 8))]
     type SQLHENV<V: OdbcVersion = SQL_OV_ODBC3_80>;
 
-    #[id(SQLSMALLINT)]
+    #[unsafe(id(SQLSMALLINT = 9))]
     type SQLHDESC<DT, V: OdbcVersion = SQL_OV_ODBC3_80>;
 
     impl<V: OdbcVersion> Drop for dyn SQLHENV<V>
@@ -143,7 +143,7 @@ impl SQLHENV2 {
 co3::ffi! {
     #![unsafe(export("system"))]
 
-    #[id(u32)]
+    #[unsafe(id(u32 = 7))]
     type SQLHENV2;
 
     impl<T> Drop for dyn T
@@ -161,18 +161,6 @@ co3::ffi! {
         where
             use<T> @ <SQLHENV2>;
     }
-}
-
-unsafe impl Handle for SQLHENV2 {
-    const ID: Self::Kind = 7;
-}
-
-unsafe impl<V: OdbcVersion> Handle for SQLHENV<V> {
-    const ID: Self::Kind = 8;
-}
-
-unsafe impl<DT, V: OdbcVersion> Handle for SQLHDESC<DT, V> {
-    const ID: Self::Kind = 9;
 }
 
 pub trait EnvAttr {

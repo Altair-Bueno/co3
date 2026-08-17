@@ -15,14 +15,14 @@ handles! {
 ffi! {
     #![unsafe(export("C"))]
 
-    #[id(u8)]
+    #[unsafe(id(u8))]
     type OpaqueType<T>;
 }
 
 ffi! {
     #![unsafe(extern("C"))]
 
-    #[id(u8)]
+    #[unsafe(id(u8))]
     type ExternType<T>;
 }
 
@@ -49,7 +49,7 @@ ffi! {
 ffi! {
     #![unsafe(export("C"))]
 
-    #[id(u32)]
+    #[unsafe(id(u32))]
     type Export1<T>;
 
     // TODO: These Drop impls could be allowed
@@ -67,7 +67,7 @@ ffi! {
 
     #![symbol_prefix = "kita"]
 
-    #[id(u32)]
+    #[unsafe(id(u32))]
     type Extern2<T>;
 
     impl<T> Drop for dyn Extern2<T>
@@ -82,7 +82,7 @@ ffi! {
 ffi! {
     #![unsafe(extern("C"))]
 
-    #[id(u8)]
+    #[unsafe(id(u8))]
     type IncompleteDispatch<T, U>;
 
     impl<T, U> Drop for dyn IncompleteDispatch<T, U>

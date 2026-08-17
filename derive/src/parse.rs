@@ -18,7 +18,7 @@ use crate::{DeclKind, DispatchGroups, utils::push_error};
 const FN_BODIES_NOT_ALLOWED_MSG: &str = "fn bodies are not allowed in declarations";
 const ITEM_NOT_SUPPORTED_MSG: &str = "item not supported";
 const EXPECTED_FEATURE_NAME_MSG: &str = "Expected feature name in `#![feature(...)]`";
-const EXPECTED_HANDLE_ID_ATTR_MSG: &str = "expected `#[id(repr)]`";
+const EXPECTED_HANDLE_ID_ATTR_MSG: &str = "expected `#[unsafe(id(repr))]`";
 
 pub(crate) enum ParsedForeignItem {
     Type(crate::ForeignItemType),
@@ -127,11 +127,12 @@ impl syn::parse::Parse for ParsedForeignItem {
             } else {
                 input.parse::<syn::ForeignItemType>()?
             };
-            let id = parse_handle_id_attr(&mut ty.attrs)?.map(Box::new);
+            let (id, id_value) = parse_handle_id_attr(&mut ty.attrs)?;
 
             return Ok(Self::Type(crate::ForeignItemType {
                 ty,
-                id,
+                id: id.map(Box::new),
+                id_value: id_value.map(Box::new),
                 self_impls: Vec::new(),
                 drop: None,
             }));
@@ -602,12 +603,15 @@ fn parse_dispatch_group(
     Ok(group)
 }
 
-pub(crate) fn parse_handle_id_attr(attrs: &mut Vec<syn::Attribute>) -> Result<Option<syn::Type>> {
+pub(crate) fn parse_handle_id_attr(
+    attrs: &mut Vec<syn::Attribute>,
+) -> Result<(Option<syn::Type>, Option<syn::Expr>)> {
     let mut kept = Vec::with_capacity(attrs.len());
 
     let mut id_ty = None;
+    let mut id_value = None;
     for attr in attrs.drain(..) {
-        if !attr.path().is_ident("id") {
+        if !attr.path().is_ident("id") && !attr.path().is_ident("unsafe") {
             kept.push(attr);
             continue;
         }
@@ -616,17 +620,44 @@ pub(crate) fn parse_handle_id_attr(attrs: &mut Vec<syn::Attribute>) -> Result<Op
             return Err(syn::Error::new_spanned(attr, EXPECTED_HANDLE_ID_ATTR_MSG));
         };
 
-        let ty = list
-            .parse_args::<syn::Type>()
+        let list = if list.path.is_ident("unsafe") {
+            let nested = syn::parse2::<syn::Meta>(list.tokens.clone())
+                .map_err(|_| syn::Error::new_spanned(&attr, EXPECTED_HANDLE_ID_ATTR_MSG))?;
+            let syn::Meta::List(nested) = nested else {
+                return Err(syn::Error::new_spanned(attr, EXPECTED_HANDLE_ID_ATTR_MSG));
+            };
+            if !nested.path.is_ident("id") {
+                return Err(syn::Error::new_spanned(attr, EXPECTED_HANDLE_ID_ATTR_MSG));
+            }
+            nested
+        } else {
+            return Err(syn::Error::new_spanned(attr, EXPECTED_HANDLE_ID_ATTR_MSG));
+        };
+
+        let (ty, value) = list
+            .parse_args_with(|input: syn::parse::ParseStream<'_>| {
+                let ty = input.parse::<syn::Type>()?;
+                let value = if input.peek(syn::Token![=]) {
+                    input.parse::<syn::Token![=]>()?;
+                    Some(input.parse::<syn::Expr>()?)
+                } else {
+                    None
+                };
+                Ok::<_, syn::Error>((ty, value))
+            })
             .map_err(|_| syn::Error::new_spanned(&attr, EXPECTED_HANDLE_ID_ATTR_MSG))?;
 
         if id_ty.replace(ty).is_some() {
-            return Err(syn::Error::new_spanned(attr, "duplicate `#[id(...)]`"));
+            return Err(syn::Error::new_spanned(
+                attr,
+                "duplicate `#[unsafe(id(...))]`",
+            ));
         }
+        id_value = value;
     }
 
     *attrs = kept;
-    Ok(id_ty)
+    Ok((id_ty, id_value))
 }
 
 fn normalize_extern_attr_tokens(tokens: TokenStream) -> TokenStream {

@@ -40,7 +40,7 @@ note: the implementor must specify the same requirement
 49 | / ffi! {
 50 | |     #![unsafe(export("C"))]
 51 | |
-52 | |     #[id(u32)]
+52 | |     #[unsafe(id(u32))]
 53 | |     type Export1<T>;
    | |________________^
    = note: this error originates in the macro `ffi` (in Nightly builds, run with -Z macro-backtrace for more info)
@@ -59,7 +59,7 @@ note: the implementor must specify the same requirement
 67 | |
 68 | |     #![symbol_prefix = "kita"]
 69 | |
-70 | |     #[id(u32)]
+70 | |     #[unsafe(id(u32))]
 71 | |     type Extern2<T>;
    | |________________^
    = note: this error originates in the macro `ffi` (in Nightly builds, run with -Z macro-backtrace for more info)

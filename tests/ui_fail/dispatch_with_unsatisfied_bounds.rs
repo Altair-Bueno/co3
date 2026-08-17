@@ -23,7 +23,7 @@ handles! {
 ffi! {
     #![unsafe(export("C"))]
 
-    #[id(u8)]
+    #[unsafe(id(u8))]
     type Exported2<T>;
 
     impl<T> Drop for dyn Exported2<T>
@@ -45,7 +45,7 @@ ffi! {
 ffi! {
     #![unsafe(extern("C"))]
 
-    #[id(u64)]
+    #[unsafe(id(u64))]
     type Externed2<T>;
 
     impl<T> Drop for dyn Externed2<T>

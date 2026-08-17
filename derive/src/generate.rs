@@ -513,6 +513,7 @@ pub(crate) fn expand_export_decls(
         ForeignItem::Type(ForeignItemType {
             ty,
             id,
+            id_value: _,
             self_impls,
             drop,
         }) => {
@@ -980,6 +981,7 @@ pub(crate) fn expand_extern_decls(
         ForeignItem::Type(ForeignItemType {
             ty,
             id,
+            id_value,
             self_impls,
             drop,
         }) => {
@@ -999,7 +1001,14 @@ pub(crate) fn expand_extern_decls(
             let type_cfg_attrs = cfg_attrs(&ty.attrs)
                 .map(|attr| quote!(#attr))
                 .collect::<Vec<_>>();
-            let ty = wrap_extern_type_decl(&abi, features, attrs, id.as_deref(), ty);
+            let ty = wrap_extern_type_decl(
+                &abi,
+                features,
+                attrs,
+                id.as_deref(),
+                id_value.as_deref(),
+                ty,
+            );
 
             let dispatch = self_impls.into_iter().map(|impl_| {
                 expand_import_impl(&abi, failure_mode, attrs, impl_, id.as_deref(), true)
@@ -1058,6 +1067,16 @@ pub(crate) fn gen_handle_family_impl(
     quote! {
         impl #impl_generics co3::handle::HandleFamily for #ident #ty_generics #where_clause {
             type Kind = #id;
+        }
+    }
+}
+
+fn gen_handle_impl(ident: &syn::Ident, generics: &syn::Generics, value: &syn::Expr) -> TokenStream {
+    let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
+
+    quote! {
+        unsafe impl #impl_generics co3::handle::Handle for #ident #ty_generics #where_clause {
+            const ID: Self::Kind = #value;
         }
     }
 }
@@ -1325,9 +1344,16 @@ fn wrap_extern_type_decl(
     features: MacroFeatures,
     attrs: &[syn::Attribute],
     id: Option<&syn::Type>,
+    id_value: Option<&syn::Expr>,
     mut type_: syn::ForeignItemType,
 ) -> TokenStream {
-    if has_non_lifetime_generics(&type_.generics) {
+    // Generic opaque types with a tag type (but no tag value) are implemented
+    // by the user for each selected instantiation, so keep the declaration
+    // well-formed with a `Handle` bound. When the declaration also supplies a
+    // tag value, however, this macro emits the `Handle` implementation itself;
+    // requiring the same bound on the type declaration is then self-referential
+    // and causes trait-solver overflow while defining/using the type.
+    if has_non_lifetime_generics(&type_.generics) && id_value.is_none() {
         let co3 = co3_path();
         let ident = &type_.ident;
         let generics = &type_.generics;
@@ -1355,8 +1381,8 @@ fn wrap_extern_type_decl(
     let owned_doc = gen_owned_extern_type_doc(&ident);
     let owned_repr_c_name = gen_owned_repr_c_name(&ident);
     let owned_repr_c_doc = format!("FFI-safe representation of `{owned_ident}`");
-    let ident_impls = gen_extern_type_impls(id, &ident, &generics);
-    let owned_impls = gen_owned_extern_type_impls(id, &ident, &generics);
+    let ident_impls = gen_extern_type_impls(id, id_value, &ident, &generics);
+    let owned_impls = gen_owned_extern_type_impls(id, id_value, &ident, &generics);
     let owned_repr_c_impls = gen_owned_repr_c_impls(&ident, &generics);
 
     let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
@@ -1444,6 +1470,7 @@ fn gen_owned_extern_type_doc(ident: &syn::Ident) -> String {
 
 fn gen_extern_type_impls(
     id: Option<&syn::Type>,
+    id_value: Option<&syn::Expr>,
     ident: &syn::Ident,
     generics: &syn::Generics,
 ) -> TokenStream {
@@ -1455,9 +1482,11 @@ fn gen_extern_type_impls(
         quote! { co3::rust_spec::size::ExternTypeLike },
         quote! { co3::rust_spec::niche::WithoutNiche },
     );
+    let handle_impl = id_value.map(|value| gen_handle_impl(ident, generics, value));
 
     quote! {
         #opaque_impls
+        #handle_impl
 
         unsafe impl #impl_generics co3::borrow::BorrowCast for #ident #ty_generics #where_clause {
             type AsConst = Self;
@@ -1544,6 +1573,7 @@ fn gen_owned_repr_c_impls(ident: &syn::Ident, generics: &syn::Generics) -> Token
 
 fn gen_owned_extern_type_impls(
     id: Option<&syn::Type>,
+    id_value: Option<&syn::Expr>,
     ident: &syn::Ident,
     generics: &syn::Generics,
 ) -> TokenStream {
@@ -1557,6 +1587,7 @@ fn gen_owned_extern_type_impls(
     let handle_family_impl = id
         .map(|id| gen_handle_family_impl(&owned_ident, generics, id))
         .unwrap_or_default();
+    let handle_impl = id_value.map(|value| gen_handle_impl(&owned_ident, generics, value));
 
     quote! {
         unsafe impl #impl_generics co3::rust_spec::RustSpec for #owned_ident #ty_generics #where_clause {
@@ -1570,6 +1601,7 @@ fn gen_owned_extern_type_impls(
         }
 
         #handle_family_impl
+        #handle_impl
 
         unsafe impl #impl_generics co3::transmute::CheckedTransmute for #owned_ident #ty_generics #where_clause {
             #[inline(always)]

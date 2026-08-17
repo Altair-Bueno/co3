@@ -219,6 +219,7 @@ fn parse_dyn_methods(impl_: &mut ItemImpl) -> Result<HashMap<syn::Ident, Dispatc
 struct ForeignItemType {
     ty: syn::ForeignItemType,
     id: Option<Box<syn::Type>>,
+    id_value: Option<Box<syn::Expr>>,
     drop: Option<Co3Impl>,
 
     self_impls: Vec<Co3Impl>,
@@ -233,7 +234,7 @@ struct ForeignItemType {
 ///
 /// * `#[reprC(NICHE_VALUE = <expr>)]` on a struct customizes [`co3::niche::Niche::NICHE_VALUE`]
 /// * `#[reprC(is_valid = |[fieldN]| ...)]` on a struct or enum variant customizes validation
-/// * `#[reprC(id($type))]` defines [`co3::handle::HandleFamily::Kind`]
+/// * `#[reprC(unsafe(id($type)))]` defines [`co3::handle::HandleFamily::Kind`]
 ///
 /// # Example
 ///
@@ -435,8 +436,7 @@ pub fn repr_c_derive(item: syn::DeriveInput) -> Result<TokenStream> {
 /// use co3::{ffi, handle::Handle, rust_spec::RustSpec, ReprC};
 ///
 /// #[derive(RustSpec, ReprC)]
-/// #[reprC(id(u8))]
-/// struct LocalCounter(u16);
+/// #[reprC(unsafe(id(u8)))]/// struct LocalCounter(u16);
 ///
 /// trait Counter {
 ///     fn increment(&mut self, by: u8);
@@ -461,7 +461,7 @@ pub fn repr_c_derive(item: syn::DeriveInput) -> Result<TokenStream> {
 /// ffi! {
 ///     #![unsafe(extern("C"))]
 ///
-///     #[id(u8)]
+///     #[unsafe(id(u8))]
 ///     type CounterHandle<T>;
 ///
 ///     // Declare `T` as tag dispatched
@@ -619,6 +619,7 @@ impl Input {
                 ParsedForeignItem::Type(ForeignItemType {
                     ty,
                     id,
+                    id_value: _,
                     self_impls,
                     drop,
                 }) => {
@@ -633,7 +634,7 @@ impl Input {
                     }
 
                     if has_non_lifetime_generics(&ty.generics) && id.is_none() {
-                        let err_msg = "Generic types must declare handle #[id(...)]";
+                        let err_msg = "Generic types must declare handle #[unsafe(id(...))]";
                         return Err(syn::Error::new_spanned(ty, err_msg));
                     }
                 }
@@ -788,11 +789,11 @@ fn materialize_blanket_dyn_dispatch(items: &mut [ParsedForeignItem]) -> Result<(
                 return Err(syn::Error::new_spanned(target_ty, err));
             };
             let Some(id) = id else {
-                let err = "blanket `dyn T` dispatch types must declare `#[id(...)]`";
+                let err = "blanket `dyn T` dispatch types must declare `#[unsafe(id(...))]`";
                 return Err(syn::Error::new_spanned(target_ty, err));
             };
             if tag.as_ref().is_some_and(|tag| tag != id) {
-                let err = "blanket `dyn T` dispatch types must use the same `#[id(...)]` tag type";
+                let err = "blanket `dyn T` dispatch types must use the same `#[unsafe(id(...))]` tag type";
                 return Err(syn::Error::new_spanned(target_ty, err));
             }
             tag.get_or_insert_with(|| id.clone());

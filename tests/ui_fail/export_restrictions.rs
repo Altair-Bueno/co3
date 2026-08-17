@@ -137,7 +137,7 @@ ffi! {
 ffi! {
     #![unsafe(export("C"))]
 
-    #[id(u32)]
+    #[unsafe(id(u32))]
     type OpaqueType<T>;
 
     impl<T> Drop for dyn OpaqueType<T>
@@ -158,7 +158,7 @@ ffi! {
 ffi! {
     #![unsafe(export("C"))]
 
-    #[id(u32)]
+    #[unsafe(id(u32))]
     type OpaqueType<T>;
 
     impl<T> Drop for dyn OpaqueType<T>

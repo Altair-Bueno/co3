@@ -5,13 +5,11 @@ trait Kind {
 }
 
 #[derive(RustSpec, ReprC)]
-#[reprC(id(u8))]
-#[repr(transparent)]
+#[reprC(unsafe(id(u8)))]#[repr(transparent)]
 struct First(u8);
 
 #[derive(RustSpec, ReprC)]
-#[reprC(id(u8))]
-#[repr(transparent)]
+#[reprC(unsafe(id(u8)))]#[repr(transparent)]
 struct Second(u8);
 
 impl Kind for First {

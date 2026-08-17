@@ -105,7 +105,7 @@ ffi! {
 ffi! {
     #![unsafe(extern("C"))]
 
-    #[id(u8)]
+    #[unsafe(id(u8))]
     type Handle<T>;
 
     impl<T> Drop for dyn Handle<T>
@@ -126,7 +126,7 @@ ffi! {
 ffi! {
     #![unsafe(extern("C"))]
 
-    #[id(u8)]
+    #[unsafe(id(u8))]
     type Handle<T>;
 
     impl<T> Drop for dyn Handle<T>

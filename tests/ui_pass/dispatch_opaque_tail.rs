@@ -1,8 +1,7 @@
 use co3::{ffi, handles, rust_spec::RustSpec, ReprC};
 
 #[derive(RustSpec, ReprC)]
-#[reprC(id(u8))]
-#[repr(transparent)]
+#[reprC(unsafe(id(u8)))]#[repr(transparent)]
 struct Attribute(u32);
 
 #[derive(RustSpec, ReprC)]

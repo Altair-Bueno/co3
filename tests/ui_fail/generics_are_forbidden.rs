@@ -19,7 +19,7 @@ handles! {
 ffi! {
     #![unsafe(export("C"))]
 
-    #[id(u32)]
+    #[unsafe(id(u32))]
     pub type GenericHandle<'a, T, const N: usize>;
 
     #[explicit_lifetimes]

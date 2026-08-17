@@ -16,10 +16,10 @@ handles! {
 ffi! {
     #![unsafe(extern("C"))]
 
-    #[id(u8)]
+    #[unsafe(id(u8))]
     type First;
 
-    #[id(u8)]
+    #[unsafe(id(u8))]
     type Second;
 
     impl ToOwned for First {

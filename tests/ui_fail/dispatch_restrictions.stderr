@@ -190,7 +190,7 @@ error[E0308]: mismatched types
 345 | / ffi! {
 346 | |     #![unsafe(export("C"))]
 347 | |
-348 | |     #[id(char)]
+348 | |     #[unsafe(id(char))]
 ...   |
 357 | | }
     | |_^ expected `isize`, found `char`
@@ -204,7 +204,7 @@ error[E0081]: discriminant value `0` assigned more than once
 375 | // ffi! {
 376 | ||     #![unsafe(export("C"))]
 377 | ||
-378 | ||     #[id(u32)]
+378 | ||     #[unsafe(id(u32))]
 ...   ||
 381 | ||     impl<dyn(u32) T> RefKita for T
     | ||___________________^

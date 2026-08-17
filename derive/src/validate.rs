@@ -278,7 +278,7 @@ fn validate_import_dispatch_tag_types(decls: &[ParsedForeignItem]) -> Result<()>
                         &mut errors,
                         Error::new_spanned(
                             target_ty,
-                            "imported dispatch targets must use the same #[id(...)] tag type",
+                            "imported dispatch targets must use the same #[unsafe(id(...))] tag type",
                         ),
                     );
                 }
