@@ -4,7 +4,7 @@ use syn::{Error, Result, Type, visit::Visit};
 
 use crate::{
     dispatch::HandleId,
-    ffi_fn::{is_by_val_attr, spread2_types},
+    ffi_fn::{is_by_val_attr, is_spread_attr, spread_attr_name, spread_types},
     find_dispatch_attr, is_explicit_lifetimes_attr, is_symbol_name_attr,
     parse::{ParsedForeignItem, parse_dispatch_attr},
     trait_object_single_trait_bound,
@@ -373,7 +373,7 @@ fn validate_export_decl(
                     continue;
                 };
 
-                if let Err(err) = validate_spread2_export(&method.sig) {
+                if let Err(err) = validate_spread_export(&method.sig) {
                     push_error(&mut errors, err);
                 }
                 if let Err(err) = validate_export_fn_attrs(&method.attrs) {
@@ -388,7 +388,7 @@ fn validate_export_decl(
             }
         }
         ParsedForeignItem::Fn(decl_fn) => {
-            if let Err(err) = validate_spread2_export(&decl_fn.sig) {
+            if let Err(err) = validate_spread_export(&decl_fn.sig) {
                 push_error(&mut errors, err);
             }
             if let Err(err) = validate_export_fn_attrs(&decl_fn.attrs) {
@@ -519,7 +519,7 @@ fn validate_shared(decls: &[ParsedForeignItem]) -> Result<()> {
             ParsedForeignItem::Fn(decl_fn) => {
                 let is_dispatch = find_dispatch_attr(&decl_fn.attrs).is_some();
 
-                if let Err(err) = validate_spread2(&decl_fn.sig, None) {
+                if let Err(err) = validate_spread(&decl_fn.sig, None) {
                     push_error(&mut errors, err);
                 }
 
@@ -589,7 +589,7 @@ fn validate_shared(decls: &[ParsedForeignItem]) -> Result<()> {
 
                 for item in &impl_.items {
                     if let syn::ImplItem::Fn(syn::ImplItemFn { attrs, sig, .. }) = item {
-                        if let Err(err) = validate_spread2(sig, Some(&impl_.generics)) {
+                        if let Err(err) = validate_spread(sig, Some(&impl_.generics)) {
                             push_error(&mut errors, err);
                         }
                         let dispatch_attr = find_dispatch_attr(attrs);
@@ -655,58 +655,48 @@ fn validate_shared(decls: &[ParsedForeignItem]) -> Result<()> {
     Ok(())
 }
 
-fn validate_spread2_export(sig: &syn::Signature) -> Result<()> {
+fn validate_spread_export(sig: &syn::Signature) -> Result<()> {
     for input in &sig.inputs {
         let syn::FnArg::Typed(input) = input else {
             continue;
         };
-        if let Some(attr) = input
-            .attrs
-            .iter()
-            .find(|attr| attr.path().is_ident("spread2"))
-        {
+        if let Some(attr) = input.attrs.iter().find(|attr| is_spread_attr(attr)) {
             return Err(Error::new_spanned(
                 attr,
-                "#[spread2] is only supported in extern declarations",
+                format!(
+                    "{} is only supported in extern declarations",
+                    spread_attr_name(attr)
+                ),
             ));
         }
     }
     Ok(())
 }
 
-fn validate_spread2(sig: &syn::Signature, outer: Option<&syn::Generics>) -> Result<()> {
-    let dispatched = outer
+fn validate_spread(sig: &syn::Signature, outer: Option<&syn::Generics>) -> Result<()> {
+    let parameters = outer
         .into_iter()
         .flat_map(|generics| generics.type_params())
         .chain(sig.generics.type_params())
-        .filter(|param| param.attrs.iter().any(is_type_erased))
         .map(|param| &param.ident)
         .collect::<Vec<_>>();
-    let detector = crate::utils::ParamUseDetector::new(dispatched);
+    let detector = crate::utils::ParamUseDetector::new(parameters);
 
     for input in &sig.inputs {
         let syn::FnArg::Typed(input) = input else {
             continue;
         };
-        let Some(attr) = input
-            .attrs
-            .iter()
-            .find(|attr| attr.path().is_ident("spread2"))
-        else {
+        let Some(attr) = input.attrs.iter().find(|attr| is_spread_attr(attr)) else {
             continue;
         };
-        spread2_types(&input.attrs)?;
-        let mentions_dispatch = detector.type_mentions_param(&input.ty);
-        if mentions_dispatch && spread2_types(&input.attrs)?.is_none() {
+        let (part1, part2) = spread_types(&input.attrs)?.expect("spread attribute was found");
+        let mentions_parameter = detector.type_mentions_param(&input.ty);
+        if mentions_parameter
+            && (matches!(part1, syn::Type::Infer(_)) || matches!(part2, syn::Type::Infer(_)))
+        {
             return Err(Error::new_spanned(
                 attr,
-                "tag-dispatched #[spread2] arguments require explicit #[spread2(T1, T2)] types",
-            ));
-        }
-        if attr.meta.require_list().is_ok() && !mentions_dispatch {
-            return Err(Error::new_spanned(
-                attr,
-                "explicit #[spread2(T1, T2)] types require a tag-dispatched argument",
+                "parameterized #[spread] arguments cannot use `_` placeholders",
             ));
         }
     }

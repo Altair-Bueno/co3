@@ -48,7 +48,6 @@ pub(crate) fn expand(
 
     Ok(quote! {
         #size_assertion
-
         #data_def
 
         impl #impl_generics co3::wide::Wide for #name #ty_generics
@@ -87,9 +86,12 @@ fn gen_size_assertion(
             impl #impl_generics AssertTransparentSize for #name #ty_generics #where_clause {
                 fn assert_slice_like() {
                     const {
-                        // TODO: What about DynTraitLike or ExternTypeLike?
                         assert!(co3::impls!(Self: !co3::rust_spec::RustSpec<
                             Size = co3::rust_spec::size::MetaSized<co3::rust_spec::size::SliceLike>>),
+                            "single-field DST structs require #[repr(transparent)]"
+                        );
+                        assert!(co3::impls!(Self: !co3::rust_spec::RustSpec<
+                            Size = co3::rust_spec::size::MetaSized<co3::rust_spec::size::DynTraitLike>>),
                             "single-field DST structs require #[repr(transparent)]"
                         );
                     }
@@ -257,7 +259,7 @@ fn regular_derives(input: &syn::DeriveInput) -> Vec<syn::Path> {
     derives
 }
 
-pub(super) fn data_field_ty(ty: &syn::Type, is_last_field: bool) -> syn::Type {
+fn data_field_ty(ty: &syn::Type, is_last_field: bool) -> syn::Type {
     if !is_last_field {
         return ty.clone();
     }
@@ -265,6 +267,14 @@ pub(super) fn data_field_ty(ty: &syn::Type, is_last_field: bool) -> syn::Type {
     match ty {
         syn::Type::Slice(_) => parse_quote! { [<#ty as co3::wide::Wide>::Data; 0] },
         _ => parse_quote! { <#ty as co3::wide::Wide>::Data },
+    }
+}
+
+pub(super) fn data_bound_ty(ty: &syn::Type, is_last_field: bool) -> syn::Type {
+    if is_last_field && matches!(ty, syn::Type::Slice(_)) {
+        parse_quote!(<#ty as co3::wide::Wide>::Data)
+    } else {
+        data_field_ty(ty, is_last_field)
     }
 }
 
@@ -277,7 +287,7 @@ pub(super) fn gen_data_ctype_bounds(
     let field_tys = fields
         .iter()
         .enumerate()
-        .map(|(index, field)| data_field_ty(&field.ty, index == fields_len - 1))
+        .map(|(index, field)| data_bound_ty(&field.ty, index == fields_len - 1))
         .collect::<Vec<_>>();
 
     let generics = data_generics(fields, generics);

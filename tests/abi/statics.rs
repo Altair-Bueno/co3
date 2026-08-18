@@ -40,8 +40,8 @@ fn mutable_static_has_the_imported_abi() {
         imported::FLAGS.set(3);
         let flags = imported::FLAGS.read().unwrap();
         assert_eq!(flags, 3);
-        assert_eq!(FLAGS.read(), 3);
+        assert_eq!(FLAGS.read(), Some(3));
         assert_eq!(imported::FLAGS.take(), Some(3));
-        assert_eq!(FLAGS.read(), 0);
+        assert_eq!(FLAGS.read(), Some(0));
     }
 }

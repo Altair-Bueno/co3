@@ -9,7 +9,7 @@ use crate::layout::{
     infer_repr, is_phantom_data, is_transparent_enum_repr, is_type_parametrized,
     primitive_tag_type,
     wide::{
-        data_field_ty, gen_alloc_methods, gen_data_ctype_bounds, gen_data_struct_name,
+        data_bound_ty, gen_alloc_methods, gen_data_ctype_bounds, gen_data_struct_name,
         gen_dst_methods, last_field, wide_predicate,
     },
 };
@@ -57,7 +57,6 @@ pub(super) fn gen_item_ctype(
     let vis = &input.vis;
     let name = &input.ident;
     let generics = &input.generics;
-
     match &input.data {
         syn::Data::Struct(data) => derive_ctype_struct::<false>(
             repr,
@@ -178,7 +177,7 @@ fn gen_ctype_wide_impl(
 
     let source_wide_predicate = wide_predicate(&source_last.ty, source_generics);
     let source_data_ctype_bounds = gen_data_ctype_bounds(source_fields, source_generics);
-    let source_data_ty = data_field_ty(&source_last.ty, true);
+    let source_data_ty = data_bound_ty(&source_last.ty, true);
     let source_data_ctype_sized_bound = if is_type_parametrized(&source_data_ty, source_generics) {
         quote!(#source_data_ty: co3::ExternC<CType: Sized>)
     } else {
@@ -441,6 +440,8 @@ fn gen_struct_ctype_impls<const ADD_COPY: bool>(
     generate_views_and_spec: bool,
 ) -> TokenStream {
     let fields = ctype.fields.iter().map(|f| &f.ty).collect::<Vec<_>>();
+    let all_phantom_data = !fields.is_empty() && fields.iter().all(|ty| is_phantom_data(ty));
+    let generate_views = generate_views_and_spec && !all_phantom_data;
 
     let copy_impls = gen_copy_impls::<ADD_COPY>(&ctype.ident, &ctype.generics, &fields);
     let default_impl = gen_default_impl::<ADD_COPY>(&ctype.ident, &ctype.generics, &fields);
@@ -448,12 +449,16 @@ fn gen_struct_ctype_impls<const ADD_COPY: bool>(
     let type_spec_impl =
         generate_views_and_spec.then(|| gen_type_spec(&ctype.ident, &ctype.generics, &fields));
     let const_view =
-        generate_views_and_spec.then(|| gen_ctype_struct_view::<ADD_COPY>(ctype.clone(), false));
-    let mut_view =
-        generate_views_and_spec.then(|| gen_ctype_struct_view::<ADD_COPY>(ctype.clone(), true));
+        generate_views.then(|| gen_ctype_struct_view::<ADD_COPY>(ctype.clone(), false));
+    let mut_view = generate_views.then(|| gen_ctype_struct_view::<ADD_COPY>(ctype.clone(), true));
 
-    let borrow_cast_impl = generate_views_and_spec
-        .then(|| gen_borrow_cast_impl::<ADD_COPY>(&ctype.ident, &ctype.generics, &fields));
+    let borrow_cast_impl = if generate_views {
+        gen_borrow_cast_impl::<ADD_COPY>(&ctype.ident, &ctype.generics, &fields)
+    } else if all_phantom_data {
+        gen_identity_borrow_cast_impl(&ctype.ident, &ctype.generics)
+    } else {
+        quote! {}
+    };
 
     quote! {
         #copy_impls
@@ -735,6 +740,20 @@ fn gen_borrow_cast_impl<const ADD_COPY: bool>(
             #predicates
         {
             type AsMut = #mut_view_name #ty_generics;
+        }
+    }
+}
+
+fn gen_identity_borrow_cast_impl(ident: &syn::Ident, generics: &syn::Generics) -> TokenStream {
+    let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
+
+    quote! {
+        unsafe impl #impl_generics co3::borrow::BorrowCast for #ident #ty_generics #where_clause {
+            type AsConst = Self;
+        }
+
+        unsafe impl #impl_generics co3::borrow::BorrowCastMut for #ident #ty_generics #where_clause {
+            type AsMut = Self;
         }
     }
 }

@@ -277,17 +277,19 @@ fn prepare_dispatch_wrapper_sig(
         let (attrs, ty) = (&input.attrs[..], &*input.ty);
         if ffi_fn::is_spread_arg(attrs) && fn_detector.type_mentions_param(ty) {
             let spread_ty = ffi_fn::item_fn_input_arg_type(attrs, ty);
-            if let Some((part1, part2)) =
-                ffi_fn::spread2_types(attrs).expect("validated #[spread2] attribute")
-            {
-                where_clause.predicates.push(syn::parse_quote!(
-                    #spread_ty: #co3::slice::Spread2<Part1 = #part1, Part2 = #part2>
-                ));
-            } else {
-                where_clause
-                    .predicates
-                    .push(syn::parse_quote!(#spread_ty: #co3::slice::Spread2));
-            }
+            let (part1, part2) = ffi_fn::spread_types(attrs)
+                .expect("validated #[spread] attribute")
+                .expect("spread attribute was found");
+            where_clause
+                .predicates
+                .push(syn::parse_quote!(#spread_ty: #co3::slice::Spread2));
+            let try_spread = ffi_fn::is_try_spread_arg(attrs);
+            where_clause.predicates.push(spread_conversion_bound(
+                &spread_ty, 1, &part1, try_spread, co3,
+            ));
+            where_clause.predicates.push(spread_conversion_bound(
+                &spread_ty, 2, &part2, try_spread, co3,
+            ));
         }
         if crate::dispatch::handle_id(ty).is_none() && detector.type_mentions_param(ty) {
             if attrs.iter().any(ffi_fn::is_by_val_attr) {
@@ -334,6 +336,27 @@ fn prepare_dispatch_wrapper_sig(
     }
 
     wrapper_sig
+}
+
+fn spread_conversion_bound(
+    spread_ty: &TokenStream,
+    part: u8,
+    target: &syn::Type,
+    try_spread: bool,
+    co3: &TokenStream,
+) -> syn::WherePredicate {
+    let part = syn::Ident::new(&format!("Part{part}"), proc_macro2::Span::call_site());
+    if try_spread {
+        syn::parse_quote!(
+            <#spread_ty as #co3::slice::Spread2>::#part:
+                core::convert::TryInto<<#target as #co3::ExternC>::CType>
+        )
+    } else {
+        syn::parse_quote!(
+            <#spread_ty as #co3::slice::Spread2>::#part:
+                core::convert::Into<<#target as #co3::ExternC>::CType>
+        )
+    }
 }
 
 fn dispatch_id_assignments(sig: &syn::Signature) -> Vec<TokenStream> {
@@ -513,7 +536,7 @@ pub(crate) fn expand_export_decls(
         ForeignItem::Type(ForeignItemType {
             ty,
             id,
-            id_value: _,
+            id_value,
             self_impls,
             drop,
         }) => {
@@ -556,12 +579,16 @@ pub(crate) fn expand_export_decls(
                 quote! { co3::rust_spec::size::Sized<co3::rust_spec::Gt<rust_spec::Zero>> },
                 quote! { co3::rust_spec::niche::WithoutNiche },
             );
+            let handle_impl = id_value
+                .as_deref()
+                .map(|value| gen_handle_impl(ident, &ty.generics, value));
             let size_check = gen_non_zst_sized_check(ident, &ty.generics);
 
             quote! {
                 #(#type_cfg_attrs)*
                 const _: () = {
                     #opaque
+                    #handle_impl
 
                     #drop
                     #size_check

@@ -40,13 +40,9 @@ pub(super) fn derive_item(
     let is_wide_data = attrs.is_wide_data;
 
     let ctype_def = (!is_view).then(|| gen_item_ctype(repr, input, !is_wide_data));
-    let is_transparent = matches!(repr, Some(ReprKind::Transparent));
-    let view_def = (!is_view && !is_wide_data)
-        .then(|| gen_item_view(input, attrs, variant_attrs, is_transparent));
+    let view_def = (!is_view && !is_wide_data).then(|| gen_item_view(input, attrs, variant_attrs));
 
-    let borrow_impls =
-        (!is_view && !is_wide_data).then(|| gen_item_borrow_impls(input, is_transparent));
-
+    let borrow_impls = (!is_view && !is_wide_data).then(|| gen_item_borrow_impls(input));
     let codec_impls = gen_item_codec_impls(repr, input, attrs, variant_attrs);
     let niche_impls = (!is_view).then(|| gen_item_niche_impls(repr, input, attrs));
     let interior_mut_impl = gen_item_interior_mut_impl(repr, input);

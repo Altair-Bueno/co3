@@ -510,7 +510,7 @@ pub fn repr_c_derive(item: syn::DeriveInput) -> Result<TokenStream> {
 ///
 /// Rust slices are lowered into [`CSlice`](https://docs.rs/co3/latest/co3/slice/struct.CSlice.html)/[`CSliceMut`](https://docs.rs/co3/latest/co3/slice/struct.CSliceMut.html)
 /// which are C-ABI containers holding a data pointer and a length. However, it is common for FFI APIs to instead accept those components as separate function arguments.
-/// Mark an argument with `#[spread2]` to import its two ABI parts:
+/// Mark an argument with `#[spread(T1, T2)]`/`#[try_spread(T1, T2)]` to import its two ABI parts:
 ///
 /// ```rust
 /// # use co3::ffi;
@@ -518,12 +518,12 @@ pub fn repr_c_derive(item: syn::DeriveInput) -> Result<TokenStream> {
 /// ffi! {
 ///     #![unsafe(extern("system"))]
 ///
-///     // imported as `sum(*const u32, usize)`
-///     fn sum(#[spread2] values: &[u32]) -> u32;
+///     // - imported as `sum(*const u32, u16)`
+///     fn sum(#[try_spread(_, u16)] values: &[u32]) -> u32;
 /// }
 /// ```
 ///
-/// **This pattern is not limited to slices**; it applies to every type implementing the [`Spread2`](https://docs.rs/co3/latest/co3/slice/trait.Spread2.html) trait. The attribute is only supported in import declarations.
+/// **This pattern is not limited to slices**; it applies to every type implementing the [`Spread2`](https://docs.rs/co3/latest/co3/slice/trait.Spread2.html) trait.
 ///
 /// # Failure modes
 ///

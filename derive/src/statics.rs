@@ -122,23 +122,21 @@ fn gen_export_wrapper(
         })
         .unzip();
 
-    let validate = quote! {
-        assert!(unsafe {
-            <#ty as #co3::transmute::CheckedTransmute>::is_valid(
-                &*core::ptr::addr_of!(#raw_ident),
-            )
-        });
-    };
-
     let read = if mutable {
         quote! {
             #[inline]
-            pub unsafe fn read(&self) -> #ty
+            pub unsafe fn read(&self) -> Option<#ty>
             where for<'_dummy> #ty: core::clone::Clone,
             {
-                #validate
+                if !unsafe {
+                    <#ty as #co3::transmute::CheckedTransmute>::is_valid(
+                        &*core::ptr::addr_of!(#raw_ident),
+                    )
+                } {
+                    return None;
+                }
 
-                unsafe { (&*(core::ptr::addr_of!(#raw_ident) as *const #ty)).clone() }
+                Some(unsafe { (&*(core::ptr::addr_of!(#raw_ident) as *const #ty)).clone() })
             }
         }
     } else {

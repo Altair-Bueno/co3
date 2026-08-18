@@ -8,6 +8,10 @@ use co3::{
 
 pub trait OdbcVersion {}
 
+#[derive(ReprC)]
+#[repr(transparent)]
+pub struct OdbcStr<C>([C]);
+
 type SQLSMALLINT = i16;
 pub enum Payload {}
 
@@ -119,9 +123,9 @@ co3::ffi! {
         pub fn get_attr<'attr, dyn(i32) A: EnvAttr>(
             &self,
             attribute: <dyn A>::ID,
-            #[spread2(u32, i32)]
+            #[spread(u32, i32)]
             move value1: <A as EnvAttr>::Value,
-            #[spread2(u32, i32)]
+            #[spread(u32, i32)]
             value2: <A as EnvAttr>::Value,
             string_length: &mut i32,
         )

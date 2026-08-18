@@ -665,7 +665,7 @@ impl VisitMut for StaticLifetimeNormalizer {
 fn input_abi_tys(attrs: &[syn::Attribute], ty: &syn::Type) -> Vec<syn::Type> {
     if is_spread_arg(attrs) {
         let (part1, part2) =
-            crate::ffi_fn::spread2_abi_parts(attrs, ty).expect("validated #[spread2] attribute");
+            crate::ffi_fn::spread_abi_parts(attrs, ty).expect("validated #[spread] attribute");
         return vec![part1, part2];
     }
 

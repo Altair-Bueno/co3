@@ -1,4 +1,4 @@
-use proc_macro2::TokenStream;
+use proc_macro2::{Ident, TokenStream};
 use quote::{format_ident, quote};
 use syn::{FnArg, ItemImpl, punctuated::Punctuated, visit_mut::VisitMut};
 
@@ -25,7 +25,8 @@ pub(crate) fn strip_internal_arg_attrs(signature: &mut syn::Signature) {
             node.attrs.retain(|attr| {
                 !is_by_val_attr(attr)
                     && !attr.path().is_ident("soft")
-                    && !attr.path().is_ident("spread2")
+                    && !attr.path().is_ident("spread")
+                    && !attr.path().is_ident("try_spread")
             });
         }
 
@@ -33,7 +34,8 @@ pub(crate) fn strip_internal_arg_attrs(signature: &mut syn::Signature) {
             node.attrs.retain(|attr| {
                 !is_by_val_attr(attr)
                     && !attr.path().is_ident("soft")
-                    && !attr.path().is_ident("spread2")
+                    && !attr.path().is_ident("spread")
+                    && !attr.path().is_ident("try_spread")
             });
         }
     }
@@ -247,7 +249,7 @@ pub(crate) fn gen_wrapper_body<const DISPATCHED: bool>(
     };
 
     let input_convert = gen_input_conversion_stmts(&sig.inputs);
-    let spread_inputs = gen_spread_input_stmts(&sig.inputs);
+    let spread_inputs = gen_spread_input_stmts(failure_mode, &sig.inputs);
     let declared_receiver_erase = if !DISPATCHED
         && erase_declared_receiver
         && crate::dispatch::has_declared_self_input(self_ty.unwrap(), sig)
@@ -444,7 +446,10 @@ fn gen_input_conversion_stmts(inputs: &Punctuated<FnArg, syn::Token![,]>) -> Tok
     stmts
 }
 
-fn gen_spread_input_stmts(inputs: &Punctuated<FnArg, syn::Token![,]>) -> TokenStream {
+fn gen_spread_input_stmts(
+    failure_mode: FailureMode,
+    inputs: &Punctuated<FnArg, syn::Token![,]>,
+) -> TokenStream {
     let stmts = inputs.iter().filter_map(|input| {
         let FnArg::Typed(syn::PatType { attrs, pat, .. }) = input else {
             return None;
@@ -454,12 +459,49 @@ fn gen_spread_input_stmts(inputs: &Punctuated<FnArg, syn::Token![,]>) -> TokenSt
         }
         let arg_name = item_fn_input_ident(pat);
         let (data_name, metadata_name) = spread_arg_names(arg_name);
+        let (target1_ty, target2_ty) = ffi_fn::spread_types(attrs)
+            .expect("validated #[spread] attribute")
+            .unwrap();
+        let try_spread = ffi_fn::is_try_spread_arg(attrs);
+        let data_convert =
+            spread_part_conversion(&data_name, &target1_ty, try_spread, failure_mode);
+        let metadata_convert =
+            spread_part_conversion(&metadata_name, &target2_ty, try_spread, failure_mode);
         Some(quote! {
             let (#data_name, #metadata_name) = co3::slice::Spread2::into_parts(#arg_name);
+            let #data_name = #data_convert;
+            let #metadata_name = #metadata_convert;
         })
     });
 
     quote!(#(#stmts)*)
+}
+
+fn spread_part_conversion(
+    name: &Ident,
+    target: &syn::Type,
+    try_spread: bool,
+    failure_mode: FailureMode,
+) -> TokenStream {
+    if matches!(target, syn::Type::Infer(_)) {
+        return quote!(#name);
+    }
+
+    let target_abi_ty: syn::Type = syn::parse_quote!(<#target as co3::ExternC>::CType);
+    if try_spread {
+        match failure_mode {
+            FailureMode::Panic => quote! {
+                core::convert::TryInto::<#target_abi_ty>::try_into(#name)
+                    .unwrap_or_else(|_| panic!("co3 generated FFI spread conversion failure"))
+            },
+            FailureMode::Error => quote! {
+                core::convert::TryInto::<#target_abi_ty>::try_into(#name)
+                    .map_err(|_| co3::Error::trap_value())?
+            },
+        }
+    } else {
+        quote!(core::convert::Into::<#target_abi_ty>::into(#name))
+    }
 }
 
 fn gen_ffi_fn_call(sig: &syn::Signature) -> TokenStream {
