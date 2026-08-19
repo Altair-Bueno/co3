@@ -37,7 +37,9 @@ use crate::{
     dispatch::{find_dispatch_attr, synthesize_dispatch_handle_ids},
     generate::{expand_export_decls, expand_extern_decls},
     layout::derive_repr_c,
-    parse::{FailureMode, FfiInput, MacroFeatures, ParsedForeignItem, parse_dispatch_attr},
+    parse::{
+        FailureMode, FfiInput, FfiStatic, MacroFeatures, ParsedForeignItem, parse_dispatch_attr,
+    },
     utils::{
         co3_path, has_non_lifetime_generics, is_drop_impl, is_type_erased, path_symbol_name,
         push_error, type_symbol_name,
@@ -74,6 +76,7 @@ enum ForeignItem {
     Type(ForeignItemType),
     Impl(Co3Impl),
     Fn(Co3Fn),
+    Static(FfiStatic),
 }
 
 #[derive(Clone, Default)]
@@ -255,8 +258,8 @@ pub fn repr_c_derive(item: syn::DeriveInput) -> Result<TokenStream> {
 ///
 /// `ffi!` generates the ABI-facing wrappers and the conversion glue through a familiar API. The
 /// macro can be used to either produce the FFI bindings or to bind against an existing library.
-/// It accepts free functions, inherent and trait `impl` blocks, and extern/opaque types. All
-/// type conversions are checked for trap representations (with indirections followed) while
+/// It accepts static items, bare functions, inherent and trait `impl`s, and extern/opaque types.
+/// All type conversions are checked for trap representations (with indirections followed) while
 /// ownership transfer is made opt-in.
 ///
 /// **The syntax of exports and imports is completely interchangeable.**
@@ -342,6 +345,7 @@ pub fn repr_c_derive(item: syn::DeriveInput) -> Result<TokenStream> {
 ///
 /// ABI symbols follow a stable naming convention:
 ///
+/// - Static items: `{prefix}__{static}`
 /// - Free functions: `{prefix}__{function}`
 /// - Inherent methods: `{prefix}__{SelfType}__{method}`
 /// - Trait methods: `{prefix}__{TraitPath}__{SelfType}__{method}`
@@ -642,6 +646,7 @@ impl Input {
                 | ParsedForeignItem::Impl(ItemImpl { attrs, .. }) => {
                     ensure_single_dispatch_attr(attrs)?;
                 }
+                ParsedForeignItem::Static(static_) => ensure_single_dispatch_attr(&static_.attrs)?,
             }
         }
 
@@ -697,6 +702,7 @@ impl Input {
                         dispatch_args,
                     }));
                 }
+                ParsedForeignItem::Static(item) => decls.push(ForeignItem::Static(item)),
             }
         }
 
@@ -883,6 +889,9 @@ fn ensure_symbol_names(decl: &mut ParsedForeignItem, symbol_prefix: &LitStr) {
             }
         }
         ParsedForeignItem::Type(_) => {}
+        ParsedForeignItem::Static(static_) => {
+            ensure_symbol_name_on_static(&mut static_.attrs, symbol_prefix, &static_.ident);
+        }
     }
 }
 
@@ -1041,6 +1050,7 @@ fn pack_type_drop_impls(decls: Vec<ForeignItem>) -> Result<Vec<ForeignItem>> {
                 }
             }
             ForeignItem::Fn(item) => kept_decls.push(ForeignItem::Fn(item)),
+            ForeignItem::Static(item) => kept_decls.push(ForeignItem::Static(item)),
         }
     }
 
@@ -1266,6 +1276,14 @@ fn ensure_symbol_name_on_fn(
             #[symbol_name = #symbol_name]
         });
     }
+}
+
+fn ensure_symbol_name_on_static(
+    attrs: &mut Vec<Attribute>,
+    symbol_prefix: &LitStr,
+    static_name: &syn::Ident,
+) {
+    ensure_symbol_name_on_fn(attrs, symbol_prefix, static_name);
 }
 
 fn ensure_symbol_name_on_impl_fn(

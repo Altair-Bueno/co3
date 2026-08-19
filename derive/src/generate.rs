@@ -152,9 +152,8 @@ fn dispatch_membership_bound(
     syn::parse_quote!((#(#membership_tys,)*): #dispatch_set)
 }
 
-fn dispatch_set_name(attrs: &[syn::Attribute], fallback: &syn::Ident) -> syn::Ident {
-    let _ = attrs;
-    format_ident!("__Co3DispatchSet_{fallback}")
+fn dispatch_set_name(fallback: &syn::Ident) -> syn::Ident {
+    format_ident!("{fallback}DispatchSet")
 }
 
 fn dispatch_module_name(attrs: &[syn::Attribute], fallback: &syn::Ident) -> syn::Ident {
@@ -181,7 +180,9 @@ fn gen_dispatch_set(
     generics: &syn::Generics,
     args: &DispatchGroups,
     member_tys: impl IntoIterator<Item = syn::Type>,
+    visibility: &syn::Visibility,
 ) -> TokenStream {
+    let sealed_module = format_ident!("__Co3DispatchSetSeal_{}", trait_name);
     struct LifetimeCollector(BTreeSet<syn::Ident>);
 
     impl<'ast> Visit<'ast> for LifetimeCollector {
@@ -215,11 +216,17 @@ fn gen_dispatch_set(
         let impl_generics = (!lifetimes.is_empty() || !auxiliary_types.is_empty())
             .then(|| quote!(<#(#lifetimes,)* #(#auxiliary_types),*>));
 
-        impls.push(quote! { impl #impl_generics #trait_name for (#(#tys,)*) {} });
+        impls.push(quote! {
+            impl #impl_generics #sealed_module::Sealed for (#(#tys,)*) {}
+            impl #impl_generics #trait_name for (#(#tys,)*) {}
+        });
     });
 
     quote! {
-        trait #trait_name {}
+        mod #sealed_module {
+            pub trait Sealed {}
+        }
+        #visibility trait #trait_name: #sealed_module::Sealed {}
         #(#impls)*
     }
 }
@@ -414,13 +421,11 @@ fn gen_dispatch_import_module(
     definitions: TokenStream,
 ) -> TokenStream {
     quote! {
+        #set
         #[allow(non_snake_case)]
         mod #module_name {
             #[allow(unused_imports)]
             use super::*;
-
-            #[allow(non_camel_case_types)]
-            #set
 
             #definitions
         }
@@ -439,6 +444,7 @@ fn prepare_dispatch_import(
     self_ty: Option<&syn::Type>,
     impl_generics: Option<&syn::Generics>,
     declared_self: bool,
+    visibility: &syn::Visibility,
 ) -> DispatchImportParts {
     dispatch_args.inject_unnamed_lifetimes(&mut sig.generics);
     let mut dispatch_generics = sig.generics.clone();
@@ -505,6 +511,7 @@ fn prepare_dispatch_import(
             &dispatch_generics,
             dispatch_args,
             generic_type_tys(&dispatch_generics),
+            visibility,
         ),
         id_checks: gen_handle_id_type_checks(&dispatch_generics, dispatch_args),
         layout_checks: gen_dispatch_erased_layout_checks(&dispatch_generics, sig, dispatch_args),
@@ -857,7 +864,7 @@ pub(crate) fn expand_extern_decls(
             vis,
             ..
         } = &mut *dispatch;
-        let dispatch_set = dispatch_set_name(fn_attrs, &sig.ident);
+        let dispatch_set = dispatch_set_name(&sig.ident);
         let parts = prepare_dispatch_import(
             abi,
             failure_mode,
@@ -869,6 +876,7 @@ pub(crate) fn expand_extern_decls(
             None,
             None,
             false,
+            vis,
         );
         let wrapper_attrs = fn_attrs
             .iter()
@@ -910,7 +918,7 @@ pub(crate) fn expand_extern_decls(
             unreachable!()
         };
         let self_ty = &dispatch.self_ty;
-        let dispatch_set = dispatch_set_name(&method.attrs, &method.sig.ident);
+        let dispatch_set = dispatch_set_name(&method.sig.ident);
         let parts = prepare_dispatch_import(
             abi,
             failure_mode,
@@ -922,6 +930,7 @@ pub(crate) fn expand_extern_decls(
             Some(self_ty),
             Some(&dispatch.generics),
             declared_self,
+            &method.vis,
         );
         let wrapper_attrs = method
             .attrs
@@ -1018,11 +1027,22 @@ pub(crate) fn expand_extern_decls(
                 drop_dispatch.map(|_| format_ident!("__Co3DispatchSet_drop_{ident}"));
             let drop_dispatch_set = drop_dispatch.map(|item| {
                 let membership_tys = generic_type_tys(&ty.generics);
+                let inherited = syn::Visibility::Inherited;
+                let visibility = item
+                    .item
+                    .items
+                    .iter()
+                    .find_map(|item| match item {
+                        syn::ImplItem::Fn(function) => Some(&function.vis),
+                        _ => None,
+                    })
+                    .unwrap_or(&inherited);
                 gen_dispatch_set(
                     drop_set_name.as_ref().unwrap(),
                     &item.item.generics,
                     &item.dispatch_args,
                     membership_tys,
+                    visibility,
                 )
             });
             let type_cfg_attrs = cfg_attrs(&ty.attrs)
@@ -1061,10 +1081,10 @@ pub(crate) fn expand_extern_decls(
                 #ty
 
                 #(#type_cfg_attrs)*
+                #drop_dispatch_set
+                #(#dispatch)*
                 const _: () = {
-                    #drop_dispatch_set
                     #drop
-                    #(#dispatch)*
                 };
             }
         }

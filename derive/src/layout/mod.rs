@@ -197,10 +197,16 @@ pub(crate) fn derive_repr_c(input: &syn::DeriveInput) -> syn::Result<TokenStream
                 push_error(&mut errors, syn::Error::new_spanned(&input.ident, err_msg));
             }
 
+            let has_data_variant = data
+                .variants
+                .iter()
+                .any(|variant| !matches!(variant.fields, syn::Fields::Unit));
+
             for variant in &data.variants {
                 validate_fields_no_ffi_type_attr(&variant.fields, &mut errors);
-                if variant.discriminant.is_some() {
-                    let err_msg = "Explicit discriminants are not supported";
+
+                if has_data_variant && variant.discriminant.is_some() {
+                    let err_msg = "Explicit discriminants are not supported in data-carrying enums";
                     push_error(&mut errors, syn::Error::new(variant.span(), err_msg));
                 }
 
@@ -458,10 +464,6 @@ fn repr_type_name(repr: &syn::Type) -> Option<&str> {
             _ => "",
         })
         .filter(|s| !s.is_empty())
-}
-
-pub fn repr_type_is_signed(repr: &syn::Type) -> bool {
-    matches!(repr_type_name(repr), Some("i8" | "i16" | "i32" | "i64"))
 }
 
 pub(super) fn infer_repr(num_variants: usize) -> syn::Type {

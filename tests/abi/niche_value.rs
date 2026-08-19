@@ -49,6 +49,15 @@ pub enum FieldlessIEnum {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, RustSpec, ReprC)]
+#[repr(i8)]
+pub enum FieldlessExplicitEnum {
+    Negative = -2,
+    Zero = 0,
+    Five = 5,
+    Six,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, RustSpec, ReprC)]
 pub enum FieldlessNoReprEnum {
     A,
     B,
@@ -388,4 +397,23 @@ fn verify_enum_niche_value() {
         expected_fieldless_large_enum,
         encode(None::<FieldlessLargeEnum>).0
     );
+}
+
+#[test]
+fn fieldless_enum_explicit_discriminants_round_trip() {
+    assert_eq!(encode(FieldlessExplicitEnum::Negative).0, -2);
+    assert_eq!(encode(FieldlessExplicitEnum::Zero).0, 0);
+    assert_eq!(encode(FieldlessExplicitEnum::Five).0, 5);
+    assert_eq!(encode(FieldlessExplicitEnum::Six).0, 6);
+
+    assert_eq!(
+        unsafe { co3::decode(encode(FieldlessExplicitEnum::Five)) },
+        Some(FieldlessExplicitEnum::Five)
+    );
+    assert_eq!(
+        unsafe { co3::decode::<FieldlessExplicitEnum>(CFieldlessExplicitEnum(1)) },
+        None
+    );
+    // Zero is occupied, so the generated niche selects the next invalid tag.
+    assert_eq!(encode(None::<FieldlessExplicitEnum>).0, 1);
 }

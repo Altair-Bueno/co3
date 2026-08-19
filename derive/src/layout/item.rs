@@ -1,5 +1,3 @@
-use core::str::FromStr as _;
-
 use proc_macro2::TokenStream;
 use quote::{format_ident, quote};
 use syn::{Ident, parse_quote};
@@ -19,7 +17,7 @@ use crate::layout::{
     enum_tag_type, generic_param_idents, infer_repr, is_exhaustive_enum, is_phantom_data,
     is_transparent_enum_repr, is_type_parametrized,
     niche::{gen_enum_niche_ir, gen_struct_niche_ir},
-    primitive_tag_type, repr_type_is_signed,
+    primitive_tag_type,
 };
 
 pub(super) fn derive_item(
@@ -849,15 +847,16 @@ pub(super) fn derive_fieldless_enum(
             quote! { unsafe fn is_valid(_: &Self::CType) -> bool { true } }
         }
         Some(ReprKind::C(Some(repr)) | ReprKind::Primitive(repr)) => {
-            let niche_value = proc_macro2::Literal::usize_unsuffixed(variants.len());
+            let variant_tags = variants.iter().map(|variant| {
+                let variant_name = &variant.ident;
+                quote! { target.0 == Self::#variant_name as #repr }
+            });
 
-            let is_valid = if repr_type_is_signed(repr) {
-                quote! { target.0 >= 0 && (target.0 as usize) < #niche_value }
-            } else {
-                quote! { (target.0 as usize) < #niche_value }
-            };
-
-            quote! { unsafe fn is_valid(target: &Self::CType) -> bool { #is_valid } }
+            quote! {
+                unsafe fn is_valid(target: &Self::CType) -> bool {
+                    false #(|| #variant_tags)*
+                }
+            }
         }
     };
 
@@ -874,15 +873,14 @@ pub(super) fn derive_fieldless_enum(
         }
     };
 
-    let variants_decode = variants.iter().enumerate().map(|(i, variant)| {
-        let idx = TokenStream::from_str(&format!("{i}")).expect("Valid");
+    let tag_ctype: syn::Type = tag_type.clone().unwrap_or_else(|| parse_quote!(()));
+    let variants_decode = variants.iter().map(|variant| {
         let variant_name = &variant.ident;
-        quote! { #idx => Some(Self::#variant_name) }
+        quote! { value if value == Self::#variant_name as #tag_ctype => Some(Self::#variant_name) }
     });
 
     let ctype_name = gen_ctype_name(name);
     let ctype_ty = quote!(#ctype_name #ty_generics);
-    let tag_ctype: syn::Type = tag_type.clone().unwrap_or_else(|| parse_quote!(()));
     let ctype_def = gen_fieldless_enum_ctype(&tag_ctype, vis, name, generics);
     let encode_impl = tag_type
         .as_ref()

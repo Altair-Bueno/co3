@@ -115,7 +115,27 @@ pub fn gen_enum_niche_ir(
     let niche_discriminant = Literal::usize_unsuffixed(variants.len());
     let niche_tag_value = quote! { #niche_discriminant as #tag_ty };
 
-    let niche_value = if is_fieldless {
+    let has_explicit_discriminant = variants
+        .iter()
+        .any(|variant| variant.discriminant.is_some());
+    let niche_value = if is_fieldless && has_explicit_discriminant {
+        let ctype_name = gen_ctype_name(enum_name);
+        let variant_tags = variants.iter().map(|variant| {
+            let variant_name = &variant.ident;
+            quote! { __co3_niche_tag != Self::#variant_name as #tag_ty }
+        });
+        quote! {
+            #ctype_name({
+                let mut __co3_niche_tag: #tag_ty = 0;
+                loop {
+                    if true #(&& #variant_tags)* {
+                        break __co3_niche_tag;
+                    }
+                    __co3_niche_tag = __co3_niche_tag.wrapping_add(1);
+                }
+            })
+        }
+    } else if is_fieldless {
         let ctype_name = gen_ctype_name(enum_name);
         quote! { #ctype_name(#niche_tag_value) }
     } else {

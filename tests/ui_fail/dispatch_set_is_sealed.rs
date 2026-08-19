@@ -29,6 +29,6 @@ ffi! {
         use<T> @ (<First> | <Second>);
 }
 
-impl __Co3DispatchSet_sealed for (Other,) {}
+impl crate::sealedDispatchSet for (Other,) {}
 
 fn main() {}
