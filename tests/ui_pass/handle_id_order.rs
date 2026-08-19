@@ -1,24 +1,16 @@
 use co3::{
     ffi,
     handle::{Handle, HandleFamily},
-    handles,
 };
-
-handles! {
-    unsafe {
-        Opaque1,
-        Opaque2,
-    }
-}
 
 ffi! {
     #![unsafe(extern("C"))]
 
     #![symbol_prefix = "this_crate"]
 
-    #[unsafe(id(u32))]
+    #[unsafe(id(u32 = 1))]
     type Opaque1;
-    #[unsafe(id(u8))]
+    #[unsafe(id(u8 = 2))]
     #[derive(PartialEq)]
     type Opaque2;
 
@@ -55,7 +47,7 @@ ffi! {
 }
 
 mod provider {
-    use co3::{ffi, handles};
+    use super::*;
 
     trait Custom<T> {
         fn kita1(&mut self, inc: &T) -> u8;
@@ -65,13 +57,6 @@ mod provider {
     pub struct Opaque1(u8);
     #[derive(Clone)]
     pub struct Opaque2(u8);
-
-    handles! {
-        unsafe {
-            Opaque1,
-            Opaque2,
-        }
-    }
 
     impl Default for Box<Opaque1> {
         fn default() -> Self {
@@ -96,9 +81,9 @@ mod provider {
 
         #![symbol_prefix = "this_crate"]
 
-        #[unsafe(id(u32))]
+        #[unsafe(id(u32 = 1))]
         type Opaque1;
-        #[unsafe(id(u8))]
+        #[unsafe(id(u8 = 2))]
         type Opaque2;
 
         impl Default for Box<Opaque1> {

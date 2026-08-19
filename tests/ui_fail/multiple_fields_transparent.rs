@@ -10,7 +10,7 @@ enum MultiVariantEnum<T> {
 #[derive(ReprC)]
 #[repr(transparent)]
 enum MultiFieldEnum<T> {
-    A(T, T)
+    A(T, T),
 }
 
 #[derive(ReprC)]

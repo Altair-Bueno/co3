@@ -1,4 +1,4 @@
-use co3::{ffi};
+use co3::ffi;
 
 trait Kita {
     type U;

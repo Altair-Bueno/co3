@@ -1,14 +1,18 @@
-use co3::ffi;
+use co3::{ffi, handle::Handle};
 
 trait Custom {
     fn inc(&mut self, by: u8);
 }
 
-co3::handles! { unsafe {
-    Opaque::<bool, u8> = 1,
-    Opaque::<bool, u32>,
-    Opaque<u8, bool>,
-} }
+unsafe impl Handle for Opaque<bool, u8> {
+    const ID: u8 = 1;
+}
+unsafe impl Handle for Opaque<bool, u32> {
+    const ID: u8 = 2;
+}
+unsafe impl Handle for Opaque<u8, bool> {
+    const ID: u8 = 3;
+}
 
 ffi! {
     #![unsafe(extern("C"))]
@@ -69,7 +73,7 @@ mod provider {
 
     use co3::ffi;
 
-    use super::Custom;
+    use super::*;
 
     #[derive(Debug, Clone, Default, PartialEq, Eq)]
     struct Opaque<T, U> {
@@ -77,11 +81,15 @@ mod provider {
         marker: PhantomData<(T, U)>,
     }
 
-    co3::handles! { unsafe {
-        Opaque::<bool, u8> = 1,
-        Opaque<bool, u32>,
-        Opaque<u8, bool>,
-    } }
+    unsafe impl Handle for Opaque<bool, u8> {
+        const ID: u8 = 1;
+    }
+    unsafe impl Handle for Opaque<bool, u32> {
+        const ID: u8 = 2;
+    }
+    unsafe impl Handle for Opaque<u8, bool> {
+        const ID: u8 = 3;
+    }
 
     impl PartialEq<Opaque<u8, bool>> for Opaque<bool, u8> {
         fn eq(&self, other: &Opaque<u8, bool>) -> bool {

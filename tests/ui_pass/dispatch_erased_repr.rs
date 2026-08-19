@@ -1,4 +1,4 @@
-use co3::{rust_spec::RustSpec, ReprC, ffi, handles};
+use co3::{ReprC, ffi, rust_spec::RustSpec};
 
 trait Attribute {}
 
@@ -12,18 +12,13 @@ trait ByteValue {
 struct EnvAttr(usize);
 
 #[derive(Clone, RustSpec, ReprC)]
-#[reprC(unsafe(id(u16)))]struct Custom1(usize);
+#[reprC(unsafe(id(u16 = 1)))]
+struct Custom1(usize);
 
 #[derive(RustSpec, ReprC)]
-#[reprC(unsafe(id(u16)))]#[repr(transparent)]
+#[reprC(unsafe(id(u16 = 2)))]
+#[repr(transparent)]
 struct Custom2<'a>(&'a u8);
-
-handles! {
-    unsafe {
-        Custom1,
-        Custom2<'_>,
-    }
-}
 
 impl Attribute for Custom1 {}
 impl Attribute for Custom2<'_> {}
@@ -34,18 +29,13 @@ mod provider {
     use super::*;
 
     #[derive(RustSpec, ReprC)]
-    #[reprC(unsafe(id(u16)))]struct Custom1(usize);
+    #[reprC(unsafe(id(u16 = 1)))]
+    struct Custom1(usize);
 
     #[derive(RustSpec, ReprC)]
-    #[reprC(unsafe(id(u16)))]#[repr(transparent)]
+    #[reprC(unsafe(id(u16 = 2)))]
+    #[repr(transparent)]
     struct Custom2<'a>(&'a u8);
-
-    handles! {
-        unsafe {
-            Custom1,
-            Custom2<'_>,
-        }
-    }
 
     impl Attribute for Custom1 {}
     impl Attribute for Custom2<'_> {}

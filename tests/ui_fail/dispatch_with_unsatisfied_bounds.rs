@@ -1,4 +1,4 @@
-use co3::{ffi, handles};
+use co3::ffi;
 
 pub trait Unimplemented {}
 
@@ -13,17 +13,10 @@ impl RefKita for Exported2<u32> {
     }
 }
 
-handles! {
-    unsafe {
-        Exported2<u32>,
-        Externed2<u32>,
-    }
-}
-
 ffi! {
     #![unsafe(export("C"))]
 
-    #[unsafe(id(u8))]
+    #[unsafe(id(u8 = 0))]
     type Exported2<T>;
 
     impl<T> Drop for dyn Exported2<T>
@@ -45,7 +38,7 @@ ffi! {
 ffi! {
     #![unsafe(extern("C"))]
 
-    #[unsafe(id(u64))]
+    #[unsafe(id(u64 = 1))]
     type Externed2<T>;
 
     impl<T> Drop for dyn Externed2<T>

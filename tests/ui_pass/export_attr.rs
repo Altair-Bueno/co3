@@ -1,4 +1,4 @@
-use co3::{rust_spec::RustSpec, ReprC, ffi, handles};
+use co3::{ReprC, ffi, rust_spec::RustSpec};
 
 #[derive(Clone, Debug, PartialEq, Eq, RustSpec, ReprC)]
 #[repr(transparent)]
@@ -8,14 +8,9 @@ struct Value<T: ToOwned + ?Sized>(T::Owned);
 #[repr(transparent)]
 struct TransparentCTuple1<T: ?Sized>(T);
 
-handles! {
-    unsafe {
-        Opaque,
-    }
-}
-
 #[derive(Debug, Clone, Copy, RustSpec, ReprC)]
-#[reprC(unsafe(id(u8)))]#[repr(C)]
+#[reprC(unsafe(id(u8 = 1)))]
+#[repr(C)]
 struct Opaque(u8);
 
 impl Default for Opaque {
@@ -55,15 +50,7 @@ ffi! {
 mod provider {
     use core::ops::Add;
 
-    use co3::ffi;
-
     use super::*;
-
-    handles! {
-        unsafe {
-            Opaque,
-        }
-    }
 
     #[derive(Debug, Clone, Copy)]
     pub struct Opaque(u8);
@@ -104,7 +91,7 @@ mod provider {
 
         #![symbol_prefix = "kita"]
 
-        #[unsafe(id(u8))]
+        #[unsafe(id(u8 = 1))]
         type Opaque;
 
         impl Default for Box<Opaque> {

@@ -1,24 +1,19 @@
-use co3::{ReprC, ffi, handles, rust_spec::RustSpec};
+use co3::{ReprC, ffi, rust_spec::RustSpec};
 
 #[derive(RustSpec, ReprC)]
-#[reprC(unsafe(id(u8)))]#[repr(transparent)]
+#[reprC(unsafe(id(u8 = 1)))]
+#[repr(transparent)]
 struct First(u8);
 
 #[derive(RustSpec, ReprC)]
-#[reprC(unsafe(id(u8)))]#[repr(transparent)]
+#[reprC(unsafe(id(u8 = 2)))]
+#[repr(transparent)]
 struct Second(u8);
 
 #[derive(RustSpec, ReprC)]
-#[reprC(unsafe(id(u8)))]#[repr(transparent)]
+#[reprC(unsafe(id(u8 = 3)))]
+#[repr(transparent)]
 struct Other(u8);
-
-handles! {
-    unsafe {
-        First,
-        Second,
-        Other,
-    }
-}
 
 ffi! {
     #![unsafe(extern("C"))]

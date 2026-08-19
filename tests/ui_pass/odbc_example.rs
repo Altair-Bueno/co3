@@ -36,7 +36,7 @@ impl OdbcVersion for SQL_OV_ODBC4 {}
 ffi! {
     #![unsafe(extern("system"))]
 
-    #[unsafe(id(SQLSMALLINT))]
+    #[unsafe(id(SQLSMALLINT = 8))]
     type Opaque<V: OdbcVersion = SQL_OV_ODBC3_80>;
 
     impl<V: OdbcVersion> Drop for dyn Opaque<V>
@@ -48,14 +48,6 @@ ffi! {
     {
         fn drop(&mut self);
     }
-}
-
-unsafe impl Handle for Opaque<SQL_OV_ODBC3> {
-    const ID: Self::Kind = 8;
-}
-
-unsafe impl Handle for Opaque<SQL_OV_ODBC3_80> {
-    const ID: Self::Kind = 8;
 }
 
 trait Allocate {

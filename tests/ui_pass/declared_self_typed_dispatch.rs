@@ -1,4 +1,7 @@
-use co3::{ffi, handle::{Handle, HandleFamily}};
+use co3::{
+    ffi,
+    handle::{Handle, HandleFamily},
+};
 
 struct Version;
 struct Attribute;
@@ -6,7 +9,7 @@ struct Attribute;
 ffi! {
     #![unsafe(extern("C"))]
 
-    #[unsafe(id(u8))]
+    #[unsafe(id(u8 = 1))]
     type Environment<V>;
 
     impl<V> Drop for dyn Environment<V>
@@ -21,10 +24,6 @@ ffi! {
         where
             use<A> @ <Attribute>;
     }
-}
-
-unsafe impl<V> Handle for Environment<V> {
-    const ID: Self::Kind = 1;
 }
 
 impl HandleFamily for Attribute {

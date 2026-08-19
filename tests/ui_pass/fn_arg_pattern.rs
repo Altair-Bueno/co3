@@ -1,4 +1,4 @@
-use co3::{rust_spec::RustSpec, ReprC, ffi};
+use co3::{ReprC, ffi, rust_spec::RustSpec};
 
 #[derive(Clone, RustSpec, ReprC)]
 pub struct Hello {
@@ -8,10 +8,7 @@ pub struct Hello {
 
 impl Hello {
     #[expect(improper_ctypes_definitions)]
-    pub extern "C" fn hello(
-        Hello { a: a1, b: b1 }: Hello,
-        Hello { a: a2, b: b2 }: Hello,
-    ) -> i32 {
+    pub extern "C" fn hello(Hello { a: a1, b: b1 }: Hello, Hello { a: a2, b: b2 }: Hello) -> i32 {
         a1 + b1 + a2 + b2
     }
 }

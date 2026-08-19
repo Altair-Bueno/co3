@@ -1,19 +1,18 @@
 use core::{borrow::Borrow, ffi::c_void};
 
-use co3::{rust_spec::RustSpec, ReprC, ffi, handles};
+use co3::{ReprC, ffi, handle::Handle, rust_spec::RustSpec};
 
 #[derive(RustSpec, ReprC)]
-#[reprC(unsafe(id(u8)))]#[repr(transparent)]
+#[reprC(unsafe(id(u8)))]
+#[repr(transparent)]
 struct Unsized<T: ?Sized>(T);
 
 #[derive(RustSpec, ReprC)]
 #[repr(C)]
 struct Wrapper<T: ?Sized>(Box<T>);
 
-handles! {
-    unsafe {
-        Unsized<str>,
-    }
+unsafe impl Handle for Unsized<str> {
+    const ID: u8 = 0;
 }
 
 impl From<Box<Unsized<str>>> for Unsized<String> {

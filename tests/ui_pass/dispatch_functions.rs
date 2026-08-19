@@ -1,15 +1,17 @@
-use co3::{ReprC, ffi, handles, rust_spec::RustSpec};
+use co3::{ReprC, ffi, rust_spec::RustSpec};
 
 trait ByteValue {
     fn byte(&self) -> u8;
 }
 
 #[derive(Clone, RustSpec, ReprC)]
-#[reprC(unsafe(id(u8)))]#[repr(transparent)]
+#[reprC(unsafe(id(u8 = 1)))]
+#[repr(transparent)]
 struct First(u8);
 
 #[derive(Clone, RustSpec, ReprC)]
-#[reprC(unsafe(id(u8)))]#[repr(transparent)]
+#[reprC(unsafe(id(u8 = 2)))]
+#[repr(transparent)]
 struct Second(u8);
 
 impl ByteValue for (Second, Second) {
@@ -33,13 +35,6 @@ impl ByteValue for First {
 impl ByteValue for Second {
     fn byte(&self) -> u8 {
         self.0
-    }
-}
-
-handles! {
-    unsafe {
-        First,
-        Second,
     }
 }
 

@@ -1,4 +1,4 @@
-use co3::{ffi, handles};
+use co3::ffi;
 
 trait Projected {
     type Output;
@@ -6,20 +6,13 @@ trait Projected {
     fn projected(&self) -> Vec<Self::Output>;
 }
 
-handles! {
-    unsafe {
-        First,
-        Second,
-    }
-}
-
 ffi! {
     #![unsafe(extern("C"))]
 
-    #[unsafe(id(u8))]
+    #[unsafe(id(u8 = 1))]
     type First;
 
-    #[unsafe(id(u8))]
+    #[unsafe(id(u8 = 2))]
     type Second;
 
     impl ToOwned for First {

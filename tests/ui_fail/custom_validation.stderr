@@ -21,7 +21,7 @@ error: Unions are not supported
    |
 40 | / #[reprC(is_valid = |a| *a != 0)]
 41 | | pub union CustomUnion1 {
-42 | |     a: u32
+42 | |     a: u32,
 43 | | }
    | |_^
 
@@ -30,7 +30,7 @@ error: Unions are not supported
    |
 46 | / #[reprC(is_valid = |a| *a != 0)]
 47 | | pub union CustomUnion2 {
-48 | |     a: u32
+48 | |     a: u32,
 49 | | }
    | |_^
 

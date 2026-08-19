@@ -1,4 +1,4 @@
-use co3::{rust_spec::RustSpec, ReprC};
+use co3::{ReprC, rust_spec::RustSpec};
 
 #[derive(RustSpec, ReprC)]
 #[reprC(is_valid = |a| *a != 42)]
@@ -13,7 +13,7 @@ pub struct CustomStructValid {
 pub enum CustomEnumValid {
     #[reprC(is_valid = |a| *a != 0)]
     A(u32),
-    B
+    B,
 }
 
 #[derive(ReprC)]
@@ -33,19 +33,19 @@ pub enum CustomEnum1 {
 #[reprC(is_valid = |a| *a != 0)]
 pub enum CustomEnum2 {
     A(u32),
-    B
+    B,
 }
 
 #[derive(ReprC)]
 #[reprC(is_valid = |a| *a != 0)]
 pub union CustomUnion1 {
-    a: u32
+    a: u32,
 }
 
 #[derive(ReprC)]
 #[reprC(is_valid = |a| *a != 0)]
 pub union CustomUnion2 {
-    a: u32
+    a: u32,
 }
 
 #[derive(ReprC)]

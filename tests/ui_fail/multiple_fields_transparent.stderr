@@ -13,7 +13,7 @@ error[E0690]: the variant of a transparent enum needs at most one field with non
    |
 12 | enum MultiFieldEnum<T> {
    | ^^^^^^^^^^^^^^^^^^^^^^ needs at most one field with non-trivial size or alignment, but has 2
-13 |     A(T, T)
+13 |     A(T, T),
    |       -  - this field has non-zero size or requires alignment
    |       |
    |       this field has non-zero size or requires alignment
@@ -40,7 +40,7 @@ error[E0690]: the variant of a transparent enum needs at most one field with non
    |            this field has non-zero size or requires alignment
 11 |   #[repr(transparent)]
 12 | / enum MultiFieldEnum<T> {
-13 | |     A(T, T)
+13 | |     A(T, T),
 14 | | }
    | |_^ needs at most one field with non-trivial size or alignment, but has 2
 

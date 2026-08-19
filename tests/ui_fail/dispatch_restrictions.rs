@@ -1,4 +1,4 @@
-use co3::{ffi, handles, handle::Handle};
+use co3::ffi;
 
 trait Kita {
     fn kita(self) -> u32;
@@ -29,21 +29,6 @@ impl Kita for Exported1 {
 impl RefKita for Exported1 {
     fn kita(&self) -> u32 {
         unimplemented!()
-    }
-}
-
-unsafe impl Handle for Exported0 {
-    const ID: char = 0 as char;
-}
-
-unsafe impl Handle for Externed0 {
-    const ID: char = 1 as char;
-}
-
-handles! {
-    unsafe {
-        Exported1,
-        Externed1,
     }
 }
 
@@ -345,7 +330,7 @@ ffi! {
 ffi! {
     #![unsafe(export("C"))]
 
-    #[unsafe(id(char))]
+    #[unsafe(id(char = 0 as char))]
     type Exported0;
 
     impl<dyn(char) T> RefKita for T
@@ -360,7 +345,7 @@ ffi! {
     #![unsafe(extern("C"))]
     #![symbol_prefix = "kita"]
 
-    #[unsafe(id(char))]
+    #[unsafe(id(char = 1 as char))]
     type Externed0;
 
     impl<dyn(char) T> RefKita for T
@@ -375,7 +360,7 @@ ffi! {
 ffi! {
     #![unsafe(export("C"))]
 
-    #[unsafe(id(u32))]
+    #[unsafe(id(u32 = 0))]
     type Exported1;
 
     impl<dyn(u32) T> RefKita for T
@@ -390,7 +375,7 @@ ffi! {
     #![unsafe(extern("C"))]
     #![symbol_prefix = "kita"]
 
-    #[unsafe(id(u32))]
+    #[unsafe(id(u32 = 1))]
     type Externed1;
 
     impl<dyn(u32) T> RefKita for T

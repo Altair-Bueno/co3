@@ -1,15 +1,17 @@
-use co3::{ReprC, ffi, handles, rust_spec::RustSpec};
+use co3::{ReprC, ffi, rust_spec::RustSpec};
 
 trait Kind {
     fn code() -> u8;
 }
 
 #[derive(RustSpec, ReprC)]
-#[reprC(unsafe(id(u8)))]#[repr(transparent)]
+#[reprC(unsafe(id(u8 = 1)))]
+#[repr(transparent)]
 struct First(u8);
 
 #[derive(RustSpec, ReprC)]
-#[reprC(unsafe(id(u8)))]#[repr(transparent)]
+#[reprC(unsafe(id(u8 = 2)))]
+#[repr(transparent)]
 struct Second(u8);
 
 impl Kind for First {
@@ -21,13 +23,6 @@ impl Kind for First {
 impl Kind for Second {
     fn code() -> u8 {
         2
-    }
-}
-
-handles! {
-    unsafe {
-        First,
-        Second,
     }
 }
 

@@ -1,4 +1,4 @@
-use co3::{rust_spec::RustSpec, ReprC, ffi, handles};
+use co3::{ReprC, ffi, rust_spec::RustSpec};
 
 trait Attr {}
 
@@ -15,13 +15,8 @@ trait ByteValue {
 struct EnvAttr(usize);
 
 #[derive(Clone, RustSpec, ReprC)]
-#[reprC(unsafe(id(u16)))]struct Custom(usize);
-
-handles! {
-    unsafe {
-        Custom,
-    }
-}
+#[reprC(unsafe(id(u16 = 1)))]
+struct Custom(usize);
 
 impl Attr for Custom {}
 
@@ -98,18 +93,13 @@ mod imported {
 }
 
 mod provider {
-    use co3::{rust_spec::RustSpec, ReprC, ffi, handles};
+    use co3::{ReprC, ffi, rust_spec::RustSpec};
 
     use super::{Attr, ByteValue, EnvAttr};
 
     #[derive(Clone, RustSpec, ReprC)]
-    #[reprC(unsafe(id(u16)))]pub(super) struct Custom(usize);
-
-    handles! {
-        unsafe {
-            Custom,
-        }
-    }
+    #[reprC(unsafe(id(u16 = 1)))]
+    pub(super) struct Custom(usize);
 
     impl Attr for Custom {}
 

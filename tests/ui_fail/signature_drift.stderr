@@ -1,7 +1,7 @@
 error[E0053]: method `method` has an incompatible type for trait
-  --> tests/ui_fail/signature_drift.rs:77:24
+  --> tests/ui_fail/signature_drift.rs:72:24
    |
-77 |         fn method(arg: &Box<u32>);
+72 |         fn method(arg: &Box<u32>);
    |                        ^^^^^^^^^ expected `u32`, found `Box<u32>`
    |
 note: type in trait
@@ -13,42 +13,42 @@ note: type in trait
               found signature `fn(&Box<u32>)`
 help: change the parameter type to match the trait
    |
-77 -         fn method(arg: &Box<u32>);
-77 +         fn method(arg: &u32);
+72 -         fn method(arg: &Box<u32>);
+72 +         fn method(arg: &u32);
    |
 
 error[E0053]: method `dispatch` has an incompatible type for trait
-   --> tests/ui_fail/signature_drift.rs:99:19
-    |
- 99 |           use<T> @ <DriftHandle>,
-    |  ___________________^
-100 | |     {
-101 | |         fn dispatch(self_id: <dyn Self>::ID, &self, arg: &T);
-    | |__________________________________________________________^ expected `u32`, found `DriftHandle`
-    |
+  --> tests/ui_fail/signature_drift.rs:94:19
+   |
+94 |           use<T> @ <DriftHandle>,
+   |  ___________________^
+95 | |     {
+96 | |         fn dispatch(self_id: <dyn Self>::ID, &self, arg: &T);
+   | |__________________________________________________________^ expected `u32`, found `DriftHandle`
+   |
 note: type in trait
-   --> tests/ui_fail/signature_drift.rs:14:29
-    |
- 14 |     fn dispatch(&self, arg: &u32);
-    |                             ^^^^
-    = note: expected signature `fn(&DriftHandle, &u32)`
-               found signature `fn(&DriftHandle, &DriftHandle)`
+  --> tests/ui_fail/signature_drift.rs:14:29
+   |
+14 |     fn dispatch(&self, arg: &u32);
+   |                             ^^^^
+   = note: expected signature `fn(&DriftHandle, &u32)`
+              found signature `fn(&DriftHandle, &DriftHandle)`
 help: change the parameter type to match the trait
-    |
- 99 -         use<T> @ <DriftHandle>,
-100 -     {
-101 -         fn dispatch(self_id: <dyn Self>::ID, &self, arg: &T);
- 99 +         use<T> @ <&u32T);
-    |
+   |
+94 -         use<T> @ <DriftHandle>,
+95 -     {
+96 -         fn dispatch(self_id: <dyn Self>::ID, &self, arg: &T);
+94 +         use<T> @ <&u32T);
+   |
 
 error[E0308]: mismatched types
-  --> tests/ui_fail/signature_drift.rs:48:1
+  --> tests/ui_fail/signature_drift.rs:43:1
    |
-48 | / ffi! {
-49 | |     #![unsafe(export("C"))]
-50 | |
-51 | |     fn export_fn(arg: &Box<u32>);
-52 | | }
+43 | / ffi! {
+44 | |     #![unsafe(export("C"))]
+45 | |
+46 | |     fn export_fn(arg: &Box<u32>);
+47 | | }
    | |_^ expected fn pointer, found fn item
    |
    = note: expected fn pointer `for<'a> fn(&'a Box<u32>)`
@@ -56,14 +56,14 @@ error[E0308]: mismatched types
    = note: this error originates in the macro `ffi` (in Nightly builds, run with -Z macro-backtrace for more info)
 
 error[E0308]: mismatched types
-  --> tests/ui_fail/signature_drift.rs:63:1
+  --> tests/ui_fail/signature_drift.rs:58:1
    |
-63 | / ffi! {
-64 | |     #![unsafe(export("C"))]
-65 | |
-66 | |     impl ExportImpl {
+58 | / ffi! {
+59 | |     #![unsafe(export("C"))]
+60 | |
+61 | |     impl ExportImpl {
 ...  |
-69 | | }
+64 | | }
    | |_^ expected fn pointer, found fn item
    |
    = note: expected fn pointer `for<'a> fn(&'a Box<u32>)`
@@ -71,14 +71,14 @@ error[E0308]: mismatched types
    = note: this error originates in the macro `ffi` (in Nightly builds, run with -Z macro-backtrace for more info)
 
 error[E0308]: mismatched types
-  --> tests/ui_fail/signature_drift.rs:81:1
+  --> tests/ui_fail/signature_drift.rs:76:1
    |
-81 | / ffi! {
-82 | |     #![unsafe(export("C"))]
-83 | |
-84 | |     impl<dyn(u8) T = DriftHandle> ExportDispatchTrait for T
+76 | / ffi! {
+77 | |     #![unsafe(export("C"))]
+78 | |
+79 | |     impl<dyn(u8) T = DriftHandle> ExportDispatchTrait for T
 ...  |
-90 | | }
+85 | | }
    | |_^ expected fn pointer, found fn item
    |
    = note: expected fn pointer `for<'a, 'b> fn(&'a DriftHandle, &'b DriftHandle)`

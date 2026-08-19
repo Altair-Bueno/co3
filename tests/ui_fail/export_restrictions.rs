@@ -1,11 +1,5 @@
 use co3::ffi;
 
-co3::handles! {
-    unsafe {
-        FfiStruct,
-    }
-}
-
 trait Kita {
     type T;
 

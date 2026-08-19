@@ -1,4 +1,4 @@
-use co3::{ffi, handles};
+use co3::ffi;
 
 trait Kita {
     type MySelf;
@@ -15,13 +15,6 @@ impl Kita for core::ffi::c_void {
 
     fn kita2(_: &u32) {
         unreachable!()
-    }
-}
-
-handles! {
-    unsafe {
-        Opaque1,
-        Opaque2,
     }
 }
 
@@ -56,9 +49,9 @@ ffi! {
 
     #![symbol_prefix = "kita"]
 
-    #[unsafe(id(u32))]
+    #[unsafe(id(u32 = 1))]
     type Opaque1;
-    #[unsafe(id(u8))]
+    #[unsafe(id(u8 = 2))]
     type Opaque2;
 
     impl ToOwned for Opaque1 {

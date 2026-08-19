@@ -440,7 +440,8 @@ pub fn repr_c_derive(item: syn::DeriveInput) -> Result<TokenStream> {
 /// use co3::{ffi, handle::Handle, rust_spec::RustSpec, ReprC};
 ///
 /// #[derive(RustSpec, ReprC)]
-/// #[reprC(unsafe(id(u8)))]/// struct LocalCounter(u16);
+/// #[reprC(unsafe(id(u8 = 1)))]
+/// struct LocalCounter(u16);
 ///
 /// trait Counter {
 ///     fn increment(&mut self, by: u8);
@@ -448,10 +449,6 @@ pub fn repr_c_derive(item: syn::DeriveInput) -> Result<TokenStream> {
 ///
 /// trait Reset {
 ///     fn reset(&mut self);
-/// }
-///
-/// unsafe impl Handle for LocalCounter {
-///     const ID: u8 = 1;
 /// }
 ///
 /// unsafe impl Handle for CounterHandle<i16> {

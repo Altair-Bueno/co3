@@ -1,4 +1,4 @@
-use co3::{rust_spec::RustSpec, ReprC, ffi, handles};
+use co3::{ReprC, ffi, rust_spec::RustSpec};
 
 trait Dispatch {
     fn me(self);
@@ -6,19 +6,23 @@ trait Dispatch {
 
 #[derive(RustSpec, ReprC)]
 #[repr(transparent)]
-#[reprC(unsafe(id(usize)))]struct Handle(usize);
+#[reprC(unsafe(id(usize = 1)))]
+struct Handle(usize);
 
 #[derive(RustSpec, ReprC)]
 #[repr(transparent)]
-#[reprC(unsafe(id(usize)))]struct Handle2(u64);
+#[reprC(unsafe(id(usize = 2)))]
+struct Handle2(u64);
 
 #[derive(RustSpec, ReprC)]
 #[repr(transparent)]
-#[reprC(unsafe(id(usize)))]struct Array([u8; 2]);
+#[reprC(unsafe(id(usize = 3)))]
+struct Array([u8; 2]);
 
 #[derive(RustSpec, ReprC)]
 #[repr(transparent)]
-#[reprC(unsafe(id(usize)))]struct Array2([u8; 8]);
+#[reprC(unsafe(id(usize = 4)))]
+struct Array2([u8; 8]);
 
 #[derive(RustSpec, ReprC)]
 #[repr(C)]
@@ -27,15 +31,6 @@ struct NonTransparentDst([u8]);
 #[derive(RustSpec)]
 #[repr(C)]
 struct StableButNotCStatic(u32);
-
-handles! {
-    unsafe {
-        Handle,
-        Handle2,
-        Array,
-        Array2,
-    }
-}
 
 mod provider {
     use co3::ffi;

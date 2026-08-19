@@ -1,8 +1,8 @@
-use co3::{ffi, handles};
+use co3::{ffi, handle::Handle};
 
-handles! { unsafe {
-    OpaqueSlice<u8>,
-}}
+unsafe impl Handle for OpaqueSlice<u8> {
+    const ID: u8 = 0;
+}
 
 struct OpaqueSlice<T>([T]);
 

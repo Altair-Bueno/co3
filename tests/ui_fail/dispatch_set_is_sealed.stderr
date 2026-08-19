@@ -1,32 +1,32 @@
 error[E0277]: the trait bound `(Other,): Sealed` is not satisfied
-  --> tests/ui_fail/dispatch_set_is_sealed.rs:32:35
+  --> tests/ui_fail/dispatch_set_is_sealed.rs:27:35
    |
-32 | impl crate::sealedDispatchSet for (Other,) {}
+27 | impl crate::sealedDispatchSet for (Other,) {}
    |                                   ^^^^^^^^ the trait `Sealed` is not implemented for `(Other,)`
    |
 help: the following other types implement trait `Sealed`
-  --> tests/ui_fail/dispatch_set_is_sealed.rs:23:1
+  --> tests/ui_fail/dispatch_set_is_sealed.rs:18:1
    |
-23 | / ffi! {
-24 | |     #![unsafe(extern("C"))]
-25 | |
-26 | |     #[symbol_name = "sealed_dispatch"]
+18 | / ffi! {
+19 | |     #![unsafe(extern("C"))]
+20 | |
+21 | |     #[symbol_name = "sealed_dispatch"]
 ...  |
-29 | |         use<T> @ (<First> | <Second>);
-30 | | }
+24 | |         use<T> @ (<First> | <Second>);
+25 | | }
    | | ^
    | | |
    | |_`(First,)`
    |   `(Second,)`
 note: required by a bound in `sealedDispatchSet`
-  --> tests/ui_fail/dispatch_set_is_sealed.rs:23:1
+  --> tests/ui_fail/dispatch_set_is_sealed.rs:18:1
    |
-23 | / ffi! {
-24 | |     #![unsafe(extern("C"))]
-25 | |
-26 | |     #[symbol_name = "sealed_dispatch"]
+18 | / ffi! {
+19 | |     #![unsafe(extern("C"))]
+20 | |
+21 | |     #[symbol_name = "sealed_dispatch"]
 ...  |
-29 | |         use<T> @ (<First> | <Second>);
-30 | | }
+24 | |         use<T> @ (<First> | <Second>);
+25 | | }
    | |_^ required by this bound in `sealedDispatchSet`
    = note: this error originates in the macro `ffi` (in Nightly builds, run with -Z macro-backtrace for more info)

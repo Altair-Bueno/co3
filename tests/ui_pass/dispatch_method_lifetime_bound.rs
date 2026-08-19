@@ -1,4 +1,8 @@
-use co3::{rust_spec::RustSpec, ReprC, ffi, handle::HandleFamily, handles};
+use co3::{
+    ReprC, ffi,
+    handle::{Handle, HandleFamily},
+    rust_spec::RustSpec,
+};
 
 trait Attribute {}
 
@@ -11,7 +15,8 @@ trait Dispatch {
 struct CustomAttribute(u32);
 
 #[derive(RustSpec, ReprC)]
-#[reprC(unsafe(id(u8)))]#[repr(transparent)]
+#[reprC(unsafe(id(u8)))]
+#[repr(transparent)]
 struct CustomAttributeRef<'a>(&'a u32);
 
 impl Attribute for &CustomAttribute {}
@@ -19,10 +24,8 @@ impl HandleFamily for &CustomAttribute {
     type Kind = u8;
 }
 
-handles! {
-    unsafe {
-        &CustomAttribute,
-    }
+unsafe impl Handle for &CustomAttribute {
+    const ID: u8 = 1;
 }
 
 mod provider {

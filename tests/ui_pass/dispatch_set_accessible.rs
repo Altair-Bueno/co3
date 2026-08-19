@@ -1,13 +1,9 @@
-use co3::{ReprC, ffi, handles, rust_spec::RustSpec};
+use co3::{ReprC, ffi, rust_spec::RustSpec};
 
 #[derive(RustSpec, ReprC)]
-#[reprC(unsafe(id(u8)))]
+#[reprC(unsafe(id(u8 = 1)))]
 #[repr(transparent)]
 struct First(u8);
-
-handles! {
-    unsafe { First, }
-}
 
 ffi! {
     #![unsafe(extern("C"))]

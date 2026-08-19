@@ -1,7 +1,8 @@
-use co3::{ffi, handles, rust_spec::RustSpec, ReprC};
+use co3::{ReprC, ffi, rust_spec::RustSpec};
 
 #[derive(RustSpec, ReprC)]
-#[reprC(unsafe(id(u8)))]#[repr(transparent)]
+#[reprC(unsafe(id(u8 = 1)))]
+#[repr(transparent)]
 struct Attribute(u32);
 
 #[derive(RustSpec, ReprC)]
@@ -9,12 +10,6 @@ struct Attribute(u32);
 struct Prefix<T: ?Sized> {
     head: u32,
     tail: T,
-}
-
-handles! {
-    unsafe {
-        Attribute,
-    }
 }
 
 fn prefix_head<T: ?Sized>(prefix: &Prefix<T>) -> u32 {

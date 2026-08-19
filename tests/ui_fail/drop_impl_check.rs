@@ -1,16 +1,10 @@
-use co3::{ffi, handles};
+use co3::ffi;
 
 trait Kita {}
 
 struct Export1<T>(T);
 
 impl<T> Kita for Export1<T> {}
-
-handles! {
-    unsafe {
-        Export1<u32>,
-    }
-}
 
 ffi! {
     #![unsafe(export("C"))]
@@ -49,7 +43,7 @@ ffi! {
 ffi! {
     #![unsafe(export("C"))]
 
-    #[unsafe(id(u32))]
+    #[unsafe(id(u32 = 0))]
     type Export1<T>;
 
     // TODO: These Drop impls could be allowed

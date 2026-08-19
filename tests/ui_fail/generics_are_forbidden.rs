@@ -1,4 +1,7 @@
-use co3::{ffi, handles, handle::HandleFamily};
+use co3::{
+    ffi,
+    handle::{Handle, HandleFamily},
+};
 
 trait Trait {}
 struct Kita;
@@ -9,11 +12,12 @@ impl HandleFamily for Kita {
     type Kind = u32;
 }
 
-handles! {
-    unsafe {
-        GenericHandle<'_, u32, 23>,
-        Kita,
-    }
+unsafe impl Handle for GenericHandle<'_, u32, 23> {
+    const ID: u32 = 0;
+}
+
+unsafe impl Handle for Kita {
+    const ID: u32 = 1;
 }
 
 ffi! {
