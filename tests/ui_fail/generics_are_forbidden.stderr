@@ -1,47 +1,47 @@
 error: Type parameters require a tagged-dispatch predicate
-  --> tests/ui_fail/generics_are_forbidden.rs:79:9
+  --> tests/ui_fail/generics_are_forbidden.rs:71:9
    |
-79 |     impl<T> GenericHandle<'static, T, 12> {
+71 |     impl<T> GenericHandle<'static, T, 12> {
    |         ^^^
 
 error: Type parameters require a tagged-dispatch predicate
-  --> tests/ui_fail/generics_are_forbidden.rs:83:9
+  --> tests/ui_fail/generics_are_forbidden.rs:75:9
    |
-83 |     impl<const N: usize> GenericHandle<'static, u32, N> {
+75 |     impl<const N: usize> GenericHandle<'static, u32, N> {
    |         ^^^^^^^^^^^^^^^^
 
 error: Type parameters require a tagged-dispatch predicate
-  --> tests/ui_fail/generics_are_forbidden.rs:89:30
+  --> tests/ui_fail/generics_are_forbidden.rs:81:30
    |
-89 |     pub extern "C" fn export2<T>(v: T) -> T;
+81 |     pub extern "C" fn export2<T>(v: T) -> T;
    |                              ^^^
 
 error: Type parameters require a tagged-dispatch predicate
-  --> tests/ui_fail/generics_are_forbidden.rs:90:30
+  --> tests/ui_fail/generics_are_forbidden.rs:82:30
    |
-90 |     pub extern "C" fn export3<const N: usize>(v: [u32; N]) -> [u32; N];
+82 |     pub extern "C" fn export3<const N: usize>(v: [u32; N]) -> [u32; N];
    |                              ^^^^^^^^^^^^^^^^
 
 error: Type parameters require a tagged-dispatch predicate
-   --> tests/ui_fail/generics_are_forbidden.rs:111:9
+   --> tests/ui_fail/generics_are_forbidden.rs:103:9
     |
-111 |     impl<T> GenericHandle<'static, T, 12> {
+103 |     impl<T> GenericHandle<'static, T, 12> {
     |         ^^^
 
 error: Type parameters require a tagged-dispatch predicate
-   --> tests/ui_fail/generics_are_forbidden.rs:114:9
+   --> tests/ui_fail/generics_are_forbidden.rs:106:9
     |
-114 |     impl<const N: usize> GenericHandle<'static, u32, N> {
+106 |     impl<const N: usize> GenericHandle<'static, u32, N> {
     |         ^^^^^^^^^^^^^^^^
 
 error: Type parameters require a tagged-dispatch predicate
-   --> tests/ui_fail/generics_are_forbidden.rs:120:30
+   --> tests/ui_fail/generics_are_forbidden.rs:112:30
     |
-120 |     pub extern "C" fn extern2<T>(v: T) -> T;
+112 |     pub extern "C" fn extern2<T>(v: T) -> T;
     |                              ^^^
 
 error: Type parameters require a tagged-dispatch predicate
-   --> tests/ui_fail/generics_are_forbidden.rs:121:30
+   --> tests/ui_fail/generics_are_forbidden.rs:113:30
     |
-121 |     pub extern "C" fn extern3<const N: usize>(v: [u32; N]) -> [u32; N];
+113 |     pub extern "C" fn extern3<const N: usize>(v: [u32; N]) -> [u32; N];
     |                              ^^^^^^^^^^^^^^^^

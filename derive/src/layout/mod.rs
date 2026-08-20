@@ -3,7 +3,6 @@ use quote::quote;
 use syn::{Attribute, spanned::Spanned as _, visit::Visit};
 
 use crate::{
-    generate::gen_handle_family_impl,
     layout::attr::{ReprKind, parse_repr},
     layout::item::{derive_fieldless_enum, derive_item},
     utils::push_error,
@@ -23,8 +22,6 @@ const FFI_TYPE_ATTR: &str = "reprC";
 pub(super) struct ReprCAttrs {
     pub(super) niche_value: Option<syn::Expr>,
     pub(super) is_valid: Option<syn::ExprClosure>,
-    pub(super) handle_id: Option<syn::Type>,
-    pub(super) handle_value: Option<syn::Expr>,
     pub(super) is_view: bool,
     pub(super) is_wide_data: bool,
 }
@@ -61,32 +58,6 @@ fn parse_repr_c_attrs(attrs: &[Attribute]) -> syn::Result<ReprCAttrs> {
                 return Ok(());
             }
 
-            if meta.path.is_ident("id") {
-                return Err(meta.error("handle IDs must be declared as `unsafe(id(...))`"));
-            }
-
-            if meta.path.is_ident("unsafe") {
-                return meta.parse_nested_meta(|unsafe_meta| {
-                    if !unsafe_meta.path.is_ident("id") {
-                        return Err(unsafe_meta.error("expected `unsafe(id(...))`"));
-                    }
-                    let content;
-                    syn::parenthesized!(content in unsafe_meta.input);
-                    let value: syn::Type = content.parse()?;
-                    let handle_value = if content.peek(syn::Token![=]) {
-                        content.parse::<syn::Token![=]>()?;
-                        Some(content.parse()?)
-                    } else {
-                        None
-                    };
-                    if repr_c.handle_id.replace(value).is_some() {
-                        return Err(unsafe_meta.error("Duplicate `id` within attribute"));
-                    }
-                    repr_c.handle_value = handle_value;
-                    Ok(())
-                });
-            }
-
             if meta.path.is_ident("NICHE_VALUE") {
                 let value: syn::Expr = meta.value()?.parse()?;
                 if repr_c.niche_value.replace(value).is_some() {
@@ -113,7 +84,6 @@ fn parse_repr_c_attrs(attrs: &[Attribute]) -> syn::Result<ReprCAttrs> {
 
     if repr_c.niche_value.is_none()
         && repr_c.is_valid.is_none()
-        && repr_c.handle_id.is_none()
         && !repr_c.is_view
         && !repr_c.is_wide_data
     {
@@ -220,10 +190,6 @@ pub(crate) fn derive_repr_c(input: &syn::DeriveInput) -> syn::Result<TokenStream
                     let err_msg = "`NICHE_VALUE` is only supported on types";
                     push_error(&mut errors, syn::Error::new(variant.span(), err_msg));
                 }
-                if variant_repr_c_attrs.handle_id.is_some() {
-                    let err_msg = "`id` is only supported on types";
-                    push_error(&mut errors, syn::Error::new(variant.span(), err_msg));
-                }
                 if variant_repr_c_attrs.is_view {
                     let err_msg = "`view` is only supported on types";
                     push_error(&mut errors, syn::Error::new(variant.span(), err_msg));
@@ -284,22 +250,7 @@ pub(crate) fn derive_repr_c(input: &syn::DeriveInput) -> syn::Result<TokenStream
     } else {
         let drop_impl_assert = assert_no_drop(&generics, &input.ident);
 
-        let handle_family_impl = repr_c_attrs
-            .handle_id
-            .as_ref()
-            .map(|id| gen_handle_family_impl(&input.ident, &generics, id));
-        let handle_impl = repr_c_attrs.handle_value.as_ref().map(|value| {
-            let ident = &input.ident;
-            let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
-            quote! {
-                unsafe impl #impl_generics co3::handle::Handle for #ident #ty_generics #where_clause {
-                    const ID: Self::Kind = #value;
-                }
-            }
-        });
         let body = quote! {
-            #handle_family_impl
-            #handle_impl
             #drop_impl_assert
 
             #tokens

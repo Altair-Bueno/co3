@@ -1,4 +1,4 @@
-use co3::{ReprC, ffi, rust_spec::RustSpec};
+use co3::{Handle, ReprC, ffi, rust_spec::RustSpec};
 
 #[derive(Clone, Debug, PartialEq, Eq, RustSpec, ReprC)]
 #[repr(transparent)]
@@ -8,8 +8,8 @@ struct Value<T: ToOwned + ?Sized>(T::Owned);
 #[repr(transparent)]
 struct TransparentCTuple1<T: ?Sized>(T);
 
-#[derive(Debug, Clone, Copy, RustSpec, ReprC)]
-#[reprC(unsafe(id(u8 = 1)))]
+#[derive(Debug, Clone, Copy, RustSpec, Handle, ReprC)]
+#[handle(unsafe(id(u8 = 1)))]
 #[repr(C)]
 struct Opaque(u8);
 

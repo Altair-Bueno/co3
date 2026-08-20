@@ -1,10 +1,6 @@
 use std::{ffi::c_void, marker::PhantomData};
 
-use co3::{
-    ExternC, ReprC, ffi,
-    handle::{Handle, HandleFamily},
-    slice::Spread2,
-};
+use co3::{ExternC, Handle, ReprC, ffi, handle::HandleFamily, rust_spec::RustSpec, slice::Spread2};
 
 pub trait OdbcVersion {}
 
@@ -17,9 +13,9 @@ pub enum Payload {}
 
 impl OdbcVersion for Payload {}
 
-#[derive(Debug, ReprC)]
+#[derive(Debug, RustSpec, Handle, ReprC)]
+#[handle(unsafe(id(SQLSMALLINT)))]
 #[repr(transparent)]
-#[reprC(unsafe(id(SQLSMALLINT)))]
 pub struct MyType<V: OdbcVersion = Payload> {
     pub(crate) handle: *mut c_void,
     version: PhantomData<V>,
@@ -163,9 +159,12 @@ pub trait EnvAttr {
     type Value;
 }
 
-#[derive(Clone)]
+#[derive(Clone, Handle)]
+#[handle(unsafe(id(i32 = 80)))]
 enum SQL_ATTR_ODBC_VERSION {}
-#[derive(Clone)]
+
+#[derive(Clone, Handle)]
+#[handle(unsafe(id(i32 = 81)))]
 enum SQL_ATTR_CP_MATCH {}
 impl EnvAttr for SQL_ATTR_ODBC_VERSION {
     type Value = CpMatch;
@@ -173,20 +172,6 @@ impl EnvAttr for SQL_ATTR_ODBC_VERSION {
 
 impl EnvAttr for SQL_ATTR_CP_MATCH {
     type Value = ConnectionPooling;
-}
-
-impl HandleFamily for SQL_ATTR_ODBC_VERSION {
-    type Kind = i32;
-}
-impl HandleFamily for SQL_ATTR_CP_MATCH {
-    type Kind = i32;
-}
-unsafe impl Handle for SQL_ATTR_ODBC_VERSION {
-    const ID: Self::Kind = 80;
-}
-
-unsafe impl Handle for SQL_ATTR_CP_MATCH {
-    const ID: Self::Kind = 80;
 }
 
 impl Spread2 for <CpMatch as ExternC>::CType {

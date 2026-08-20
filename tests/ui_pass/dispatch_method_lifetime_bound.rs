@@ -1,5 +1,5 @@
 use co3::{
-    ReprC, ffi,
+    Handle, ReprC, ffi,
     handle::{Handle, HandleFamily},
     rust_spec::RustSpec,
 };
@@ -14,8 +14,8 @@ trait Dispatch {
 #[repr(transparent)]
 struct CustomAttribute(u32);
 
-#[derive(RustSpec, ReprC)]
-#[reprC(unsafe(id(u8)))]
+#[derive(RustSpec, Handle, ReprC)]
+#[handle(unsafe(id(u8)))]
 #[repr(transparent)]
 struct CustomAttributeRef<'a>(&'a u32);
 
@@ -29,8 +29,6 @@ unsafe impl Handle for &CustomAttribute {
 }
 
 mod provider {
-    use co3::ffi;
-
     use super::*;
 
     trait Dispatch {

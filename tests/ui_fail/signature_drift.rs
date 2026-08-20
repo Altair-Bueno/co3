@@ -1,6 +1,6 @@
 use std::ops::Deref;
 
-use co3::{ReprC, ffi, rust_spec::RustSpec};
+use co3::{Handle, ReprC, ffi, rust_spec::RustSpec};
 
 trait ExternImplTrait {
     fn method(arg: &u32);
@@ -17,8 +17,8 @@ trait ExternDispatchTrait {
 struct ExportImpl;
 struct ExternImpl;
 
-#[derive(RustSpec, ReprC)]
-#[reprC(unsafe(id(u8 = 0)))]
+#[derive(RustSpec, Handle, ReprC)]
+#[handle(unsafe(id(u8 = 0)))]
 #[repr(transparent)]
 struct DriftHandle(u32);
 

@@ -1,9 +1,9 @@
 use core::{borrow::Borrow, ffi::c_void};
 
-use co3::{ReprC, ffi, handle::Handle, rust_spec::RustSpec};
+use co3::{Handle, ReprC, ffi, rust_spec::RustSpec};
 
-#[derive(RustSpec, ReprC)]
-#[reprC(unsafe(id(u8)))]
+#[derive(RustSpec, ReprC, Handle)]
+#[handle(unsafe(id(u8)))]
 #[repr(transparent)]
 struct Unsized<T: ?Sized>(T);
 
@@ -11,7 +11,7 @@ struct Unsized<T: ?Sized>(T);
 #[repr(C)]
 struct Wrapper<T: ?Sized>(Box<T>);
 
-unsafe impl Handle for Unsized<str> {
+unsafe impl co3::handle::Handle for Unsized<str> {
     const ID: u8 = 0;
 }
 
@@ -42,8 +42,6 @@ impl Clone for Wrapper<Unsized<str>> {
 }
 
 mod provider {
-    use co3::ffi;
-
     use super::*;
 
     impl From<Unsized<String>> for Box<Unsized<str>> {

@@ -1,6 +1,6 @@
-use co3::{ffi, handle::Handle};
+use co3::ffi;
 
-unsafe impl Handle for OpaqueSlice<u8> {
+unsafe impl co3::handle::Handle for OpaqueSlice<u8> {
     const ID: u8 = 0;
 }
 

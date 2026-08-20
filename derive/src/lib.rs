@@ -51,6 +51,7 @@ mod cfg_attr;
 mod dispatch;
 mod ffi_fn;
 mod generate;
+mod handle;
 mod layout;
 mod parse;
 mod statics;
@@ -237,7 +238,6 @@ struct ForeignItemType {
 ///
 /// * `#[reprC(NICHE_VALUE = <expr>)]` on a struct customizes [`co3::niche::Niche::NICHE_VALUE`]
 /// * `#[reprC(is_valid = |[fieldN]| ...)]` on a struct or enum variant customizes validation
-/// * `#[reprC(unsafe(id($type)))]` defines [`co3::handle::HandleFamily::Kind`]
 ///
 /// # Example
 ///
@@ -249,9 +249,20 @@ struct ForeignItemType {
 /// pub struct Hello(u32);
 /// ```
 #[manyhow]
-#[proc_macro_derive(ReprC, attributes(reprC))]
+#[proc_macro_derive(ReprC, attributes(reprC, handle))]
+// FIXME: It's totally weird that `handle` is part of ReprC
 pub fn repr_c_derive(item: syn::DeriveInput) -> Result<TokenStream> {
     derive_repr_c(&item)
+}
+
+/// Derives the tagged-dispatch handle traits for a Rust type.
+///
+/// `#[handle(unsafe(id(Type)))]` defines the handle-ID type, and adding
+/// `= value` also defines the handle's ID value.
+#[manyhow]
+#[proc_macro_derive(Handle, attributes(handle))]
+pub fn handle_derive(item: syn::DeriveInput) -> Result<TokenStream> {
+    handle::derive_handle(&item)
 }
 
 /// Declare your FFI exports or imports.
@@ -437,10 +448,10 @@ pub fn repr_c_derive(item: syn::DeriveInput) -> Result<TokenStream> {
 /// The example corresponds to this C counterpart:
 ///
 /// ```rust
-/// use co3::{ffi, handle::Handle, rust_spec::RustSpec, ReprC};
+/// use co3::{ffi, handle::Handle, ReprC, rust_spec::RustSpec};
 ///
-/// #[derive(RustSpec, ReprC)]
-/// #[reprC(unsafe(id(u8 = 1)))]
+/// #[derive(RustSpec, Handle, ReprC)]
+/// #[handle(unsafe(id(u8 = 1)))]
 /// struct LocalCounter(u16);
 ///
 /// trait Counter {

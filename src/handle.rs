@@ -1,4 +1,5 @@
 //! Utilities for opaque pointer handles required for tagged dispatch.
+
 use crate::Encode;
 
 /// Groups handles that use the same tag type.

@@ -1,23 +1,15 @@
-use co3::{
-    ffi,
-    handle::{Handle, HandleFamily},
-};
+use co3::{Handle, ffi};
 
 trait Trait {}
+
+#[derive(Handle)]
+#[handle(unsafe(id(u32 = 1)))]
 struct Kita;
 
 pub struct GenericHandle<'a, T, const N: usize>(&'a [T; N]);
 
-impl HandleFamily for Kita {
-    type Kind = u32;
-}
-
-unsafe impl Handle for GenericHandle<'_, u32, 23> {
+unsafe impl co3::handle::Handle for GenericHandle<'_, u32, 23> {
     const ID: u32 = 0;
-}
-
-unsafe impl Handle for Kita {
-    const ID: u32 = 1;
 }
 
 ffi! {

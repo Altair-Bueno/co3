@@ -1,9 +1,8 @@
-use co3::{
-    ffi,
-    handle::{Handle, HandleFamily},
-};
+use co3::{Handle, ffi};
 
 struct Version;
+#[derive(Handle)]
+#[handle(unsafe(id(u8 = 2)))]
 struct Attribute;
 
 ffi! {
@@ -24,14 +23,6 @@ ffi! {
         where
             use<A> @ <Attribute>;
     }
-}
-
-impl HandleFamily for Attribute {
-    type Kind = u8;
-}
-
-unsafe impl Handle for Attribute {
-    const ID: u8 = 2;
 }
 
 fn main() {}
