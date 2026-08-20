@@ -1,0 +1,317 @@
+error: unconstrained generic parameter
+ --> tests/ui_fail/parameter_binding.rs:6:10
+  |
+6 |     impl<T, dyn(u8) U, const N: usize> Exposed<T, N, U> {
+  |          ^
+
+error: unconstrained generic parameter
+ --> tests/ui_fail/parameter_binding.rs:6:21
+  |
+6 |     impl<T, dyn(u8) U, const N: usize> Exposed<T, N, U> {
+  |                     ^
+
+error: unconstrained generic parameter
+ --> tests/ui_fail/parameter_binding.rs:6:30
+  |
+6 |     impl<T, dyn(u8) U, const N: usize> Exposed<T, N, U> {
+  |                              ^
+
+error: unconstrained generic parameter
+ --> tests/ui_fail/parameter_binding.rs:7:20
+  |
+7 |         fn exposed<L, dyn(u8) V, const K: usize>(value: (L, &V), len: K);
+  |                    ^
+
+error: unconstrained generic parameter
+ --> tests/ui_fail/parameter_binding.rs:7:31
+  |
+7 |         fn exposed<L, dyn(u8) V, const K: usize>(value: (L, &V), len: K);
+  |                               ^
+
+error: unconstrained generic parameter
+ --> tests/ui_fail/parameter_binding.rs:7:40
+  |
+7 |         fn exposed<L, dyn(u8) V, const K: usize>(value: (L, &V), len: K);
+  |                                        ^
+
+error: unconstrained generic parameter
+  --> tests/ui_fail/parameter_binding.rs:10:16
+   |
+10 |     fn exposed<T, dyn(u8) L, const N: usize>(value: (T, &L), len: N);
+   |                ^
+
+error: unconstrained generic parameter
+  --> tests/ui_fail/parameter_binding.rs:10:27
+   |
+10 |     fn exposed<T, dyn(u8) L, const N: usize>(value: (T, &L), len: N);
+   |                           ^
+
+error: unconstrained generic parameter
+  --> tests/ui_fail/parameter_binding.rs:10:36
+   |
+10 |     fn exposed<T, dyn(u8) L, const N: usize>(value: (T, &L), len: N);
+   |                                    ^
+
+error: unconstrained generic parameter
+  --> tests/ui_fail/parameter_binding.rs:16:10
+   |
+16 |     impl<T, dyn(u8) U, const N: usize> Exposed<T, N, U> {
+   |          ^
+
+error: unconstrained generic parameter
+  --> tests/ui_fail/parameter_binding.rs:16:21
+   |
+16 |     impl<T, dyn(u8) U, const N: usize> Exposed<T, N, U> {
+   |                     ^
+
+error: unconstrained generic parameter
+  --> tests/ui_fail/parameter_binding.rs:16:30
+   |
+16 |     impl<T, dyn(u8) U, const N: usize> Exposed<T, N, U> {
+   |                              ^
+
+error: unconstrained generic parameter
+  --> tests/ui_fail/parameter_binding.rs:17:20
+   |
+17 |         fn exposed<L, dyn(u8) V, const K: usize>(value: (L, &V), len: K);
+   |                    ^
+
+error: unconstrained generic parameter
+  --> tests/ui_fail/parameter_binding.rs:17:31
+   |
+17 |         fn exposed<L, dyn(u8) V, const K: usize>(value: (L, &V), len: K);
+   |                               ^
+
+error: unconstrained generic parameter
+  --> tests/ui_fail/parameter_binding.rs:17:40
+   |
+17 |         fn exposed<L, dyn(u8) V, const K: usize>(value: (L, &V), len: K);
+   |                                        ^
+
+error: unconstrained generic parameter
+  --> tests/ui_fail/parameter_binding.rs:20:16
+   |
+20 |     fn exposed<T, dyn(u8) U, const N: usize>(value: (T, &U), len: N);
+   |                ^
+
+error: unconstrained generic parameter
+  --> tests/ui_fail/parameter_binding.rs:20:27
+   |
+20 |     fn exposed<T, dyn(u8) U, const N: usize>(value: (T, &U), len: N);
+   |                           ^
+
+error: unconstrained generic parameter
+  --> tests/ui_fail/parameter_binding.rs:20:36
+   |
+20 |     fn exposed<T, dyn(u8) U, const N: usize>(value: (T, &U), len: N);
+   |                                    ^
+
+error: dispatch parameter is not declared on this item
+  --> tests/ui_fail/parameter_binding.rs:33:17
+   |
+33 |             use<T, U> @ (<u16, u8>);
+   |                 ^
+
+error: dispatch parameter is not declared on this item
+  --> tests/ui_fail/parameter_binding.rs:33:20
+   |
+33 |             use<T, U> @ (<u16, u8>);
+   |                    ^
+
+error: dispatch parameter is not declared on this item
+  --> tests/ui_fail/parameter_binding.rs:47:17
+   |
+47 |             use<T, U> @ (<u16, u8>);
+   |                 ^
+
+error: dispatch parameter is not declared on this item
+  --> tests/ui_fail/parameter_binding.rs:47:20
+   |
+47 |             use<T, U> @ (<u16, u8>);
+   |                    ^
+
+error: dispatch parameter cannot appear in more than one group
+  --> tests/ui_fail/parameter_binding.rs:57:13
+   |
+57 |         use<T> @ <i8>,
+   |             ^
+
+error: dispatch parameter cannot appear in more than one group
+  --> tests/ui_fail/parameter_binding.rs:62:17
+   |
+62 |             use<U> @ <i8>;
+   |                 ^
+
+error: dispatch parameter cannot appear in more than one group
+  --> tests/ui_fail/parameter_binding.rs:77:13
+   |
+77 |         use<T> @ <i8>,
+   |             ^
+
+error: dispatch parameter cannot appear in more than one group
+  --> tests/ui_fail/parameter_binding.rs:82:17
+   |
+82 |             use<U> @ <i8>;
+   |                 ^
+
+error: unused generic parameter
+  --> tests/ui_fail/parameter_binding.rs:94:27
+   |
+94 |     impl<dyn(u8) T = u32, U> BehindNonErased<T>
+   |                           ^
+
+error: unused generic parameter
+  --> tests/ui_fail/parameter_binding.rs:98:47
+   |
+98 |         fn behind_non_erased<dyn(u8) K = u32, L>()
+   |                                               ^
+
+error: unused generic parameter
+   --> tests/ui_fail/parameter_binding.rs:103:43
+    |
+103 |     fn behind_non_erased<dyn(u8) T = u32, U>()
+    |                                           ^
+
+error: unused generic parameter
+   --> tests/ui_fail/parameter_binding.rs:111:27
+    |
+111 |     impl<dyn(u8) T = u32, U> BehindNonErased<T>
+    |                           ^
+
+error: unused generic parameter
+   --> tests/ui_fail/parameter_binding.rs:115:47
+    |
+115 |         fn behind_non_erased<dyn(u8) K = u32, L>()
+    |                                               ^
+
+error: unused generic parameter
+   --> tests/ui_fail/parameter_binding.rs:120:43
+    |
+120 |     fn behind_non_erased<dyn(u8) T = u32, U>()
+    |                                           ^
+
+error: unused generic parameter
+   --> tests/ui_fail/parameter_binding.rs:128:21
+    |
+128 |     impl<dyn(u8) T, U> BehindErased<T>
+    |                     ^
+
+error: unused generic parameter
+   --> tests/ui_fail/parameter_binding.rs:132:37
+    |
+132 |         fn behind_erased<dyn(u8) K, L>()
+    |                                     ^
+
+error: unused generic parameter
+   --> tests/ui_fail/parameter_binding.rs:137:33
+    |
+137 |     fn behind_erased<dyn(u8) T, U>()
+    |                                 ^
+
+error: unused generic parameter
+   --> tests/ui_fail/parameter_binding.rs:145:21
+    |
+145 |     impl<dyn(u8) T, U> BehindErased<T>
+    |                     ^
+
+error: unused generic parameter
+   --> tests/ui_fail/parameter_binding.rs:149:37
+    |
+149 |         fn behind_erased<dyn(u8) K, L>()
+    |                                     ^
+
+error: unused generic parameter
+   --> tests/ui_fail/parameter_binding.rs:154:33
+    |
+154 |     fn behind_erased<dyn(u8) T, U>()
+    |                                 ^
+
+error: unconstrained generic parameter
+   --> tests/ui_fail/parameter_binding.rs:162:29
+    |
+162 |     impl<dyn(u8) T, dyn(u8) U> BehindErased<T>
+    |                             ^
+
+error: unconstrained generic parameter
+   --> tests/ui_fail/parameter_binding.rs:166:49
+    |
+166 |         fn dynamic_auxiliary<dyn(u8) K, dyn(u8) L>()
+    |                                                 ^
+
+error: unconstrained generic parameter
+   --> tests/ui_fail/parameter_binding.rs:171:45
+    |
+171 |     fn dynamic_auxiliary<dyn(u8) T, dyn(u8) A>()
+    |                                             ^
+
+error: unconstrained generic parameter
+   --> tests/ui_fail/parameter_binding.rs:179:29
+    |
+179 |     impl<dyn(u8) T, dyn(u8) U> BehindErased<T>
+    |                             ^
+
+error: unconstrained generic parameter
+   --> tests/ui_fail/parameter_binding.rs:183:49
+    |
+183 |         fn dynamic_auxiliary<dyn(u8) K, dyn(u8) L>()
+    |                                                 ^
+
+error: unconstrained generic parameter
+   --> tests/ui_fail/parameter_binding.rs:188:45
+    |
+188 |     fn dynamic_auxiliary<dyn(u8) T, dyn(u8) A>()
+    |                                             ^
+
+error: unused generic parameter
+   --> tests/ui_fail/parameter_binding.rs:196:13
+    |
+196 |     impl<T, U> BehindStatic<T>
+    |             ^
+
+error: unused generic parameter
+   --> tests/ui_fail/parameter_binding.rs:200:29
+    |
+200 |         fn behind_static<K, L>()
+    |                             ^
+
+error: unused generic parameter
+   --> tests/ui_fail/parameter_binding.rs:205:25
+    |
+205 |     fn behind_static<T, U>()
+    |                         ^
+
+error: unused generic parameter
+   --> tests/ui_fail/parameter_binding.rs:213:13
+    |
+213 |     impl<T, U> BehindStatic<T>
+    |             ^
+
+error: unused generic parameter
+   --> tests/ui_fail/parameter_binding.rs:217:29
+    |
+217 |         fn behind_static<K, L>()
+    |                             ^
+
+error: unused generic parameter
+   --> tests/ui_fail/parameter_binding.rs:222:25
+    |
+222 |     fn behind_static<T, U>()
+    |                         ^
+
+error: unconstrained generic parameter
+   --> tests/ui_fail/parameter_binding.rs:240:10
+    |
+240 |     impl<T> Unconstrained<T> {
+    |          ^
+
+error: unconstrained generic parameter
+   --> tests/ui_fail/parameter_binding.rs:241:26
+    |
+241 |         fn unconstrained<U, dyn(u8) K>()
+    |                          ^
+
+error: unconstrained generic parameter
+   --> tests/ui_fail/parameter_binding.rs:246:22
+    |
+246 |     fn unconstrained<U, dyn(u8) K>()
+    |                      ^

@@ -5,17 +5,18 @@ use quote::{format_ident, quote};
 use syn::{
     Ident, Meta, Path, Type, parse_quote,
     punctuated::Punctuated,
+    spanned::Spanned,
     token::Comma,
     visit::{Visit, visit_type},
     visit_mut::VisitMut,
 };
 
 use crate::{
-    dispatch::{StaticLifetimeNormalizer, handle_id},
+    dispatch::{StaticLifetimeNormalizer, handle_id, set_token_stream_span},
     generate::OwnershipMode,
     parse::FailureMode,
     symbol_name_value,
-    utils::soft_for_arg,
+    utils::{is_drop_impl, soft_for_arg},
 };
 
 fn export_definition_attrs(attrs: &[syn::Attribute]) -> TokenStream {
@@ -167,7 +168,7 @@ pub(crate) fn gen_definition_body(
         #return_borrow_check
 
         #decode_input_stmts
-        let __co3_output = #callee(
+        let __co3_output = (#callee)(
             #(#arg_names),*
         );
 
@@ -400,7 +401,7 @@ pub(crate) fn gen_input_decode_stmts<'a>(
     }
 }
 
-pub(crate) fn gen_fn_signature_check(
+pub(crate) fn gen_fn_signature_drift_check(
     mut sig: syn::Signature,
     mut callee: syn::Expr,
 ) -> TokenStream {
@@ -421,6 +422,7 @@ pub(crate) fn gen_fn_signature_check(
     });
 
     let fn_ty = quote! { #unsafety #abi fn(#(#arg_tys),*) #output };
+    let callee = set_token_stream_span(quote!(#callee), sig.span());
 
     // NOTE: Avoids signature drift
     quote! { let __co3_fn: #fn_ty = #callee; }
@@ -440,13 +442,14 @@ pub(crate) fn gen_store_sync_stmts(len: usize) -> TokenStream {
     }}
 }
 
-fn gen_fn_definition_body(item: &syn::ItemFn, failure_mode: FailureMode) -> TokenStream {
-    let fn_name = &item.sig.ident;
-    let callee = quote! { self::#fn_name };
-    let check_callee = parse_quote! { self::#fn_name };
+fn gen_fn_definition_body(
+    item: &syn::ItemFn,
+    failure_mode: FailureMode,
+    callee: syn::Expr,
+) -> TokenStream {
     let fn_by_val = item.attrs.iter().any(is_by_val_attr);
-    let signature_check = gen_fn_signature_check(item.sig.clone(), check_callee);
-    let body = gen_definition_body(item.sig.clone(), callee, fn_by_val, failure_mode);
+    let signature_check = gen_fn_signature_drift_check(item.sig.clone(), callee.clone());
+    let body = gen_definition_body(item.sig.clone(), quote!(#callee), fn_by_val, failure_mode);
 
     quote! {{
         #signature_check
@@ -460,6 +463,7 @@ pub fn gen_impl_definition(
     impl_: syn::ItemImpl,
 ) -> TokenStream {
     let trait_ = impl_.trait_.as_ref().map(|(_, path, _)| path);
+    let drop_impl = is_drop_impl(&impl_);
     let impl_attrs = &impl_.attrs;
 
     let self_ty = &impl_.self_ty;
@@ -477,30 +481,24 @@ pub fn gen_impl_definition(
         normalize_fn_signature(&mut item.sig, Some(self_ty));
 
         let fn_name = &item.sig.ident;
-        let callee = if let Some(trait_) = trait_ {
-            quote!(<#self_ty as #trait_>::#fn_name)
-        } else {
-            quote!(<#self_ty>::#fn_name)
-        };
+        let callee = impl_method_callee(self_ty, trait_, fn_name, drop_impl);
 
         merge_impl_generics_for_raw_decl(
             impl_.generics.clone(),
             has_receiver,
             &mut item.sig.generics,
         );
-        let check_callee = if let Some(trait_) = trait_ {
-            parse_quote!(<#self_ty as #trait_>::#fn_name)
-        } else {
-            parse_quote!(<#self_ty>::#fn_name)
-        };
+        let check_callee = callee.clone();
 
         let fn_by_val = item.attrs.iter().any(is_by_val_attr);
         let fn_signature = gen_extern_fn_signature(item.sig.clone(), failure_mode);
-        let signature_check = gen_fn_signature_check(item.sig.clone(), check_callee);
-        let body = gen_definition_body(item.sig, callee, fn_by_val, failure_mode);
+        let signature_drift_check =
+            // NOTE: `Drop::drop` has a fixed signature enforced by `validate_drop_impl`
+            (!drop_impl).then(|| gen_fn_signature_drift_check(item.sig.clone(), check_callee));
+        let body = gen_definition_body(item.sig, quote!(#callee), fn_by_val, failure_mode);
 
         let ffi_fn_body = quote! {{
-            #signature_check
+            #signature_drift_check
             #body
         }};
 
@@ -518,6 +516,21 @@ pub fn gen_impl_definition(
         const _: () = {
             #(#definitions)*
         };
+    }
+}
+
+pub(crate) fn impl_method_callee(
+    self_ty: &Type,
+    trait_: Option<&Path>,
+    fn_name: &syn::Ident,
+    drop_impl: bool,
+) -> syn::Expr {
+    if drop_impl {
+        parse_quote!(|__co3_self: &mut #self_ty| unsafe {
+            core::ptr::drop_in_place(__co3_self as *mut _)
+        })
+    } else {
+        qualified_method_callee(self_ty, trait_, fn_name)
     }
 }
 
@@ -560,19 +573,28 @@ pub fn gen_fn_definition(
     abi: &syn::Abi,
     failure_mode: FailureMode,
     mut item: syn::ItemFn,
+    callee: syn::Expr,
 ) -> TokenStream {
     normalize_fn_signature(&mut item.sig, None);
 
-    let ffi_fn_body = gen_fn_definition_body(&item, failure_mode);
+    let ffi_fn_body = gen_fn_definition_body(&item, failure_mode, callee);
     let fn_signature = gen_extern_fn_signature(item.sig, failure_mode);
 
     emit_extern_definition(abi, &item.attrs, failure_mode, fn_signature, ffi_fn_body)
 }
 
 pub(crate) fn gen_extern_fn_signature(
-    mut sig: syn::Signature,
+    sig: syn::Signature,
     failure_mode: FailureMode,
 ) -> TokenStream {
+    let sig = lower_extern_fn_signature(sig, failure_mode);
+    quote! { #sig }
+}
+
+pub(crate) fn lower_extern_fn_signature(
+    mut sig: syn::Signature,
+    failure_mode: FailureMode,
+) -> syn::Signature {
     if let syn::ReturnType::Type(_, return_type) = &sig.output
         && matches!(failure_mode, FailureMode::Error)
     {
@@ -594,7 +616,7 @@ pub(crate) fn gen_extern_fn_signature(
     sig.unsafety = None;
     sig.abi = None;
 
-    quote! { #sig }
+    sig
 }
 
 fn lower_signature_inputs(sig: &mut syn::Signature) {
@@ -666,7 +688,7 @@ fn lower_signature_output(sig: &mut syn::Signature) {
         });
 }
 
-fn explicitize_signature_lifetimes(sig: &mut syn::Signature) {
+pub(crate) fn explicitize_signature_lifetimes(sig: &mut syn::Signature) {
     struct InputLifetimeCollector<'a> {
         out_lifetime: Option<syn::Lifetime>,
         generics: &'a mut syn::Generics,
@@ -810,6 +832,7 @@ fn synthesize_lifetime_bounds(sig: &mut syn::Signature) {
     #[derive(Default)]
     struct LifetimeUseCollector<'a> {
         bounds: BTreeMap<&'a syn::Lifetime, BTreeSet<&'a syn::Lifetime>>,
+        implied_type_bounds: Vec<(Type, syn::Lifetime)>,
         parent_lifetimes: Vec<&'a syn::Lifetime>,
     }
 
@@ -818,6 +841,8 @@ fn synthesize_lifetime_bounds(sig: &mut syn::Signature) {
 
         fn visit_type_reference(&mut self, node: &'a syn::TypeReference) {
             if let Some(lifetime) = &node.lifetime {
+                self.implied_type_bounds
+                    .push(((*node.elem).clone(), lifetime.clone()));
                 let parents = &self.parent_lifetimes;
                 self.bounds.entry(lifetime).or_default().extend(parents);
 
@@ -852,6 +877,13 @@ fn synthesize_lifetime_bounds(sig: &mut syn::Signature) {
     }
     if let syn::ReturnType::Type(_, ty) = &sig.output {
         lifetime_collector.visit_type(ty);
+    }
+
+    for (ty, lifetime) in lifetime_collector.implied_type_bounds {
+        sig.generics
+            .make_where_clause()
+            .predicates
+            .push(parse_quote!(#ty: #lifetime));
     }
 
     let bounds = lifetime_collector
@@ -896,6 +928,7 @@ pub(crate) fn normalize_fn_signature(sig: &mut syn::Signature, self_ty: Option<&
 
     if let Some(self_ty) = self_ty {
         SelfConcretizer { self_ty }.visit_signature_mut(sig);
+        TraitObjectReferenceParenthesizer.visit_signature_mut(sig);
     }
 }
 
@@ -909,6 +942,35 @@ pub(crate) fn ownership_mode_for_arg(attrs: &[syn::Attribute]) -> OwnershipMode 
 
 pub(crate) struct SelfConcretizer<'a> {
     pub(crate) self_ty: &'a Type,
+}
+
+pub(crate) fn qualified_method_callee(
+    self_ty: &Type,
+    trait_: Option<&Path>,
+    fn_name: &syn::Ident,
+) -> syn::Expr {
+    let mut callee = if let Some(trait_) = trait_ {
+        parse_quote!(<() as #trait_>::#fn_name)
+    } else {
+        parse_quote!(<()>::#fn_name)
+    };
+    let syn::Expr::Path(path) = &mut callee else {
+        unreachable!();
+    };
+    *path.qself.as_mut().unwrap().ty = self_ty.clone();
+    callee
+}
+
+struct TraitObjectReferenceParenthesizer;
+
+impl VisitMut for TraitObjectReferenceParenthesizer {
+    fn visit_type_reference_mut(&mut self, reference: &mut syn::TypeReference) {
+        syn::visit_mut::visit_type_reference_mut(self, reference);
+        if matches!(reference.elem.as_ref(), Type::TraitObject(_)) {
+            let elem = &reference.elem;
+            *reference.elem = parse_quote!((#elem));
+        }
+    }
 }
 
 fn qualify_self_path(self_ty: &Type, rest: &Path) -> Type {
@@ -925,12 +987,11 @@ fn qualify_self_path(self_ty: &Type, rest: &Path) -> Type {
 
 impl VisitMut for SelfConcretizer<'_> {
     fn visit_type_mut(&mut self, node: &mut Type) {
-        syn::visit_mut::visit_type_mut(self, node);
-
         if handle_id(node).is_some() {
             return;
         }
 
+        syn::visit_mut::visit_type_mut(self, node);
         let Type::Path(syn::TypePath { qself: None, path }) = node else {
             return;
         };
@@ -1035,6 +1096,18 @@ mod tests {
         ));
         let expected: syn::Signature = parse_quote!(
             fn f<'a, 'b>(x: fn(&'a &'b u8))
+        );
+
+        assert_eq!(sig, expected);
+    }
+
+    #[test]
+    fn preserves_implied_reference_pointee_bound() {
+        let sig = with_synthesized_lifetime_bounds(parse_quote!(
+            fn f<'a, T>(x: &'a mut Foo<T>)
+        ));
+        let expected: syn::Signature = parse_quote!(
+            fn f<'a, T>(x: &'a mut Foo<T>) where Foo<T>: 'a
         );
 
         assert_eq!(sig, expected);

@@ -102,27 +102,6 @@ ffi! {
 ffi! {
     #![unsafe(export("C"))]
 
-    impl<dyn(u8) T, dyn(u8) U> Dispatch for T
-    where
-        use<T> @ (<u64> | <u16>),
-        use<T> @ <u8>,
-    {}
-}
-
-ffi! {
-    #![unsafe(extern("C"))]
-
-    impl<dyn(u8) T, dyn(u8) U> Dispatch for T
-    where
-        use<T> @ (<u64> | <u16>),
-        use<T> @ <u8>,
-    {}
-}
-
-ffi! {
-    #![unsafe(export("C"))]
-
-    #[explicit_lifetimes]
     impl<'a, dyn(u8) T> Kita<'a> for T
     where
         use<T> @ <'a, u32>,
@@ -136,7 +115,6 @@ ffi! {
 
     #![unsafe(extern("C"))]
 
-    #[explicit_lifetimes]
     impl<'a, dyn(u8) T> Kita<'a> for T
     where
         use<T> @ <'a, u32>,
@@ -148,7 +126,6 @@ ffi! {
 ffi! {
     #![unsafe(export("C"))]
 
-    #[explicit_lifetimes]
     impl<'a, dyn(u8) T> Kita<'a> for T
     where
         use<T> @ (<&i16> | <&'_ i32> | <&'a u32>),
@@ -160,7 +137,6 @@ ffi! {
 ffi! {
     #![unsafe(extern("C"))]
 
-    #[explicit_lifetimes]
     impl<'a, dyn(u8) T> Kita<'a> for T
     where
         use<T> @ (<&i16> | <&'_ i32> | <&'a u32>),
@@ -189,29 +165,6 @@ ffi! {
 ffi! {
     #![unsafe(export("C"))]
 
-    impl<T> Kita for T
-    where
-        use<T> @ <u32>,
-    {
-        fn kita(self) -> u32;
-    }
-}
-
-ffi! {
-    #![unsafe(extern("C"))]
-
-    impl<T> Kita for T
-    where
-        use<T> @ <u32>,
-    {
-        #[symbol_name = "kita"]
-        fn kita(self) -> u32;
-    }
-}
-
-ffi! {
-    #![unsafe(export("C"))]
-
     impl<dyn T> Kita for T
     where
         use<T> @ <u32>,
@@ -250,55 +203,7 @@ ffi! {
     where
         use<T> @ <u32>,
     {
-        #[symbol_name = "kita"]
         fn kita(self) -> u32;
-    }
-}
-
-ffi! {
-    #![unsafe(export("C"))]
-
-    impl<T> Kita for dyn u32
-    where
-        use<T> @ <u32>,
-    {
-        fn kita(self) -> u32;
-    }
-}
-
-ffi! {
-    #![unsafe(extern("C"))]
-    #![symbol_prefix = "kita"]
-
-    impl<T> Kita for dyn u32
-    where
-        use<T> @ <u32>,
-    {
-        #[symbol_name = "kita"]
-        fn kita(&self, self_id: <dyn Self>::ID) -> u32;
-    }
-}
-
-ffi! {
-    #![unsafe(export("C"))]
-
-    impl<T> Kita for dyn Option<T>
-    where
-        use<T> @ <u32>,
-    {
-        fn kita(self) -> u32;
-    }
-}
-
-ffi! {
-    #![unsafe(extern("C"))]
-
-    impl<T> Kita for dyn Option<T>
-    where
-        use<T> @ <u32>,
-    {
-        #[symbol_name = "kita"]
-        fn kita(&self, self_id: <dyn Self>::ID) -> u32;
     }
 }
 
@@ -312,9 +217,10 @@ ffi! {
         #[symbol_name = "kita"]
         fn kita(self, self_id: <dyn Self>::ID) -> <dyn T>::ID;
     }
+
+    fn kita(self, self_id: <dyn Self>::ID) -> <dyn T>::ID;
 }
 
-// TODO: This produces extra unrelated error message
 ffi! {
     #![unsafe(extern("C"))]
 
@@ -324,50 +230,6 @@ ffi! {
     {
         #[symbol_name = "kita"]
         fn kita(self, self_id: (<dyn Self>::ID,)) -> u32;
-    }
-}
-
-ffi! {
-    #![unsafe(export("C"))]
-
-    #[unsafe(id(char = 0 as char))]
-    type Exported0;
-
-    impl<dyn(char) T> RefKita for T
-    where
-        use<T> @ <Exported0>,
-    {
-        fn kita(&self) -> u32;
-    }
-}
-
-ffi! {
-    #![unsafe(extern("C"))]
-    #![symbol_prefix = "kita"]
-
-    #[unsafe(id(char = 1 as char))]
-    type Externed0;
-
-    impl<dyn(char) T> RefKita for T
-    where
-        use<T> @ <Externed0>,
-    {
-        #[symbol_name = "kita"]
-        fn kita(&self, self_id: <dyn Self>::ID) -> u32;
-    }
-}
-
-ffi! {
-    #![unsafe(export("C"))]
-
-    #[unsafe(id(u32 = 0))]
-    type Exported1;
-
-    impl<dyn(u32) T> RefKita for T
-    where
-        use<T> @ (<Exported1> | <Exported1>),
-    {
-        fn kita(&self) -> u32;
     }
 }
 
@@ -384,6 +246,28 @@ ffi! {
     {
         #[symbol_name = "kita"]
         fn kita(self_id: <dyn T>::ID, &self) -> u32;
+    }
+}
+
+ffi! {
+    #![unsafe(export("C"))]
+
+    #[unsafe(id(u8 = 1))]
+    type Exported;
+
+    impl Trait for dyn Exported + Send {
+        fn method(&self);
+    }
+}
+
+ffi! {
+    #![unsafe(extern("C"))]
+
+    #[unsafe(id(u8 = 1))]
+    type Imported;
+
+    impl Trait for dyn Imported + Send {
+        fn method(&self);
     }
 }
 

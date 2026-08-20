@@ -1,4 +1,5 @@
-use co3::{Handle, ReprC, ffi, rust_spec::RustSpec};
+use co3::{Handle, ReprC, ffi};
+use rust_spec::RustSpec;
 
 #[derive(Clone, Debug, PartialEq, Eq, RustSpec, ReprC)]
 #[repr(transparent)]
@@ -31,16 +32,15 @@ ffi! {
         move fn new(t_id: <dyn T>::ID) -> Self;
     }
 
-    impl<dyn(u8) T: ToOwned = u8, dyn(u8) U> Value<T>
+    impl<dyn(u8) T: ToOwned = u8> Value<T>
     where
-        use<T, U> @ <Opaque, Opaque>,
+        use<T> @ <Opaque>,
     {
         #[symbol_name = "ping"]
-        fn ping2(
+        pub fn ping2(
             t_id: <dyn T>::ID,
-            u_id: <dyn U>::ID,
             move self,
-            #[soft] inc: &TransparentCTuple1<U>,
+            #[soft] inc: &TransparentCTuple1<Opaque>,
         ) -> u8;
     }
 
@@ -113,14 +113,13 @@ mod provider {
 
         impl<
             dyn(u8) T: Add<Output = u8> + ToOwned<Owned = T> + ?Sized = u8,
-            dyn(u8) U,
         > Value<T>
         where
             Box<T>: Default,
-            use<T, U> @ <Opaque, Opaque>,
+            use<T> @ <Opaque>,
         {
             #[symbol_name = "ping"]
-            fn ping(move self, #[soft] inc: &TransparentCTuple1<U>) -> u8;
+            fn ping(move self, #[soft] inc: &TransparentCTuple1<Opaque>) -> u8;
         }
 
         fn combine(move lhs: Value<u32>, #[soft] rhs: &(u8,)) -> u8;

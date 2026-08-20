@@ -1,4 +1,5 @@
-use co3::{Handle, ReprC, ffi, rust_spec::RustSpec};
+use co3::{Handle, ReprC, ffi};
+use rust_spec::RustSpec;
 
 #[derive(RustSpec, Handle, ReprC)]
 #[handle(unsafe(id(u8 = 1)))]
@@ -6,24 +7,43 @@ use co3::{Handle, ReprC, ffi, rust_spec::RustSpec};
 struct First(u8);
 
 #[derive(RustSpec, Handle, ReprC)]
-#[handle(unsafe(id(u8 = 2)))]
-#[repr(transparent)]
-struct Second(u8);
-
-#[derive(RustSpec, Handle, ReprC)]
 #[handle(unsafe(id(u8 = 3)))]
 #[repr(transparent)]
-struct Other(u8);
+struct Second(u8);
 
 ffi! {
     #![unsafe(extern("C"))]
 
-    #[symbol_name = "sealed_dispatch"]
-    fn sealed<dyn(u8) T = u8>(move value: T)
+    impl First {
+        fn sealed1<T>(move value: T)
+        where
+            use<T> @ <Self>;
+
+        fn sealed2<T>(move value: T)
+        where
+            use<T> @ <Self>;
+    }
+
+    pub fn sealed1<T>(move value: T)
     where
-        use<T> @ (<First> | <Second>);
+        use<T> @ <First>;
+
+    pub fn sealed2<T>(move value: T)
+    where
+        use<T> @ <First>;
 }
 
-impl crate::sealedDispatchSet for (Other,) {}
+impl first_sealed1::sealed::Sealed<Second> for () {}
+impl first_sealed2::DispatchSet<Second> for () {
+    fn sealed2(_: Second) {}
+}
 
-fn main() {}
+impl sealed1::sealed::Sealed<Second> for () {}
+impl sealed2::DispatchSet<Second> for () {
+    fn sealed2(_: Second) {}
+}
+
+fn main() {
+    First::sealed1(Second(0));
+    sealed1(Second(0));
+}

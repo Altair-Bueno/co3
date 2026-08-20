@@ -1,32 +1,123 @@
-error[E0277]: the trait bound `(Other,): Sealed` is not satisfied
-  --> tests/ui_fail/dispatch_set_is_sealed.rs:27:35
+error[E0603]: module `sealed` is private
+  --> tests/ui_fail/dispatch_set_is_sealed.rs:36:21
    |
-27 | impl crate::sealedDispatchSet for (Other,) {}
-   |                                   ^^^^^^^^ the trait `Sealed` is not implemented for `(Other,)`
+36 | impl first_sealed1::sealed::Sealed<Second> for () {}
+   |                     ^^^^^^  ------ trait `Sealed` is not publicly re-exported
+   |                     |
+   |                     private module
    |
-help: the following other types implement trait `Sealed`
-  --> tests/ui_fail/dispatch_set_is_sealed.rs:18:1
+note: the module `sealed` is defined here
+  --> tests/ui_fail/dispatch_set_is_sealed.rs:14:1
    |
-18 | / ffi! {
-19 | |     #![unsafe(extern("C"))]
-20 | |
-21 | |     #[symbol_name = "sealed_dispatch"]
-...  |
-24 | |         use<T> @ (<First> | <Second>);
-25 | | }
-   | | ^
-   | | |
-   | |_`(First,)`
-   |   `(Second,)`
-note: required by a bound in `sealedDispatchSet`
-  --> tests/ui_fail/dispatch_set_is_sealed.rs:18:1
-   |
-18 | / ffi! {
-19 | |     #![unsafe(extern("C"))]
-20 | |
-21 | |     #[symbol_name = "sealed_dispatch"]
-...  |
-24 | |         use<T> @ (<First> | <Second>);
-25 | | }
-   | |_^ required by this bound in `sealedDispatchSet`
+14 | ffi! {
+   | ^^^^
    = note: this error originates in the macro `ffi` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error[E0603]: module `sealed` is private
+  --> tests/ui_fail/dispatch_set_is_sealed.rs:41:15
+   |
+41 | impl sealed1::sealed::Sealed<Second> for () {}
+   |               ^^^^^^  ------ trait `Sealed` is not publicly re-exported
+   |               |
+   |               private module
+   |
+note: the module `sealed` is defined here
+  --> tests/ui_fail/dispatch_set_is_sealed.rs:14:1
+   |
+14 | ffi! {
+   | ^^^^
+   = note: this error originates in the macro `ffi` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error[E0277]: the trait bound `(): first_sealed2::sealed::Sealed<Second>` is not satisfied
+  --> tests/ui_fail/dispatch_set_is_sealed.rs:37:45
+   |
+37 | impl first_sealed2::DispatchSet<Second> for () {
+   |                                             ^^ the trait `first_sealed2::sealed::Sealed<Second>` is not implemented for `()`
+   |
+   = note: `()` implements similarly named trait `first_sealed1::sealed::Sealed`, but not `first_sealed2::sealed::Sealed<Second>`
+help: the trait `Sealed<Second>` is not implemented for `()`
+      but trait `Sealed<First>` is implemented for it
+  --> tests/ui_fail/dispatch_set_is_sealed.rs:14:1
+   |
+14 | / ffi! {
+15 | |     #![unsafe(extern("C"))]
+16 | |
+17 | |     impl First {
+...  |
+33 | |         use<T> @ <First>;
+34 | | }
+   | |_^
+   = help: for that trait implementation, expected `First`, found `Second`
+note: required by a bound in `first_sealed2::DispatchSet`
+  --> tests/ui_fail/dispatch_set_is_sealed.rs:14:1
+   |
+14 | / ffi! {
+15 | |     #![unsafe(extern("C"))]
+16 | |
+17 | |     impl First {
+...  |
+33 | |         use<T> @ <First>;
+34 | | }
+   | |_^ required by this bound in `DispatchSet`
+   = note: this error originates in the macro `ffi` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error[E0277]: the trait bound `(): sealed2::sealed::Sealed<Second>` is not satisfied
+  --> tests/ui_fail/dispatch_set_is_sealed.rs:42:39
+   |
+42 | impl sealed2::DispatchSet<Second> for () {
+   |                                       ^^ the trait `sealed2::sealed::Sealed<Second>` is not implemented for `()`
+   |
+   = note: `()` implements similarly named trait `first_sealed1::sealed::Sealed`, but not `sealed2::sealed::Sealed<Second>`
+help: the trait `Sealed<Second>` is not implemented for `()`
+      but trait `Sealed<First>` is implemented for it
+  --> tests/ui_fail/dispatch_set_is_sealed.rs:14:1
+   |
+14 | / ffi! {
+15 | |     #![unsafe(extern("C"))]
+16 | |
+17 | |     impl First {
+...  |
+33 | |         use<T> @ <First>;
+34 | | }
+   | |_^
+   = help: for that trait implementation, expected `First`, found `Second`
+note: required by a bound in `sealed2::DispatchSet`
+  --> tests/ui_fail/dispatch_set_is_sealed.rs:14:1
+   |
+14 | / ffi! {
+15 | |     #![unsafe(extern("C"))]
+16 | |
+17 | |     impl First {
+...  |
+33 | |         use<T> @ <First>;
+34 | | }
+   | |_^ required by this bound in `DispatchSet`
+   = note: this error originates in the macro `ffi` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error[E0308]: mismatched types
+  --> tests/ui_fail/dispatch_set_is_sealed.rs:47:20
+   |
+47 |     First::sealed1(Second(0));
+   |     -------------- ^^^^^^^^^ expected `First`, found `Second`
+   |     |
+   |     arguments to this function are incorrect
+   |
+note: associated function defined here
+  --> tests/ui_fail/dispatch_set_is_sealed.rs:18:12
+   |
+18 |         fn sealed1<T>(move value: T)
+   |            ^^^^^^^         --------
+
+error[E0308]: mismatched types
+  --> tests/ui_fail/dispatch_set_is_sealed.rs:48:13
+   |
+48 |     sealed1(Second(0));
+   |     ------- ^^^^^^^^^ expected `First`, found `Second`
+   |     |
+   |     arguments to this function are incorrect
+   |
+note: function defined here
+  --> tests/ui_fail/dispatch_set_is_sealed.rs:27:12
+   |
+27 |     pub fn sealed1<T>(move value: T)
+   |            ^^^^^^^         --------

@@ -1,6 +1,6 @@
 use std::collections::{BTreeMap, BTreeSet};
 
-use proc_macro2::{Span, TokenStream};
+use proc_macro2::{Span, TokenStream, TokenTree};
 use quote::{format_ident, quote, quote_spanned};
 use syn::{
     GenericParam, ReturnType, parse_quote, punctuated::Punctuated, spanned::Spanned, visit::Visit,
@@ -11,7 +11,7 @@ use crate::{
     Co3Fn, Co3Impl, DispatchGroups,
     ffi_fn::{
         self, emit_extern_definition, gen_definition_body, gen_failure_panic,
-        gen_fn_signature_check, gen_input_decode_stmts, gen_store_sync_stmts, gen_sync_check,
+        gen_fn_signature_drift_check, gen_input_decode_stmts, gen_store_sync_stmts, gen_sync_check,
         gen_sync_error, gen_unknown_handle_error, is_spread_arg, item_fn_input_arg_type,
         item_fn_output_type, merge_generics, normalize_fn_signature, strip_dispatch_params,
     },
@@ -72,23 +72,17 @@ pub(crate) fn gen_dispatch_fn_export(
     Co3Fn {
         item,
         dispatch_args,
+        ..
     }: Co3Fn,
+    callee: syn::Expr,
 ) -> TokenStream {
-    let handle_id_checks = gen_handle_id_uniqueness_checks(&item.sig.generics, &dispatch_args);
-
-    let fn_name = &item.sig.ident;
     let generics = item.sig.generics.clone();
-    let callee_type_params = generics
-        .type_params()
-        .map(|param| param.ident.clone())
-        .collect::<Vec<_>>();
-    let callee = parse_quote!(self::#fn_name);
 
-    let definition = gen_dispatch_definition(
+    let definition = synthesize_dispatch_export_fn(
         abi,
         failure_mode,
         &generics,
-        &callee_type_params,
+        &[],
         DispatchReceiver::None,
         &dispatch_args,
         item.sig,
@@ -98,7 +92,6 @@ pub(crate) fn gen_dispatch_fn_export(
 
     quote! {
         const _: () = {
-            #handle_id_checks
             #definition
         };
     }
@@ -248,23 +241,18 @@ impl VisitMut for ErasedParamReplacer {
     }
 }
 
-pub(crate) fn find_dispatch_attr(attrs: &[syn::Attribute]) -> Option<&syn::Attribute> {
-    attrs.iter().find(|&attr| attr.path().is_ident("erased"))
-}
-
 pub(crate) fn gen_dispatch_export(
     abi: &syn::Abi,
     failure_mode: FailureMode,
     Co3Impl {
-        item: mut impl_,
+        item: impl_,
         dispatch_args,
         ..
     }: Co3Impl,
     self_id: Option<&syn::Type>,
+    dyn_self: bool,
 ) -> TokenStream {
-    let handle_id_checks = gen_handle_id_uniqueness_checks(&impl_.generics, &dispatch_args);
-
-    let receiver = if crate::materialize_dyn_self_dispatch(&mut impl_) {
+    let receiver = if dyn_self {
         DispatchReceiver::DynSelf {
             ty: &impl_.self_ty,
             id: self_id,
@@ -289,28 +277,24 @@ pub(crate) fn gen_dispatch_export(
     });
 
     let definitions = items.map(|mut item| {
+        merge_generics(impl_.generics.clone(), &mut item.sig.generics);
+        let dispatch_params = dispatch_args
+            .groups()
+            .flat_map(|(params, _)| params)
+            .collect::<std::collections::BTreeSet<_>>();
         let callee_type_params = item
             .sig
             .generics
             .type_params()
+            .filter(|param| !dispatch_params.contains(&param.ident))
             .map(|param| param.ident.clone())
             .collect::<Vec<_>>();
-        merge_generics(impl_.generics.clone(), &mut item.sig.generics);
         normalize_fn_signature(&mut item.sig, Some(self_ty));
 
-        let callee: syn::Expr = if drop_impl {
-            parse_quote!((|__co3_self: &mut #self_ty| unsafe {
-                core::ptr::drop_in_place(__co3_self as *mut _) }
-            ))
-        } else if let Some(trait_) = impl_.trait_.as_ref().map(|(_, path, _)| path) {
-            let fn_name = &item.sig.ident;
-            parse_quote!(<#self_ty as #trait_>::#fn_name)
-        } else {
-            let fn_name = &item.sig.ident;
-            parse_quote!(<#self_ty>::#fn_name)
-        };
+        let trait_ = impl_.trait_.as_ref().map(|(_, path, _)| path);
+        let callee = ffi_fn::impl_method_callee(self_ty, trait_, &item.sig.ident, drop_impl);
 
-        let definition = gen_dispatch_definition(
+        let definition = synthesize_dispatch_export_fn(
             abi,
             failure_mode,
             &impl_.generics,
@@ -328,14 +312,13 @@ pub(crate) fn gen_dispatch_export(
     quote! {
         #(#impl_attrs)*
         const _: () = {
-            #handle_id_checks
             #(#definitions)*
         };
     }
 }
 
 #[expect(clippy::too_many_arguments)]
-fn gen_dispatch_definition(
+fn synthesize_dispatch_export_fn(
     abi: &syn::Abi,
     failure_mode: FailureMode,
     generics: &syn::Generics,
@@ -348,13 +331,17 @@ fn gen_dispatch_definition(
 ) -> TokenStream {
     let layout_checks = gen_dispatch_erased_layout_checks(generics, &sig, dispatch_args);
 
+    // Static parameters have already been substituted by the caller. What
+    // remains is the generic signature used to synthesize dynamic match arms
+    // and the erased signature exposed at the ABI boundary.
     monomorphize_predicates(&mut sig.generics, dispatch_args);
+    let arm_generics = sig.generics.clone();
     strip_dispatch_params(&mut sig.generics);
 
     let fn_by_val = attrs.iter().any(crate::ffi_fn::is_by_val_attr);
     let selector_inputs = dispatch_selector_inputs(&sig.inputs)
         .filter_map(|(_, pat, handle_id)| {
-            let handle_id_ty = resolve_handle_id_type(generics, receiver.id(), handle_id)?;
+            let handle_id_ty = resolve_handle_id_type(generics, receiver, handle_id)?;
             Some((pat, handle_id_ty))
         })
         .collect::<Vec<_>>();
@@ -362,13 +349,15 @@ fn gen_dispatch_definition(
         .iter()
         .map(|(pat, _)| pat)
         .collect::<Vec<_>>();
+    let deny_unreachable =
+        (!selector_names.is_empty()).then(|| quote!(#[deny(unreachable_patterns)]));
     let selector_inputs = selector_inputs
         .iter()
         .map(|(pat, id_ty)| parse_quote!(#pat: #id_ty))
         .collect::<Vec<_>>();
 
-    let dispatch_arms = gen_dispatch_arms(
-        generics,
+    let dispatch_arms = synthesize_dispatch_arms(
+        &arm_generics,
         callee_type_params,
         receiver,
         &sig,
@@ -387,16 +376,19 @@ fn gen_dispatch_definition(
     let fn_body = quote! {{
         #decode_selector_stmts
 
-        let __co3_dispatch_result: core::result::Result<_, _> = match (#(#selector_names,)*) {
-            #(#dispatch_arms,)*
-            _ => #unknown_handle,
+        let __co3_dispatch_result: core::result::Result<_, _> = {
+            #deny_unreachable
+            match (#(#selector_names,)*) {
+                #(#dispatch_arms,)*
+                _ => #unknown_handle,
+            }
         };
 
         #selector_sync_check
         __co3_dispatch_result
     }};
 
-    erase_handle_types(generics, receiver, &mut sig);
+    erase_dispatch_signature(generics, receiver, &mut sig);
     let sig = ffi_fn::gen_extern_fn_signature(sig, failure_mode);
     let definition = emit_extern_definition(abi, attrs, failure_mode, sig, fn_body);
 
@@ -406,96 +398,26 @@ fn gen_dispatch_definition(
     }
 }
 
-pub(crate) fn gen_handle_id_uniqueness_checks(
-    generics: &syn::Generics,
-    args: &DispatchGroups,
-) -> TokenStream {
-    fn gen_check(
-        param: &syn::TypeParam,
-        generics: &syn::Generics,
-        args: &DispatchGroups,
-    ) -> Option<TokenStream> {
-        let repr = erased_id_repr(param)?;
-        let (params, entries) = args
-            .groups()
-            .find(|(params, _)| params.contains(&param.ident))?;
-        let param_index = params.iter().position(|ident| *ident == param.ident)?;
-        let enum_ident = format_ident!("DuplicatedHandleIdFor{}", param.ident);
-
-        let other_params = args
-            .groups()
-            .filter(|(group, _)| *group != params)
-            .flat_map(|(group, _)| group)
-            .collect::<Vec<_>>();
-        let other_param_detector = ParamUseDetector::new(other_params);
-        let is_dependent = entries.iter().any(|entry| {
-            entry
-                .args
-                .get(param_index)
-                .is_some_and(|arg| other_param_detector.generic_arg_mentions_param(arg))
-        });
-
-        let variants = if is_dependent {
-            let mut variants = Vec::new();
-            args.for_each_combination(|selections| {
-                let Some(selection) = selections
-                    .iter()
-                    .find(|selection| selection.params.contains(&param.ident))
-                else {
-                    return;
-                };
-                let Some(param_index) = selection
-                    .params
-                    .iter()
-                    .position(|ident| *ident == param.ident)
-                else {
-                    return;
-                };
-                let Some(mut ty) = selection.target.args.get(param_index).cloned() else {
-                    return;
-                };
-
-                DispatchMonomorphizer::for_dispatch_group(generics, selections)
-                    .visit_generic_argument_mut(&mut ty);
-                StaticLifetimeNormalizer.visit_generic_argument_mut(&mut ty);
-                let variant = format_ident!("HandleId{}", variants.len());
-                variants.push(quote!(#variant = <#ty as co3::handle::Handle>::ID));
-            });
-            variants
-        } else {
-            entries
-                .iter()
-                .enumerate()
-                .filter_map(|(entry_index, entry)| {
-                    let mut ty = entry.args.get(param_index)?.clone();
-                    StaticLifetimeNormalizer.visit_generic_argument_mut(&mut ty);
-                    let variant = format_ident!("HandleId{entry_index}");
-                    Some(quote!(#variant = <#ty as co3::handle::Handle>::ID))
-                })
-                .collect()
-        };
-        (!variants.is_empty()).then(|| {
-            quote! {
-                const _: () = {
-                    #[repr(#repr)]
-                    enum #enum_ident { #(#variants,)* }
-                };
-            }
-        })
-    }
-
-    let checks = generics
-        .type_params()
-        .filter_map(|param| gen_check(param, generics, args));
-    quote!(#(#checks)*)
-}
-
 /// Imports permit repeated IDs; only their tag representation is asserted.
 pub(crate) fn gen_handle_id_type_checks(
     generics: &syn::Generics,
     args: &DispatchGroups,
 ) -> TokenStream {
     let mut checks = Vec::new();
+    let auxiliary_params = generics
+        .params
+        .iter()
+        .filter_map(|param| match param {
+            syn::GenericParam::Type(param) if !args.contains_param(&param.ident) => {
+                Some(&param.ident)
+            }
+            syn::GenericParam::Const(param) if !args.contains_param(&param.ident) => {
+                Some(&param.ident)
+            }
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    let auxiliary_detector = ParamUseDetector::new(auxiliary_params);
     for param in generics.type_params() {
         let Some(repr) = erased_id_repr(param) else {
             continue;
@@ -520,6 +442,9 @@ pub(crate) fn gen_handle_id_type_checks(
             DispatchMonomorphizer::for_dispatch_group(generics, selections)
                 .visit_generic_argument_mut(&mut ty);
             StaticLifetimeNormalizer.visit_generic_argument_mut(&mut ty);
+            if auxiliary_detector.generic_arg_mentions_param(&ty) {
+                return;
+            }
             checks.push(quote!(let _: #repr = <#ty as co3::handle::Handle>::ID;));
         });
     }
@@ -689,8 +614,27 @@ pub(crate) fn synthesize_dispatch_handle_ids(
     let explicit_ids = dispatch_selector_inputs(inputs)
         .map(|(_, _, handle_id)| handle_id)
         .collect::<BTreeSet<_>>();
+    let has_explicit_self_id = inputs.iter().any(|input| {
+        let syn::FnArg::Typed(input) = input else {
+            return false;
+        };
+        let Some(self_id) = self_id else {
+            return false;
+        };
+        matches!(
+            input.ty.as_ref(),
+            syn::Type::Path(syn::TypePath {
+                qself: Some(syn::QSelf { ty, .. }),
+                path,
+            }) if path.is_ident("ID") && ty.as_ref() == self_id
+        )
+    });
 
-    if erased_params.is_empty() && self_id.is_some() && !explicit_ids.contains(&HandleId::DynSelf) {
+    if erased_params.is_empty()
+        && self_id.is_some()
+        && !has_explicit_self_id
+        && !explicit_ids.contains(&HandleId::DynSelf)
+    {
         synthesized.push(parse_quote!(__co3_self_id: <dyn Self>::ID));
     }
 
@@ -722,7 +666,7 @@ fn mark_dispatch_handle_ids_by_value(inputs: &mut Punctuated<syn::FnArg, syn::To
 }
 
 #[expect(clippy::too_many_arguments)]
-fn gen_dispatch_arms(
+fn synthesize_dispatch_arms(
     generics: &syn::Generics,
     callee_type_params: &[syn::Ident],
     receiver: DispatchReceiver,
@@ -771,7 +715,7 @@ fn gen_dispatch_arms(
         let mut check_callee = instantiate_dispatch_callee(callee, callee_type_params, selections);
 
         monomorphizer.visit_expr_mut(&mut check_callee);
-        let signature_check = gen_fn_signature_check(arm_sig.clone(), check_callee.clone());
+        let signature_check = gen_fn_signature_drift_check(arm_sig.clone(), check_callee.clone());
         let arm_body = gen_definition_body(arm_sig, quote!(#check_callee), fn_by_val, failure_mode);
         let mut arm_body: syn::Block = if let ReturnType::Type(_, output_ty) = &retype_sig.output {
             let mut concrete_ty = item_fn_output_type(output_ty);
@@ -866,7 +810,7 @@ fn instantiate_dispatch_callee(
     callee
 }
 
-pub(crate) fn erase_handle_types(
+pub(crate) fn erase_dispatch_signature(
     generics: &syn::Generics,
     receiver: DispatchReceiver,
     sig: &mut syn::Signature,
@@ -875,10 +819,7 @@ pub(crate) fn erase_handle_types(
 
     let handle_ids = dispatch_selector_inputs(&sig.inputs)
         .filter_map(|(idx, _, handle_id)| {
-            Some((
-                idx,
-                resolve_handle_id_type(generics, receiver.id(), handle_id)?,
-            ))
+            Some((idx, resolve_handle_id_type(generics, receiver, handle_id)?))
         })
         .collect::<Vec<_>>();
 
@@ -1023,6 +964,26 @@ fn gen_retype(arg_name: &TokenStream, source_ty: &syn::Type, target_ty: &syn::Ty
     quote! { unsafe { core::mem::transmute_copy::<#source_ty, #target_ty>(&#arg_name) } }
 }
 
+pub(crate) fn set_token_stream_span(tokens: TokenStream, span: Span) -> TokenStream {
+    tokens
+        .into_iter()
+        .map(|token| match token {
+            TokenTree::Group(group) => {
+                let mut replacement = proc_macro2::Group::new(
+                    group.delimiter(),
+                    set_token_stream_span(group.stream(), span),
+                );
+                replacement.set_span(span);
+                TokenTree::Group(replacement)
+            }
+            mut token => {
+                token.set_span(span);
+                token
+            }
+        })
+        .collect()
+}
+
 pub(crate) fn gen_return_derase_expr(
     generics: &syn::Generics,
     output_ty: &syn::Type,
@@ -1094,7 +1055,8 @@ fn gen_handle_retype_stmts(
             RetypeDirection::Derase => gen_retype(&arg_name, &erased_ty, &c_ty),
         };
 
-        stmts.push(quote! { let #arg_name = #retype; });
+        let retype = set_token_stream_span(quote! { let #arg_name = #retype; }, sig.span());
+        stmts.push(retype);
     }
 
     stmts
@@ -1170,11 +1132,11 @@ fn dispatch_selector_inputs(
 
 fn resolve_handle_id_type(
     generics: &syn::Generics,
-    self_id: Option<&syn::Type>,
+    receiver: DispatchReceiver<'_>,
     handle_id: HandleId<'_>,
 ) -> Option<syn::Type> {
     match handle_id {
-        HandleId::DynSelf => self_id.cloned(),
+        HandleId::DynSelf => receiver.id().cloned(),
         HandleId::DynType(ident) => generics
             .type_params()
             .find(|param| param.ident == *ident)

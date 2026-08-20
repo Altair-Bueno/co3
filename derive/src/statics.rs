@@ -1,7 +1,7 @@
 use proc_macro2::TokenStream;
 use quote::{format_ident, quote};
 
-use crate::{co3_path, parse::FfiStatic, symbol_name_value, utils::cfg_attrs};
+use crate::{Co3Static, co3_path, symbol_name_value, utils::cfg_attrs};
 
 fn static_raw_ident(ident: &syn::Ident) -> syn::Ident {
     format_ident!("__co3_static_{ident}")
@@ -151,14 +151,12 @@ fn gen_export_wrapper(
     };
     let mutable_methods = mutable.then(|| quote! {
         #[inline]
-        #[allow(clippy::useless_transmute)]
         pub unsafe fn set(&self, value: #ty) {
             let value = unsafe { core::mem::transmute::<#ty, _>(value) };
             unsafe { core::ptr::write(core::ptr::addr_of_mut!(#raw_ident), value); }
         }
 
         #[inline]
-        #[allow(clippy::useless_transmute)]
         pub unsafe fn take(&self) -> Option<#ty>
         where for<'_dummy> #ty: core::default::Default,
         {
@@ -317,9 +315,9 @@ fn gen_import_wrapper(
     }
 }
 
-pub(crate) fn gen_export_static(item: FfiStatic) -> TokenStream {
+pub(crate) fn gen_export_static(item: Co3Static) -> TokenStream {
     let co3 = co3_path();
-    let FfiStatic {
+    let Co3Static {
         attrs,
         vis,
         static_token,
@@ -356,7 +354,6 @@ pub(crate) fn gen_export_static(item: FfiStatic) -> TokenStream {
 
         #(#cfg_attrs)*
         #(#attrs)*
-        #[allow(clippy::useless_transmute)]
         #static_token #mutability #raw_ident: <#ty as #co3::ExternC>::CType =
             unsafe { core::mem::transmute::<#ty, _>(#expr) };
     }
@@ -365,11 +362,11 @@ pub(crate) fn gen_export_static(item: FfiStatic) -> TokenStream {
 pub(crate) fn gen_extern_static(
     abi: &syn::Abi,
     block_attrs: &[syn::Attribute],
-    item: FfiStatic,
+    item: Co3Static,
 ) -> TokenStream {
     let co3 = co3_path();
 
-    let FfiStatic {
+    let Co3Static {
         attrs,
         vis,
         static_token,

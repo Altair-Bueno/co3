@@ -1,6 +1,7 @@
 use std::cmp::Ordering;
 
-use co3::{ReprC, encode, ffi, option::ReprCOption, rust_spec::RustSpec, soft_encode};
+use co3::{ReprC, encode, ffi, option::ReprCOption, soft_encode};
+use rust_spec::RustSpec;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[expect(dead_code)]

@@ -1,7 +1,5 @@
-use co3::{
-    CFnArg, CFnReturn, Decode, Encode, ExternC, ReprC, rust_spec::RustSpec,
-    transmute::CheckedTransmute,
-};
+use co3::{CFnArg, CFnReturn, Decode, Encode, ExternC, ReprC, transmute::CheckedTransmute};
+use rust_spec::RustSpec;
 use static_assertions::{assert_impl_all, assert_not_impl_any};
 
 #[derive(Debug, Clone, PartialEq, Eq, RustSpec, ReprC)]
@@ -22,14 +20,12 @@ pub struct ReprCStruct<T: ?Sized> {
 
 #[derive(Debug, Clone, PartialEq, Eq, RustSpec, ReprC)]
 #[repr(u8)]
-#[allow(dead_code)]
 pub enum ReprCEnum<T: ?Sized> {
     A(Box<T>),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, RustSpec, ReprC)]
 #[repr(C, u8)]
-#[allow(dead_code)]
 pub enum ReprCDataEnum<T: ?Sized> {
     A(Box<T>),
 }
@@ -40,7 +36,6 @@ pub struct TransparentStruct<T: ?Sized>(Box<T>);
 
 #[derive(Debug, Clone, PartialEq, Eq, RustSpec, ReprC)]
 #[repr(transparent)]
-#[allow(dead_code)]
 pub enum TransparentEnum<T: ?Sized> {
     A(Box<T>),
 }

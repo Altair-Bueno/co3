@@ -1,21 +1,13 @@
 use std::ops::Deref;
 
-use co3::{Handle, ReprC, ffi, rust_spec::RustSpec};
-
-trait ExternImplTrait {
-    fn method(arg: &u32);
-}
+use co3::{Handle, ReprC, ffi};
+use rust_spec::RustSpec;
 
 trait ExportDispatchTrait {
     fn dispatch(&self, arg: &u32);
 }
 
-trait ExternDispatchTrait {
-    fn dispatch(&self, arg: &u32);
-}
-
 struct ExportImpl;
-struct ExternImpl;
 
 #[derive(RustSpec, Handle, ReprC)]
 #[handle(unsafe(id(u8 = 0)))]
@@ -43,34 +35,11 @@ impl ExportDispatchTrait for DriftHandle {
 ffi! {
     #![unsafe(export("C"))]
 
-    fn export_fn(arg: &Box<u32>);
-}
-
-ffi! {
-    #![unsafe(extern("C"))]
-
-    #![symbol_prefix = "signature_drift"]
-
-    #[symbol_name = "extern_fn"]
-    fn extern_fn(arg: &Box<u32>);
-}
-
-ffi! {
-    #![unsafe(export("C"))]
-
     impl ExportImpl {
         fn method(arg: &Box<u32>);
     }
-}
 
-ffi! {
-    #![unsafe(extern("C"))]
-
-    #![symbol_prefix = "signature_drift"]
-
-    impl ExternImplTrait for ExternImpl {
-        fn method(arg: &Box<u32>);
-    }
+    fn export_fn(arg: &Box<u32>);
 }
 
 ffi! {
@@ -81,19 +50,6 @@ ffi! {
         use<T> @ <DriftHandle>,
     {
         fn dispatch(&self, arg: &T);
-    }
-}
-
-ffi! {
-    #![unsafe(extern("C"))]
-
-    #![symbol_prefix = "signature_drift"]
-
-    impl<dyn(u8) T = DriftHandle> ExternDispatchTrait for T
-    where
-        use<T> @ <DriftHandle>,
-    {
-        fn dispatch(self_id: <dyn Self>::ID, &self, arg: &T);
     }
 }
 

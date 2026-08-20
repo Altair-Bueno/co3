@@ -40,179 +40,107 @@ error: tagged-dispatch predicates must be last in a `where` clause
 99 |         T: Copy;
    |         ^^^^^^^
 
-error: dispatch parameter cannot appear in more than one group
-   --> tests/ui_fail/dispatch_restrictions.rs:108:13
-    |
-108 |         use<T> @ <u8>,
-    |             ^
-
-error: dispatch parameter cannot appear in more than one group
-   --> tests/ui_fail/dispatch_restrictions.rs:118:13
-    |
-118 |         use<T> @ <u8>,
-    |             ^
-
 error: expected 1 concrete generic argument(s)
-   --> tests/ui_fail/dispatch_restrictions.rs:128:18
+   --> tests/ui_fail/dispatch_restrictions.rs:107:18
     |
-128 |         use<T> @ <'a, u32>,
+107 |         use<T> @ <'a, u32>,
     |                  ^^^^^^^^^
 
 error: expected 1 concrete generic argument(s)
-   --> tests/ui_fail/dispatch_restrictions.rs:142:18
+   --> tests/ui_fail/dispatch_restrictions.rs:120:18
     |
-142 |         use<T> @ <'a, u32>,
+120 |         use<T> @ <'a, u32>,
     |                  ^^^^^^^^^
 
 error: undeclared lifetime; consider using '_
-   --> tests/ui_fail/dispatch_restrictions.rs:154:42
+   --> tests/ui_fail/dispatch_restrictions.rs:131:42
     |
-154 |         use<T> @ (<&i16> | <&'_ i32> | <&'a u32>),
+131 |         use<T> @ (<&i16> | <&'_ i32> | <&'a u32>),
     |                                          ^^
 
 error: undeclared lifetime; consider using '_
-   --> tests/ui_fail/dispatch_restrictions.rs:166:42
+   --> tests/ui_fail/dispatch_restrictions.rs:142:42
     |
-166 |         use<T> @ (<&i16> | <&'_ i32> | <&'a u32>),
+142 |         use<T> @ (<&i16> | <&'_ i32> | <&'a u32>),
     |                                          ^^
 
 error: tagged-dispatch parameters cannot be used inside wrapper types
-   --> tests/ui_fail/dispatch_restrictions.rs:176:53
+   --> tests/ui_fail/dispatch_restrictions.rs:152:53
     |
-176 |     pub fn optional<dyn(u8) T = u8>(#[soft] value: &Option<T>)
+152 |     pub fn optional<dyn(u8) T = u8>(#[soft] value: &Option<T>)
     |                                                     ^^^^^^^^^
 
 error: tagged-dispatch parameters cannot be used inside wrapper types
-   --> tests/ui_fail/dispatch_restrictions.rs:184:53
+   --> tests/ui_fail/dispatch_restrictions.rs:160:53
     |
-184 |     pub fn optional<dyn(u8) T = u8>(#[soft] value: &Option<T>)
+160 |     pub fn optional<dyn(u8) T = u8>(#[soft] value: &Option<T>)
     |                                                     ^^^^^^^^^
 
-error: tagged dispatch requires at least one `dyn Type` or `dyn Self`
-   --> tests/ui_fail/dispatch_restrictions.rs:192:22
-    |
-192 |     impl<T> Kita for T
-    |                      ^
-
-error: tagged dispatch requires at least one `dyn Type` or `dyn Self`
-   --> tests/ui_fail/dispatch_restrictions.rs:203:22
-    |
-203 |     impl<T> Kita for T
-    |                      ^
-
 error: tagged-dispatch type parameters must use `dyn(TagTy) T`
-   --> tests/ui_fail/dispatch_restrictions.rs:215:10
+   --> tests/ui_fail/dispatch_restrictions.rs:168:10
     |
-215 |     impl<dyn T> Kita for T
+168 |     impl<dyn T> Kita for T
     |          ^^^
 
 error: tagged-dispatch type parameters must use `dyn(TagTy) T`
-   --> tests/ui_fail/dispatch_restrictions.rs:226:10
+   --> tests/ui_fail/dispatch_restrictions.rs:179:10
     |
-226 |     impl<dyn T> Kita for T
+179 |     impl<dyn T> Kita for T
     |          ^^^
 
-error: blanket `dyn T` may dispatch only to foreign types declared in this `ffi!` block
-   --> tests/ui_fail/dispatch_restrictions.rs:240:19
+error: `dyn Self` is only supported for declared extern types
+   --> tests/ui_fail/dispatch_restrictions.rs:191:22
     |
-240 |         use<T> @ <u32>,
-    |                   ^^^
+191 |     impl<T> Kita for dyn T
+    |                      ^^^^^
 
-error: blanket `dyn T` may dispatch only to foreign types declared in this `ffi!` block
-   --> tests/ui_fail/dispatch_restrictions.rs:251:19
+error: `dyn Self` is only supported for declared extern types
+   --> tests/ui_fail/dispatch_restrictions.rs:202:22
     |
-251 |         use<T> @ <u32>,
-    |                   ^^^
-
-error: `dyn Self` is only supported on generic `Self`
-   --> tests/ui_fail/dispatch_restrictions.rs:261:22
-    |
-261 |     impl<T> Kita for dyn u32
-    |                      ^^^^^^^
-
-error: `dyn Self` is only supported on generic `Self`
-   --> tests/ui_fail/dispatch_restrictions.rs:273:22
-    |
-273 |     impl<T> Kita for dyn u32
-    |                      ^^^^^^^
-
-error: `dyn Self` is only supported for declared types
-   --> tests/ui_fail/dispatch_restrictions.rs:285:22
-    |
-285 |     impl<T> Kita for dyn Option<T>
-    |                      ^^^^^^^^^^^^^
-
-error: `dyn Self` is only supported for declared types
-   --> tests/ui_fail/dispatch_restrictions.rs:296:22
-    |
-296 |     impl<T> Kita for dyn Option<T>
-    |                      ^^^^^^^^^^^^^
+202 |     impl<T> Kita for dyn T
+    |                      ^^^^^
 
 error: `<dyn Type>::ID` is not allowed in return position
-   --> tests/ui_fail/dispatch_restrictions.rs:313:51
+   --> tests/ui_fail/dispatch_restrictions.rs:221:47
     |
-313 |         fn kita(self, self_id: <dyn Self>::ID) -> <dyn T>::ID;
+221 |     fn kita(self, self_id: <dyn Self>::ID) -> <dyn T>::ID;
+    |                                               ^^^^^^^^^^^
+
+error: `<dyn Type>::ID` is not allowed in return position
+   --> tests/ui_fail/dispatch_restrictions.rs:218:51
+    |
+218 |         fn kita(self, self_id: <dyn Self>::ID) -> <dyn T>::ID;
     |                                                   ^^^^^^^^^^^
 
 error: `<dyn Type>::ID` is only allowed as a top-level function argument
-   --> tests/ui_fail/dispatch_restrictions.rs:326:33
+   --> tests/ui_fail/dispatch_restrictions.rs:232:33
     |
-326 |         fn kita(self, self_id: (<dyn Self>::ID,)) -> u32;
+232 |         fn kita(self, self_id: (<dyn Self>::ID,)) -> u32;
     |                                 ^
 
-error[E0552]: unrecognized representation hint
-   --> tests/ui_fail/dispatch_restrictions.rs:336:14
+error: `dyn Self` must contain exactly one trait bound
+   --> tests/ui_fail/dispatch_restrictions.rs:258:20
     |
-336 |     impl<dyn(char) T> RefKita for T
-    |              ^^^^
+258 |     impl Trait for dyn Exported + Send {
+    |                    ^^^^^^^^^^^^^^^^^^^
+
+error: `dyn Self` must contain exactly one trait bound
+   --> tests/ui_fail/dispatch_restrictions.rs:269:20
     |
-    = help: valid reprs are `Rust` (default), `C`, `align`, `packed`, `transparent`, `simd`, `i8`, `u8`, `i16`, `u16`, `i32`, `u32`, `i64`, `u64`, `i128`, `u128`, `isize`, `usize`
-    = note: for more information, visit <https://doc.rust-lang.org/reference/type-layout.html?highlight=repr#representations>
+269 |     impl Trait for dyn Imported + Send {
+    |                    ^^^^^^^^^^^^^^^^^^^
 
 error[E0119]: conflicting implementations of trait `RefKita` for type `Externed1`
-   --> tests/ui_fail/dispatch_restrictions.rs:374:1
+   --> tests/ui_fail/dispatch_restrictions.rs:236:1
     |
-374 | // ffi! {
-375 | ||     #![unsafe(extern("C"))]
-376 | ||     #![symbol_prefix = "kita"]
+236 | // ffi! {
+237 | ||     #![unsafe(extern("C"))]
+238 | ||     #![symbol_prefix = "kita"]
 ...   ||
-382 | ||     where
-383 | ||         use<T> @ (<Externed1> | <Externed1>),
+244 | ||     where
+245 | ||         use<T> @ (<Externed1> | <Externed1>),
     | ||____________________________-_____________^ conflicting implementation for `Externed1`
     | |_____________________________|
     |                               first implementation here
-    |
-    = note: this error originates in the macro `ffi` (in Nightly builds, run with -Z macro-backtrace for more info)
-
-error[E0308]: mismatched types
-   --> tests/ui_fail/dispatch_restrictions.rs:330:1
-    |
-330 | / ffi! {
-331 | |     #![unsafe(export("C"))]
-332 | |
-333 | |     #[unsafe(id(char = 0 as char))]
-...   |
-342 | | }
-    | |_^ expected `isize`, found `char`
-    |
-    = note: enum variant discriminant can only be of a primitive type compatible with the enum's `repr`
-    = note: this error originates in the macro `ffi` (in Nightly builds, run with -Z macro-backtrace for more info)
-
-error[E0081]: discriminant value `0` assigned more than once
-   --> tests/ui_fail/dispatch_restrictions.rs:360:1
-    |
-360 | // ffi! {
-361 | ||     #![unsafe(export("C"))]
-362 | ||
-363 | ||     #[unsafe(id(u32 = 0))]
-...   ||
-366 | ||     impl<dyn(u32) T> RefKita for T
-    | ||___________________^
-...   |
-372 | |  }
-    | |  -
-    | |  |
-    | |__`0` assigned here
-    |    `0` assigned here
     |
     = note: this error originates in the macro `ffi` (in Nightly builds, run with -Z macro-backtrace for more info)

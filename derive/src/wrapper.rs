@@ -113,38 +113,13 @@ pub fn wrap_impl_definition<const DISPATCHED: bool>(
             .iter()
             .filter(|attr| !is_symbol_name_attr(attr) && !is_by_val_attr(attr));
 
-        let self_binding = sig
-            .inputs
-            .iter()
-            .any(|input| matches!(input, FnArg::Receiver(_)))
-            .then(|| quote! { let __co3_self = self; });
-
-        let id_assignments = sig
-            .inputs
-            .iter()
-            .filter_map(|input| {
-                let FnArg::Typed(syn::PatType { pat, ty, .. }) = input else {
-                    return None;
-                };
-
-                let handle_ty = match handle_id(ty)? {
-                    HandleId::DynType(ty_param) => quote!(#ty_param),
-                    HandleId::DynSelf => quote!(#self_ty),
-                };
-
-                Some(quote! { let #pat = <#handle_ty as co3::handle::Handle>::ID; })
-            })
-            .collect::<Vec<_>>();
-
-        let wrapper_body = gen_wrapper_body::<DISPATCHED>(
+        let body = gen_impl_wrapper_body::<DISPATCHED>(
             failure_mode,
-            item.attrs.iter().any(is_by_val_attr),
-            Some(self_ty),
-            Some(generics),
+            item,
+            self_ty,
+            generics,
             erase_declared_receiver,
-            &sig,
         );
-        let co3 = co3_path();
 
         sig.inputs = if DISPATCHED {
             sig.inputs
@@ -173,10 +148,7 @@ pub fn wrap_impl_definition<const DISPATCHED: bool>(
         quote! {
             #(#wrapper_attrs)*
             #vis #sig {
-                use #co3 as co3;
-                #(#id_assignments)*
-                #self_binding
-                #wrapper_body
+                #body
             }
         }
     });
@@ -205,6 +177,50 @@ pub fn wrap_impl_definition<const DISPATCHED: bool>(
         #defaultness #unsafety impl #impl_generics #impl_head #self_ty #where_clause {
             #(#methods)*
         }
+    }
+}
+
+pub(crate) fn gen_impl_wrapper_body<const DISPATCHED: bool>(
+    failure_mode: FailureMode,
+    item: &syn::ImplItemFn,
+    self_ty: &syn::Type,
+    generics: &syn::Generics,
+    erase_declared_receiver: bool,
+) -> TokenStream {
+    let self_binding = item
+        .sig
+        .inputs
+        .iter()
+        .any(|input| matches!(input, FnArg::Receiver(_)))
+        .then(|| quote! { let __co3_self = self; });
+
+    let id_assignments = item.sig.inputs.iter().filter_map(|input| {
+        let FnArg::Typed(syn::PatType { pat, ty, .. }) = input else {
+            return None;
+        };
+
+        let handle_ty = match handle_id(ty)? {
+            HandleId::DynType(ty_param) => quote!(#ty_param),
+            HandleId::DynSelf => quote!(#self_ty),
+        };
+
+        Some(quote! { let #pat = <#handle_ty as co3::handle::Handle>::ID; })
+    });
+    let wrapper_body = gen_wrapper_body::<DISPATCHED>(
+        failure_mode,
+        item.attrs.iter().any(is_by_val_attr),
+        Some(self_ty),
+        Some(generics),
+        erase_declared_receiver,
+        &item.sig,
+    );
+    let co3 = co3_path();
+
+    quote! {
+        use #co3 as co3;
+        #(#id_assignments)*
+        #self_binding
+        #wrapper_body
     }
 }
 
@@ -237,6 +253,27 @@ pub(crate) fn gen_wrapper_body<const DISPATCHED: bool>(
     erase_declared_receiver: bool,
     sig: &syn::Signature,
 ) -> TokenStream {
+    let fn_name = &sig.ident;
+    gen_wrapper_body_with_callee::<DISPATCHED>(
+        failure_mode,
+        fn_by_val,
+        self_ty,
+        dispatch_generics,
+        erase_declared_receiver,
+        sig,
+        quote!(#fn_name),
+    )
+}
+
+pub(crate) fn gen_wrapper_body_with_callee<const DISPATCHED: bool>(
+    failure_mode: FailureMode,
+    fn_by_val: bool,
+    self_ty: Option<&syn::Type>,
+    dispatch_generics: Option<&syn::Generics>,
+    erase_declared_receiver: bool,
+    sig: &syn::Signature,
+    callee: TokenStream,
+) -> TokenStream {
     let handle_erase_stmts = if DISPATCHED {
         self_ty
             .zip(dispatch_generics)
@@ -261,12 +298,12 @@ pub(crate) fn gen_wrapper_body<const DISPATCHED: bool>(
     let store_sync_stmts = gen_store_sync_stmts(&sig.inputs);
     let sync_check = gen_wrapper_sync_check(failure_mode, sig.inputs.len(), store_sync_stmts);
 
-    let ffi_fn_call = gen_ffi_fn_call(sig);
+    let ffi_fn_call = gen_ffi_fn_call(sig, &callee);
     if let syn::ReturnType::Type(_, output_ty) = &sig.output {
         let return_derase = gen_return_derase::<DISPATCHED>(self_ty, dispatch_generics, output_ty);
         let return_borrow_check = gen_return_borrow_check(output_ty, fn_by_val);
         let decode_error = gen_return_decode_error(failure_mode, output_ty);
-        let ffi_fn_call = gen_ffi_fn_call(sig);
+        let ffi_fn_call = gen_ffi_fn_call(sig, &callee);
 
         return quote! {
             #return_borrow_check
@@ -504,9 +541,7 @@ fn spread_part_conversion(
     }
 }
 
-fn gen_ffi_fn_call(sig: &syn::Signature) -> TokenStream {
-    let fn_name = &sig.ident;
-
+fn gen_ffi_fn_call(sig: &syn::Signature, callee: &TokenStream) -> TokenStream {
     let arg_names = sig.inputs.iter().map(|input| match input {
         FnArg::Receiver(_) => quote!(__co3_self),
         FnArg::Typed(syn::PatType { attrs, pat, .. }) => {
@@ -521,6 +556,6 @@ fn gen_ffi_fn_call(sig: &syn::Signature) -> TokenStream {
     });
 
     quote! {
-        unsafe { #fn_name(#(#arg_names),*) }
+        unsafe { #callee(#(#arg_names),*) }
     }
 }

@@ -1,6 +1,7 @@
 use core::ffi::c_void;
+use rust_spec::RustSpec;
 
-use co3::{ReprC, ffi, rust_spec::RustSpec};
+use co3::{ReprC, ffi};
 
 trait AmbiguousX<T, const N: usize> {
     type U;

@@ -1,0 +1,11 @@
+error: cyclic tagged-dispatch selection
+  --> tests/ui_fail/cyclic_dispatch_selection.rs:10:13
+   |
+10 |         use<T> @ <Self>
+   |             ^
+
+error: cyclic tagged-dispatch selection
+  --> tests/ui_fail/cyclic_dispatch_selection.rs:21:13
+   |
+21 |         use<T> @ <U>,
+   |             ^

@@ -6,7 +6,6 @@ ffi! {
 
     pub type Opaque<'a>;
 
-    #[explicit_lifetimes]
     impl<'a> Default for OwnedOpaque<'a> {
         #[symbol_name = "kita__Default__Box_Opaque__default"]
         move fn default() -> Self;
@@ -41,7 +40,6 @@ mod provider {
 
         // TODO: This should be allowed with '_ but it's not.
         // This is a special case where reference is materialized
-        #[explicit_lifetimes]
         impl<'a> Default for Box<Opaque<'a>> {
             #[symbol_name = "kita__Default__Box_Opaque__default"]
             move fn default() -> Self;

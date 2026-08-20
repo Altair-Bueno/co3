@@ -1,4 +1,4 @@
-use co3::ffi;
+use co3::{handle::Handle, ffi};
 
 trait Kita {}
 
@@ -6,18 +6,8 @@ struct Export1<T>(T);
 
 impl<T> Kita for Export1<T> {}
 
-ffi! {
-    #![unsafe(export("C"))]
-
-    #[unsafe(id(u8))]
-    type OpaqueType<T>;
-}
-
-ffi! {
-    #![unsafe(extern("C"))]
-
-    #[unsafe(id(u8))]
-    type ExternType<T>;
+unsafe impl Handle for Export1<u32> {
+    const ID: Self::Kind = 0;
 }
 
 ffi! {
@@ -43,7 +33,68 @@ ffi! {
 ffi! {
     #![unsafe(export("C"))]
 
-    #[unsafe(id(u32 = 0))]
+    #[unsafe(id(u8))]
+    type First;
+
+    #[unsafe(id(u8))]
+    type Second;
+
+    impl<T> Drop for T
+    where
+        use<T> @ (<First> | <Second>),
+    {
+        fn drop(&mut self);
+    }
+
+    impl<T> Drop for T
+    where
+        use<T> @ (<First> | <Second>),
+    {
+        fn drop(&mut self);
+    }
+}
+
+ffi! {
+    #![unsafe(extern("C"))]
+
+    #[unsafe(id(u8))]
+    type First;
+
+    #[unsafe(id(u8))]
+    type Second;
+
+    impl<T> Drop for T
+    where
+        use<T> @ (<First> | <Second>),
+    {
+        fn drop(&mut self);
+    }
+
+    impl<T> Drop for T
+    where
+        use<T> @ (<First> | <Second>),
+    {
+        fn drop(&mut self);
+    }
+}
+
+ffi! {
+    #![unsafe(export("C"))]
+
+    type Opaque<T>;
+
+    impl<dyn(u8) T> Drop for Opaque<T>
+    where
+        use<T> @ <u8>,
+    {
+        fn drop(&mut self);
+    }
+}
+
+ffi! {
+    #![unsafe(export("C"))]
+
+    #[unsafe(id(u32))]
     type Export1<T>;
 
     // TODO: These Drop impls could be allowed
@@ -70,20 +121,6 @@ ffi! {
         use<T> @ (<u32>),
     {
         fn drop(&mut self, self_id: <dyn Self>::ID);
-    }
-}
-
-ffi! {
-    #![unsafe(extern("C"))]
-
-    #[unsafe(id(u8))]
-    type IncompleteDispatch<T, U>;
-
-    impl<T, U> Drop for dyn IncompleteDispatch<T, U>
-    where
-        use<T> @ (<u8>)
-    {
-        fn drop(&mut self);
     }
 }
 

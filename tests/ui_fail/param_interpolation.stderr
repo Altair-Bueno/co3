@@ -1,0 +1,143 @@
+error: symbol interpolation `{X}` must name a static parameter
+  --> tests/ui_fail/param_interpolation.rs:10:25
+   |
+10 |         #[symbol_name = "unknown__{X}"]
+   |                         ^^^^^^^^^^^^^^
+
+error: symbol name must interpolate static parameter `{C}` exactly once
+  --> tests/ui_fail/param_interpolation.rs:10:25
+   |
+10 |         #[symbol_name = "unknown__{X}"]
+   |                         ^^^^^^^^^^^^^^
+
+error: symbol name must interpolate static parameter `{D}` exactly once
+  --> tests/ui_fail/param_interpolation.rs:10:25
+   |
+10 |         #[symbol_name = "unknown__{X}"]
+   |                         ^^^^^^^^^^^^^^
+
+error: symbol interpolation `{X}` must name a static parameter
+  --> tests/ui_fail/param_interpolation.rs:16:21
+   |
+16 |     #[symbol_name = "unknown__{X}"]
+   |                     ^^^^^^^^^^^^^^
+
+error: symbol name must interpolate static parameter `{C}` exactly once
+  --> tests/ui_fail/param_interpolation.rs:16:21
+   |
+16 |     #[symbol_name = "unknown__{X}"]
+   |                     ^^^^^^^^^^^^^^
+
+error: symbol interpolation `{X}` must name a static parameter
+  --> tests/ui_fail/param_interpolation.rs:29:25
+   |
+29 |         #[symbol_name = "unknown__{X}"]
+   |                         ^^^^^^^^^^^^^^
+
+error: symbol name must interpolate static parameter `{C}` exactly once
+  --> tests/ui_fail/param_interpolation.rs:29:25
+   |
+29 |         #[symbol_name = "unknown__{X}"]
+   |                         ^^^^^^^^^^^^^^
+
+error: symbol name must interpolate static parameter `{D}` exactly once
+  --> tests/ui_fail/param_interpolation.rs:29:25
+   |
+29 |         #[symbol_name = "unknown__{X}"]
+   |                         ^^^^^^^^^^^^^^
+
+error: symbol interpolation `{X}` must name a static parameter
+  --> tests/ui_fail/param_interpolation.rs:35:21
+   |
+35 |     #[symbol_name = "unknown__{X}"]
+   |                     ^^^^^^^^^^^^^^
+
+error: symbol name must interpolate static parameter `{C}` exactly once
+  --> tests/ui_fail/param_interpolation.rs:35:21
+   |
+35 |     #[symbol_name = "unknown__{X}"]
+   |                     ^^^^^^^^^^^^^^
+
+error: symbol interpolation `{C}` must name a static parameter
+  --> tests/ui_fail/param_interpolation.rs:48:25
+   |
+48 |         #[symbol_name = "missing_static__{C}__{D}"]
+   |                         ^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error: symbol interpolation `{D}` must name a static parameter
+  --> tests/ui_fail/param_interpolation.rs:48:25
+   |
+48 |         #[symbol_name = "missing_static__{C}__{D}"]
+   |                         ^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error: symbol interpolation `{C}` must name a static parameter
+  --> tests/ui_fail/param_interpolation.rs:54:21
+   |
+54 |     #[symbol_name = "missing_static__{C}"]
+   |                     ^^^^^^^^^^^^^^^^^^^^^
+
+error: symbol interpolation `{C}` must name a static parameter
+  --> tests/ui_fail/param_interpolation.rs:67:25
+   |
+67 |         #[symbol_name = "missing_static__{C}__{D}"]
+   |                         ^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error: symbol interpolation `{D}` must name a static parameter
+  --> tests/ui_fail/param_interpolation.rs:67:25
+   |
+67 |         #[symbol_name = "missing_static__{C}__{D}"]
+   |                         ^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error: symbol interpolation `{C}` must name a static parameter
+  --> tests/ui_fail/param_interpolation.rs:73:21
+   |
+73 |     #[symbol_name = "missing_static__{C}"]
+   |                     ^^^^^^^^^^^^^^^^^^^^^
+
+error: symbol name must interpolate static parameter `{C}` exactly once
+  --> tests/ui_fail/param_interpolation.rs:86:25
+   |
+86 |         #[symbol_name = "duplicate__{D}{D}{C}{C}"]
+   |                         ^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error: symbol name must interpolate static parameter `{D}` exactly once
+  --> tests/ui_fail/param_interpolation.rs:86:25
+   |
+86 |         #[symbol_name = "duplicate__{D}{D}{C}{C}"]
+   |                         ^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error: symbol name must interpolate static parameter `{C}` exactly once
+  --> tests/ui_fail/param_interpolation.rs:92:21
+   |
+92 |     #[symbol_name = "duplicate__{C}{C}"]
+   |                     ^^^^^^^^^^^^^^^^^^^
+
+error: symbol name must interpolate static parameter `{C}` exactly once
+   --> tests/ui_fail/param_interpolation.rs:105:25
+    |
+105 |         #[symbol_name = "duplicate__{D}{D}{C}{C}"]
+    |                         ^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error: symbol name must interpolate static parameter `{D}` exactly once
+   --> tests/ui_fail/param_interpolation.rs:105:25
+    |
+105 |         #[symbol_name = "duplicate__{D}{D}{C}{C}"]
+    |                         ^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error: symbol name must interpolate static parameter `{C}` exactly once
+   --> tests/ui_fail/param_interpolation.rs:111:21
+    |
+111 |     #[symbol_name = "duplicate__{C}{C}"]
+    |                     ^^^^^^^^^^^^^^^^^^^
+
+error: symbol interpolation `{T}` must name a static parameter
+   --> tests/ui_fail/param_interpolation.rs:127:25
+    |
+127 |         #[symbol_name = "impl_drop{T}"]
+    |                         ^^^^^^^^^^^^^^
+
+error: symbol interpolation `{T}` must name a static parameter
+   --> tests/ui_fail/param_interpolation.rs:147:25
+    |
+147 |         #[symbol_name = "impl_drop{T}"]
+    |                         ^^^^^^^^^^^^^^

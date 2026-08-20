@@ -1,4 +1,5 @@
-use co3::{Handle, ReprC, ffi, rust_spec::RustSpec};
+use co3::{Handle, ReprC, ffi};
+use rust_spec::RustSpec;
 
 #[derive(RustSpec, Handle, ReprC)]
 #[handle(unsafe(id(u8 = 1)))]
@@ -19,7 +20,6 @@ fn prefix_head<T: ?Sized>(prefix: &Prefix<T>) -> u32 {
 ffi! {
     #![unsafe(export("C"))]
 
-    #[explicit_lifetimes]
     #[symbol_name = "dispatch_opaque_tail_head"]
     fn prefix_head<'a, dyn(u8) T: ?Sized>(prefix: &'a Prefix<T>) -> u32
     where
@@ -29,7 +29,6 @@ ffi! {
 ffi! {
     #![unsafe(extern("C"))]
 
-    #[explicit_lifetimes]
     #[symbol_name = "dispatch_opaque_tail_head"]
     fn imported_prefix_head<'a, dyn(u8) T: ?Sized>(
         handle_id: <dyn T>::ID,

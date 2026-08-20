@@ -4,7 +4,8 @@ use proc_macro_crate::{FoundCrate, crate_name};
 use proc_macro2::{Literal, TokenStream};
 use quote::{ToTokens, format_ident, quote};
 use syn::{
-    Attribute, GenericArgument, Type, TypePath, parse_quote, visit::Visit, visit_mut::VisitMut,
+    Attribute, Expr, GenericArgument, Type, TypePath, parse_quote, visit::Visit,
+    visit_mut::VisitMut,
 };
 
 const MAX_TUPLE_ARITY: usize = 12;
@@ -214,9 +215,83 @@ impl<'a> DispatchMonomorphizer<'a> {
                 .flat_map(|selection| selection.params.iter().zip(&selection.target.args)),
         )
     }
+
+    pub(crate) fn for_static_dispatch_group(
+        generics: &'a syn::Generics,
+        selections: &[crate::DispatchSelection<'a>],
+    ) -> Self {
+        Self::for_substitutions(
+            generics,
+            selections.iter().flat_map(|selection| {
+                selection
+                    .params
+                    .iter()
+                    .zip(&selection.target.args)
+                    .filter(|(ident, _)| {
+                        !generics.type_params().any(|param| {
+                            param.ident == **ident && param.attrs.iter().any(is_type_erased)
+                        })
+                    })
+            }),
+        )
+    }
+
+    pub(crate) fn interpolate_symbol_attrs(
+        &self,
+        attrs: &mut [syn::Attribute],
+        symbol_fragments: &BTreeMap<String, syn::LitStr>,
+    ) {
+        for attr in attrs {
+            if !crate::is_symbol_name_attr(attr) {
+                continue;
+            }
+            let syn::Meta::NameValue(name_value) = &mut attr.meta else {
+                continue;
+            };
+            let syn::Expr::Lit(syn::ExprLit {
+                lit: syn::Lit::Str(symbol),
+                ..
+            }) = &mut name_value.value
+            else {
+                continue;
+            };
+
+            let mut value = symbol.value();
+            for (ident, argument) in &self.subst {
+                let key = argument.to_token_stream().to_string();
+                let fragment = symbol_fragments.get(&key).map_or_else(
+                    || match argument {
+                        GenericArgument::Type(ty) => {
+                            type_symbol_name(ty, &syn::Generics::default())
+                        }
+                        GenericArgument::Const(expr) => {
+                            sanitize_symbol_component(&expr.to_token_stream().to_string())
+                        }
+                        _ => sanitize_symbol_component(&key),
+                    },
+                    syn::LitStr::value,
+                );
+                value = value.replace(&format!("{{{ident}}}"), &fragment);
+            }
+            *symbol = syn::LitStr::new(&value, symbol.span());
+        }
+    }
 }
 
 impl VisitMut for DispatchMonomorphizer<'_> {
+    fn visit_expr_mut(&mut self, node: &mut Expr) {
+        if let Expr::Path(path) = node
+            && path.qself.is_none()
+            && let Some(ident) = path.path.get_ident()
+            && let Some(GenericArgument::Const(subst)) = self.subst.get(ident)
+        {
+            *node = subst.clone();
+            return;
+        }
+
+        syn::visit_mut::visit_expr_mut(self, node);
+    }
+
     fn visit_item_impl_mut(&mut self, node: &mut syn::ItemImpl) {
         syn::visit_mut::visit_item_impl_mut(self, node);
     }
@@ -226,7 +301,7 @@ impl VisitMut for DispatchMonomorphizer<'_> {
 
         if let Type::Path(TypePath { qself: None, path }) = node
             && let Some(first) = path.segments.first()
-            && let Some(subst) = self.subst.get(&first.ident).cloned()
+            && let Some(GenericArgument::Type(subst)) = self.subst.get(&first.ident).cloned()
         {
             if path.segments.len() == 1 {
                 let mut replacement = parse_quote!(#subst);

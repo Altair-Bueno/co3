@@ -1,6 +1,7 @@
 use std::{cmp::Ordering, mem::MaybeUninit};
 
-use co3::{rust_spec::RustSpec, Decode, DecodeWithStore, EncodeWithStore, ExternC, (), ReprC, def_fns, export};
+use co3::{Decode, DecodeWithStore, EncodeWithStore, ExternC, (), ReprC, def_fns, export};
+use rust_spec::RustSpec;
 
 co3::handles! {FfiStruct1, FfiStruct2}
 

@@ -1,4 +1,5 @@
-use co3::{Handle, ReprC, ffi, rust_spec::RustSpec};
+use co3::{Handle, ReprC, ffi};
+use rust_spec::RustSpec;
 
 trait Attr {}
 
@@ -51,6 +52,15 @@ ffi! {
     #[cfg_attr(any(), symbol_name = "unused")]
     #[cfg_attr(all(), symbol_name = "cfg_attr__value_plain")]
     fn imported_value_plain(value: Value) -> u8;
+}
+
+ffi! {
+    #![unsafe(extern("C"))]
+
+    #[cfg(any())]
+    fn disabled_static<T>()
+    where
+        use<T> @ <u8>;
 }
 
 ffi! {

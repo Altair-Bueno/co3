@@ -9,13 +9,13 @@ error: missing `#![unsafe(export("..."))]` or `#![unsafe(extern("..."))]`
 error: duplicate declaration kind attribute
   --> tests/ui_fail/import_restrictions.rs:13:8
    |
-13 |     #![unsafe(export("C"))]
+13 |     #![unsafe(extern("C"))]
    |        ^^^^^^^^^^^^^^^^^^^
 
 error: duplicate declaration kind attribute
   --> tests/ui_fail/import_restrictions.rs:18:8
    |
-18 |     #![unsafe(export("C"))]
+18 |     #![unsafe(extern("C"))]
    |        ^^^^^^^^^^^^^^^^^^^
 
 error: Only `extern_types` is supported
@@ -25,9 +25,9 @@ error: Only `extern_types` is supported
    |                ^^^^^^^^^^^^^^^^^^^
 
 error: Duplicate `extern_types` feature
-  --> tests/ui_fail/import_restrictions.rs:29:16
+  --> tests/ui_fail/import_restrictions.rs:31:16
    |
-29 |     #![feature(extern_types)]
+31 |     #![feature(extern_types)]
    |                ^^^^^^^^^^^^
 
 error: item not supported
@@ -54,11 +54,11 @@ error: item not supported
 57 |     union Kita {}
    |     ^^^^^
 
-error: tagged dispatch is not supported on trait methods
-  --> tests/ui_fail/import_restrictions.rs:68:13
+error: trait methods cannot have generic type or const parameters
+  --> tests/ui_fail/import_restrictions.rs:66:16
    |
-68 |             use<T> @ <>;
-   |             ^^^
+66 |         fn kita<T>(self)
+   |                ^^^
 
 error: expected 2 concrete generic argument(s)
   --> tests/ui_fail/import_restrictions.rs:79:21
@@ -78,26 +78,44 @@ error: fn bodies are not allowed in declarations
 96 |     fn kita1(a: u32) {}
    |                      ^
 
-error: patterns aren't allowed in function declarations
-   --> tests/ui_fail/import_restrictions.rs:102:14
+error: `<dyn Type>::ID` arg must target declared `dyn Type`
+   --> tests/ui_fail/import_restrictions.rs:102:48
     |
-102 |     fn kita1((a, b): (u32, u32));
+102 |     fn invalid_tag_target<dyn(u8) T = u8>(tag: <dyn u32>::ID)
+    |                                                ^^^^^^^^^^^^^
+
+error: duplicate `<dyn Type>::ID`
+   --> tests/ui_fail/import_restrictions.rs:110:66
+    |
+110 |     fn duplicate_tag<dyn(u8) T = u8>(first: <dyn T>::ID, second: <dyn T>::ID)
+    |                                                                  ^^^^^^^^^^^
+
+error: patterns aren't allowed in function declarations
+   --> tests/ui_fail/import_restrictions.rs:118:14
+    |
+118 |     fn kita1((a, b): (u32, u32));
     |              ^^^^^^
 
 error: expected 1 concrete generic argument(s)
-   --> tests/ui_fail/import_restrictions.rs:120:18
+   --> tests/ui_fail/import_restrictions.rs:136:18
     |
-120 |         use<T> @ <>,
+136 |         use<T> @ <>,
     |                  ^^
 
-error: expected 1 concrete generic argument(s)
-   --> tests/ui_fail/import_restrictions.rs:134:18
+error: parameterized types require an explicit Drop declaration
+   --> tests/ui_fail/import_restrictions.rs:146:5
     |
-134 |         use<T> @ <>,
-    |                  ^^
+146 |     type GenericType<T>;
+    |     ^^^^^^^^^^^^^^^^^^^^
 
 error: expected 1 concrete generic argument(s)
-   --> tests/ui_fail/import_restrictions.rs:141:18
+   --> tests/ui_fail/import_restrictions.rs:161:18
     |
-141 |         use<T> @ <u8, i8>,
+161 |         use<T> @ <u8, i8>,
     |                  ^^^^^^^^
+
+error: tagged-dispatch predicates are not allowed in this position
+   --> tests/ui_fail/import_restrictions.rs:173:9
+    |
+173 |         use<T> @ <u32>;
+    |         ^^^

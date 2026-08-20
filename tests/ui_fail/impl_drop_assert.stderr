@@ -1,43 +1,43 @@
 error: cannot cast enum `PrimitiveEnumWithDrop` into integer `u8` because it implements `Drop`
-  --> tests/ui_fail/impl_drop_assert.rs:10:20
+  --> tests/ui_fail/impl_drop_assert.rs:11:20
    |
-10 | #[derive(RustSpec, ReprC)]
+11 | #[derive(RustSpec, ReprC)]
    |                    ^^^^^
    |
    = note: this error originates in the derive macro `ReprC` (in Nightly builds, run with -Z macro-backtrace for more info)
 
 error[E0080]: evaluation panicked: Types with custom Drop are not yet supported
-  --> tests/ui_fail/impl_drop_assert.rs:10:20
+  --> tests/ui_fail/impl_drop_assert.rs:11:20
    |
-10 | #[derive(RustSpec, ReprC)]
+11 | #[derive(RustSpec, ReprC)]
    |                    ^^^^^ evaluation of `<PrimitiveEnumWithDrop as _::AssertNoDrop>::assert_no_drop::{constant#0}` failed here
 
 note: erroneous constant encountered
-  --> tests/ui_fail/impl_drop_assert.rs:10:20
+  --> tests/ui_fail/impl_drop_assert.rs:11:20
    |
-10 | #[derive(RustSpec, ReprC)]
+11 | #[derive(RustSpec, ReprC)]
    |                    ^^^^^
    |
    = note: this note originates in the derive macro `ReprC` (in Nightly builds, run with -Z macro-backtrace for more info)
 
 error[E0080]: evaluation panicked: Types with custom Drop are not yet supported
-  --> tests/ui_fail/impl_drop_assert.rs:27:27
+  --> tests/ui_fail/impl_drop_assert.rs:28:27
    |
-27 | #[derive(Clone, RustSpec, ReprC)]
+28 | #[derive(Clone, RustSpec, ReprC)]
    |                           ^^^^^ evaluation of `<TransparentEnumWithDrop as _::AssertNoDrop>::assert_no_drop::{constant#0}` failed here
 
 note: erroneous constant encountered
-  --> tests/ui_fail/impl_drop_assert.rs:27:27
+  --> tests/ui_fail/impl_drop_assert.rs:28:27
    |
-27 | #[derive(Clone, RustSpec, ReprC)]
+28 | #[derive(Clone, RustSpec, ReprC)]
    |                           ^^^^^
    |
    = note: this note originates in the derive macro `ReprC` (in Nightly builds, run with -Z macro-backtrace for more info)
 
 error[E0509]: cannot move out of type `TransparentEnumWithDrop`, which implements the `Drop` trait
-  --> tests/ui_fail/impl_drop_assert.rs:27:27
+  --> tests/ui_fail/impl_drop_assert.rs:28:27
    |
-27 | #[derive(Clone, RustSpec, ReprC)]
+28 | #[derive(Clone, RustSpec, ReprC)]
    |                           ^^^^^
    |                           |
    |                           cannot move out of here
@@ -46,85 +46,85 @@ error[E0509]: cannot move out of type `TransparentEnumWithDrop`, which implement
    = note: this error originates in the derive macro `ReprC` (in Nightly builds, run with -Z macro-backtrace for more info)
 
 error[E0080]: evaluation panicked: Types with custom Drop are not yet supported
-  --> tests/ui_fail/impl_drop_assert.rs:43:20
+  --> tests/ui_fail/impl_drop_assert.rs:44:20
    |
-43 | #[derive(RustSpec, ReprC)]
+44 | #[derive(RustSpec, ReprC)]
    |                    ^^^^^ evaluation of `<ReprCDataEnumWithDrop as _::AssertNoDrop>::assert_no_drop::{constant#0}` failed here
 
 note: erroneous constant encountered
-  --> tests/ui_fail/impl_drop_assert.rs:43:20
+  --> tests/ui_fail/impl_drop_assert.rs:44:20
    |
-43 | #[derive(RustSpec, ReprC)]
+44 | #[derive(RustSpec, ReprC)]
    |                    ^^^^^
    |
    = note: this note originates in the derive macro `ReprC` (in Nightly builds, run with -Z macro-backtrace for more info)
 
 error[E0080]: evaluation panicked: Types with custom Drop are not yet supported
-  --> tests/ui_fail/impl_drop_assert.rs:59:20
+  --> tests/ui_fail/impl_drop_assert.rs:60:20
    |
-59 | #[derive(RustSpec, ReprC)]
+60 | #[derive(RustSpec, ReprC)]
    |                    ^^^^^ evaluation of `<DataEnumWithDrop as _::AssertNoDrop>::assert_no_drop::{constant#0}` failed here
 
 note: erroneous constant encountered
-  --> tests/ui_fail/impl_drop_assert.rs:59:20
+  --> tests/ui_fail/impl_drop_assert.rs:60:20
    |
-59 | #[derive(RustSpec, ReprC)]
+60 | #[derive(RustSpec, ReprC)]
    |                    ^^^^^
    |
    = note: this note originates in the derive macro `ReprC` (in Nightly builds, run with -Z macro-backtrace for more info)
 
 error[E0080]: evaluation panicked: Types with custom Drop are not yet supported
-  --> tests/ui_fail/impl_drop_assert.rs:74:20
+  --> tests/ui_fail/impl_drop_assert.rs:75:20
    |
-74 | #[derive(RustSpec, ReprC)]
+75 | #[derive(RustSpec, ReprC)]
    |                    ^^^^^ evaluation of `<ReprRustDataEnumWithDrop as _::AssertNoDrop>::assert_no_drop::{constant#0}` failed here
 
 note: erroneous constant encountered
-  --> tests/ui_fail/impl_drop_assert.rs:74:20
+  --> tests/ui_fail/impl_drop_assert.rs:75:20
    |
-74 | #[derive(RustSpec, ReprC)]
+75 | #[derive(RustSpec, ReprC)]
    |                    ^^^^^
    |
    = note: this note originates in the derive macro `ReprC` (in Nightly builds, run with -Z macro-backtrace for more info)
 
 error[E0080]: evaluation panicked: Types with custom Drop are not yet supported
-  --> tests/ui_fail/impl_drop_assert.rs:87:20
+  --> tests/ui_fail/impl_drop_assert.rs:88:20
    |
-87 | #[derive(RustSpec, ReprC)]
+88 | #[derive(RustSpec, ReprC)]
    |                    ^^^^^ evaluation of `<ReprCStructWithDrop as _::AssertNoDrop>::assert_no_drop::{constant#0}` failed here
 
 note: erroneous constant encountered
-  --> tests/ui_fail/impl_drop_assert.rs:87:20
+  --> tests/ui_fail/impl_drop_assert.rs:88:20
    |
-87 | #[derive(RustSpec, ReprC)]
+88 | #[derive(RustSpec, ReprC)]
    |                    ^^^^^
    |
    = note: this note originates in the derive macro `ReprC` (in Nightly builds, run with -Z macro-backtrace for more info)
 
 error[E0080]: evaluation panicked: Types with custom Drop are not yet supported
-  --> tests/ui_fail/impl_drop_assert.rs:99:27
-   |
-99 | #[derive(Clone, RustSpec, ReprC)]
-   |                           ^^^^^ evaluation of `<TransparentStructWithDrop as _::AssertNoDrop>::assert_no_drop::{constant#0}` failed here
+   --> tests/ui_fail/impl_drop_assert.rs:100:27
+    |
+100 | #[derive(Clone, RustSpec, ReprC)]
+    |                           ^^^^^ evaluation of `<TransparentStructWithDrop as _::AssertNoDrop>::assert_no_drop::{constant#0}` failed here
 
 note: erroneous constant encountered
-  --> tests/ui_fail/impl_drop_assert.rs:99:27
-   |
-99 | #[derive(Clone, RustSpec, ReprC)]
-   |                           ^^^^^
-   |
-   = note: this note originates in the derive macro `ReprC` (in Nightly builds, run with -Z macro-backtrace for more info)
+   --> tests/ui_fail/impl_drop_assert.rs:100:27
+    |
+100 | #[derive(Clone, RustSpec, ReprC)]
+    |                           ^^^^^
+    |
+    = note: this note originates in the derive macro `ReprC` (in Nightly builds, run with -Z macro-backtrace for more info)
 
 error[E0080]: evaluation panicked: Types with custom Drop are not yet supported
-   --> tests/ui_fail/impl_drop_assert.rs:110:20
+   --> tests/ui_fail/impl_drop_assert.rs:111:20
     |
-110 | #[derive(RustSpec, ReprC)]
+111 | #[derive(RustSpec, ReprC)]
     |                    ^^^^^ evaluation of `<ReprRustStructWithDrop as _::AssertNoDrop>::assert_no_drop::{constant#0}` failed here
 
 note: erroneous constant encountered
-   --> tests/ui_fail/impl_drop_assert.rs:110:20
+   --> tests/ui_fail/impl_drop_assert.rs:111:20
     |
-110 | #[derive(RustSpec, ReprC)]
+111 | #[derive(RustSpec, ReprC)]
     |                    ^^^^^
     |
     = note: this note originates in the derive macro `ReprC` (in Nightly builds, run with -Z macro-backtrace for more info)

@@ -1,6 +1,7 @@
 use std::{ffi::c_void, marker::PhantomData};
 
-use co3::{ExternC, Handle, ReprC, ffi, handle::HandleFamily, rust_spec::RustSpec, slice::Spread2};
+use co3::{ExternC, Handle, ReprC, ffi, slice::Spread2};
+use rust_spec::RustSpec;
 
 pub trait OdbcVersion {}
 
@@ -18,7 +19,7 @@ impl OdbcVersion for Payload {}
 #[repr(transparent)]
 pub struct MyType<V: OdbcVersion = Payload> {
     pub(crate) handle: *mut c_void,
-    version: PhantomData<V>,
+    _version: PhantomData<V>,
 }
 
 pub enum SQL_OV_ODBC3 {}
@@ -54,7 +55,7 @@ impl<V: OdbcVersion> Allocate for SQLHENV<V> {
     type Source = i32;
 }
 
-impl<'conn, 'buf, V: OdbcVersion> Allocate for SQLHDESC<u32, V> {
+impl<V: OdbcVersion> Allocate for SQLHDESC<u32, V> {
     type Source = u32;
 }
 
@@ -67,27 +68,19 @@ co3::ffi! {
     #[unsafe(id(SQLSMALLINT = 9))]
     type SQLHDESC<DT, V: OdbcVersion = SQL_OV_ODBC3_80>;
 
-    impl<V: OdbcVersion> Drop for dyn SQLHENV<V>
+    impl<V: OdbcVersion, dyn(SQLSMALLINT) T> Drop for T
     where
-        use<V> @ (<SQL_OV_ODBC3> | <SQL_OV_ODBC3_80> | <SQL_OV_ODBC4>)
+        use<T> @ <SQLHENV<V>>
     {
         #[symbol_name = "SQLFreeHandle"]
         fn drop(&mut self);
     }
 
-    impl<DT, V: OdbcVersion> Drop for dyn SQLHDESC<DT, V>
-    where
-        use<DT, V> @ (
-            <u32, SQL_OV_ODBC3> |
-            <Payload, SQL_OV_ODBC3_80> |
-            <Payload, SQL_OV_ODBC4>
-        )
-    {
+    impl<V: OdbcVersion, DT> Drop for SQLHDESC<DT, V> {
         #[symbol_name = "SQLFreeHandle"]
         fn drop(&mut self);
     }
 
-    #[explicit_lifetimes]
     #[symbol_name = "SQLAllocHandle"]
     pub fn SQLAllocHandle<'a, 'b, dyn(SQLSMALLINT) T: Allocate, V: OdbcVersion>(
         InputHandle: &'a T::Source,
@@ -106,9 +99,8 @@ co3::ffi! {
     }
 
     impl<V: OdbcVersion> SQLHENV<V> {
-        #[explicit_lifetimes]
         #[symbol_name = "SQLGetEnvAttr"]
-        pub fn get_attr<'attr, dyn(i32) A: EnvAttr>(
+        pub fn get_attr<dyn(i32) A: EnvAttr>(
             &self,
             attribute: <dyn A>::ID,
             #[spread(u32, i32)]
@@ -138,7 +130,7 @@ co3::ffi! {
     #[unsafe(id(u32 = 7))]
     type SQLHENV2;
 
-    impl<T> Drop for dyn T
+    impl<dyn(u32) T> Drop for T
     where
         use<T> @ <SQLHENV2>
     {
@@ -202,7 +194,7 @@ impl Spread2 for CConnectionPooling {
 
 #[derive(Clone, ReprC)]
 #[repr(u32)]
-enum CpMatch {
+pub enum CpMatch {
     A,
 }
 

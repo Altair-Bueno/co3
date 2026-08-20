@@ -1,4 +1,5 @@
-use co3::{ReprC, ffi, rust_spec::RustSpec};
+use co3::{ReprC, ffi};
+use rust_spec::RustSpec;
 
 #[derive(Clone, RustSpec, ReprC)]
 pub struct Hello {

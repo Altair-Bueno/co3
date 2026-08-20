@@ -28,21 +28,19 @@ use manyhow::manyhow;
 use proc_macro2::TokenStream;
 use quote::quote;
 use syn::{
-    Attribute, ItemFn, ItemImpl, LitStr, Path, Result, Type, parse_quote, parse_quote_spanned,
-    spanned::Spanned, visit_mut::VisitMut,
+    Attribute, Expr, ItemFn, ItemImpl, LitStr, Path, Result, StaticMutability, Type, parse_quote,
+    visit_mut::VisitMut,
 };
 
 use crate::{
     cfg_attr::{emit_macro_invocations, expand as expand_cfg_attr},
-    dispatch::{find_dispatch_attr, synthesize_dispatch_handle_ids},
+    dispatch::synthesize_dispatch_handle_ids,
     generate::{expand_export_decls, expand_extern_decls},
     layout::derive_repr_c,
-    parse::{
-        FailureMode, FfiInput, FfiStatic, MacroFeatures, ParsedForeignItem, parse_dispatch_attr,
-    },
+    parse::{ParsedInput, ParsedItem},
     utils::{
-        co3_path, has_non_lifetime_generics, is_drop_impl, is_type_erased, path_symbol_name,
-        push_error, type_symbol_name,
+        co3_path, has_non_lifetime_generics, is_drop_impl, path_symbol_name, push_error,
+        type_symbol_name,
     },
     validate::{validate_export_attrs, validate_export_decls, validate_extern_decls},
 };
@@ -65,19 +63,47 @@ pub(crate) enum DeclKind {
     Extern,
 }
 
-struct Input {
-    abi: syn::Abi,
-    attrs: Vec<Attribute>,
-    features: MacroFeatures,
-    failure_mode: FailureMode,
-    items: Vec<ForeignItem>,
-}
-
-enum ForeignItem {
+pub(crate) enum ForeignItem {
     Type(ForeignItemType),
+    Static(Co3Static),
     Impl(Co3Impl),
     Fn(Co3Fn),
-    Static(FfiStatic),
+}
+
+#[derive(Clone)]
+struct ForeignItemType {
+    ty: syn::ForeignItemType,
+    id: Option<Box<syn::Type>>,
+    id_value: Option<Box<Expr>>,
+    drop: Option<Co3Impl>,
+
+    self_impls: Vec<Co3Impl>,
+}
+
+#[derive(Clone)]
+pub(crate) struct Co3Static {
+    pub(crate) attrs: Vec<Attribute>,
+    pub(crate) vis: syn::Visibility,
+    pub(crate) static_token: syn::Token![static],
+    pub(crate) mutability: StaticMutability,
+    pub(crate) ident: syn::Ident,
+    pub(crate) ty: Box<Type>,
+    pub(crate) expr: Option<Box<Expr>>,
+}
+
+#[derive(Clone)]
+struct Co3Impl {
+    item: ItemImpl,
+
+    dispatch_args: DispatchGroups,
+
+    method_dispatch_args: HashMap<syn::Ident, DispatchGroups>,
+}
+
+#[derive(Clone)]
+struct Co3Fn {
+    item: ItemFn,
+    dispatch_args: DispatchGroups,
 }
 
 #[derive(Clone, Default)]
@@ -88,6 +114,44 @@ struct DispatchGroups {
 pub(crate) struct DispatchSelection<'a> {
     pub(crate) params: &'a [syn::Ident],
     pub(crate) target: &'a syn::AngleBracketedGenericArguments,
+}
+
+impl Co3Impl {
+    fn new(item: ItemImpl) -> Self {
+        Self {
+            item,
+            dispatch_args: DispatchGroups::default(),
+            method_dispatch_args: HashMap::default(),
+        }
+    }
+}
+
+impl core::ops::Deref for Co3Impl {
+    type Target = ItemImpl;
+
+    fn deref(&self) -> &Self::Target {
+        &self.item
+    }
+}
+
+impl core::ops::DerefMut for Co3Impl {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.item
+    }
+}
+
+impl core::ops::Deref for Co3Fn {
+    type Target = ItemFn;
+
+    fn deref(&self) -> &Self::Target {
+        &self.item
+    }
+}
+
+impl core::ops::DerefMut for Co3Fn {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.item
+    }
 }
 
 impl DispatchGroups {
@@ -107,6 +171,19 @@ impl DispatchGroups {
         self.groups
             .keys()
             .any(|params| params.iter().any(|candidate| candidate == param))
+    }
+
+    pub(crate) fn concretize_self(&mut self, self_ty: &syn::Type) {
+        let mut concretizer = crate::ffi_fn::SelfConcretizer { self_ty };
+        for targets in self.groups.values_mut() {
+            for target in targets {
+                for argument in &mut target.args {
+                    if let syn::GenericArgument::Type(ty) = argument {
+                        concretizer.visit_type_mut(ty);
+                    }
+                }
+            }
+        }
     }
 
     fn for_each_combination(&self, mut f: impl for<'a> FnMut(&[DispatchSelection<'a>])) {
@@ -137,6 +214,87 @@ impl DispatchGroups {
         Self { groups }
     }
 
+    fn static_bindings(&self, generics: &syn::Generics) -> Vec<(Self, Self)> {
+        fn is_static_param(generics: &syn::Generics, ident: &syn::Ident) -> bool {
+            generics.params.iter().any(|param| match param {
+                syn::GenericParam::Type(param) => {
+                    param.ident == *ident && !param.attrs.iter().any(crate::utils::is_type_erased)
+                }
+                syn::GenericParam::Const(param) => param.ident == *ident,
+                syn::GenericParam::Lifetime(_) => false,
+            })
+        }
+
+        fn project_target(
+            target: &syn::AngleBracketedGenericArguments,
+            indices: &[usize],
+        ) -> syn::AngleBracketedGenericArguments {
+            let mut projected = target.clone();
+            projected.args = target
+                .args
+                .iter()
+                .enumerate()
+                .filter(|(idx, _)| indices.contains(idx))
+                .map(|(_, arg)| arg.clone())
+                .collect();
+            projected
+        }
+
+        let mut bindings = vec![(Self::default(), Self::default())];
+        for (params, targets) in self.groups() {
+            let static_indices = params
+                .iter()
+                .enumerate()
+                .filter_map(|(idx, param)| is_static_param(generics, param).then_some(idx))
+                .collect::<Vec<_>>();
+            let dynamic_indices = (0..params.len())
+                .filter(|idx| !static_indices.contains(idx))
+                .collect::<Vec<_>>();
+
+            let static_params = static_indices
+                .iter()
+                .map(|idx| params[*idx].clone())
+                .collect::<Vec<_>>();
+            let dynamic_params = dynamic_indices
+                .iter()
+                .map(|idx| params[*idx].clone())
+                .collect::<Vec<_>>();
+
+            let mut variants = BTreeMap::<String, (Self, Self)>::new();
+            for target in targets {
+                let static_target = project_target(target, &static_indices);
+                let key = quote::quote!(#static_target).to_string();
+                let (static_groups, dynamic_groups) = variants.entry(key).or_default();
+                if !static_params.is_empty() {
+                    static_groups
+                        .groups
+                        .entry(static_params.clone())
+                        .or_insert_with(|| vec![static_target]);
+                }
+                if !dynamic_params.is_empty() {
+                    dynamic_groups
+                        .groups
+                        .entry(dynamic_params.clone())
+                        .or_default()
+                        .push(project_target(target, &dynamic_indices));
+                }
+            }
+
+            let variants = variants.into_values().collect::<Vec<_>>();
+            let mut next = Vec::new();
+            for (binding_static, binding_dynamic) in bindings {
+                for (group_static, group_dynamic) in &variants {
+                    next.push((
+                        binding_static.combined_with(group_static),
+                        binding_dynamic.combined_with(group_dynamic),
+                    ));
+                }
+            }
+            bindings = next;
+        }
+        bindings
+    }
+
     pub(crate) fn inject_unnamed_lifetimes(&mut self, generics: &mut syn::Generics) {
         for targets in self.groups.values_mut() {
             for target in targets {
@@ -145,88 +303,6 @@ impl DispatchGroups {
             }
         }
     }
-}
-
-struct Co3Impl {
-    item: ItemImpl,
-    dispatch_args: DispatchGroups,
-    method_dispatch_args: HashMap<syn::Ident, DispatchGroups>,
-}
-
-impl Co3Impl {
-    fn new(item: ItemImpl) -> Self {
-        Self {
-            item,
-            dispatch_args: DispatchGroups::default(),
-            method_dispatch_args: HashMap::default(),
-        }
-    }
-}
-
-impl core::ops::Deref for Co3Impl {
-    type Target = ItemImpl;
-
-    fn deref(&self) -> &Self::Target {
-        &self.item
-    }
-}
-
-impl core::ops::DerefMut for Co3Impl {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.item
-    }
-}
-
-struct Co3Fn {
-    item: ItemFn,
-    dispatch_args: DispatchGroups,
-}
-
-impl core::ops::Deref for Co3Fn {
-    type Target = ItemFn;
-
-    fn deref(&self) -> &Self::Target {
-        &self.item
-    }
-}
-
-impl core::ops::DerefMut for Co3Fn {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.item
-    }
-}
-
-fn parse_dyn_methods(impl_: &mut ItemImpl) -> Result<HashMap<syn::Ident, DispatchGroups>> {
-    let mut dyn_methods = HashMap::new();
-
-    for item in &mut impl_.items {
-        let syn::ImplItem::Fn(syn::ImplItemFn { attrs, sig, .. }) = item else {
-            continue;
-        };
-        if find_dispatch_attr(attrs).is_none() {
-            continue;
-        }
-
-        let args = parse_dispatch_attr(attrs, &sig.generics)?;
-        attrs.retain(|attr| !attr.path().is_ident("erased"));
-
-        if dyn_methods.insert(sig.ident.clone(), args).is_some() {
-            return Err(syn::Error::new_spanned(&sig.ident, "duplicate method"));
-        }
-
-        synthesize_dispatch_handle_ids(Some(&impl_.self_ty), &sig.generics, &mut sig.inputs);
-    }
-
-    Ok(dyn_methods)
-}
-
-struct ForeignItemType {
-    ty: syn::ForeignItemType,
-    id: Option<Box<syn::Type>>,
-    id_value: Option<Box<syn::Expr>>,
-    drop: Option<Co3Impl>,
-
-    self_impls: Vec<Co3Impl>,
 }
 
 /// Generate a C-compatible counterpart and conversions to and from the Rust type.
@@ -249,8 +325,8 @@ struct ForeignItemType {
 /// pub struct Hello(u32);
 /// ```
 #[manyhow]
-#[proc_macro_derive(ReprC, attributes(reprC, handle))]
 // FIXME: It's totally weird that `handle` is part of ReprC
+#[proc_macro_derive(ReprC, attributes(reprC, handle))]
 pub fn repr_c_derive(item: syn::DeriveInput) -> Result<TokenStream> {
     derive_repr_c(&item)
 }
@@ -580,20 +656,34 @@ pub fn ffi(input: TokenStream) -> Result<TokenStream> {
     let cfg_attr_variants = expand_cfg_attr(input.clone())?;
 
     if cfg_attr_variants.len() == 1 {
-        let (kind, input) = Input::parse(input)?;
-
-        let Input {
+        let ParsedInput {
+            kind,
             abi,
+            symbol_prefix,
             features,
             failure_mode,
+            symbol_fragments,
             attrs,
             items,
-            ..
-        } = input;
+        } = ParsedInput::parse(input)?;
+
+        let items = normalize_items(items)?;
+        let mut items = pack_items(items)?;
+        validate_items(kind, &attrs, &items)?;
+        synthesize_items(&symbol_prefix, &mut items)?;
 
         return Ok(match kind {
-            DeclKind::Export => expand_export_decls(abi, features, failure_mode, items),
-            DeclKind::Extern => expand_extern_decls(abi, features, failure_mode, &attrs, items),
+            DeclKind::Export => {
+                expand_export_decls(abi, features, failure_mode, items, &symbol_fragments)
+            }
+            DeclKind::Extern => expand_extern_decls(
+                abi,
+                features,
+                failure_mode,
+                &attrs,
+                items,
+                &symbol_fragments,
+            ),
         });
     }
 
@@ -605,239 +695,108 @@ pub fn ffi(input: TokenStream) -> Result<TokenStream> {
     ))
 }
 
-impl Input {
-    fn parse(tokens: TokenStream) -> Result<(DeclKind, Self)> {
-        let mut decls = Vec::new();
+fn normalize_items(items: Vec<ParsedItem>) -> Result<Vec<ForeignItem>> {
+    items.into_iter().map(ParsedItem::normalize).collect()
+}
 
-        let FfiInput {
-            kind,
-            abi,
-            symbol_prefix,
-            features,
-            failure_mode,
-            attrs,
-            mut items,
-        } = FfiInput::parse(tokens)?;
+fn pack_items(items: Vec<ForeignItem>) -> Result<Vec<ForeignItem>> {
+    pack_type_drop_impls(pack_type_self_impls(items))
+}
 
-        materialize_blanket_dyn_dispatch(&mut items)?;
-
-        match kind {
-            DeclKind::Export => prepare_export_decls(&attrs, &symbol_prefix, &mut items),
-            DeclKind::Extern => prepare_extern_decls(&symbol_prefix, &mut items),
-        }?;
-
-        for item in &items {
-            match item {
-                ParsedForeignItem::Type(ForeignItemType {
-                    ty,
-                    id,
-                    id_value: _,
-                    self_impls,
-                    drop,
-                }) => {
-                    ensure_single_dispatch_attr(&ty.attrs)?;
-
-                    for dispatch in self_impls {
-                        ensure_single_dispatch_attr(&dispatch.attrs)?;
-                    }
-
-                    if let Some(drop) = drop {
-                        ensure_single_dispatch_attr(&drop.attrs)?;
-                    }
-
-                    if has_non_lifetime_generics(&ty.generics) && id.is_none() {
-                        let err_msg = "Generic types must declare handle #[unsafe(id(...))]";
-                        return Err(syn::Error::new_spanned(ty, err_msg));
-                    }
-                }
-                ParsedForeignItem::Fn(ItemFn { attrs, .. })
-                | ParsedForeignItem::Impl(ItemImpl { attrs, .. }) => {
-                    ensure_single_dispatch_attr(attrs)?;
-                }
-                ParsedForeignItem::Static(static_) => ensure_single_dispatch_attr(&static_.attrs)?,
-            }
+fn validate_items(kind: DeclKind, attrs: &[Attribute], items: &[ForeignItem]) -> Result<()> {
+    match kind {
+        DeclKind::Export => {
+            validate_export_attrs(attrs)?;
+            validate_export_decls(items)
         }
-
-        for item in items {
-            match item {
-                ParsedForeignItem::Type(item) => decls.push(ForeignItem::Type(item)),
-                ParsedForeignItem::Impl(mut impl_) => {
-                    let dispatch_args = parse_dispatch_attr(&impl_.attrs, &impl_.generics)?;
-
-                    if !dispatch_args.is_empty() {
-                        let self_ty = &impl_.self_ty;
-
-                        for item in &mut impl_.items {
-                            let syn::ImplItem::Fn(syn::ImplItemFn { sig, .. }) = item else {
-                                continue;
-                            };
-
-                            synthesize_dispatch_handle_ids(
-                                Some(self_ty),
-                                &impl_.generics,
-                                &mut sig.inputs,
-                            );
-                        }
-
-                        impl_.attrs.retain(|a| !a.path().is_ident("erased"));
-                    }
-
-                    strip_impl_explicit_lifetimes_attrs(&mut impl_);
-                    let method_dispatch_args = parse_dyn_methods(&mut impl_)?;
-
-                    decls.push(ForeignItem::Impl(Co3Impl {
-                        item: impl_,
-                        dispatch_args,
-                        method_dispatch_args,
-                    }));
-                }
-                ParsedForeignItem::Fn(mut item) => {
-                    let dispatch_args = parse_dispatch_attr(&item.attrs, &item.sig.generics)?;
-
-                    if !dispatch_args.is_empty() {
-                        synthesize_dispatch_handle_ids(
-                            None,
-                            &item.sig.generics,
-                            &mut item.sig.inputs,
-                        );
-
-                        item.attrs.retain(|a| !a.path().is_ident("erased"));
-                    }
-
-                    strip_explicit_lifetimes_attrs(&mut item.attrs);
-                    decls.push(ForeignItem::Fn(Co3Fn {
-                        item,
-                        dispatch_args,
-                    }));
-                }
-                ParsedForeignItem::Static(item) => decls.push(ForeignItem::Static(item)),
-            }
-        }
-
-        let decls = pack_type_self_impls(decls)?;
-        let mut items = pack_type_drop_impls(decls)?;
-
-        if kind == DeclKind::Export {
-            synthesize_default_drop_impls(&symbol_prefix, &mut items)?;
-        }
-
-        Ok((
-            kind,
-            Self {
-                abi,
-                attrs,
-                features,
-                failure_mode,
-                items,
-            },
-        ))
+        DeclKind::Extern => validate_extern_decls(items),
     }
 }
 
-fn materialize_blanket_dyn_dispatch(items: &mut [ParsedForeignItem]) -> Result<()> {
-    let declared_types = items
-        .iter()
-        .filter_map(|item| {
-            let ParsedForeignItem::Type(item) = item else {
-                return None;
-            };
-            Some((item.ty.ident.clone(), item.id.as_deref().cloned()))
-        })
-        .collect::<BTreeMap<_, _>>();
+fn synthesize_items(symbol_prefix: &LitStr, items: &mut [ForeignItem]) -> Result<()> {
+    synthesize_dispatch_handle_ids_in_decls(items)?;
 
-    for item in items {
-        let ParsedForeignItem::Impl(impl_) = item else {
-            continue;
-        };
-        let Type::TraitObject(self_ty) = impl_.self_ty.as_ref() else {
-            continue;
-        };
-        if self_ty.bounds.len() != 1 {
-            continue;
-        }
-        let Some(bound) = trait_object_single_trait_bound(&impl_.self_ty) else {
-            continue;
-        };
-        let Some(param_ident) = bound.path.get_ident().cloned() else {
-            continue;
-        };
-        if !impl_
-            .generics
-            .type_params()
-            .any(|param| param.ident == param_ident)
-        {
-            continue;
-        }
-
-        let dispatch = parse_dispatch_attr(&impl_.attrs, &impl_.generics)?;
-        let Some((params, targets)) = dispatch
-            .groups()
-            .find(|(params, _)| params.contains(&param_ident))
-        else {
-            let err = "blanket `dyn T` requires a `use<T>` dispatch group";
-            return Err(syn::Error::new_spanned(&impl_.self_ty, err));
-        };
-        let param_index = params
-            .iter()
-            .position(|candidate| *candidate == param_ident)
-            .unwrap();
-
-        let mut tag = None::<syn::Type>;
-        for target in targets {
-            let Some(syn::GenericArgument::Type(Type::Path(target_ty))) =
-                target.args.get(param_index)
-            else {
-                unreachable!("dispatch target kind was already validated")
-            };
-            let Some(segment) = target_ty
-                .path
-                .segments
-                .first()
-                .filter(|_| target_ty.qself.is_none() && target_ty.path.segments.len() == 1)
-            else {
-                let err = "blanket `dyn T` may dispatch only to foreign types declared in this `ffi!` block";
-                return Err(syn::Error::new_spanned(target_ty, err));
-            };
-            let Some(id) = declared_types.get(&segment.ident) else {
-                let err = "blanket `dyn T` may dispatch only to foreign types declared in this `ffi!` block";
-                return Err(syn::Error::new_spanned(target_ty, err));
-            };
-            let Some(id) = id else {
-                let err = "blanket `dyn T` dispatch types must declare `#[unsafe(id(...))]`";
-                return Err(syn::Error::new_spanned(target_ty, err));
-            };
-            if tag.as_ref().is_some_and(|tag| tag != id) {
-                let err = "blanket `dyn T` dispatch types must use the same `#[unsafe(id(...))]` tag type";
-                return Err(syn::Error::new_spanned(target_ty, err));
-            }
-            tag.get_or_insert_with(|| id.clone());
-        }
-
-        let tag = tag.expect("dispatch groups have at least one target");
-        let param = impl_
-            .generics
-            .type_params_mut()
-            .find(|param| param.ident == param_ident)
-            .unwrap();
-        param
-            .attrs
-            .push(parse_quote_spanned!(param.span()=> #[erased(#tag)]));
-        *impl_.self_ty = parse_quote_spanned!(impl_.self_ty.span()=> #param_ident);
+    let declared_types = declared_foreign_type_idents(items);
+    for item in &mut *items {
+        ensure_symbol_names(item, symbol_prefix, &declared_types);
     }
 
+    synthesize_default_drop_impls(symbol_prefix, items)?;
+
     Ok(())
+}
+
+fn normalize_dyn_self_handle_ids(impl_: &mut ItemImpl) {
+    struct Normalizer<'a> {
+        receiver: &'a Type,
+    }
+
+    impl VisitMut for Normalizer<'_> {
+        fn visit_type_path_mut(&mut self, ty: &mut syn::TypePath) {
+            let receiver_bound =
+                trait_object_single_trait_bound(self.receiver).map(|bound| &bound.path);
+            if ty.path.segments.len() == 1
+                && ty.path.segments[0].ident == "ID"
+                && ty.path.segments[0].arguments.is_none()
+                && ty.qself.as_ref().is_some_and(|qself| {
+                    qself.ty.as_ref() == self.receiver
+                        || matches!(
+                            qself.ty.as_ref(),
+                            Type::Path(path)
+                                if receiver_bound.is_some_and(|bound| path.path == *bound)
+                        )
+                })
+            {
+                *ty.qself.as_mut().unwrap().ty = parse_quote!(dyn Self);
+            }
+
+            syn::visit_mut::visit_type_path_mut(self, ty);
+        }
+    }
+
+    let receiver = (*impl_.self_ty).clone();
+    let mut normalizer = Normalizer {
+        receiver: &receiver,
+    };
+    for item in &mut impl_.items {
+        let syn::ImplItem::Fn(method) = item else {
+            continue;
+        };
+        normalizer.visit_signature_mut(&mut method.sig);
+    }
+}
+
+pub(crate) fn is_declared_dyn_self_impl(
+    impl_: &ItemImpl,
+    declared_types: &BTreeSet<syn::Ident>,
+) -> bool {
+    let Some(bound) = trait_object_single_trait_bound(&impl_.self_ty) else {
+        return false;
+    };
+    let Some(ident) = direct_trait_bound_ident(bound) else {
+        return false;
+    };
+    declared_types.contains(ident)
+}
+
+fn direct_trait_bound_ident(bound: &syn::TraitBound) -> Option<&syn::Ident> {
+    (bound.path.segments.len() == 1).then(|| &bound.path.segments[0].ident)
 }
 
 fn synthesize_default_drop_impls(
     symbol_prefix: &syn::LitStr,
     items: &mut [ForeignItem],
 ) -> Result<()> {
-    let blanket_drop_types = blanket_drop_types(items);
+    let selected_drop_types = selected_drop_types(items);
     for item in items {
         let ForeignItem::Type(item) = item else {
             continue;
         };
-        if item.drop.is_some() || blanket_drop_types.contains(&item.ty.ident) {
+        if item.drop.is_some() || selected_drop_types.contains(&item.ty.ident) {
+            continue;
+        }
+
+        if has_non_lifetime_generics(&item.ty.generics) {
             continue;
         }
 
@@ -850,56 +809,158 @@ fn synthesize_default_drop_impls(
     Ok(())
 }
 
-fn prepare_export_decls(
-    attrs: &[Attribute],
-    symbol_prefix: &LitStr,
-    decls: &mut [ParsedForeignItem],
-) -> Result<()> {
-    validate_export_attrs(attrs)?;
+fn synthesize_dispatch_handle_ids_in_decls(items: &mut [ForeignItem]) -> Result<()> {
+    let declared_types = declared_foreign_type_idents(items);
 
-    for decl in decls.iter_mut() {
-        ensure_symbol_names(decl, symbol_prefix);
-    }
+    fn synthesize_impl(impl_: &mut Co3Impl, declared_types: &BTreeSet<syn::Ident>) -> Result<()> {
+        let generics = impl_.generics.clone();
+        let self_ty = (*impl_.self_ty).clone();
+        let dyn_self = is_declared_dyn_self_impl(impl_, declared_types);
+        let dispatched_methods = impl_
+            .method_dispatch_args
+            .keys()
+            .cloned()
+            .collect::<BTreeSet<_>>();
 
-    validate_export_decls(decls)
-}
-
-fn prepare_extern_decls(symbol_prefix: &LitStr, decls: &mut [ParsedForeignItem]) -> Result<()> {
-    for decl in decls.iter_mut() {
-        ensure_symbol_names(decl, symbol_prefix);
-    }
-
-    validate_extern_decls(decls)
-}
-
-fn ensure_symbol_names(decl: &mut ParsedForeignItem, symbol_prefix: &LitStr) {
-    match decl {
-        ParsedForeignItem::Fn(ItemFn { attrs, sig, .. }) => {
-            ensure_symbol_name_on_fn(attrs, symbol_prefix, &sig.ident);
-        }
-        ParsedForeignItem::Impl(impl_) => {
-            let trait_ = impl_.trait_.as_ref().map(|(_, path, _)| path);
-            let self_ty = &impl_.self_ty;
-
+        if dyn_self {
             for item in &mut impl_.items {
-                let syn::ImplItem::Fn(syn::ImplItemFn { attrs, sig, .. }) = item else {
+                let syn::ImplItem::Fn(method) = item else {
                     continue;
                 };
+                synthesize_dispatch_handle_ids(Some(&self_ty), &generics, &mut method.sig.inputs);
+            }
+        }
 
-                ensure_symbol_name_on_impl_fn(
-                    attrs,
-                    symbol_prefix,
-                    trait_,
-                    self_ty,
-                    &impl_.generics,
-                    &sig.ident,
+        if !impl_.dispatch_args.is_empty() {
+            for item in &mut impl_.items {
+                let syn::ImplItem::Fn(method) = item else {
+                    continue;
+                };
+                synthesize_dispatch_handle_ids(None, &generics, &mut method.sig.inputs);
+            }
+        }
+
+        for item in &mut impl_.items {
+            let syn::ImplItem::Fn(method) = item else {
+                continue;
+            };
+            if dispatched_methods.contains(&method.sig.ident) {
+                let mut visible_generics = method.sig.generics.clone();
+                ffi_fn::merge_generics(generics.clone(), &mut visible_generics);
+                synthesize_dispatch_handle_ids(
+                    dyn_self.then_some(&self_ty),
+                    &visible_generics,
+                    &mut method.sig.inputs,
                 );
             }
         }
-        ParsedForeignItem::Type(_) => {}
-        ParsedForeignItem::Static(static_) => {
+
+        Ok(())
+    }
+
+    for item in items {
+        match item {
+            ForeignItem::Type(item) => {
+                for impl_ in &mut item.self_impls {
+                    synthesize_impl(impl_, &declared_types)?;
+                }
+                if let Some(drop) = &mut item.drop {
+                    synthesize_impl(drop, &declared_types)?;
+                }
+            }
+            ForeignItem::Impl(impl_) => synthesize_impl(impl_, &declared_types)?,
+            ForeignItem::Fn(item) if !item.dispatch_args.is_empty() => {
+                let generics = item.sig.generics.clone();
+                synthesize_dispatch_handle_ids(None, &generics, &mut item.sig.inputs);
+            }
+            ForeignItem::Fn(_) | ForeignItem::Static(_) => {}
+        }
+    }
+
+    Ok(())
+}
+
+fn declared_foreign_type_idents(items: &[ForeignItem]) -> BTreeSet<syn::Ident> {
+    items
+        .iter()
+        .filter_map(|item| match item {
+            ForeignItem::Type(item) => Some(item.ty.ident.clone()),
+            _ => None,
+        })
+        .collect()
+}
+
+fn ensure_symbol_names(
+    decl: &mut ForeignItem,
+    symbol_prefix: &LitStr,
+    declared_types: &BTreeSet<syn::Ident>,
+) {
+    match decl {
+        ForeignItem::Fn(item) => ensure_symbol_names_on_fn(item, symbol_prefix, declared_types),
+        ForeignItem::Impl(impl_) => {
+            ensure_symbol_names_on_impl(impl_, symbol_prefix, declared_types);
+        }
+        ForeignItem::Type(item) => {
+            for impl_ in &mut item.self_impls {
+                ensure_symbol_names_on_impl(impl_, symbol_prefix, declared_types);
+            }
+            if let Some(drop) = &mut item.drop {
+                ensure_symbol_names_on_impl(drop, symbol_prefix, declared_types);
+            }
+        }
+        ForeignItem::Static(static_) => {
             ensure_symbol_name_on_static(&mut static_.attrs, symbol_prefix, &static_.ident);
         }
+    }
+}
+
+fn ensure_symbol_names_on_fn(
+    item: &mut Co3Fn,
+    symbol_prefix: &LitStr,
+    declared_types: &BTreeSet<syn::Ident>,
+) {
+    let ident = item.sig.ident.clone();
+
+    let static_params = crate::validate::fn_symbol_binding_params(item, declared_types);
+    ensure_symbol_name_on_fn(&mut item.attrs, symbol_prefix, &ident, &static_params);
+}
+
+fn ensure_symbol_names_on_impl(
+    impl_: &mut Co3Impl,
+    symbol_prefix: &LitStr,
+    declared_types: &BTreeSet<syn::Ident>,
+) {
+    let trait_ = impl_.trait_.as_ref().map(|(_, path, _)| path.clone());
+    let self_ty = (*impl_.self_ty).clone();
+    let generics = impl_.generics.clone();
+    let static_params = impl_
+        .items
+        .iter()
+        .filter_map(|item| {
+            let syn::ImplItem::Fn(method) = item else {
+                return None;
+            };
+            Some((
+                method.sig.ident.clone(),
+                crate::validate::impl_method_symbol_binding_params(impl_, method, declared_types),
+            ))
+        })
+        .collect::<HashMap<_, _>>();
+
+    for item in &mut impl_.items {
+        let syn::ImplItem::Fn(syn::ImplItemFn { attrs, sig, .. }) = item else {
+            continue;
+        };
+
+        ensure_symbol_name_on_impl_fn(
+            attrs,
+            symbol_prefix,
+            trait_.as_ref(),
+            &self_ty,
+            &generics,
+            &sig.ident,
+            &static_params[&sig.ident],
+        );
     }
 }
 
@@ -907,7 +968,7 @@ pub(crate) fn is_symbol_name_attr(attr: &Attribute) -> bool {
     attr.path().is_ident("symbol_name")
 }
 
-pub(crate) fn symbol_name_value(attr: &Attribute) -> Option<&syn::Expr> {
+pub(crate) fn symbol_name_value(attr: &Attribute) -> Option<&Expr> {
     if !is_symbol_name_attr(attr) {
         return None;
     }
@@ -919,27 +980,7 @@ pub(crate) fn symbol_name_value(attr: &Attribute) -> Option<&syn::Expr> {
     Some(&nv.value)
 }
 
-pub(crate) fn is_explicit_lifetimes_attr(attr: &Attribute) -> bool {
-    attr.path().is_ident("explicit_lifetimes")
-}
-
-pub(crate) fn strip_explicit_lifetimes_attrs(attrs: &mut Vec<Attribute>) {
-    attrs.retain(|attr| !is_explicit_lifetimes_attr(attr));
-}
-
-fn strip_impl_explicit_lifetimes_attrs(impl_: &mut ItemImpl) {
-    strip_explicit_lifetimes_attrs(&mut impl_.attrs);
-
-    for item in &mut impl_.items {
-        let syn::ImplItem::Fn(method) = item else {
-            continue;
-        };
-
-        strip_explicit_lifetimes_attrs(&mut method.attrs);
-    }
-}
-
-fn blanket_drop_target_idents(drop: &Co3Impl) -> Option<Vec<syn::Ident>> {
+fn selected_drop_target_idents(drop: &Co3Impl) -> Option<Vec<syn::Ident>> {
     if !is_drop_impl(&drop.item) {
         return None;
     }
@@ -952,7 +993,8 @@ fn blanket_drop_target_idents(drop: &Co3Impl) -> Option<Vec<syn::Ident>> {
         .item
         .generics
         .type_params()
-        .any(|candidate| candidate.ident == *param && candidate.attrs.iter().any(is_type_erased))
+        .any(|candidate| candidate.ident == *param)
+        || !drop.dispatch_args.contains_param(param)
     {
         return None;
     }
@@ -981,11 +1023,11 @@ fn blanket_drop_target_idents(drop: &Co3Impl) -> Option<Vec<syn::Ident>> {
     )
 }
 
-fn blanket_drop_types(decls: &[ForeignItem]) -> BTreeSet<syn::Ident> {
+pub(crate) fn selected_drop_types(decls: &[ForeignItem]) -> BTreeSet<syn::Ident> {
     decls
         .iter()
         .filter_map(|decl| match decl {
-            ForeignItem::Impl(impl_) => blanket_drop_target_idents(impl_),
+            ForeignItem::Impl(impl_) => selected_drop_target_idents(impl_),
             ForeignItem::Type(_) | ForeignItem::Fn(_) | ForeignItem::Static(_) => None,
         })
         .flatten()
@@ -1006,20 +1048,31 @@ fn pack_type_drop_impls(decls: Vec<ForeignItem>) -> Result<Vec<ForeignItem>> {
     }
 
     fn self_ty_ident(impl_: &syn::ItemImpl) -> Option<syn::Ident> {
-        let Type::Path(syn::TypePath { qself: None, path }) = &*impl_.self_ty else {
-            return None;
-        };
-
-        if path.segments.len() > 1 {
-            return None;
+        match &*impl_.self_ty {
+            Type::Path(syn::TypePath { qself: None, path }) if path.segments.len() == 1 => {
+                path.segments.last().map(|seg| seg.ident.clone())
+            }
+            self_ty => trait_object_single_trait_bound(self_ty)
+                .filter(|bound| bound.path.segments.len() == 1)
+                .and_then(|bound| bound.path.segments.first())
+                .map(|segment| segment.ident.clone()),
         }
-
-        path.segments.last().map(|seg| seg.ident.clone())
     }
 
     const UNKNOWN_DROP: &str = "explicit `impl Drop` is only allowed for declared types";
 
-    let blanket_drop_types = blanket_drop_types(&decls);
+    let mut dynamic_drop_coverage = BTreeMap::<syn::Ident, usize>::new();
+    for decl in &decls {
+        let ForeignItem::Impl(drop) = decl else {
+            continue;
+        };
+        let Some(targets) = selected_drop_target_idents(drop) else {
+            continue;
+        };
+        for target in targets.into_iter().collect::<BTreeSet<_>>() {
+            *dynamic_drop_coverage.entry(target).or_default() += 1;
+        }
+    }
     let mut kept_decls = Vec::with_capacity(decls.len());
     let mut explicit_drops = BTreeMap::new();
     let mut errors = None::<syn::Error>;
@@ -1030,6 +1083,9 @@ fn pack_type_drop_impls(decls: Vec<ForeignItem>) -> Result<Vec<ForeignItem>> {
                 let mut kept_self_impls = Vec::with_capacity(item.self_impls.len());
 
                 let self_ty = &item.ty.ident;
+                if let Some(drop) = item.drop.take() {
+                    insert_drop(&mut explicit_drops, &mut errors, self_ty.clone(), drop);
+                }
                 for dyn_impl in item.self_impls {
                     if is_drop_impl(&dyn_impl.item) {
                         insert_drop(&mut explicit_drops, &mut errors, self_ty.clone(), dyn_impl);
@@ -1043,7 +1099,7 @@ fn pack_type_drop_impls(decls: Vec<ForeignItem>) -> Result<Vec<ForeignItem>> {
             }
             ForeignItem::Impl(impl_) => {
                 if is_drop_impl(&impl_) {
-                    if blanket_drop_target_idents(&impl_).is_some() {
+                    if selected_drop_target_idents(&impl_).is_some() {
                         kept_decls.push(ForeignItem::Impl(impl_));
                         continue;
                     }
@@ -1068,11 +1124,12 @@ fn pack_type_drop_impls(decls: Vec<ForeignItem>) -> Result<Vec<ForeignItem>> {
         };
 
         item.drop = explicit_drops.remove(&item.ty.ident);
-        if item.drop.is_none()
-            && !blanket_drop_types.contains(&item.ty.ident)
-            && has_non_lifetime_generics(&item.ty.generics)
-        {
-            let err_msg = "generic types must provide explicit `impl Drop` declaration";
+        let dynamic_count = dynamic_drop_coverage
+            .get(&item.ty.ident)
+            .copied()
+            .unwrap_or_default();
+        if dynamic_count > 1 || (dynamic_count == 1 && item.drop.is_some()) {
+            let err_msg = "duplicate `impl Drop` declaration for opaque type";
             push_error(&mut errors, syn::Error::new_spanned(&item.ty, err_msg));
         }
     }
@@ -1097,6 +1154,9 @@ pub(crate) fn trait_object_single_trait_bound(self_ty: &syn::Type) -> Option<&sy
     let syn::Type::TraitObject(trait_object) = self_ty else {
         return None;
     };
+    if trait_object.bounds.len() != 1 {
+        return None;
+    }
 
     let bound = trait_object.bounds.first()?;
     let syn::TypeParamBound::Trait(trait_bound) = bound else {
@@ -1109,15 +1169,7 @@ pub(crate) fn trait_object_single_trait_bound(self_ty: &syn::Type) -> Option<&sy
     Some(trait_bound)
 }
 
-fn pack_type_self_impls(decls: Vec<ForeignItem>) -> Result<Vec<ForeignItem>> {
-    fn is_self_only_dyn_dispatch(impl_: &ItemImpl) -> bool {
-        trait_object_single_trait_bound(&impl_.self_ty).is_some()
-            && !impl_
-                .generics
-                .type_params()
-                .any(|param| param.attrs.iter().any(is_type_erased))
-    }
-
+fn pack_type_self_impls(decls: Vec<ForeignItem>) -> Vec<ForeignItem> {
     fn declared_self_type(impl_: &ItemImpl) -> Option<syn::Ident> {
         match &*impl_.self_ty {
             Type::Path(syn::TypePath { qself: None, path }) if path.segments.len() == 1 => {
@@ -1142,12 +1194,14 @@ fn pack_type_self_impls(decls: Vec<ForeignItem>) -> Result<Vec<ForeignItem>> {
         .collect::<BTreeMap<_, _>>();
 
     let mut kept_decls = Vec::with_capacity(decls.len());
-    let mut errors = None::<syn::Error>;
 
     for decl in decls {
-        let ForeignItem::Impl(dispatch) = decl else {
-            kept_decls.push(decl);
-            continue;
+        let dispatch = match decl {
+            ForeignItem::Impl(dispatch) => dispatch,
+            decl => {
+                kept_decls.push(decl);
+                continue;
+            }
         };
         let Some(ident) = declared_self_type(&dispatch.item) else {
             kept_decls.push(ForeignItem::Impl(dispatch));
@@ -1169,57 +1223,7 @@ fn pack_type_self_impls(decls: Vec<ForeignItem>) -> Result<Vec<ForeignItem>> {
         item.self_impls = type_dispatch.remove(&item.ty.ident).unwrap_or_default();
     }
 
-    for decl in &kept_decls {
-        let ForeignItem::Impl(dispatch) = decl else {
-            continue;
-        };
-
-        if !dispatch.dispatch_args.is_empty() && is_self_only_dyn_dispatch(dispatch) {
-            let err_msg = "`dyn Self` is only supported for declared types";
-            let err = syn::Error::new_spanned(&dispatch.self_ty, err_msg);
-
-            push_error(&mut errors, err);
-        }
-    }
-
-    if let Some(errors) = errors {
-        return Err(errors);
-    }
-
-    Ok(kept_decls)
-}
-
-fn normalize_self_handle_ids(impl_: &mut syn::ItemImpl) {
-    struct SelfHandleIdNormalizer {
-        self_ty: syn::Type,
-    }
-
-    impl VisitMut for SelfHandleIdNormalizer {
-        fn visit_type_mut(&mut self, node: &mut syn::Type) {
-            syn::visit_mut::visit_type_mut(self, node);
-
-            let self_ty = &self.self_ty;
-            if *node == parse_quote!(<dyn #self_ty>::ID) {
-                *node = parse_quote_spanned!(node.span()=> <dyn Self>::ID);
-            }
-        }
-    }
-
-    let mut normalizer = SelfHandleIdNormalizer {
-        self_ty: (*impl_.self_ty).clone(),
-    };
-
-    normalizer.visit_item_impl_mut(impl_);
-}
-
-pub(crate) fn materialize_dyn_self_dispatch(impl_: &mut syn::ItemImpl) -> bool {
-    let Some(syn::TraitBound { path, .. }) = trait_object_single_trait_bound(&impl_.self_ty) else {
-        return false;
-    };
-
-    *impl_.self_ty = parse_quote!(#path);
-    normalize_self_handle_ids(impl_);
-    true
+    kept_decls
 }
 
 fn synthesize_default_drop_impl(symbol_prefix: &LitStr, ty: &syn::ForeignItemType) -> ItemImpl {
@@ -1244,39 +1248,16 @@ fn synthesize_default_drop_impl(symbol_prefix: &LitStr, ty: &syn::ForeignItemTyp
     }
 }
 
-fn ensure_single_dispatch_attr(attrs: &[Attribute]) -> Result<()> {
-    let mut dispatch_attrs = attrs.iter().filter(|attr| attr.path().is_ident("erased"));
-
-    let mut errors = None::<syn::Error>;
-    if dispatch_attrs.next().is_none() {
-        return Ok(());
-    };
-
-    for attr in dispatch_attrs {
-        let err = syn::Error::new_spanned(attr, "duplicate tagged-dispatch predicate");
-
-        if let Some(errors) = &mut errors {
-            errors.combine(err);
-        } else {
-            errors = Some(err);
-        }
-    }
-
-    if let Some(errors) = errors {
-        return Err(errors);
-    }
-
-    Ok(())
-}
-
 fn ensure_symbol_name_on_fn(
     attrs: &mut Vec<Attribute>,
     symbol_prefix: &LitStr,
     fn_name: &syn::Ident,
+    static_params: &[syn::Ident],
 ) {
     if !attrs.iter().any(is_symbol_name_attr) {
+        let suffix = static_params_suffix(static_params);
         let symbol_name = LitStr::new(
-            &format!("{}__{fn_name}", symbol_prefix.value()),
+            &format!("{}__{fn_name}{suffix}", symbol_prefix.value()),
             fn_name.span(),
         );
 
@@ -1286,12 +1267,19 @@ fn ensure_symbol_name_on_fn(
     }
 }
 
+fn static_params_suffix(static_params: &[syn::Ident]) -> String {
+    static_params
+        .iter()
+        .map(|param| format!("__{{{param}}}"))
+        .collect()
+}
+
 fn ensure_symbol_name_on_static(
     attrs: &mut Vec<Attribute>,
     symbol_prefix: &LitStr,
     static_name: &syn::Ident,
 ) {
-    ensure_symbol_name_on_fn(attrs, symbol_prefix, static_name);
+    ensure_symbol_name_on_fn(attrs, symbol_prefix, static_name, &[]);
 }
 
 fn ensure_symbol_name_on_impl_fn(
@@ -1301,6 +1289,7 @@ fn ensure_symbol_name_on_impl_fn(
     self_ty: &Type,
     generics: &syn::Generics,
     fn_name: &syn::Ident,
+    static_params: &[syn::Ident],
 ) {
     if !attrs.iter().any(is_symbol_name_attr) {
         let default_symbol_name = trait_.map_or_else(
@@ -1315,12 +1304,58 @@ fn ensure_symbol_name_on_impl_fn(
             },
         );
         let symbol_name = LitStr::new(
-            &format!("{}__{default_symbol_name}", symbol_prefix.value()),
+            &format!(
+                "{}__{}{suffix}",
+                symbol_prefix.value(),
+                default_symbol_name,
+                suffix = static_params_suffix(static_params),
+            ),
             proc_macro2::Span::call_site(),
         );
 
         attrs.push(parse_quote! {
             #[symbol_name = #symbol_name]
         });
+    }
+}
+
+#[cfg(test)]
+mod dyn_self_handle_id_tests {
+    use super::*;
+
+    fn id_type(item: &ItemImpl) -> &Type {
+        let syn::ImplItem::Fn(method) = &item.items[0] else {
+            panic!("expected method");
+        };
+        let syn::FnArg::Typed(arg) = &method.sig.inputs[0] else {
+            panic!("expected typed argument");
+        };
+        arg.ty.as_ref()
+    }
+
+    #[test]
+    fn leaves_dyn_type_id_for_concrete_impl_self() {
+        let mut item: ItemImpl = parse_quote! {
+            impl<T> Trait for T {
+                fn kita(id: <dyn T>::ID) {}
+            }
+        };
+
+        normalize_dyn_self_handle_ids(&mut item);
+        let expected = parse_quote!(<dyn T>::ID);
+        assert_eq!(id_type(&item), &expected);
+    }
+
+    #[test]
+    fn rewrites_dyn_type_id_for_dyn_self_impl() {
+        let mut item: ItemImpl = parse_quote! {
+            impl<T> Trait for dyn T {
+                fn kita(id: <dyn T>::ID) {}
+            }
+        };
+
+        normalize_dyn_self_handle_ids(&mut item);
+        let expected = parse_quote!(<dyn Self>::ID);
+        assert_eq!(id_type(&item), &expected);
     }
 }

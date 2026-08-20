@@ -1,4 +1,5 @@
-use co3::{Handle, ReprC, ffi, rust_spec::RustSpec};
+use co3::{Handle, ReprC, ffi};
+use rust_spec::RustSpec;
 
 trait Kind {
     fn code() -> u8;
@@ -30,12 +31,18 @@ fn type_directed<T: Kind>() -> u8 {
     T::code()
 }
 
+fn unused_generic_export<T>() {}
+
 #[derive(RustSpec, ReprC)]
 #[repr(transparent)]
 struct Host(u8);
 
 ffi! {
     #![unsafe(export("C"))]
+
+    fn unused_generic_export<dyn(u8) T>()
+    where
+        use<T> @ <First>;
 
     fn type_directed<dyn(u8) T: Kind = u8>() -> u8
     where
@@ -46,14 +53,18 @@ ffi! {
     #![unsafe(extern("C"))]
     #![symbol_prefix = "dispatch_type_directed"]
 
-    pub fn unused_generic<dyn(u8) T = u8, U>()
+    pub fn unused_generic_import<dyn(u8) T>()
     where
-        use<T> @ (<First> | <Second>);
+        use<T> @ <First>;
+
+    pub fn unused_generic<dyn(u8) T = u8, dyn(u8) U = u8>()
+    where
+        use<T, U> @ (<First, First> | <Second, Second>);
 
     impl Host {
-        pub fn unused_generic_method<dyn(u8) T = u8, U>(&self)
+        pub fn unused_generic_method<dyn(u8) T = u8, dyn(u8) U = u8>(&self)
         where
-            use<T> @ (<First> | <Second>);
+            use<T, U> @ (<First, First> | <Second, Second>);
     }
 }
 

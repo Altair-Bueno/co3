@@ -1,21 +1,22 @@
 use std::num::NonZeroU8;
 
-use co3::{ReprC, rust_spec::RustSpec, wide::Wide};
+use co3::{ReprC, wide::Wide};
+use rust_spec::RustSpec;
 use static_assertions::assert_impl_all;
 
 #[repr(transparent)]
-#[derive(ReprC, RustSpec)]
+#[derive(RustSpec, ReprC)]
 struct Bytes([u8]);
 
 #[repr(C)]
-#[derive(ReprC, RustSpec)]
+#[derive(RustSpec, ReprC)]
 struct Packet {
     tag: NonZeroU8,
     payload: [u8],
 }
 
 #[repr(C)]
-#[derive(ReprC, RustSpec)]
+#[derive(RustSpec, ReprC)]
 struct TuplePacket(NonZeroU8, [u8]);
 
 #[test]

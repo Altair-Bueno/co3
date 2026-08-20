@@ -1,4 +1,5 @@
-use co3::{ReprC, ffi, rust_spec::RustSpec};
+use co3::{ReprC, ffi};
+use rust_spec::RustSpec;
 
 trait ExportSpreadLen {
     fn export_trait_spread_len(&self, _: *const u32, len: u16) -> usize;

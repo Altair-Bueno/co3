@@ -10,12 +10,12 @@ ffi! {}
 
 ffi! {
     #![unsafe(extern("C"))]
-    #![unsafe(export("C"))]
+    #![unsafe(extern("C"))]
 }
 
 ffi! {
     #![unsafe(extern("Rust"))]
-    #![unsafe(export("C"))]
+    #![unsafe(extern("C"))]
 }
 
 ffi! {
@@ -25,10 +25,10 @@ ffi! {
 }
 
 ffi! {
-    #![feature(extern_types)]
-    #![feature(extern_types)]
-
     #![unsafe(extern("C"))]
+
+    #![feature(extern_types)]
+    #![feature(extern_types)]
 }
 
 ffi! {
@@ -65,7 +65,7 @@ ffi! {
     impl Kita for u32 {
         fn kita<T>(self)
         where
-            use<T> @ <>;
+            use<T> @ <u32>;
     }
 }
 
@@ -99,6 +99,22 @@ ffi! {
 ffi! {
     #![unsafe(extern("C"))]
 
+    fn invalid_tag_target<dyn(u8) T = u8>(tag: <dyn u32>::ID)
+    where
+        use<T> @ <u32>;
+}
+
+ffi! {
+    #![unsafe(extern("C"))]
+
+    fn duplicate_tag<dyn(u8) T = u8>(first: <dyn T>::ID, second: <dyn T>::ID)
+    where
+        use<T> @ <u32>;
+}
+
+ffi! {
+    #![unsafe(extern("C"))]
+
     fn kita1((a, b): (u32, u32));
 }
 
@@ -126,21 +142,41 @@ ffi! {
 ffi! {
     #![unsafe(extern("C"))]
 
+    #[unsafe(id(i32))]
+    type GenericType<T>;
+
+    impl<T> GenericType<T> {
+        fn method(&self);
+    }
+}
+
+ffi! {
+    #![unsafe(extern("C"))]
+
     #[unsafe(id(u8))]
     type Handle<T>;
-
-    impl<T> Drop for dyn Handle<T>
-    where
-        use<T> @ <>,
-    {
-        fn drop(self_id: <dyn Self>::ID, &mut self);
-    }
 
     impl<dyn(u8) T> Clone for Handle<T>
     where
         use<T> @ <u8, i8>,
     {
         fn clone(self_id: <dyn T>::ID, &self) -> Self;
+    }
+}
+
+ffi! {
+    #![unsafe(extern("C"))]
+
+    #[unsafe(id(u32))]
+    type OpaqueType<T>
+    where
+        use<T> @ <u32>;
+
+    impl<T> Drop for dyn OpaqueType<T>
+    where
+        use<T> @ <u32>,
+    {
+        fn drop(self_id: <dyn Self>::ID, &mut self);
     }
 }
 

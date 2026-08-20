@@ -1,4 +1,5 @@
-use co3::{Handle, ReprC, ffi, rust_spec::RustSpec};
+use co3::{Handle, ReprC, ffi};
+use rust_spec::RustSpec;
 
 trait ByteValue {
     fn byte(&self) -> u8;
@@ -171,7 +172,6 @@ ffi! {
         use<T> @ (<First> | <Second>),
         use<U> @ (<First> | <Second>);
 
-    #[explicit_lifetimes]
     pub fn soft_dispatch<'a, dyn(u8) T = u8>(#[soft] value: &'a (T, T)) -> u8
     where
         (T, T): ByteValue,

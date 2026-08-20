@@ -1,0 +1,17 @@
+error: method generic parameter shadows an impl generic parameter
+ --> tests/ui_fail/method_generic_conflict.rs:7:19
+  |
+7 |         fn method<'a, T, const N: usize>();
+  |                   ^^
+
+error: method generic parameter shadows an impl generic parameter
+ --> tests/ui_fail/method_generic_conflict.rs:7:23
+  |
+7 |         fn method<'a, T, const N: usize>();
+  |                       ^
+
+error: method generic parameter shadows an impl generic parameter
+ --> tests/ui_fail/method_generic_conflict.rs:7:32
+  |
+7 |         fn method<'a, T, const N: usize>();
+  |                                ^

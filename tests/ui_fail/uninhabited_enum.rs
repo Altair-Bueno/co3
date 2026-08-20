@@ -1,4 +1,5 @@
-use co3::{ReprC, rust_spec::RustSpec};
+use co3::{ReprC};
+use rust_spec::RustSpec;
 
 #[derive(RustSpec, ReprC)]
 pub enum FfiStruct2 {}

@@ -1,10 +1,11 @@
 use std::{alloc, marker::PhantomData, mem::MaybeUninit, num::NonZeroU64};
 
 use co3::{
-    rust_spec::RustSpec, COption, Decode, DecodeWithStore, EncodeWithStore, ExternC, (),
+    COption, Decode, DecodeWithStore, EncodeWithStore, ExternC, (),
     ReprC, export,
     slice::{CBoxedSlice, CSlice},
 };
+use rust_spec::RustSpec;
 
 co3::def_fns! { dealloc }
 

@@ -1,4 +1,5 @@
-use co3::{ReprC, ffi, rust_spec::RustSpec};
+use co3::{ReprC, ffi};
+use rust_spec::RustSpec;
 
 trait AmbiguousX<T, const N: usize> {
     #[expect(unused)]

@@ -1,6 +1,7 @@
 use core::{borrow::Borrow, ffi::c_void};
 
-use co3::{Handle, ReprC, ffi, rust_spec::RustSpec};
+use rust_spec::RustSpec;
+use co3::{Handle, ReprC, ffi};
 
 #[derive(RustSpec, ReprC, Handle)]
 #[handle(unsafe(id(u8)))]

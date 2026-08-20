@@ -1,8 +1,8 @@
 use co3::{
     Handle, ReprC, ffi,
     handle::{Handle, HandleFamily},
-    rust_spec::RustSpec,
 };
+use rust_spec::RustSpec;
 
 trait Attribute {}
 
@@ -44,7 +44,6 @@ mod provider {
     ffi! {
         #![unsafe(export("C"))]
 
-        #[explicit_lifetimes]
         impl<'a, dyn(u8) T: 'a + 'a> Dispatch for T
         where
             T: Attribute + 'a + 'a,
@@ -59,7 +58,6 @@ mod provider {
 ffi! {
     #![unsafe(extern("C"))]
 
-    #[explicit_lifetimes]
     impl<'a, dyn(u8) T: Attribute + 'a> Dispatch for T
     where
         use<T> @ <&CustomAttribute>,

@@ -1,11 +1,11 @@
-use std::collections::{BTreeMap, HashSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 
 use proc_macro2::{Delimiter, Group, Ident, TokenStream, TokenTree};
 use quote::quote;
 use syn::{
-    Attribute, Expr, FnArg, GenericArgument, GenericParam, ItemFn, ItemImpl, LitStr, PatType,
-    Result, StaticMutability, Type, TypePath,
-    parse::{ParseStream, Parser},
+    Attribute, Error, FnArg, GenericArgument, GenericParam, ItemFn, ItemImpl, LitStr, PatType,
+    Result, Type, TypePath,
+    parse::{Parse, ParseStream, Parser},
     parse_quote, parse_quote_spanned,
     punctuated::Punctuated,
     spanned::Spanned,
@@ -13,38 +13,25 @@ use syn::{
     visit_mut::VisitMut,
 };
 
-use crate::{DeclKind, DispatchGroups, utils::push_error};
+use crate::{
+    Co3Static, DeclKind, DispatchGroups, ForeignItem,
+    utils::{ParamUseDetector, push_error},
+};
 
 const FN_BODIES_NOT_ALLOWED_MSG: &str = "fn bodies are not allowed in declarations";
 const ITEM_NOT_SUPPORTED_MSG: &str = "item not supported";
 const EXPECTED_FEATURE_NAME_MSG: &str = "Expected feature name in `#![feature(...)]`";
 const EXPECTED_HANDLE_ID_ATTR_MSG: &str = "expected `#[unsafe(id(repr))]`";
 
-pub(crate) enum ParsedForeignItem {
-    Type(crate::ForeignItemType),
-    Static(FfiStatic),
-    Impl(ItemImpl),
-    Fn(ItemFn),
-}
-
-pub(crate) struct FfiStatic {
-    pub(crate) attrs: Vec<Attribute>,
-    pub(crate) vis: syn::Visibility,
-    pub(crate) static_token: syn::Token![static],
-    pub(crate) mutability: StaticMutability,
-    pub(crate) ident: syn::Ident,
-    pub(crate) ty: Box<Type>,
-    pub(crate) expr: Option<Box<Expr>>,
-}
-
-pub(crate) struct FfiInput {
+pub(crate) struct ParsedInput {
     pub(crate) kind: DeclKind,
     pub(crate) abi: syn::Abi,
     pub(crate) symbol_prefix: LitStr,
+    pub(crate) symbol_fragments: BTreeMap<String, LitStr>,
     pub(crate) features: MacroFeatures,
     pub(crate) failure_mode: FailureMode,
     pub(crate) attrs: Vec<Attribute>,
-    pub(crate) items: Vec<ParsedForeignItem>,
+    pub(crate) items: Vec<ParsedItem>,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -61,7 +48,14 @@ pub(crate) enum FailureMode {
 
 struct FfiBody {
     attrs: Vec<Attribute>,
-    items: Vec<ParsedForeignItem>,
+    items: Vec<ParsedItem>,
+}
+
+pub(crate) enum ParsedItem {
+    Type(syn::ForeignItemType),
+    Static(Co3Static),
+    Impl(ItemImpl),
+    Fn(ItemFn),
 }
 
 struct ConstGenericArgNormalizer {
@@ -109,7 +103,7 @@ impl VisitMut for ConstGenericArgNormalizer {
     }
 }
 
-impl syn::parse::Parse for ParsedForeignItem {
+impl syn::parse::Parse for ParsedItem {
     fn parse(input: ParseStream) -> Result<Self> {
         let ahead = input.fork();
         let _ = ahead.call(syn::Attribute::parse_outer)?;
@@ -122,20 +116,12 @@ impl syn::parse::Parse for ParsedForeignItem {
             return Err(ahead.error(ITEM_NOT_SUPPORTED_MSG));
         }
         if ahead.peek(syn::Token![type]) {
-            let mut ty = if contains_dispatch_predicate(input)? {
+            let ty = if contains_dispatch_predicate(input)? {
                 parse_type_item(input)?
             } else {
                 input.parse::<syn::ForeignItemType>()?
             };
-            let (id, id_value) = parse_handle_id_attr(&mut ty.attrs)?;
-
-            return Ok(Self::Type(crate::ForeignItemType {
-                ty,
-                id: id.map(Box::new),
-                id_value: id_value.map(Box::new),
-                self_impls: Vec::new(),
-                drop: None,
-            }));
+            return Ok(Self::Type(ty));
         }
         if ahead.peek(syn::Token![static]) {
             return Ok(Self::Static(parse_static_item(input)?));
@@ -148,7 +134,109 @@ impl syn::parse::Parse for ParsedForeignItem {
     }
 }
 
-fn parse_static_item(input: ParseStream) -> Result<FfiStatic> {
+impl ParsedItem {
+    pub(crate) fn normalize(self) -> Result<ForeignItem> {
+        match self {
+            Self::Type(mut ty) => {
+                let (id, id_value) = parse_handle_id_attr(&mut ty.attrs)?;
+                Ok(ForeignItem::Type(crate::ForeignItemType {
+                    ty,
+                    id: id.map(Box::new),
+                    id_value: id_value.map(Box::new),
+                    drop: None,
+                    self_impls: Vec::new(),
+                }))
+            }
+            Self::Static(item) => Ok(ForeignItem::Static(item)),
+            Self::Impl(item) => normalize_impl(item).map(ForeignItem::Impl),
+            Self::Fn(item) => normalize_fn(item).map(ForeignItem::Fn),
+        }
+    }
+}
+
+fn normalize_impl(mut item: ItemImpl) -> Result<crate::Co3Impl> {
+    crate::normalize_dyn_self_handle_ids(&mut item);
+
+    let mut errors = None;
+    let mut dispatch_args = match parse_dispatch_attr(&item.attrs, &item.generics) {
+        Ok(groups) => groups,
+        Err(err) => {
+            push_error(&mut errors, err);
+            Default::default()
+        }
+    };
+    if let Err(err) = validate_dispatch_cycles(&dispatch_args, Some(&item.self_ty)) {
+        push_error(&mut errors, err);
+    }
+    dispatch_args.concretize_self(&item.self_ty);
+    if !dispatch_args.is_empty() {
+        item.attrs.retain(|attr| !attr.path().is_ident("erased"));
+    }
+    let method_dispatch_args = match parse_dyn_methods(&mut item) {
+        Ok(groups) => groups,
+        Err(err) => {
+            push_error(&mut errors, err);
+            Default::default()
+        }
+    };
+    if let Some(errors) = errors {
+        return Err(errors);
+    }
+
+    Ok(crate::Co3Impl {
+        item,
+        dispatch_args,
+        method_dispatch_args,
+    })
+}
+
+fn normalize_fn(mut item: ItemFn) -> Result<crate::Co3Fn> {
+    let dispatch_args = parse_dispatch_attr(&item.attrs, &item.sig.generics)?;
+    validate_dispatch_cycles(&dispatch_args, None)?;
+    if !dispatch_args.is_empty() {
+        item.attrs.retain(|attr| !attr.path().is_ident("erased"));
+    }
+
+    Ok(crate::Co3Fn {
+        item,
+        dispatch_args,
+    })
+}
+
+fn parse_dyn_methods(impl_: &mut ItemImpl) -> Result<HashMap<syn::Ident, DispatchGroups>> {
+    let mut dispatch_args = HashMap::new();
+    let mut errors = None;
+
+    for item in &mut impl_.items {
+        let syn::ImplItem::Fn(syn::ImplItemFn { attrs, sig, .. }) = item else {
+            continue;
+        };
+        if !attrs.iter().any(|attr| attr.path().is_ident("erased")) {
+            continue;
+        }
+
+        let mut groups = match parse_dispatch_attr(attrs, &sig.generics) {
+            Ok(groups) => groups,
+            Err(err) => {
+                push_error(&mut errors, err);
+                continue;
+            }
+        };
+        if let Err(err) = validate_dispatch_cycles(&groups, Some(&impl_.self_ty)) {
+            push_error(&mut errors, err);
+        }
+        groups.concretize_self(&impl_.self_ty);
+        attrs.retain(|attr| !attr.path().is_ident("erased"));
+
+        if dispatch_args.insert(sig.ident.clone(), groups).is_some() {
+            return Err(syn::Error::new_spanned(&sig.ident, "duplicate method"));
+        }
+    }
+
+    errors.map_or(Ok(dispatch_args), Err)
+}
+
+fn parse_static_item(input: ParseStream) -> Result<Co3Static> {
     let attrs = input.call(syn::Attribute::parse_outer)?;
     let vis = input.parse()?;
     let static_token = input.parse()?;
@@ -164,7 +252,7 @@ fn parse_static_item(input: ParseStream) -> Result<FfiStatic> {
     };
     input.parse::<syn::Token![;]>()?;
 
-    Ok(FfiStatic {
+    Ok(Co3Static {
         attrs,
         vis,
         static_token,
@@ -193,7 +281,7 @@ fn contains_dispatch_predicate(input: ParseStream) -> Result<bool> {
     Ok(false)
 }
 
-fn parse_items(input: ParseStream) -> Result<Vec<ParsedForeignItem>> {
+fn parse_items(input: ParseStream) -> Result<Vec<ParsedItem>> {
     let mut items = Vec::new();
 
     while !input.is_empty() {
@@ -203,12 +291,14 @@ fn parse_items(input: ParseStream) -> Result<Vec<ParsedForeignItem>> {
     Ok(items)
 }
 
-impl FfiInput {
+impl ParsedInput {
     pub(crate) fn parse(tokens: TokenStream) -> Result<Self> {
         let FfiBody { mut attrs, items } = parse_ffi_body(tokens)?;
         let (kind, abi) = take_decl_attr(&mut attrs)?;
         let symbol_prefix =
             parse_symbol_prefix_attr(&mut attrs)?.unwrap_or_else(default_symbol_prefix);
+        validate_symbol_text(&symbol_prefix, false)?;
+        let symbol_fragments = parse_symbol_fragments_attr(&mut attrs)?;
         let failure_mode = parse_failure_attr(&mut attrs)?;
         let features = parse_feature_attrs(&mut attrs)?;
 
@@ -216,12 +306,74 @@ impl FfiInput {
             kind,
             abi,
             symbol_prefix,
+            symbol_fragments,
             features,
             failure_mode,
             attrs,
             items,
         })
     }
+}
+
+fn parse_symbol_fragments_attr(attrs: &mut Vec<Attribute>) -> Result<BTreeMap<String, LitStr>> {
+    struct SymbolFragmentEntry {
+        key: TokenStream,
+        value: LitStr,
+    }
+
+    impl Parse for SymbolFragmentEntry {
+        fn parse(input: ParseStream<'_>) -> Result<Self> {
+            let path = input.parse::<syn::Path>()?;
+            if is_builtin_symbol_fragment_type(&path) {
+                return Err(syn::Error::new_spanned(
+                    path,
+                    "standard-library types have stable, built-in symbol fragments",
+                ));
+            }
+            let key = quote!(#path);
+            input.parse::<syn::Token![=]>()?;
+            let value = input.parse()?;
+            Ok(Self { key, value })
+        }
+    }
+
+    let mut kept = Vec::with_capacity(attrs.len());
+    let mut fragments = BTreeMap::new();
+
+    for attr in attrs.drain(..) {
+        if !attr.path().is_ident("symbol_fragments") {
+            kept.push(attr);
+            continue;
+        }
+
+        let syn::Meta::List(list) = &attr.meta else {
+            let err_msg = "expected `#![symbol_fragments(Type = \"fragment\", ...)]`";
+            return Err(syn::Error::new_spanned(attr, err_msg));
+        };
+        let entries = Punctuated::<SymbolFragmentEntry, syn::Token![,]>::parse_terminated
+            .parse2(list.tokens.clone())?;
+        for entry in entries {
+            let name = entry.key.to_string();
+            validate_symbol_text(&entry.value, false)?;
+            if fragments.insert(name.clone(), entry.value).is_some() {
+                let err_msg = format!("duplicate symbol fragment for `{name}`");
+                return Err(syn::Error::new_spanned(entry.key, err_msg));
+            }
+        }
+    }
+
+    *attrs = kept;
+    Ok(fragments)
+}
+
+fn is_builtin_symbol_fragment_type(path: &syn::Path) -> bool {
+    const PRIMITIVES: &[&str] = &[
+        "bool", "char", "str", "i8", "i16", "i32", "i64", "i128", "isize", "u8", "u16", "u32",
+        "u64", "u128", "usize", "f32", "f64",
+    ];
+
+    path.get_ident()
+        .is_some_and(|ident| PRIMITIVES.iter().any(|primitive| ident == primitive))
 }
 
 fn default_symbol_prefix() -> LitStr {
@@ -351,6 +503,49 @@ fn parse_symbol_prefix_attr(attrs: &mut Vec<Attribute>) -> Result<Option<LitStr>
     Ok(symbol_prefix)
 }
 
+pub(crate) fn validate_symbol_text(value: &LitStr, interpolation: bool) -> Result<()> {
+    let text = value.value();
+    if text.is_empty() {
+        let err_msg = "symbol names cannot be empty";
+        return Err(syn::Error::new_spanned(value, err_msg));
+    }
+    let mut chars = text.chars().peekable();
+    while let Some(character) = chars.next() {
+        if interpolation && character == '{' {
+            let mut name = String::new();
+            let mut closed = false;
+            while let Some(&next) = chars.peek() {
+                chars.next();
+                if next == '}' {
+                    closed = true;
+                    break;
+                }
+                name.push(next);
+            }
+            if !closed
+                || name.is_empty()
+                || !name.chars().enumerate().all(|(index, next)| {
+                    (index == 0 && (next == '_' || next.is_ascii_alphabetic()))
+                        || (index > 0 && (next == '_' || next.is_ascii_alphanumeric()))
+                })
+            {
+                let err_msg = "symbol interpolation must use `{Ident}`";
+                return Err(syn::Error::new_spanned(value, err_msg));
+            }
+            continue;
+        }
+        if character == '{' || character == '}' {
+            let err_msg = "`{` and `}` are reserved for symbol interpolation";
+            return Err(syn::Error::new_spanned(value, err_msg));
+        }
+        if !(character == '_' || character.is_ascii_alphanumeric()) {
+            let err_msg = "symbol names may contain only ASCII letters, digits, and `_`";
+            return Err(syn::Error::new_spanned(value, err_msg));
+        }
+    }
+    Ok(())
+}
+
 fn parse_feature_attrs(attrs: &mut Vec<Attribute>) -> Result<MacroFeatures> {
     let mut kept = Vec::with_capacity(attrs.len());
     let mut features = MacroFeatures::default();
@@ -444,9 +639,14 @@ pub(crate) fn parse_dispatch_attr(
     attrs: &[syn::Attribute],
     generics: &syn::Generics,
 ) -> Result<DispatchGroups> {
-    let Some(attr) = attrs.iter().find(|attr| attr.path().is_ident("erased")) else {
+    let mut dispatch_attrs = attrs.iter().filter(|attr| attr.path().is_ident("erased"));
+    let Some(attr) = dispatch_attrs.next() else {
         return Ok(Default::default());
     };
+    if let Some(duplicate) = dispatch_attrs.next() {
+        let err_msg = "duplicate tagged-dispatch predicate";
+        return Err(syn::Error::new_spanned(duplicate, err_msg));
+    }
 
     let syn::Meta::List(list) = &attr.meta else {
         let err = "tagged dispatch must provide concrete generic arguments";
@@ -512,6 +712,101 @@ fn validate_dispatch_targets(
     errors.map_or(Ok(()), Err)
 }
 
+fn validate_dispatch_cycles(dispatch: &DispatchGroups, self_ty: Option<&Type>) -> Result<()> {
+    let mut errors = None;
+
+    dispatch.for_each_combination(|selections| {
+        if errors.is_some() {
+            return;
+        }
+
+        let params = selections
+            .iter()
+            .flat_map(|selection| selection.params.iter().cloned())
+            .collect::<BTreeSet<_>>();
+        let mut dependencies = params
+            .iter()
+            .cloned()
+            .map(|param| (param, BTreeSet::new()))
+            .collect::<BTreeMap<_, _>>();
+
+        for selection in selections {
+            for (param, target) in selection.params.iter().zip(&selection.target.args) {
+                let dependencies_for_param = dependencies
+                    .get_mut(param)
+                    .expect("dispatch parameter was collected above");
+                dependencies_for_param.extend(
+                    params
+                        .iter()
+                        .filter(|candidate| {
+                            dispatch_target_mentions_param(target, candidate, self_ty)
+                        })
+                        .cloned(),
+                );
+            }
+        }
+
+        loop {
+            let resolved = dependencies
+                .iter()
+                .filter_map(|(param, dependencies)| {
+                    dependencies.is_empty().then_some(param.clone())
+                })
+                .collect::<Vec<_>>();
+            if resolved.is_empty() {
+                break;
+            }
+            for param in &resolved {
+                dependencies.remove(param);
+            }
+            for dependencies in dependencies.values_mut() {
+                dependencies.retain(|param| !resolved.contains(param));
+            }
+        }
+
+        if let Some((param, _)) = dependencies.into_iter().next() {
+            push_error(
+                &mut errors,
+                Error::new_spanned(param, "cyclic tagged-dispatch selection"),
+            );
+        }
+    });
+
+    errors.map_or(Ok(()), Err)
+}
+
+fn dispatch_target_mentions_param(
+    target: &GenericArgument,
+    param: &Ident,
+    self_ty: Option<&Type>,
+) -> bool {
+    if ParamUseDetector::new([param]).generic_arg_mentions_param(target) {
+        return true;
+    }
+
+    let Some(self_ty) = self_ty else {
+        return false;
+    };
+    let mut uses_self = UsesSelf::default();
+    uses_self.visit_generic_argument(target);
+    uses_self.seen && ParamUseDetector::new([param]).type_mentions_param(self_ty)
+}
+
+#[derive(Default)]
+struct UsesSelf {
+    seen: bool,
+}
+
+impl<'ast> Visit<'ast> for UsesSelf {
+    fn visit_type(&mut self, ty: &'ast Type) {
+        if matches!(ty, Type::Path(TypePath { qself: None, path }) if path.segments.first().is_some_and(|segment| segment.ident == "Self"))
+        {
+            self.seen = true;
+        }
+        syn::visit::visit_type(self, ty);
+    }
+}
+
 fn parse_dispatch_groups(
     generics: &syn::Generics,
     input: ParseStream,
@@ -569,6 +864,7 @@ fn parse_dispatch_group(
     params: &syn::PreciseCapture,
 ) -> Result<Vec<syn::Ident>> {
     let mut group = Vec::with_capacity(params.params.len());
+    let mut errors = None;
 
     if params.params.is_empty() {
         let err = "dispatch groups must contain at least one parameter";
@@ -576,31 +872,37 @@ fn parse_dispatch_group(
     }
 
     for param in &params.params {
-        let ident = match param {
-            syn::CapturedParam::Ident(ident) => ident.clone(),
+        let Some(ident) = (match param {
+            syn::CapturedParam::Ident(ident) => Some(ident.clone()),
             syn::CapturedParam::Lifetime(lifetime) => {
                 let err = "dispatch parameters cannot be lifetimes";
-                return Err(syn::Error::new_spanned(lifetime, err));
+                push_error(&mut errors, syn::Error::new_spanned(lifetime, err));
+                None
             }
             _ => {
                 let err = "dispatch parameters must be type or const parameters";
-                return Err(syn::Error::new_spanned(param, err));
+                push_error(&mut errors, syn::Error::new_spanned(param, err));
+                None
             }
+        }) else {
+            continue;
         };
 
         if !declared_types.contains(&ident) && !declared_consts.contains(&ident) {
             let err = "dispatch parameter is not declared on this item";
-            return Err(syn::Error::new_spanned(ident, err));
+            push_error(&mut errors, syn::Error::new_spanned(ident, err));
+            continue;
         }
         if !assigned.insert(ident.clone()) {
-            let err = "dispatch parameter cannot appear in more than one group";
-            return Err(syn::Error::new_spanned(ident, err));
+            let err_msg = "dispatch parameter cannot appear in more than one group";
+            push_error(&mut errors, syn::Error::new_spanned(ident, err_msg));
+            continue;
         }
 
         group.push(ident);
     }
 
-    Ok(group)
+    errors.map_or(Ok(group), Err)
 }
 
 pub(crate) fn parse_handle_id_attr(
@@ -1056,8 +1358,16 @@ fn parse_signature(
     attrs: &mut Vec<Attribute>,
 ) -> syn::Result<syn::Signature> {
     let mut signature_tokens = TokenStream::new();
-    while !input.peek(syn::Token![;]) && !input.peek(syn::token::Brace) {
+    let mut angle_depth = 0usize;
+    while !input.peek(syn::Token![;]) && !(angle_depth == 0 && input.peek(syn::token::Brace)) {
         let tt: proc_macro2::TokenTree = input.parse()?;
+        if let proc_macro2::TokenTree::Punct(punct) = &tt {
+            match punct.as_char() {
+                '<' => angle_depth += 1,
+                '>' => angle_depth = angle_depth.saturating_sub(1),
+                _ => {}
+            }
+        }
         signature_tokens.extend(std::iter::once(tt));
     }
 
@@ -1342,6 +1652,24 @@ mod tests {
     }
 
     #[test]
+    fn parses_braced_const_generic_in_free_fn_signature() {
+        Parser::parse_str(
+            parse_fn_item,
+            "fn name<const N: usize>(value: Foo<{ N + 1 }>);",
+        )
+        .unwrap();
+    }
+
+    #[test]
+    fn parses_braced_const_generic_in_impl_method_signature() {
+        Parser::parse_str(
+            parse_impl_item,
+            "impl<const N: usize> Trait for Value { fn name(value: Foo<{ N + 1 }>); }",
+        )
+        .unwrap();
+    }
+
+    #[test]
     fn parses_qualified_move_fn_return() {
         let item = Parser::parse_str(
             parse_fn_item,
@@ -1436,6 +1764,67 @@ mod tests {
         assert!(
             err.to_string()
                 .contains("dispatch parameters cannot be lifetimes")
+        );
+    }
+
+    #[test]
+    fn parses_statically_selected_const_generic() {
+        let generics: syn::Generics = parse_quote!(<const N: usize>);
+        let attrs: Vec<syn::Attribute> = vec![parse_quote! {
+            #[erased(use<N> @ (<1> | <2>))]
+        }];
+
+        let dispatch = parse_dispatch_attr(&attrs, &generics).unwrap();
+        let (params, targets) = dispatch.groups().next().unwrap();
+
+        assert_eq!(params.len(), 1);
+        assert_eq!(params[0], "N");
+        assert_eq!(targets.len(), 2);
+        assert!(matches!(
+            targets[0].args.first(),
+            Some(syn::GenericArgument::Const(syn::Expr::Lit(_)))
+        ));
+    }
+
+    #[test]
+    fn validates_symbol_name_interpolation_without_escape_syntax() {
+        assert!(
+            validate_symbol_text(&LitStr::new("", proc_macro2::Span::call_site()), true).is_err()
+        );
+        assert!(
+            validate_symbol_text(
+                &LitStr::new("SQLPrepare{C}", proc_macro2::Span::call_site()),
+                true,
+            )
+            .is_ok()
+        );
+        assert!(
+            validate_symbol_text(
+                &LitStr::new("SQLPrepare{C}", proc_macro2::Span::call_site()),
+                false,
+            )
+            .is_err()
+        );
+        assert!(
+            validate_symbol_text(
+                &LitStr::new("SQLPrepare\\{C}", proc_macro2::Span::call_site()),
+                true,
+            )
+            .is_err()
+        );
+        assert!(
+            validate_symbol_text(
+                &LitStr::new("SQL Prepare", proc_macro2::Span::call_site()),
+                true,
+            )
+            .is_err()
+        );
+        assert!(
+            validate_symbol_text(
+                &LitStr::new("SQL{C}Prepare{D", proc_macro2::Span::call_site()),
+                true,
+            )
+            .is_err()
         );
     }
 }

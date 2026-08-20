@@ -6,16 +6,6 @@ trait Kita {
     extern "C" fn kita1(self);
 }
 
-ffi! {
-    #![unsafe(export("C"))]
-
-    #[derive(Clone)]
-    enum FfiStruct {
-        A,
-        B,
-    }
-}
-
 ffi! {}
 
 ffi! {
@@ -25,7 +15,7 @@ ffi! {
 
 ffi! {
     #![unsafe(export("C"))]
-    #![unsafe(extern("C"))]
+    #![unsafe(export("C"))]
 }
 
 ffi! {
@@ -94,18 +84,10 @@ ffi! {
     #![unsafe(export("C"))]
 
     impl Kita for u32 {
-        fn kita(self)
+        fn kita<T>(self)
         where
-            use<T> @ <>;
+            use<T> @ <u32>;
     }
-}
-
-ffi! {
-    #![unsafe(export("C"))]
-
-    type OpaqueType<T>
-    where
-        use<T> @ <>;
 }
 
 ffi! {
@@ -175,24 +157,49 @@ ffi! {
 
     type GenericExport<T>;
 
-    impl<T> GenericExport<T> {
+    impl<T> GenericExport<T>
+    where
+        use<T> @ <u32>
+    {
         fn method(&self);
     }
-}
-
-struct ReceiverPosition;
-
-impl ReceiverPosition {
-    fn method(&self, _: u32) {}
 }
 
 ffi! {
     #![unsafe(export("C"))]
 
-    type ReceiverPosition;
+    #[unsafe(id(u32))]
+    type OpaqueType<T>
+    where
+        use<T> @ <>;
 
-    impl ReceiverPosition {
+    impl<T> Drop for dyn OpaqueType<T>
+    where
+        use<T> @ <u32>,
+    {
+        fn drop(self_id: <dyn Self>::ID, &mut self);
+    }
+}
+
+ffi! {
+    #![unsafe(export("C"))]
+
+    impl u32 {
         fn method(value: u32, &self);
+    }
+}
+
+ffi! {
+    #![unsafe(export("C"))]
+
+    #[unsafe(id(u32 = 0))]
+    type Opaque<T>;
+
+    impl<T> Drop for dyn Opaque<T>
+    where
+        use<T> @ <u32>
+    {
+        fn drop(&mut self);
     }
 }
 

@@ -1,53 +1,53 @@
 error: `is_valid` is only supported on structs or enum variants
-  --> tests/ui_fail/custom_validation.rs:21:5
+  --> tests/ui_fail/custom_validation.rs:22:5
    |
-21 |     #[reprC(is_valid = |a| *a != 0)]
+22 |     #[reprC(is_valid = |a| *a != 0)]
    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 error: `NICHE_VALUE` is only supported on structs
-  --> tests/ui_fail/custom_validation.rs:27:10
+  --> tests/ui_fail/custom_validation.rs:28:10
    |
-27 | pub enum CustomEnum1 {
+28 | pub enum CustomEnum1 {
    |          ^^^^^^^^^^^
 
 error: `is_valid` is only supported on structs or enum variants
-  --> tests/ui_fail/custom_validation.rs:34:10
+  --> tests/ui_fail/custom_validation.rs:35:10
    |
-34 | pub enum CustomEnum2 {
+35 | pub enum CustomEnum2 {
    |          ^^^^^^^^^^^
 
 error: Unions are not supported
-  --> tests/ui_fail/custom_validation.rs:40:1
+  --> tests/ui_fail/custom_validation.rs:41:1
    |
-40 | / #[reprC(is_valid = |a| *a != 0)]
-41 | | pub union CustomUnion1 {
-42 | |     a: u32,
-43 | | }
+41 | / #[reprC(is_valid = |a| *a != 0)]
+42 | | pub union CustomUnion1 {
+43 | |     a: u32,
+44 | | }
    | |_^
 
 error: Unions are not supported
-  --> tests/ui_fail/custom_validation.rs:46:1
+  --> tests/ui_fail/custom_validation.rs:47:1
    |
-46 | / #[reprC(is_valid = |a| *a != 0)]
-47 | | pub union CustomUnion2 {
-48 | |     a: u32,
-49 | | }
+47 | / #[reprC(is_valid = |a| *a != 0)]
+48 | | pub union CustomUnion2 {
+49 | |     a: u32,
+50 | | }
    | |_^
 
 error: `NICHE_VALUE` is not supported on unsized types
-  --> tests/ui_fail/custom_validation.rs:59:28
+  --> tests/ui_fail/custom_validation.rs:60:28
    |
-59 | pub struct UnsizedSlice<T>([T]);
+60 | pub struct UnsizedSlice<T>([T]);
    |                            ^^^
 
 error: `NICHE_VALUE` is not supported on unsized types
-  --> tests/ui_fail/custom_validation.rs:63:23
+  --> tests/ui_fail/custom_validation.rs:64:23
    |
-63 | pub struct UnsizedStr(str);
+64 | pub struct UnsizedStr(str);
    |                       ^^^
 
 error: `NICHE_VALUE` is not supported on unsized types
-  --> tests/ui_fail/custom_validation.rs:67:31
+  --> tests/ui_fail/custom_validation.rs:68:31
    |
-67 | pub struct UnsizedTraitObject(dyn Send);
+68 | pub struct UnsizedTraitObject(dyn Send);
    |                               ^^^^^^^^

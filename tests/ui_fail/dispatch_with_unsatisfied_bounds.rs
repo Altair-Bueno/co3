@@ -1,4 +1,4 @@
-use co3::ffi;
+use co3::{ffi, handle::Handle};
 
 pub trait Unimplemented {}
 
@@ -13,10 +13,14 @@ impl RefKita for Exported2<u32> {
     }
 }
 
+unsafe impl<T> Handle for Exported2<T> {
+    const ID: Self::Kind = 0;
+}
+
 ffi! {
     #![unsafe(export("C"))]
 
-    #[unsafe(id(u8 = 0))]
+    #[unsafe(id(u8))]
     type Exported2<T>;
 
     impl<T> Drop for dyn Exported2<T>

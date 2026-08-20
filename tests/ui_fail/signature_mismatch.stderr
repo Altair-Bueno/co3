@@ -1,31 +1,32 @@
 error[E0308]: mismatched types
-  --> tests/ui_fail/signature_mismatch.rs:33:1
+  --> tests/ui_fail/signature_mismatch.rs:36:5
    |
 33 | / ffi! {
 34 | |     #![unsafe(export("C"))]
 35 | |
 36 | |     fn kita(a: &Box<u32>);
+   | |     ^^ expected fn pointer, found fn item
 37 | | }
-   | |_^ expected fn pointer, found fn item
+   | |_- expected due to this
    |
    = note: expected fn pointer `for<'a> fn(&'a Box<u32>)`
                  found fn item `for<'a> fn(&'a u32) {kita}`
-   = note: this error originates in the macro `ffi` (in Nightly builds, run with -Z macro-backtrace for more info)
 
 error[E0308]: mismatched types
-  --> tests/ui_fail/signature_mismatch.rs:39:1
+  --> tests/ui_fail/signature_mismatch.rs:43:9
    |
 39 | / ffi! {
 40 | |     #![unsafe(export("C"))]
 41 | |
 42 | |     impl Kita for u32 {
-...  |
+43 | |         fn kita2(a: &Box<u32>);
+   | |         ^^ expected fn pointer, found fn item
+44 | |     }
 45 | | }
-   | |_^ expected fn pointer, found fn item
+   | |_- expected due to this
    |
    = note: expected fn pointer `for<'a> fn(&'a Box<u32>)`
                  found fn item `for<'a> fn(&'a u32) {<u32 as Kita>::kita2}`
-   = note: this error originates in the macro `ffi` (in Nightly builds, run with -Z macro-backtrace for more info)
 
 error[E0308]: mismatched types
   --> tests/ui_fail/signature_mismatch.rs:47:1
