@@ -254,31 +254,15 @@ pub(crate) fn spread_abi_parts(
     let source_abi_ty = spread_abi_type(attrs, arg_ty)?;
     let source_part1: Type = parse_quote!(<#source_abi_ty as co3::slice::Spread2>::Part1);
     let source_part2: Type = parse_quote!(<#source_abi_ty as co3::slice::Spread2>::Part2);
-    let part1_infer = matches!(part1, Type::Infer(_));
-    let part2_infer = matches!(part2, Type::Infer(_));
-    if part1_infer && part2_infer {
-        return Ok((source_part1, source_part2));
-    }
-    let target1 = if part1_infer {
-        source_part1.clone()
-    } else {
-        part1
-    };
-    let target2 = if part2_infer {
-        source_part2.clone()
-    } else {
-        part2
-    };
-    let tuple_abi_ty: Type = parse_quote! { <(#target1, #target2) as co3::ExternC>::CType };
-    let part1 = if part1_infer {
+    let part1 = if matches!(part1, Type::Infer(_)) {
         source_part1
     } else {
-        parse_quote!(<#tuple_abi_ty as co3::slice::Spread2>::Part1)
+        parse_quote!(<#part1 as co3::ExternC>::CType)
     };
-    let part2 = if part2_infer {
+    let part2 = if matches!(part2, Type::Infer(_)) {
         source_part2
     } else {
-        parse_quote!(<#tuple_abi_ty as co3::slice::Spread2>::Part2)
+        parse_quote!(<#part2 as co3::ExternC>::CType)
     };
     Ok((part1, part2))
 }

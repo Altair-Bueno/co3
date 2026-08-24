@@ -13,6 +13,10 @@ trait ImportSpreadLen {
 #[repr(transparent)]
 struct Counter(usize);
 
+#[derive(RustSpec, ReprC)]
+#[repr(transparent)]
+struct OdbcStr<C>([C]);
+
 mod c_symbols {
     use super::*;
 
@@ -81,6 +85,20 @@ ffi! {
     impl ImportSpreadLen for Counter {
         #[symbol_name = "export_trait_spread_len"]
         fn import_trait_spread_len(&self, #[try_spread(_, u16)] values: &[u32]) -> usize;
+    }
+}
+
+ffi! {
+    #![unsafe(extern("C"))]
+
+    #[unsafe(id(i16 = 1))]
+    type Statement;
+
+    impl Statement {
+        #[symbol_name = "static_method_try_spread_dst_{C}"]
+        fn prepare<C>(&self, #[try_spread(_, i16)] text: &OdbcStr<C>)
+        where
+            use<C> @ (<u8> | <u16>);
     }
 }
 

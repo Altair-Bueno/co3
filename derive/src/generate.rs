@@ -645,12 +645,20 @@ fn prepare_dispatch_wrapper_sig(
                 .predicates
                 .push(syn::parse_quote!(#spread_ty: #co3::slice::Spread2));
             let try_spread = ffi_fn::is_try_spread_arg(attrs);
-            if !matches!(part1, syn::Type::Infer(_)) {
+            if matches!(part1, syn::Type::Infer(_)) {
+                where_clause.predicates.push(syn::parse_quote!(
+                    <#spread_ty as #co3::slice::Spread2>::Part1: #co3::CFnArg
+                ));
+            } else {
                 where_clause.predicates.push(spread_conversion_bound(
                     &spread_ty, 1, &part1, try_spread, co3,
                 ));
             }
-            if !matches!(part2, syn::Type::Infer(_)) {
+            if matches!(part2, syn::Type::Infer(_)) {
+                where_clause.predicates.push(syn::parse_quote!(
+                    <#spread_ty as #co3::slice::Spread2>::Part2: #co3::CFnArg
+                ));
+            } else {
                 where_clause.predicates.push(spread_conversion_bound(
                     &spread_ty, 2, &part2, try_spread, co3,
                 ));
