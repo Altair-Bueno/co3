@@ -99,6 +99,20 @@ ffi! {
         fn prepare<C>(&self, #[try_spread(_, i16)] text: &OdbcStr<C>)
         where
             use<C> @ (<u8> | <u16>);
+
+        #[symbol_name = "static_method_try_spread_dst_{C}_2"]
+        fn prepare2<C>(&self, #[try_spread(*const C, i16)] text: &OdbcStr<C>)
+        where
+            use<C> @ (<u8> | <u16>);
+
+        #[symbol_name = "static_method_multiple_try_spread_dst_{C}"]
+        fn prepare_pair<C>(
+            &self,
+            #[try_spread(_, i16)] first: &OdbcStr<C>,
+            #[try_spread(_, i16)] second: &OdbcStr<C>,
+        )
+        where
+            use<C> @ (<u8> | <u16>);
     }
 }
 

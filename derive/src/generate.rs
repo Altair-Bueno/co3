@@ -595,17 +595,7 @@ fn prepare_dispatch_wrapper_sig(
     dispatch_generics: &syn::Generics,
     co3: &TokenStream,
 ) -> syn::Signature {
-    let mut wrapper_sig = sig.clone();
-    wrapper_sig.inputs = wrapper_sig
-        .inputs
-        .into_iter()
-        .filter(|input| !crate::dispatch::is_handle_id_arg(input))
-        .collect();
-    strip_internal_arg_attrs(&mut wrapper_sig);
-    wrapper_sig
-        .generics
-        .type_params_mut()
-        .for_each(strip_internal_generic_param);
+    let mut wrapper_sig = prepare_dispatch_forwarding_sig(sig);
 
     let dispatch_tys = dispatch_type_idents(dispatch_generics);
     let parameter_idents = dispatch_generics
@@ -650,6 +640,12 @@ fn prepare_dispatch_wrapper_sig(
                     <#spread_ty as #co3::slice::Spread2>::Part1: #co3::CFnArg
                 ));
             } else {
+                where_clause
+                    .predicates
+                    .push(syn::parse_quote!(#part1: #co3::ExternC));
+                where_clause.predicates.push(syn::parse_quote!(
+                    <#part1 as #co3::ExternC>::CType: #co3::CFnArg
+                ));
                 where_clause.predicates.push(spread_conversion_bound(
                     &spread_ty, 1, &part1, try_spread, co3,
                 ));
@@ -659,6 +655,12 @@ fn prepare_dispatch_wrapper_sig(
                     <#spread_ty as #co3::slice::Spread2>::Part2: #co3::CFnArg
                 ));
             } else {
+                where_clause
+                    .predicates
+                    .push(syn::parse_quote!(#part2: #co3::ExternC));
+                where_clause.predicates.push(syn::parse_quote!(
+                    <#part2 as #co3::ExternC>::CType: #co3::CFnArg
+                ));
                 where_clause.predicates.push(spread_conversion_bound(
                     &spread_ty, 2, &part2, try_spread, co3,
                 ));
@@ -710,6 +712,21 @@ fn prepare_dispatch_wrapper_sig(
         ));
     }
 
+    wrapper_sig
+}
+
+fn prepare_dispatch_forwarding_sig(sig: &syn::Signature) -> syn::Signature {
+    let mut wrapper_sig = sig.clone();
+    wrapper_sig.inputs = wrapper_sig
+        .inputs
+        .into_iter()
+        .filter(|input| !crate::dispatch::is_handle_id_arg(input))
+        .collect();
+    strip_internal_arg_attrs(&mut wrapper_sig);
+    wrapper_sig
+        .generics
+        .type_params_mut()
+        .for_each(strip_internal_generic_param);
     wrapper_sig
 }
 
@@ -842,11 +859,10 @@ fn prepare_dispatch_import(
     if let Some(impl_generics) = impl_generics {
         merge_generics(impl_generics.clone(), &mut extern_generics);
     }
-    let co3 = co3_path();
     let trait_args = dispatch_trait_args(&dispatch_generics);
     let dispatch_set_path =
         enclosing_module.map_or_else(|| quote!(#set_name), |module| quote!(#module::#set_name));
-    let delegate_sig = prepare_dispatch_wrapper_sig(&wrapper_source_sig, &dispatch_generics, &co3);
+    let delegate_sig = prepare_dispatch_forwarding_sig(&wrapper_source_sig);
     let mut wrapper_sig = delegate_sig.clone();
     wrapper_sig.generics.make_where_clause().predicates.insert(
         0,
