@@ -409,7 +409,6 @@ struct DispatchSetDelegate<'a> {
 fn dispatch_delegate_sig(
     wrapper_sig: &syn::Signature,
     self_ty: Option<&syn::Type>,
-    dispatch_set: &syn::Ident,
     delegate_name: &syn::Ident,
 ) -> syn::Signature {
     let mut sig = wrapper_sig.clone();
@@ -419,26 +418,6 @@ fn dispatch_delegate_sig(
         .into_iter()
         .filter(|param| matches!(param, syn::GenericParam::Lifetime(_)))
         .collect();
-    // The dispatch-set membership predicate is the caller's bound, not part of
-    // the delegate method. Preserve all conversion bounds on the signature.
-    if let Some(where_clause) = sig.generics.where_clause.as_mut() {
-        where_clause.predicates = core::mem::take(&mut where_clause.predicates)
-            .into_iter()
-            .filter(|predicate| {
-                let syn::WherePredicate::Type(predicate) = predicate else {
-                    return true;
-                };
-                !matches!(predicate.bounded_ty, syn::Type::Tuple(ref tuple) if tuple.elems.is_empty())
-                    || !predicate.bounds.iter().any(|bound| {
-                        matches!(bound, syn::TypeParamBound::Trait(bound)
-                            if bound.path.segments.last().is_some_and(|segment| segment.ident == *dispatch_set))
-                    })
-            })
-            .collect();
-        if where_clause.predicates.is_empty() {
-            sig.generics.where_clause = None;
-        }
-    }
     sig
 }
 
@@ -483,7 +462,6 @@ fn gen_dispatch_set(
             let sig = dispatch_delegate_sig(
                 delegate.wrapper_sig,
                 delegate.self_ty,
-                trait_name,
                 &delegate.source_sig.ident,
             );
             quote!(#sig;)
@@ -553,7 +531,6 @@ fn gen_dispatch_set(
                 let sig = dispatch_delegate_sig(
                     delegate.wrapper_sig,
                     delegate.self_ty,
-                    trait_name,
                     &delegate.source_sig.ident,
                 );
                 let id_assignments = dispatch_id_assignments(delegate.source_sig, delegate.self_ty);
@@ -614,9 +591,7 @@ fn gen_dispatch_set(
 fn prepare_dispatch_wrapper_sig(
     sig: &syn::Signature,
     dispatch_generics: &syn::Generics,
-    dispatch_set: Option<&TokenStream>,
     co3: &TokenStream,
-    trait_args: &Punctuated<syn::GenericArgument, syn::Token![,]>,
 ) -> syn::Signature {
     let mut wrapper_sig = sig.clone();
     wrapper_sig.inputs = wrapper_sig
@@ -631,17 +606,11 @@ fn prepare_dispatch_wrapper_sig(
         .for_each(strip_internal_generic_param);
 
     let dispatch_tys = dispatch_type_idents(dispatch_generics);
-    let fn_generic_idents = wrapper_sig
-        .generics
+    let parameter_idents = dispatch_generics
         .type_params()
         .map(|param| param.ident.clone())
         .collect::<Vec<_>>();
     let where_clause = wrapper_sig.generics.make_where_clause();
-    if let Some(dispatch_set) = dispatch_set {
-        where_clause
-            .predicates
-            .push(dispatch_membership_bound(dispatch_set, trait_args));
-    }
 
     for ident in &dispatch_tys {
         let id_repr = dispatch_generics
@@ -659,11 +628,13 @@ fn prepare_dispatch_wrapper_sig(
     }
 
     let detector = ParamUseDetector::new(dispatch_tys.iter());
-    let fn_detector = ParamUseDetector::new(fn_generic_idents.iter());
+    let parameter_detector = ParamUseDetector::new(parameter_idents.iter());
     for input in &sig.inputs {
         let FnArg::Typed(input) = input else { continue };
         let (attrs, ty) = (&input.attrs[..], &*input.ty);
-        if ffi_fn::is_spread_arg(attrs) && fn_detector.type_mentions_param(ty) {
+        let parameterized_spread =
+            ffi_fn::is_spread_arg(attrs) && parameter_detector.type_mentions_param(ty);
+        if parameterized_spread {
             let spread_ty = ffi_fn::item_fn_input_arg_type(attrs, ty);
             let (part1, part2) = ffi_fn::spread_types(attrs)
                 .expect("validated #[spread] attribute")
@@ -672,14 +643,20 @@ fn prepare_dispatch_wrapper_sig(
                 .predicates
                 .push(syn::parse_quote!(#spread_ty: #co3::slice::Spread2));
             let try_spread = ffi_fn::is_try_spread_arg(attrs);
-            where_clause.predicates.push(spread_conversion_bound(
-                &spread_ty, 1, &part1, try_spread, co3,
-            ));
-            where_clause.predicates.push(spread_conversion_bound(
-                &spread_ty, 2, &part2, try_spread, co3,
-            ));
+            if !matches!(part1, syn::Type::Infer(_)) {
+                where_clause.predicates.push(spread_conversion_bound(
+                    &spread_ty, 1, &part1, try_spread, co3,
+                ));
+            }
+            if !matches!(part2, syn::Type::Infer(_)) {
+                where_clause.predicates.push(spread_conversion_bound(
+                    &spread_ty, 2, &part2, try_spread, co3,
+                ));
+            }
         }
-        if crate::dispatch::handle_id(ty).is_none() && detector.type_mentions_param(ty) {
+        if crate::dispatch::handle_id(ty).is_none()
+            && (detector.type_mentions_param(ty) || parameterized_spread)
+        {
             if attrs.iter().any(ffi_fn::is_by_val_attr) {
                 let bound = if soft_for_arg(attrs) {
                     syn::parse_quote!(#ty: #co3::Encode)
@@ -859,12 +836,12 @@ fn prepare_dispatch_import(
     let trait_args = dispatch_trait_args(&dispatch_generics);
     let dispatch_set_path =
         enclosing_module.map_or_else(|| quote!(#set_name), |module| quote!(#module::#set_name));
-    let wrapper_sig = prepare_dispatch_wrapper_sig(
-        &wrapper_source_sig,
-        &dispatch_generics,
-        Some(&dispatch_set_path),
-        &co3,
-        &trait_args,
+    let delegate_sig =
+        prepare_dispatch_wrapper_sig(&wrapper_source_sig, &dispatch_generics, &co3);
+    let mut wrapper_sig = delegate_sig.clone();
+    wrapper_sig.generics.make_where_clause().predicates.insert(
+        0,
+        dispatch_membership_bound(&dispatch_set_path, &trait_args),
     );
     if let Some(impl_generics) = impl_generics
         && !declared_self
@@ -897,7 +874,7 @@ fn prepare_dispatch_import(
         fn_attrs,
         failure_mode,
         source_sig: &wrapper_source_sig,
-        wrapper_sig: &wrapper_sig,
+        wrapper_sig: &delegate_sig,
         raw_sig: &raw_sig,
         self_ty,
         dispatch_generics: &dispatch_generics,
@@ -944,13 +921,8 @@ fn prepare_dynamic_dispatch_import(
         merge_generics(impl_generics.clone(), &mut dispatch_generics);
     }
     let co3 = co3_path();
-    let wrapper_sig = prepare_dispatch_wrapper_sig(
-        &wrapper_source_sig,
-        &dispatch_generics,
-        None,
-        &co3,
-        &Punctuated::new(),
-    );
+    let wrapper_sig =
+        prepare_dispatch_wrapper_sig(&wrapper_source_sig, &dispatch_generics, &co3);
     let id_assignments = dispatch_id_assignments(&wrapper_source_sig, self_ty);
     let dummy_self_ty = syn::parse_quote!(());
     let wrapper_body = gen_wrapper_body::<true>(
@@ -1264,6 +1236,7 @@ pub(crate) fn expand_extern_decls(
         }
     }
 
+    #[expect(clippy::too_many_arguments)]
     fn synthesize_dispatched_impl_imports(
         abi: &syn::Abi,
         failure_mode: FailureMode,
@@ -1718,7 +1691,6 @@ pub(crate) fn expand_extern_decls(
                         attrs,
                         item,
                         id.as_deref(),
-                        None,
                         symbol_fragments,
                     )
                 }
@@ -1860,7 +1832,6 @@ fn expand_dispatch_drop_import(
     attrs: &[syn::Attribute],
     item: Co3Impl,
     declared_id_ty: Option<&syn::Type>,
-    set_path: Option<&TokenStream>,
     symbol_fragments: &std::collections::BTreeMap<String, syn::LitStr>,
 ) -> TokenStream {
     let Co3Impl {
@@ -1901,23 +1872,6 @@ fn expand_dispatch_drop_import(
         .where_clause
         .as_ref()
         .map(|w| &w.predicates);
-    let mut check_generics = generics.clone();
-    check_generics.where_clause = None;
-    if let Some(set_path) = set_path {
-        let trait_args = dispatch_trait_args(&check_generics);
-        check_generics
-            .make_where_clause()
-            .predicates
-            .push(dispatch_membership_bound(set_path, &trait_args));
-    }
-    let (check_generics, _, check_where) = check_generics.split_for_impl();
-    let check_drop = set_path.map(|_| {
-        quote! {
-            fn __co3_check_drop #check_generics () #check_where {
-                unreachable!()
-            }
-        }
-    });
 
     let ImplItem::Fn(method) = items.iter().next().unwrap() else {
         unreachable!()
@@ -1948,7 +1902,7 @@ fn expand_dispatch_drop_import(
                 }
                 crate::dispatch::HandleId::DynSelf => (quote!(Self), declared_id_ty?.clone()),
             };
-            *ty = Box::new(id_ty.clone());
+            **ty = id_ty.clone();
             Some(quote! {
                 let #pat: #id_ty = {
                     // FIXME: https://github.com/mversic/co3/issues/93
@@ -1980,7 +1934,6 @@ fn expand_dispatch_drop_import(
             {
                 #(#wrapper_attrs)*
                 fn drop(&mut self) {
-                    #check_drop
                     #(#selector_assignments)*
                     #body
                 }

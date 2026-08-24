@@ -17,7 +17,7 @@ pub struct Second(u8);
 #[repr(C)]
 pub struct Host<T> {
     value: u8,
-    pub marker: PhantomData<T>,
+    _marker: PhantomData<T>,
 }
 
 ffi! {

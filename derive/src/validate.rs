@@ -972,6 +972,7 @@ fn validate_spread(sig: &syn::Signature, outer: Option<&syn::Generics>) -> Resul
         .into_iter()
         .flat_map(|generics| generics.type_params())
         .chain(sig.generics.type_params())
+        .filter(|param| param.attrs.iter().any(is_type_erased))
         .map(|param| &param.ident)
         .collect::<Vec<_>>();
     let detector = crate::utils::ParamUseDetector::new(parameters);
@@ -988,7 +989,8 @@ fn validate_spread(sig: &syn::Signature, outer: Option<&syn::Generics>) -> Resul
         if mentions_parameter
             && (matches!(part1, syn::Type::Infer(_)) || matches!(part2, syn::Type::Infer(_)))
         {
-            let err_msg = "parameterized #[spread] arguments cannot use `_` placeholders";
+            let err_msg =
+                "runtime-dispatched #[spread] arguments cannot use `_` placeholders";
             return Err(Error::new_spanned(attr, err_msg));
         }
     }

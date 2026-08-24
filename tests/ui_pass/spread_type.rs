@@ -45,7 +45,6 @@ mod c_symbols {
         #[symbol_name = "spread_convert"]
         fn spread_convert_export(data: u32, metadata: i32) -> u32;
 
-
         impl Counter {
             #[symbol_name = "inherent_spread_len"]
             fn inherent_spread_len(&self, _data: *const u32, len: usize) -> usize;
@@ -67,6 +66,12 @@ ffi! {
     #[symbol_name = "spread_convert"]
     fn spread_convert(#[spread(u32, i32)] value: co3::tuple::ReprCTuple2<u8, u8>) -> u32;
 
+    #[symbol_name = "static_spread_{C}"]
+    fn static_spread<C>(
+        #[try_spread(_, _)] move value: co3::tuple::ReprCTuple2<C, u8>,
+    )
+    where
+        use<C> @ (<u8> | <u16>);
 
     impl Counter {
         #[symbol_name = "inherent_spread_len"]

@@ -3,8 +3,15 @@ use co3::{ffi, tuple::ReprCTuple2};
 ffi! {
     #![unsafe(export("C"))]
 
-    fn not_supported(#[spread(_, _)] value: u32);
-    fn not_supported_try(#[try_spread(_, _)] value: u32);
+    fn missing_spread(#[spread(_, _)] value: u32);
+    fn missing_spread_try(#[try_spread(_, _)] value: u32);
+}
+
+ffi! {
+    #![unsafe(extern("C"))]
+
+    fn missing_spread(#[spread(_, _)] value: u32);
+    fn missing_spread_try(#[try_spread(_, _)] value: u32);
 }
 
 ffi! {
@@ -24,8 +31,13 @@ ffi! {
 ffi! {
     #![unsafe(extern("C"))]
 
-    fn missing_spread(#[spread(_, _)] value: u32);
-    fn missing_spread_try(#[try_spread(_, _)] value: u32);
+    fn missing_spread<dyn(u8) T>(#[spread(_, _)] value: &[T])
+    where
+        use<T> @ <u32>;
+
+    fn missing_spread_try<dyn(u8) T>(#[try_spread(_, _)] value: &[T])
+    where
+        use<T> @ <u32>;
 }
 
 fn main() {}

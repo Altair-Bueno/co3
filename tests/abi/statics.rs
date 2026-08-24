@@ -1,5 +1,4 @@
 use co3::ffi;
-
 ffi! {
     #![unsafe(export("C"))]
     #![symbol_prefix = "co3_static"]

@@ -1,3 +1,4 @@
+#![expect(non_camel_case_types, non_snake_case)]
 use std::{ffi::c_void, marker::PhantomData};
 
 use co3::{ExternC, Handle, ReprC, ffi, slice::Spread2};
