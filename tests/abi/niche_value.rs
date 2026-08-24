@@ -1,6 +1,6 @@
 use std::cmp::Ordering;
 
-use co3::{ReprC, encode, ffi, option::ReprCOption, soft_encode};
+use co3::{ReprC, encode, ffi, option::ReprCOption, soft_decode, soft_encode};
 use rust_spec::RustSpec;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -59,6 +59,13 @@ pub enum FieldlessExplicitEnum {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, RustSpec, ReprC)]
+#[repr(usize)]
+pub enum FieldlessUsizeEnum {
+    Zero = 0,
+    Five = 5,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, RustSpec, ReprC)]
 pub enum FieldlessNoReprEnum {
     A,
     B,
@@ -82,6 +89,13 @@ pub enum DataEnum<'a, T> {
     B(u32),
     C(T),
     D,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, RustSpec, ReprC)]
+#[repr(usize)]
+pub enum DataUsizeEnum {
+    A(u8),
+    B,
 }
 
 #[derive(Clone, Copy, RustSpec, ReprC)]
@@ -417,4 +431,35 @@ fn fieldless_enum_explicit_discriminants_round_trip() {
     );
     // Zero is occupied, so the generated niche selects the next invalid tag.
     assert_eq!(encode(None::<FieldlessExplicitEnum>).0, 1);
+}
+
+#[test]
+fn usize_repr_enums_round_trip() {
+    const _: () = assert!(
+        core::mem::size_of::<<FieldlessUsizeEnum as co3::ExternC>::CType>()
+            == core::mem::size_of::<usize>()
+    );
+
+    assert_eq!(encode(FieldlessUsizeEnum::Zero).0, 0usize);
+    assert_eq!(encode(FieldlessUsizeEnum::Five).0, 5usize);
+    assert_eq!(
+        unsafe { co3::decode(encode(FieldlessUsizeEnum::Five)) },
+        Some(FieldlessUsizeEnum::Five)
+    );
+
+    let mut encode_store = Default::default();
+    let encoded = soft_encode(DataUsizeEnum::A(7), &mut encode_store);
+    let mut decode_store = Default::default();
+    assert_eq!(
+        unsafe { soft_decode(encoded, &mut decode_store) },
+        Some(DataUsizeEnum::A(7))
+    );
+
+    let mut encode_store = Default::default();
+    let encoded = soft_encode(DataUsizeEnum::B, &mut encode_store);
+    let mut decode_store = Default::default();
+    assert_eq!(
+        unsafe { soft_decode(encoded, &mut decode_store) },
+        Some(DataUsizeEnum::B)
+    );
 }
