@@ -79,7 +79,7 @@ fn move_method_only_impl_params(impl_: &mut ItemImpl, method: &mut ImplItemFn) {
             || impl_
                 .trait_
                 .as_ref()
-                .is_some_and(|(_, path, _)| detector.path_mentions_param(path))
+                .is_some_and(|(path, _)| detector.path_mentions_param(path))
     };
     let moved_params = impl_
         .generics
@@ -329,7 +329,7 @@ fn dispatch_trait_args(
 fn dispatch_trait_generics(generics: &syn::Generics) -> syn::Generics {
     let is_maybe_sized = |bound: &syn::TypeParamBound| {
         matches!(bound, syn::TypeParamBound::Trait(bound)
-            if matches!(bound.modifier, syn::TraitBoundModifier::Maybe(_))
+            if bound.maybe.is_some()
                 && bound.path.is_ident("Sized"))
     };
     let maybe_sized = generics
@@ -382,7 +382,9 @@ fn dispatch_set_name() -> syn::Ident {
 
 fn dispatch_module_name(self_ty: &syn::Type, method: &syn::Ident) -> syn::Ident {
     let receiver = match self_ty {
-        syn::Type::Path(syn::TypePath { qself: None, path }) => path
+        syn::Type::Path(syn::TypePath {
+            qself: None, path, ..
+        }) => path
             .segments
             .last()
             .map(|segment| segment.ident.to_string())
@@ -518,7 +520,7 @@ fn gen_dispatch_set(
                     monomorphizer.visit_signature_mut(&mut raw_sig);
                 }
                 raw_sig.ident = format_ident!("__co3_raw");
-                raw_sig.unsafety = None;
+                raw_sig.safety = syn::Safety::Default;
                 let mut attrs = delegate.fn_attrs.to_vec();
                 monomorphizer.interpolate_symbol_attrs(&mut attrs, delegate.symbol_fragments);
                 let extern_decl =
@@ -836,8 +838,7 @@ fn prepare_dispatch_import(
     let trait_args = dispatch_trait_args(&dispatch_generics);
     let dispatch_set_path =
         enclosing_module.map_or_else(|| quote!(#set_name), |module| quote!(#module::#set_name));
-    let delegate_sig =
-        prepare_dispatch_wrapper_sig(&wrapper_source_sig, &dispatch_generics, &co3);
+    let delegate_sig = prepare_dispatch_wrapper_sig(&wrapper_source_sig, &dispatch_generics, &co3);
     let mut wrapper_sig = delegate_sig.clone();
     wrapper_sig.generics.make_where_clause().predicates.insert(
         0,
@@ -921,8 +922,7 @@ fn prepare_dynamic_dispatch_import(
         merge_generics(impl_generics.clone(), &mut dispatch_generics);
     }
     let co3 = co3_path();
-    let wrapper_sig =
-        prepare_dispatch_wrapper_sig(&wrapper_source_sig, &dispatch_generics, &co3);
+    let wrapper_sig = prepare_dispatch_wrapper_sig(&wrapper_source_sig, &dispatch_generics, &co3);
     let id_assignments = dispatch_id_assignments(&wrapper_source_sig, self_ty);
     let dummy_self_ty = syn::parse_quote!(());
     let wrapper_body = gen_wrapper_body::<true>(
@@ -1497,7 +1497,7 @@ pub(crate) fn expand_extern_decls(
             .then(|| quote!(let __co3_self = self;));
         let ItemImpl {
             attrs: impl_attrs,
-            defaultness,
+            modifiers,
             unsafety,
             trait_,
             self_ty,
@@ -1505,8 +1505,9 @@ pub(crate) fn expand_extern_decls(
         } = &*dispatch;
         let trait_ = trait_
             .as_ref()
-            .map(|(_, path, _)| quote!(#path for))
+            .map(|(path, _)| quote!(#path for))
             .unwrap_or_default();
+        let defaultness = &modifiers.defaultness;
         let mut wrapper_impl_generics = dispatch.generics.clone();
         wrapper_impl_generics
             .type_params_mut()

@@ -930,7 +930,7 @@ fn ensure_symbol_names_on_impl(
     symbol_prefix: &LitStr,
     declared_types: &BTreeSet<syn::Ident>,
 ) {
-    let trait_ = impl_.trait_.as_ref().map(|(_, path, _)| path.clone());
+    let trait_ = impl_.trait_.as_ref().map(|(path, _)| path.clone());
     let self_ty = (*impl_.self_ty).clone();
     let generics = impl_.generics.clone();
     let static_params = impl_
@@ -1049,9 +1049,9 @@ fn pack_type_drop_impls(decls: Vec<ForeignItem>) -> Result<Vec<ForeignItem>> {
 
     fn self_ty_ident(impl_: &syn::ItemImpl) -> Option<syn::Ident> {
         match &*impl_.self_ty {
-            Type::Path(syn::TypePath { qself: None, path }) if path.segments.len() == 1 => {
-                path.segments.last().map(|seg| seg.ident.clone())
-            }
+            Type::Path(syn::TypePath {
+                qself: None, path, ..
+            }) if path.segments.len() == 1 => path.segments.last().map(|seg| seg.ident.clone()),
             self_ty => trait_object_single_trait_bound(self_ty)
                 .filter(|bound| bound.path.segments.len() == 1)
                 .and_then(|bound| bound.path.segments.first())
@@ -1149,8 +1149,6 @@ fn pack_type_drop_impls(decls: Vec<ForeignItem>) -> Result<Vec<ForeignItem>> {
 }
 
 pub(crate) fn trait_object_single_trait_bound(self_ty: &syn::Type) -> Option<&syn::TraitBound> {
-    use syn::TraitBoundModifier;
-
     let syn::Type::TraitObject(trait_object) = self_ty else {
         return None;
     };
@@ -1162,7 +1160,7 @@ pub(crate) fn trait_object_single_trait_bound(self_ty: &syn::Type) -> Option<&sy
     let syn::TypeParamBound::Trait(trait_bound) = bound else {
         return None;
     };
-    if trait_bound.modifier != TraitBoundModifier::None || trait_bound.lifetimes.is_some() {
+    if trait_bound.maybe.is_some() || trait_bound.lifetimes.is_some() {
         return None;
     }
 
@@ -1172,7 +1170,9 @@ pub(crate) fn trait_object_single_trait_bound(self_ty: &syn::Type) -> Option<&sy
 fn pack_type_self_impls(decls: Vec<ForeignItem>) -> Vec<ForeignItem> {
     fn declared_self_type(impl_: &ItemImpl) -> Option<syn::Ident> {
         match &*impl_.self_ty {
-            Type::Path(syn::TypePath { qself: None, path }) if path.segments.len() == 1 => {
+            Type::Path(syn::TypePath {
+                qself: None, path, ..
+            }) if path.segments.len() == 1 => {
                 path.segments.first().map(|segment| segment.ident.clone())
             }
             _ => trait_object_single_trait_bound(&impl_.self_ty)

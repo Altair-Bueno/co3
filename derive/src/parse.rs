@@ -89,7 +89,10 @@ impl VisitMut for ConstGenericArgNormalizer {
     fn visit_generic_argument_mut(&mut self, node: &mut GenericArgument) {
         syn::visit_mut::visit_generic_argument_mut(self, node);
 
-        let GenericArgument::Type(Type::Path(TypePath { qself: None, path })) = node else {
+        let GenericArgument::Type(Type::Path(TypePath {
+            qself: None, path, ..
+        })) = node
+        else {
             return;
         };
         let Some(ident) = path.get_ident() else {
@@ -799,7 +802,7 @@ struct UsesSelf {
 
 impl<'ast> Visit<'ast> for UsesSelf {
     fn visit_type(&mut self, ty: &'ast Type) {
-        if matches!(ty, Type::Path(TypePath { qself: None, path }) if path.segments.first().is_some_and(|segment| segment.ident == "Self"))
+        if matches!(ty, Type::Path(TypePath { qself: None, path, .. }) if path.segments.first().is_some_and(|segment| segment.ident == "Self"))
         {
             self.seen = true;
         }
@@ -1247,9 +1250,11 @@ impl PreprocessedArg {
         if receiver {
             let mut receiver = input.parse::<syn::Receiver>()?;
             merged_attrs.append(&mut receiver.attrs);
-            let ty = if let Some((and_token, lifetime)) = receiver.reference {
-                let mutability = receiver.mutability;
+            let ty = if let syn::ReceiverKind::Reference(and_token, lifetime, mutability) =
+                receiver.kind
+            {
                 Type::Reference(syn::TypeReference {
+                    attrs: Vec::new(),
                     and_token,
                     lifetime,
                     mutability,
@@ -1581,9 +1586,7 @@ fn restore_synthetic_receiver(signature: &mut syn::Signature) {
             }
         }
         ty => {
-            let mut receiver: syn::Receiver = parse_quote_spanned!(receiver_span=> self: #ty);
-            receiver.colon_token = None;
-            receiver
+            parse_quote_spanned!(receiver_span=> self: #ty)
         }
     };
 
@@ -1678,7 +1681,7 @@ mod tests {
         .unwrap();
 
         assert!(item.attrs.iter().any(|attr| attr.path().is_ident("by_val")));
-        assert!(item.sig.unsafety.is_some());
+        assert!(matches!(item.sig.safety, syn::Safety::Unsafe(_)));
         assert!(item.sig.abi.is_some());
     }
 
@@ -1716,8 +1719,10 @@ mod tests {
             panic!("expected receiver");
         };
 
-        assert!(receiver.reference.is_some());
-        assert!(receiver.mutability.is_some());
+        assert!(matches!(
+            receiver.kind,
+            syn::ReceiverKind::Reference(_, _, Some(_))
+        ));
     }
 
     #[test]

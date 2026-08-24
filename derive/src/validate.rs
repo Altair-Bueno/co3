@@ -513,10 +513,7 @@ fn validate_export_fn_attrs(attrs: &[syn::Attribute]) -> Result<()> {
         if attr.path().is_ident("erased") {
             continue;
         }
-        if is_symbol_name_attr(attr)
-            || is_by_val_attr(attr)
-            || is_cfg_attr(attr)
-        {
+        if is_symbol_name_attr(attr) || is_by_val_attr(attr) || is_cfg_attr(attr) {
             continue;
         }
 
@@ -871,8 +868,7 @@ fn validate_shared_fn(item: &crate::Co3Fn) -> Result<()> {
 fn validate_shared_impl(impl_: &crate::Co3Impl) -> Result<()> {
     let mut errors = None;
     for attr in &impl_.attrs {
-        if !attr.path().is_ident("erased") && !is_cfg_attr(attr)
-        {
+        if !attr.path().is_ident("erased") && !is_cfg_attr(attr) {
             push_error(&mut errors, unsupported_attr(attr));
         }
     }
@@ -989,8 +985,7 @@ fn validate_spread(sig: &syn::Signature, outer: Option<&syn::Generics>) -> Resul
         if mentions_parameter
             && (matches!(part1, syn::Type::Infer(_)) || matches!(part2, syn::Type::Infer(_)))
         {
-            let err_msg =
-                "runtime-dispatched #[spread] arguments cannot use `_` placeholders";
+            let err_msg = "runtime-dispatched #[spread] arguments cannot use `_` placeholders";
             return Err(Error::new_spanned(attr, err_msg));
         }
     }
@@ -1183,7 +1178,11 @@ fn validate_impl_methods(
 fn visit_signature_positions<'ast>(uses: &mut impl Visit<'ast>, sig: &'ast syn::Signature) {
     for input in &sig.inputs {
         match input {
-            syn::FnArg::Receiver(receiver) => uses.visit_type(&receiver.ty),
+            syn::FnArg::Receiver(receiver) => {
+                if let syn::ReceiverKind::Typed(_, ty) = &receiver.kind {
+                    uses.visit_type(ty);
+                }
+            }
             syn::FnArg::Typed(input) => uses.visit_type(&input.ty),
         }
     }
@@ -1195,7 +1194,11 @@ fn visit_signature_positions<'ast>(uses: &mut impl Visit<'ast>, sig: &'ast syn::
 fn visit_signature_lifetime_positions(uses: &mut LifetimeUseDetector<'_>, sig: &syn::Signature) {
     for input in &sig.inputs {
         match input {
-            syn::FnArg::Receiver(receiver) => uses.visit_type(&receiver.ty),
+            syn::FnArg::Receiver(receiver) => {
+                if let syn::ReceiverKind::Typed(_, ty) = &receiver.kind {
+                    uses.visit_type(ty);
+                }
+            }
             syn::FnArg::Typed(input) => uses.visit_type(&input.ty),
         }
     }
@@ -1300,7 +1303,7 @@ fn validate_impl_generic_usage(
                 _ => unreachable!(),
             });
             uses.visit_type(&impl_.self_ty);
-            if let Some((_, trait_, _)) = &impl_.trait_ {
+            if let Some((trait_, _)) = &impl_.trait_ {
                 uses.visit_path(trait_);
             }
             uses.visit_generic_constraints(&impl_.generics);
@@ -1367,10 +1370,10 @@ fn impl_param_use(
         || impl_
             .trait_
             .as_ref()
-            .is_some_and(|(_, path, _)| detector.path_mentions_param(path));
+            .is_some_and(|(path, _)| detector.path_mentions_param(path));
     let mut uses = ErasedUseDetector::new(param, declared_types);
     uses.visit_type(&impl_.self_ty);
-    if let Some((_, trait_path, _)) = &impl_.trait_ {
+    if let Some((trait_path, _)) = &impl_.trait_ {
         uses.visit_path(trait_path);
     }
     let dependency = payloadless_dependency(&impl_.generics, &impl_.dispatch_args, param);
@@ -1620,7 +1623,7 @@ fn validate_dispatch_param_positions<'a>(
 
     for input in &sig.inputs {
         let ty = match input {
-            syn::FnArg::Receiver(receiver) => &receiver.ty,
+            syn::FnArg::Receiver(_) => continue,
             syn::FnArg::Typed(arg) => &arg.ty,
         };
 
@@ -1636,16 +1639,6 @@ fn validate_dispatch_param_positions<'a>(
 
 fn validate_drop_impl(impl_: &syn::ItemImpl) -> Result<()> {
     const UNKNOWN_METHOD: &str = "`Drop` must have exactly one method `drop`";
-
-    fn is_mut_self_ty(ty: &Type) -> bool {
-        matches!(
-            ty,
-            Type::Reference(reference)
-                if reference.mutability.is_some()
-                    && matches!(reference.elem.as_ref(), Type::Path(path)
-                        if path.qself.is_none() && path.path.is_ident("Self"))
-        )
-    }
 
     let mut items = impl_.items.iter();
     let Some(item) = items.next() else {
@@ -1669,7 +1662,10 @@ fn validate_drop_impl(impl_: &syn::ItemImpl) -> Result<()> {
     for input in &method.sig.inputs {
         match input {
             syn::FnArg::Typed(arg) if handle_id(&arg.ty).is_some() => {}
-            syn::FnArg::Receiver(receiver) if is_mut_self_ty(receiver.ty.as_ref()) => {
+            syn::FnArg::Receiver(syn::Receiver {
+                kind: syn::ReceiverKind::Reference(_, _, Some(_)),
+                ..
+            }) => {
                 if was_receiver {
                     let err_msg = "`Drop::drop` can have only one receiver argument `&mut self`";
                     return Err(Error::new_spanned(&method.sig.inputs, err_msg));

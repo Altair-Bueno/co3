@@ -48,7 +48,6 @@ pub(crate) fn strip_internal_generic_param(param: &mut syn::TypeParam) {
     param.attrs.retain(|attr| !is_type_erased(attr));
 
     if is_erased {
-        param.eq_token = None;
         param.default = None;
     }
 }
@@ -56,6 +55,23 @@ pub(crate) fn strip_internal_generic_param(param: &mut syn::TypeParam) {
 pub(crate) fn erased_id_repr(param: &syn::TypeParam) -> Option<syn::Type> {
     let attr = param.attrs.iter().find(|attr| is_type_erased(attr))?;
     attr.parse_args().ok()
+}
+
+pub(crate) fn receiver_ty(receiver: &syn::Receiver) -> syn::Type {
+    match &receiver.kind {
+        syn::ReceiverKind::Value => parse_quote!(Self),
+        syn::ReceiverKind::Reference(and_token, lifetime, mutability) => {
+            syn::Type::Reference(syn::TypeReference {
+                attrs: Vec::new(),
+                and_token: *and_token,
+                lifetime: lifetime.clone(),
+                mutability: *mutability,
+                elem: Box::new(parse_quote!(Self)),
+            })
+        }
+        syn::ReceiverKind::Typed(_, ty) => (**ty).clone(),
+        _ => parse_quote!(Self),
+    }
 }
 
 pub(crate) struct ParamUseDetector<'a> {
@@ -299,7 +315,9 @@ impl VisitMut for DispatchMonomorphizer<'_> {
     fn visit_type_mut(&mut self, node: &mut Type) {
         syn::visit_mut::visit_type_mut(self, node);
 
-        if let Type::Path(TypePath { qself: None, path }) = node
+        if let Type::Path(TypePath {
+            qself: None, path, ..
+        }) = node
             && let Some(first) = path.segments.first()
             && let Some(GenericArgument::Type(subst)) = self.subst.get(&first.ident).cloned()
         {
@@ -328,7 +346,7 @@ pub(crate) fn is_drop_impl(impl_: &syn::ItemImpl) -> bool {
     impl_
         .trait_
         .as_ref()
-        .is_some_and(|(_, path, _)| path.segments.last().is_some_and(|seg| seg.ident == "Drop"))
+        .is_some_and(|(path, _)| path.segments.last().is_some_and(|seg| seg.ident == "Drop"))
 }
 
 pub(crate) fn has_non_lifetime_generics(generics: &syn::Generics) -> bool {
@@ -443,11 +461,13 @@ impl Visit<'_> for SymbolNameBuilder {
     }
 
     fn visit_type_ptr(&mut self, ptr: &syn::TypePtr) {
-        self.push_atom(if ptr.mutability.is_some() {
-            "mut_ptr"
-        } else {
-            "const_ptr"
-        });
+        self.push_atom(
+            if matches!(ptr.mutability, syn::PointerMutability::Mut(_)) {
+                "mut_ptr"
+            } else {
+                "const_ptr"
+            },
+        );
         self.visit_type(&ptr.elem);
     }
 

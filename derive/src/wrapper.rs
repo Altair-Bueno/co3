@@ -90,7 +90,7 @@ pub fn wrap_impl_definition<const DISPATCHED: bool>(
 ) -> ItemImpl {
     let ItemImpl {
         attrs: impl_attrs,
-        defaultness,
+        modifiers,
         unsafety,
         generics,
         trait_,
@@ -99,7 +99,8 @@ pub fn wrap_impl_definition<const DISPATCHED: bool>(
         ..
     } = impl_;
 
-    let trait_ = trait_.as_ref().map(|(_, path, _)| path);
+    let trait_ = trait_.as_ref().map(|(path, _)| path);
+    let defaultness = &modifiers.defaultness;
     let methods = items.iter().map(|item| {
         let syn::ImplItem::Fn(item) = item else {
             return quote!(#item);

@@ -328,7 +328,7 @@ pub(crate) fn gen_input_decode_stmts<'a>(
             syn::FnArg::Receiver(receiver) => (
                 &receiver.attrs,
                 format_ident!("__co3_self"),
-                (*receiver.ty).clone(),
+                crate::utils::receiver_ty(receiver),
             ),
             syn::FnArg::Typed(arg) => {
                 let arg_name = item_fn_input_ident(&arg.pat);
@@ -409,7 +409,7 @@ pub(crate) fn gen_fn_signature_drift_check(
     StaticLifetimeNormalizer.visit_expr_mut(&mut callee);
 
     let syn::Signature {
-        unsafety,
+        safety,
         abi,
         output,
         inputs,
@@ -417,11 +417,14 @@ pub(crate) fn gen_fn_signature_drift_check(
     } = &sig;
 
     let arg_tys = inputs.iter().map(|input| match input {
-        syn::FnArg::Receiver(syn::Receiver { ty, .. }) => ty,
-        syn::FnArg::Typed(syn::PatType { ty, .. }) => ty,
+        syn::FnArg::Receiver(receiver) => {
+            let ty = crate::utils::receiver_ty(receiver);
+            quote!(#ty)
+        }
+        syn::FnArg::Typed(syn::PatType { ty, .. }) => quote!(#ty),
     });
 
-    let fn_ty = quote! { #unsafety #abi fn(#(#arg_tys),*) #output };
+    let fn_ty = quote! { #safety #abi fn(#(#arg_tys),*) #output };
     let callee = set_token_stream_span(quote!(#callee), sig.span());
 
     // NOTE: Avoids signature drift
@@ -462,7 +465,7 @@ pub fn gen_impl_definition(
     failure_mode: FailureMode,
     impl_: syn::ItemImpl,
 ) -> TokenStream {
-    let trait_ = impl_.trait_.as_ref().map(|(_, path, _)| path);
+    let trait_ = impl_.trait_.as_ref().map(|(path, _)| path);
     let drop_impl = is_drop_impl(&impl_);
     let impl_attrs = &impl_.attrs;
 
@@ -613,7 +616,7 @@ pub(crate) fn lower_extern_fn_signature(
 
     sig.constness = None;
     sig.asyncness = None;
-    sig.unsafety = None;
+    sig.safety = syn::Safety::Default;
     sig.abi = None;
 
     sig
@@ -629,7 +632,7 @@ fn lower_signature_inputs(sig: &mut syn::Signature) {
 fn lower_signature_input(generics: &mut syn::Generics, input: syn::FnArg) -> Vec<syn::FnArg> {
     let (pat, attrs, arg_ty) = match input {
         syn::FnArg::Receiver(receiver) => {
-            let arg_ty = *receiver.ty;
+            let arg_ty = crate::utils::receiver_ty(&receiver);
             (parse_quote!(__co3_self), receiver.attrs, arg_ty)
         }
         syn::FnArg::Typed(arg) => {
@@ -754,18 +757,13 @@ pub(crate) fn explicitize_signature_lifetimes(sig: &mut syn::Signature) {
 
     impl VisitMut for InputLifetimeCollector<'_> {
         fn visit_receiver_mut(&mut self, node: &mut syn::Receiver) {
-            if let Some((_, lifetime)) = &mut node.reference {
+            if let syn::ReceiverKind::Reference(_, lifetime, _) = &mut node.kind {
                 let l = self.explicitize_lifetime(
                     lifetime.get_or_insert_with(|| syn::Lifetime::new("'_", Span::call_site())),
                 );
-
-                if let syn::Type::Reference(ty) = &mut *node.ty {
-                    ty.lifetime = Some(l.clone());
-                }
-
                 self.record_lifetime::<true>(l);
-            } else {
-                self.visit_type_mut(&mut node.ty);
+            } else if let syn::ReceiverKind::Typed(_, ty) = &mut node.kind {
+                self.visit_type_mut(ty);
             }
         }
 
@@ -785,7 +783,7 @@ pub(crate) fn explicitize_signature_lifetimes(sig: &mut syn::Signature) {
             self.record_lifetime::<false>(l);
         }
 
-        fn visit_type_bare_fn_mut(&mut self, _: &mut syn::TypeBareFn) {}
+        fn visit_type_fn_ptr_mut(&mut self, _: &mut syn::TypeFnPtr) {}
     }
 
     struct OutputLifetimeExplicator<'a> {
@@ -807,7 +805,7 @@ pub(crate) fn explicitize_signature_lifetimes(sig: &mut syn::Signature) {
             }
         }
 
-        fn visit_type_bare_fn_mut(&mut self, _: &mut syn::TypeBareFn) {
+        fn visit_type_fn_ptr_mut(&mut self, _: &mut syn::TypeFnPtr) {
             // Bare function pointer elision is scoped to the function pointer type.
         }
     }
@@ -837,7 +835,7 @@ fn synthesize_lifetime_bounds(sig: &mut syn::Signature) {
     }
 
     impl<'a> syn::visit::Visit<'a> for LifetimeUseCollector<'a> {
-        fn visit_bare_fn_arg(&mut self, _: &'a syn::BareFnArg) {}
+        fn visit_named_arg(&mut self, _: &'a syn::NamedArg) {}
 
         fn visit_type_reference(&mut self, node: &'a syn::TypeReference) {
             if let Some(lifetime) = &node.lifetime {
@@ -871,7 +869,7 @@ fn synthesize_lifetime_bounds(sig: &mut syn::Signature) {
     let mut lifetime_collector = LifetimeUseCollector::default();
     for input in &sig.inputs {
         match input {
-            syn::FnArg::Receiver(receiver) => lifetime_collector.visit_type(&receiver.ty),
+            syn::FnArg::Receiver(_) => {}
             syn::FnArg::Typed(arg) => lifetime_collector.visit_type(&arg.ty),
         }
     }
@@ -921,7 +919,9 @@ pub(crate) fn item_fn_output_type(return_ty: &Type) -> Type {
 
 pub(crate) fn normalize_fn_signature(sig: &mut syn::Signature, self_ty: Option<&Type>) {
     for input in &mut sig.inputs {
-        if let syn::FnArg::Receiver(syn::Receiver { attrs, ty, .. }) = input {
+        if let syn::FnArg::Receiver(receiver) = input {
+            let attrs = &receiver.attrs;
+            let ty = crate::utils::receiver_ty(receiver);
             *input = parse_quote! { #(#attrs)* __co3_self: #ty }
         }
     }
@@ -992,7 +992,10 @@ impl VisitMut for SelfConcretizer<'_> {
         }
 
         syn::visit_mut::visit_type_mut(self, node);
-        let Type::Path(syn::TypePath { qself: None, path }) = node else {
+        let Type::Path(syn::TypePath {
+            qself: None, path, ..
+        }) = node
+        else {
             return;
         };
         let Some(first) = path.segments.first() else {

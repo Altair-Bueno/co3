@@ -126,7 +126,10 @@ impl ErasedParamReplacer {
             .filter_map(|(ident, payload)| payload.is_none().then_some(ident.clone()))
             .collect();
         Self {
-            erased_params,
+            erased_params: erased_params
+                .into_iter()
+                .map(|(ident, ty)| (ident, ty.map(|(_, ty)| ty)))
+                .collect(),
             payloadless_params,
         }
     }
@@ -291,7 +294,7 @@ pub(crate) fn gen_dispatch_export(
             .collect::<Vec<_>>();
         normalize_fn_signature(&mut item.sig, Some(self_ty));
 
-        let trait_ = impl_.trait_.as_ref().map(|(_, path, _)| path);
+        let trait_ = impl_.trait_.as_ref().map(|(path, _)| path);
         let callee = ffi_fn::impl_method_callee(self_ty, trait_, &item.sig.ident, drop_impl);
 
         let definition = synthesize_dispatch_export_fn(
@@ -465,8 +468,12 @@ pub(crate) fn gen_dispatch_erased_layout_checks(
     let mut checks = Vec::new();
     args.for_each_combination(|selections| {
         for input in &sig.inputs {
+            let receiver_ty;
             let (attrs, ty) = match input {
-                syn::FnArg::Receiver(receiver) => (&receiver.attrs[..], &*receiver.ty),
+                syn::FnArg::Receiver(receiver) => {
+                    receiver_ty = crate::utils::receiver_ty(receiver);
+                    (&receiver.attrs[..], &receiver_ty)
+                }
                 syn::FnArg::Typed(syn::PatType { attrs, ty, .. }) => (&attrs[..], &**ty),
             };
 
@@ -537,7 +544,7 @@ fn dispatch_layout_check_tys(
             self.visit_pointee(&node.elem);
         }
 
-        fn visit_type_bare_fn(&mut self, _: &syn::TypeBareFn) {
+        fn visit_type_fn_ptr(&mut self, _: &syn::TypeFnPtr) {
             // Function pointer arguments do not describe reinterpreted pointee layouts.
         }
     }
@@ -626,6 +633,7 @@ pub(crate) fn synthesize_dispatch_handle_ids(
             syn::Type::Path(syn::TypePath {
                 qself: Some(syn::QSelf { ty, .. }),
                 path,
+                ..
             }) if path.is_ident("ID") && ty.as_ref() == self_id
         )
     });
@@ -826,7 +834,9 @@ pub(crate) fn erase_dispatch_signature(
     for input in &mut sig.inputs {
         match input {
             syn::FnArg::Receiver(rec) => {
-                *rec.ty = erased_params.replace((*rec.ty).clone());
+                if let syn::ReceiverKind::Typed(_, ty) = &mut rec.kind {
+                    **ty = erased_params.replace((**ty).clone());
+                }
             }
             syn::FnArg::Typed(syn::PatType { pat, ty, .. }) => {
                 **ty = erased_params.replace((**ty).clone());
@@ -1013,9 +1023,11 @@ fn gen_handle_retype_stmts(
 
     let mut stmts = vec![];
     for input in handles {
+        let receiver_ty;
         let (attrs, arg_name, ty, is_self) = match input {
             syn::FnArg::Receiver(receiver) => {
-                (&receiver.attrs, quote!(__co3_self), &*receiver.ty, true)
+                receiver_ty = crate::utils::receiver_ty(receiver);
+                (&receiver.attrs, quote!(__co3_self), &receiver_ty, true)
             }
             syn::FnArg::Typed(syn::PatType { attrs, pat, ty, .. }) => (
                 attrs,
@@ -1072,6 +1084,7 @@ pub(crate) fn handle_id(ty: &syn::Type) -> Option<HandleId<'_>> {
                 ..
             }),
         path,
+        ..
     }) = ty
     else {
         return None;
@@ -1095,7 +1108,7 @@ pub(crate) fn handle_id(ty: &syn::Type) -> Option<HandleId<'_>> {
     let syn::TypeParamBound::Trait(arg_ty) = arg_ty.bounds.first()? else {
         return None;
     };
-    if arg_ty.modifier != syn::TraitBoundModifier::None || arg_ty.lifetimes.is_some() {
+    if arg_ty.maybe.is_some() || arg_ty.lifetimes.is_some() {
         return None;
     }
     if arg_ty.path.segments.len() > 1 {
@@ -1156,7 +1169,7 @@ fn monomorphize_predicates(generics: &mut syn::Generics, args: &DispatchGroups) 
                 !matches!(
                     bound,
                     syn::TypeParamBound::Trait(bound)
-                        if matches!(bound.modifier, syn::TraitBoundModifier::Maybe(_))
+                        if bound.maybe.is_some()
                 )
             })
             .collect();
@@ -1298,7 +1311,7 @@ impl VisitMut for EntryLifetimeNamer {
         }
     }
 
-    fn visit_type_bare_fn_mut(&mut self, _: &mut syn::TypeBareFn) {}
+    fn visit_type_fn_ptr_mut(&mut self, _: &mut syn::TypeFnPtr) {}
 }
 
 fn name_unnamed_lifetimes(
@@ -1416,7 +1429,7 @@ fn inject_predicate_unnamed_lifetimes(
             }
         }
 
-        fn visit_type_bare_fn_mut(&mut self, _: &mut syn::TypeBareFn) {}
+        fn visit_type_fn_ptr_mut(&mut self, _: &mut syn::TypeFnPtr) {}
     }
 
     fn push_universal_lifetimes(
