@@ -4,13 +4,13 @@ use core::{
     cell::{Cell, UnsafeCell},
     ffi::c_void,
     marker::PhantomData,
-    mem::ManuallyDrop,
+    mem::{ManuallyDrop, MaybeUninit},
     num::NonZero,
     ptr::NonNull,
 };
 
 use crate::{
-    Decode, Encode, ExternC, ReprC,
+    CFnArg, Decode, Encode, ExternC, ReprC,
     borrow::{Borrow, BorrowCast, BorrowCastMut, FromBorrow},
     niche::Niche,
     stored::{DecodeOwned, EmptyStore, EncodeOwned},
@@ -496,6 +496,74 @@ unsafe impl<T: CheckedTransmute + ?Sized> CheckedTransmute for Cell<T> {
 
 unsafe impl<T: EmptyStore> EmptyStore for Cell<T> {}
 
+unsafe impl<T> Borrow for MaybeUninit<T> {
+    type Borrowed<'itm>
+        = Self
+    where
+        Self: 'itm;
+
+    type Owner = ();
+
+    #[inline(always)]
+    fn borrow<'itm>(self, (): &mut ()) -> Self::Borrowed<'itm>
+    where
+        Self: 'itm,
+    {
+        self
+    }
+}
+impl<'itm, T: 'itm> FromBorrow<'itm> for MaybeUninit<T> {
+    #[inline(always)]
+    fn from_borrow(source: Self::Borrowed<'itm>) -> Self {
+        source
+    }
+}
+
+impl<T: CheckedTransmute<CType: Sized>> ExternC for MaybeUninit<T> {
+    type CType = MaybeUninit<T::CType>;
+}
+unsafe impl<T: CheckedTransmute<CType: Sized>> EncodeOwned for MaybeUninit<T> {
+    type Store = ();
+
+    #[inline(always)]
+    fn soft_encode<'itm>(self, (): &mut ()) -> Self::CType
+    where
+        Self: 'itm,
+    {
+        unsafe { core::mem::transmute_copy(&self) }
+    }
+}
+unsafe impl<'d, T: CheckedTransmute<CType: Sized>> DecodeOwned<'d> for MaybeUninit<T> {
+    type Store = ();
+
+    #[inline(always)]
+    unsafe fn soft_decode<'itm: 'd>(source: Self::CType, (): &mut ()) -> Option<Self> {
+        Some(unsafe { core::mem::transmute_copy(&source) })
+    }
+}
+
+impl<T: CheckedTransmute<CType: Sized>> Encode for MaybeUninit<T> {}
+impl<'d, T: CheckedTransmute<CType: Sized>> Decode<'d> for MaybeUninit<T> {}
+
+unsafe impl<T: CheckedTransmute<CType: Sized>> CheckedTransmute for MaybeUninit<T> {
+    #[inline(always)]
+    unsafe fn is_valid(_: &Self::CType) -> bool {
+        true
+    }
+}
+
+unsafe impl<T: ReprC> ReprC for MaybeUninit<T> {}
+unsafe impl<T: CFnArg> CFnArg for MaybeUninit<T> {}
+
+unsafe impl<T: ReprC> BorrowCast for MaybeUninit<T> {
+    type AsConst = Self;
+}
+unsafe impl<T: ReprC> BorrowCastMut for MaybeUninit<T> {
+    type AsMut = Self;
+}
+
+unsafe impl<T: EmptyStore> EmptyStore for MaybeUninit<T> {}
+
 unsafe impl<T: Borrow> Borrow for ManuallyDrop<T> {
     type Borrowed<'itm>
         = T::Borrowed<'itm>
@@ -574,10 +642,29 @@ mod tests {
     #[cfg(feature = "alloc")]
     use crate::boxed::{CBox, CBoxedSlice};
     use crate::{
-        Decode, Encode,
+        CFnArg, Decode, Encode,
         option::ReprCOption,
         slice::{CSlice, CSliceMut},
     };
+
+    #[test]
+    fn maybe_uninit_lowers_without_validating_or_encoding_the_inner_value() {
+        assert_impl_all!(MaybeUninit<bool>:
+            ExternC<CType = MaybeUninit<u8>>,
+            CheckedTransmute,
+            Decode<'static>,
+            Encode,
+        );
+        assert_impl_all!(MaybeUninit<u8>: ReprC, CFnArg);
+
+        let source = MaybeUninit::new(2_u8);
+        assert!(unsafe { <MaybeUninit<bool> as CheckedTransmute>::is_valid(&source) });
+
+        let decoded = unsafe { crate::decode::<MaybeUninit<bool>>(source) }.unwrap();
+        let encoded = crate::encode(decoded);
+
+        assert_eq!(unsafe { encoded.assume_init() }, 2);
+    }
 
     // TODO: Enable
     //#[test]
