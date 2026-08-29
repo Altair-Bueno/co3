@@ -126,29 +126,6 @@ ffi! {
 ffi! {
     #![unsafe(export("C"))]
 
-    impl<'a, dyn(u8) T> Kita<'a> for T
-    where
-        use<T> @ (<&i16> | <&'_ i32> | <&'a u32>),
-    {
-        fn kita(self);
-    }
-}
-
-ffi! {
-    #![unsafe(extern("C"))]
-
-    impl<'a, dyn(u8) T> Kita<'a> for T
-    where
-        use<T> @ (<&i16> | <&'_ i32> | <&'a u32>),
-    {
-        #[symbol_name = "kita"]
-        fn kita(handle_id: <dyn T>::ID, self);
-    }
-}
-
-ffi! {
-    #![unsafe(export("C"))]
-
     pub fn optional<dyn(u8) T = u8>(#[soft] value: &Option<T>)
     where
         use<T> @ <u8>;

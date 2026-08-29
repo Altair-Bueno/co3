@@ -52,93 +52,81 @@ error: expected 1 concrete generic argument(s)
 120 |         use<T> @ <'a, u32>,
     |                  ^^^^^^^^^
 
-error: undeclared lifetime; consider using '_
-   --> tests/ui_fail/dispatch_restrictions.rs:131:42
-    |
-131 |         use<T> @ (<&i16> | <&'_ i32> | <&'a u32>),
-    |                                          ^^
-
-error: undeclared lifetime; consider using '_
-   --> tests/ui_fail/dispatch_restrictions.rs:142:42
-    |
-142 |         use<T> @ (<&i16> | <&'_ i32> | <&'a u32>),
-    |                                          ^^
-
 error: tagged-dispatch parameters cannot be used inside wrapper types
-   --> tests/ui_fail/dispatch_restrictions.rs:152:53
+   --> tests/ui_fail/dispatch_restrictions.rs:129:53
     |
-152 |     pub fn optional<dyn(u8) T = u8>(#[soft] value: &Option<T>)
+129 |     pub fn optional<dyn(u8) T = u8>(#[soft] value: &Option<T>)
     |                                                     ^^^^^^^^^
 
 error: tagged-dispatch parameters cannot be used inside wrapper types
-   --> tests/ui_fail/dispatch_restrictions.rs:160:53
+   --> tests/ui_fail/dispatch_restrictions.rs:137:53
     |
-160 |     pub fn optional<dyn(u8) T = u8>(#[soft] value: &Option<T>)
+137 |     pub fn optional<dyn(u8) T = u8>(#[soft] value: &Option<T>)
     |                                                     ^^^^^^^^^
 
 error: tagged-dispatch type parameters must use `dyn(TagTy) T`
-   --> tests/ui_fail/dispatch_restrictions.rs:168:10
+   --> tests/ui_fail/dispatch_restrictions.rs:145:10
     |
-168 |     impl<dyn T> Kita for T
+145 |     impl<dyn T> Kita for T
     |          ^^^
 
 error: tagged-dispatch type parameters must use `dyn(TagTy) T`
-   --> tests/ui_fail/dispatch_restrictions.rs:179:10
+   --> tests/ui_fail/dispatch_restrictions.rs:156:10
     |
-179 |     impl<dyn T> Kita for T
+156 |     impl<dyn T> Kita for T
     |          ^^^
 
 error: `dyn Self` is only supported for declared extern types
-   --> tests/ui_fail/dispatch_restrictions.rs:191:22
+   --> tests/ui_fail/dispatch_restrictions.rs:168:22
     |
-191 |     impl<T> Kita for dyn T
+168 |     impl<T> Kita for dyn T
     |                      ^^^^^
 
 error: `dyn Self` is only supported for declared extern types
-   --> tests/ui_fail/dispatch_restrictions.rs:202:22
+   --> tests/ui_fail/dispatch_restrictions.rs:179:22
     |
-202 |     impl<T> Kita for dyn T
+179 |     impl<T> Kita for dyn T
     |                      ^^^^^
 
 error: `<dyn Type>::ID` is not allowed in return position
-   --> tests/ui_fail/dispatch_restrictions.rs:221:47
+   --> tests/ui_fail/dispatch_restrictions.rs:198:47
     |
-221 |     fn kita(self, self_id: <dyn Self>::ID) -> <dyn T>::ID;
+198 |     fn kita(self, self_id: <dyn Self>::ID) -> <dyn T>::ID;
     |                                               ^^^^^^^^^^^
 
 error: `<dyn Type>::ID` is not allowed in return position
-   --> tests/ui_fail/dispatch_restrictions.rs:218:51
+   --> tests/ui_fail/dispatch_restrictions.rs:195:51
     |
-218 |         fn kita(self, self_id: <dyn Self>::ID) -> <dyn T>::ID;
+195 |         fn kita(self, self_id: <dyn Self>::ID) -> <dyn T>::ID;
     |                                                   ^^^^^^^^^^^
 
 error: `<dyn Type>::ID` is only allowed as a top-level function argument
-   --> tests/ui_fail/dispatch_restrictions.rs:232:33
+   --> tests/ui_fail/dispatch_restrictions.rs:209:33
     |
-232 |         fn kita(self, self_id: (<dyn Self>::ID,)) -> u32;
+209 |         fn kita(self, self_id: (<dyn Self>::ID,)) -> u32;
     |                                 ^
 
 error: `dyn Self` must contain exactly one trait bound
-   --> tests/ui_fail/dispatch_restrictions.rs:258:20
+   --> tests/ui_fail/dispatch_restrictions.rs:235:20
     |
-258 |     impl Trait for dyn Exported + Send {
+235 |     impl Trait for dyn Exported + Send {
     |                    ^^^^^^^^^^^^^^^^^^^
 
 error: `dyn Self` must contain exactly one trait bound
-   --> tests/ui_fail/dispatch_restrictions.rs:269:20
+   --> tests/ui_fail/dispatch_restrictions.rs:246:20
     |
-269 |     impl Trait for dyn Imported + Send {
+246 |     impl Trait for dyn Imported + Send {
     |                    ^^^^^^^^^^^^^^^^^^^
 
 error[E0119]: conflicting implementations of trait `RefKita` for type `Externed1`
-   --> tests/ui_fail/dispatch_restrictions.rs:236:1
+   --> tests/ui_fail/dispatch_restrictions.rs:213:1
     |
-236 | // ffi! {
-237 | ||     #![unsafe(extern("C"))]
-238 | ||     #![symbol_prefix = "kita"]
+213 | // ffi! {
+214 | ||     #![unsafe(extern("C"))]
+215 | ||     #![symbol_prefix = "kita"]
 ...   ||
-244 | ||     where
-245 | ||         use<T> @ (<Externed1> | <Externed1>),
+221 | ||     where
+222 | ||         use<T> @ (<Externed1> | <Externed1>),
     | ||____________________________-_____________^ conflicting implementation for `Externed1`
     | |_____________________________|
     |                               first implementation here

@@ -1,7 +1,7 @@
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 
 use proc_macro2::{Delimiter, Group, Ident, TokenStream, TokenTree};
-use quote::quote;
+use quote::{quote, quote_spanned};
 use syn::{
     Attribute, Error, FnArg, GenericArgument, GenericParam, ItemFn, ItemImpl, LitStr, PatType,
     Result, Type, TypePath,
@@ -60,29 +60,6 @@ pub(crate) enum ParsedItem {
 
 struct ConstGenericArgNormalizer {
     const_params: HashSet<syn::Ident>,
-}
-
-struct LifetimeArgValidator {
-    errors: Option<syn::Error>,
-}
-
-impl LifetimeArgValidator {
-    fn push(&mut self, err: syn::Error) {
-        if let Some(errors) = &mut self.errors {
-            errors.combine(err);
-        } else {
-            self.errors = Some(err);
-        }
-    }
-}
-
-impl Visit<'_> for LifetimeArgValidator {
-    fn visit_lifetime(&mut self, lifetime: &syn::Lifetime) {
-        if lifetime.ident != "_" {
-            let err = "undeclared lifetime; consider using '_";
-            self.push(syn::Error::new_spanned(lifetime, err));
-        }
-    }
 }
 
 impl VisitMut for ConstGenericArgNormalizer {
@@ -667,8 +644,6 @@ fn validate_dispatch_targets(
     generics: &syn::Generics,
     groups: &BTreeMap<Vec<syn::Ident>, Vec<syn::AngleBracketedGenericArguments>>,
 ) -> Result<()> {
-    let mut lifetime_validator = LifetimeArgValidator { errors: None };
-
     let mut errors = None::<syn::Error>;
     for (group, targets) in groups {
         let err_msg = format!("expected {} concrete generic argument(s)", group.len(),);
@@ -687,8 +662,6 @@ fn validate_dispatch_targets(
             }
 
             for (param, arg) in group.iter().zip(&target.args) {
-                lifetime_validator.visit_generic_argument(arg);
-
                 let matches_parameter_kind = generics.params.iter().any(|generic| match generic {
                     GenericParam::Type(generic) => {
                         generic.ident == *param && matches!(arg, GenericArgument::Type(_))
@@ -706,10 +679,6 @@ fn validate_dispatch_targets(
                 }
             }
         }
-    }
-
-    if let Some(lifetime_errors) = lifetime_validator.errors {
-        push_error(&mut errors, lifetime_errors);
     }
 
     errors.map_or(Ok(()), Err)
@@ -1182,7 +1151,7 @@ fn preprocess_dispatch_params(header: TokenStream) -> syn::Result<TokenStream> {
                     syn::Error::new(group.span(), "expected id repr in `dyn(TagTy) T`")
                 })?;
 
-                out.extend(quote!(#[erased(#repr)]));
+                out.extend(quote_spanned!(ident.span()=> #[erased(#repr)]));
                 at_param_start = true;
                 idx += 2;
             }
@@ -1210,8 +1179,16 @@ struct PreprocessedArg {
     tokens: TokenStream,
 }
 
-fn push_by_val(attrs: &mut Vec<Attribute>) {
-    attrs.push(parse_quote!(#[by_val]));
+fn push_by_val(attrs: &mut Vec<Attribute>, span: proc_macro2::Span) {
+    if !attrs.iter().any(|attr| attr.path().is_ident("by_val")) {
+        attrs.push(parse_quote_spanned!(span=> #[by_val]));
+    }
+}
+
+fn mark_reference_by_val(attrs: &mut Vec<Attribute>, ty: &Type) {
+    if let Type::Reference(reference) = ty {
+        push_by_val(attrs, reference.and_token.span);
+    }
 }
 
 fn parse_move_by_val(
@@ -1219,8 +1196,8 @@ fn parse_move_by_val(
     attrs: &mut Vec<Attribute>,
 ) -> syn::Result<bool> {
     if input.peek(syn::Token![move]) {
-        input.parse::<syn::Token![move]>()?;
-        push_by_val(attrs);
+        let move_token = input.parse::<syn::Token![move]>()?;
+        push_by_val(attrs, move_token.span);
         return Ok(true);
     }
 
@@ -1263,6 +1240,7 @@ impl PreprocessedArg {
             } else {
                 parse_quote!(Self)
             };
+            mark_reference_by_val(&mut merged_attrs, &ty);
 
             return Ok(Self {
                 tokens: quote!(#(#merged_attrs)* __co3_self: #ty),
@@ -1276,6 +1254,7 @@ impl PreprocessedArg {
                 input.parse::<syn::Token![self]>()?;
                 input.parse::<syn::Token![:]>()?;
                 let ty = input.parse::<Type>()?;
+                mark_reference_by_val(&mut merged_attrs, &ty);
 
                 return Ok(Self {
                     tokens: quote! { #(#merged_attrs)* __co3_self: #ty },
@@ -1286,6 +1265,7 @@ impl PreprocessedArg {
         let pat = syn::Pat::parse_single(input)?;
         let colon_token = input.parse::<syn::Token![:]>()?;
         let ty = input.parse::<Type>()?;
+        mark_reference_by_val(&mut merged_attrs, &ty);
         let arg = PatType {
             attrs: merged_attrs,
             pat: Box::new(pat),
@@ -1333,7 +1313,7 @@ fn preprocess_signature_tokens(
                     return Err(syn::Error::new(ident.span(), "duplicate `move fn`"));
                 }
                 by_val = true;
-                push_by_val(attrs);
+                push_by_val(attrs, ident.span());
                 continue;
             }
             if ident == "fn" {
