@@ -2,10 +2,7 @@ use std::collections::BTreeSet;
 
 use proc_macro2::TokenStream;
 use quote::{format_ident, quote};
-use syn::{
-    FnArg, ImplItem, ImplItemFn, ItemImpl, punctuated::Punctuated, visit::Visit,
-    visit_mut::VisitMut,
-};
+use syn::{FnArg, ImplItem, ImplItemFn, ItemImpl, punctuated::Punctuated, visit_mut::VisitMut};
 
 use crate::{
     Co3Fn, Co3Impl, DispatchGroups, ForeignItem, ForeignItemType, co3_path,
@@ -34,16 +31,29 @@ fn lift_dispatch_method(mut dispatch: Co3Impl) -> Co3Impl {
         unreachable!()
     };
     let method_generics = core::mem::take(&mut method.sig.generics);
-    dispatch.generics.params.extend(method_generics.params);
-    if let Some(where_clause) = method_generics.where_clause {
-        dispatch
-            .generics
-            .make_where_clause()
-            .predicates
-            .extend(where_clause.predicates);
-    }
+    dispatch.generics = combine_dispatch_generics(Some(&dispatch.generics), &method_generics);
 
     dispatch
+}
+
+/// Flattens the nested impl and method generic scopes for generated dispatch machinery.
+///
+/// Rust requires lifetime parameters to precede type and const parameters. Within those
+/// categories, keep the outer (impl) scope before the inner (method) scope and preserve each
+/// declaration's source order.
+fn combine_dispatch_generics(
+    impl_generics: Option<&syn::Generics>,
+    method_generics: &syn::Generics,
+) -> syn::Generics {
+    let mut combined = impl_generics.cloned().unwrap_or_default();
+    merge_generics(method_generics.clone(), &mut combined);
+
+    let (lifetimes, non_lifetimes): (Vec<_>, Vec<_>) = combined
+        .params
+        .into_iter()
+        .partition(|param| matches!(param, syn::GenericParam::Lifetime(_)));
+    combined.params = lifetimes.into_iter().chain(non_lifetimes).collect();
+    combined
 }
 
 fn split_dyn_methods(mut impl_: Co3Impl) -> (Co3Impl, Vec<Co3Impl>) {
@@ -313,7 +323,9 @@ fn dispatch_trait_args(
         .params
         .iter()
         .filter_map(|param| match param {
-            syn::GenericParam::Lifetime(_) => None,
+            syn::GenericParam::Lifetime(param) => {
+                Some(syn::GenericArgument::Lifetime(param.lifetime.clone()))
+            }
             syn::GenericParam::Type(param) => {
                 let ident = &param.ident;
                 Some::<syn::GenericArgument>(syn::parse_quote!(#ident))
@@ -326,7 +338,7 @@ fn dispatch_trait_args(
         .collect()
 }
 
-fn dispatch_trait_generics(generics: &syn::Generics) -> syn::Generics {
+fn dispatch_trait_generics(generics: &syn::Generics, args: &DispatchGroups) -> syn::Generics {
     let is_maybe_sized = |bound: &syn::TypeParamBound| {
         matches!(bound, syn::TypeParamBound::Trait(bound)
             if bound.maybe.is_some()
@@ -349,23 +361,42 @@ fn dispatch_trait_generics(generics: &syn::Generics) -> syn::Generics {
         })
         .cloned()
         .collect::<BTreeSet<_>>();
+    let dispatched_params = generics
+        .params
+        .iter()
+        .filter_map(|param| match param {
+            syn::GenericParam::Type(param) if args.contains_param(&param.ident) => {
+                Some(param.ident.clone())
+            }
+            syn::GenericParam::Const(param) if args.contains_param(&param.ident) => {
+                Some(param.ident.clone())
+            }
+            _ => None,
+        })
+        .collect::<BTreeSet<_>>();
 
     let mut trait_generics = generics.clone();
-    trait_generics.params = trait_generics
-        .params
-        .into_iter()
-        .filter(|param| !matches!(param, syn::GenericParam::Lifetime(_)))
-        .collect();
     trait_generics.type_params_mut().for_each(|param| {
         let is_maybe_sized =
             param.bounds.iter().any(&is_maybe_sized) || maybe_sized.contains(&param.ident);
         strip_internal_generic_param(param);
-        param.bounds.clear();
-        if is_maybe_sized {
-            param.bounds.push(syn::parse_quote!(?Sized));
+        if args.contains_param(&param.ident) {
+            param.bounds.clear();
+            if is_maybe_sized {
+                param.bounds.push(syn::parse_quote!(?Sized));
+            }
         }
     });
-    trait_generics.where_clause = None;
+    if let Some(where_clause) = &mut trait_generics.where_clause {
+        let dispatched = ParamUseDetector::new(&dispatched_params);
+        where_clause.predicates = core::mem::take(&mut where_clause.predicates)
+            .into_iter()
+            .filter(|predicate| !dispatched.predicate_mentions_param(predicate))
+            .collect();
+        if where_clause.predicates.is_empty() {
+            trait_generics.where_clause = None;
+        }
+    }
     trait_generics
 }
 
@@ -416,10 +447,7 @@ fn dispatch_delegate_sig(
     let mut sig = wrapper_sig.clone();
     normalize_fn_signature(&mut sig, self_ty);
     sig.ident = delegate_name.clone();
-    sig.generics.params = core::mem::take(&mut sig.generics.params)
-        .into_iter()
-        .filter(|param| matches!(param, syn::GenericParam::Lifetime(_)))
-        .collect();
+    sig.generics.params.clear();
     sig
 }
 
@@ -444,17 +472,7 @@ fn gen_dispatch_set(
     args: &DispatchGroups,
     delegate: Option<&DispatchSetDelegate<'_>>,
 ) -> TokenStream {
-    struct LifetimeCollector(BTreeSet<syn::Ident>);
-
-    impl<'ast> Visit<'ast> for LifetimeCollector {
-        fn visit_lifetime(&mut self, lifetime: &'ast syn::Lifetime) {
-            if lifetime.ident != "static" && lifetime.ident != "_" {
-                self.0.insert(lifetime.ident.clone());
-            }
-        }
-    }
-
-    let trait_generics = dispatch_trait_generics(generics);
+    let trait_generics = dispatch_trait_generics(generics, args);
     let trait_args = dispatch_trait_args(&trait_generics);
     let trait_where_clause = &trait_generics.where_clause;
     let trait_params = &trait_generics.params;
@@ -482,15 +500,7 @@ fn gen_dispatch_set(
                 monomorphizer.visit_generic_argument_mut(arg);
             });
         }
-        let mut used = LifetimeCollector(BTreeSet::new());
-        for arg in &selection_args {
-            used.visit_generic_argument(arg);
-        }
-
-        let lifetimes = generics
-            .lifetimes()
-            .filter(|param| used.0.contains(&param.lifetime.ident));
-        let lifetimes = lifetimes.collect::<Vec<_>>();
+        let lifetimes = generics.lifetimes().collect::<Vec<_>>();
         let auxiliary_params = generics
             .params
             .iter()
@@ -569,8 +579,8 @@ fn gen_dispatch_set(
             .unwrap_or_default();
 
         impls.push(quote! {
-            impl #impl_generics #sealed_module::Sealed<#selection_args> for () {}
-            impl #impl_generics #trait_name<#selection_args> for () {
+            impl #impl_generics #sealed_module::Sealed<#selection_args> for () #trait_where_clause {}
+            impl #impl_generics #trait_name<#selection_args> for () #trait_where_clause {
                 #dispatch_impl_items
             }
         });
@@ -841,16 +851,12 @@ fn prepare_dispatch_import(
     self_id: Option<&syn::Type>,
     symbol_fragments: &std::collections::BTreeMap<String, syn::LitStr>,
 ) -> DispatchImportParts {
-    let mut dispatch_generics = sig.generics.clone();
-    if let Some(impl_generics) = impl_generics {
-        merge_generics(impl_generics.clone(), &mut dispatch_generics);
-    }
-
-    // Dynamic parameters remain generic in the wrapper. Raw-signature
-    // normalization and anonymous dispatch lifetimes belong only to the extern
-    // declaration synthesized below.
+    // Dynamic parameters remain generic in the wrapper. Explicit source lifetimes are shared
+    // with the dispatch set; raw-signature normalization and additional anonymous dispatch
+    // lifetimes belong only to the extern declaration synthesized below.
     let mut wrapper_source_sig = sig.clone();
     ffi_fn::explicitize_signature_lifetimes(&mut wrapper_source_sig);
+    let dispatch_generics = combine_dispatch_generics(impl_generics, &wrapper_source_sig.generics);
     let mut extern_sig = sig.clone();
     normalize_fn_signature(&mut extern_sig, self_ty);
     let mut extern_args = dispatch_args.clone();
@@ -941,10 +947,7 @@ fn prepare_dynamic_dispatch_import(
     ffi_fn::explicitize_signature_lifetimes(&mut wrapper_source_sig);
     let mut args = dispatch_args.clone();
     args.inject_unnamed_lifetimes(&mut wrapper_source_sig.generics);
-    let mut dispatch_generics = wrapper_source_sig.generics.clone();
-    if let Some(impl_generics) = impl_generics {
-        merge_generics(impl_generics.clone(), &mut dispatch_generics);
-    }
+    let dispatch_generics = combine_dispatch_generics(impl_generics, &wrapper_source_sig.generics);
     let co3 = co3_path();
     let wrapper_sig = prepare_dispatch_wrapper_sig(&wrapper_source_sig, &dispatch_generics, &co3);
     let id_assignments = dispatch_id_assignments(&wrapper_source_sig, self_ty);

@@ -114,6 +114,24 @@ struct ErasedParamReplacer {
     payloadless_params: BTreeSet<syn::Ident>,
 }
 
+/// Searches through an otherwise opaque type path for indirection boundaries without erasing
+/// by-value occurrences of dynamic parameters.
+struct NestedIndirectionEraser<'a>(&'a mut ErasedParamReplacer);
+
+impl VisitMut for NestedIndirectionEraser<'_> {
+    fn visit_type_reference_mut(&mut self, node: &mut syn::TypeReference) {
+        self.0.visit_type_reference_mut(node);
+    }
+
+    fn visit_type_ptr_mut(&mut self, node: &mut syn::TypePtr) {
+        self.0.visit_type_ptr_mut(node);
+    }
+
+    fn visit_type_fn_ptr_mut(&mut self, _: &mut syn::TypeFnPtr) {
+        // Function pointer parameters are not pointees of the surrounding value.
+    }
+}
+
 impl ErasedParamReplacer {
     fn new(generics: &syn::Generics) -> Self {
         let erased_params = generics
@@ -222,6 +240,7 @@ impl VisitMut for ErasedParamReplacer {
         if let syn::Type::Path(path) = node
             && self.path_contains_payloadless(path)
         {
+            NestedIndirectionEraser(self).visit_type_path_mut(path);
             return;
         }
 
@@ -1549,12 +1568,32 @@ mod erased_param_replacer_tests {
             "& core :: ffi :: c_void"
         );
         assert_eq!(
+            erase(syn::parse_quote!(&mut MaybeUninit<T::Assoc>)),
+            "& mut core :: ffi :: c_void"
+        );
+        assert_eq!(
             erase(syn::parse_quote!(*mut T::Assoc)),
             "* mut core :: ffi :: c_void"
         );
         assert_eq!(
             erase(syn::parse_quote!(&<T as Trait>::Assoc)),
             "& core :: ffi :: c_void"
+        );
+    }
+
+    #[test]
+    fn finds_indirections_nested_inside_type_paths() {
+        assert_eq!(
+            erase(syn::parse_quote!(Option<&T::Assoc>)),
+            "Option < & core :: ffi :: c_void >"
+        );
+        assert_eq!(
+            erase(syn::parse_quote!(Option<&mut MaybeUninit<T::Assoc>>)),
+            "Option < & mut core :: ffi :: c_void >"
+        );
+        assert_eq!(
+            erase(syn::parse_quote!(Wrapper<fn(T::Assoc)>)),
+            "Wrapper < fn (T :: Assoc) >"
         );
     }
 
