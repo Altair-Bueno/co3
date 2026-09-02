@@ -4,74 +4,80 @@ error: explicit `impl Drop` is only allowed for declared types
 18 |     impl Drop for OpaqueType {
    |                   ^^^^^^^^^^
 
-error: explicit `impl Drop` is only allowed for declared types
-  --> tests/ui_fail/drop_impl_check.rs:28:19
+error: returning `Drop::drop` is supported only in extern declarations
+  --> tests/ui_fail/drop_impl_check.rs:29:28
    |
-28 |     impl Drop for ExternType {
+29 |         fn drop(&mut self) -> i16;
+   |                            ^^^^^^
+
+error: explicit `impl Drop` is only allowed for declared types
+  --> tests/ui_fail/drop_impl_check.rs:38:19
+   |
+38 |     impl Drop for ExternType {
    |                   ^^^^^^^^^^
 
 error: duplicate `impl Drop` declaration for opaque type
-  --> tests/ui_fail/drop_impl_check.rs:37:5
+  --> tests/ui_fail/drop_impl_check.rs:47:5
    |
-37 |     type First;
+47 |     type First;
    |     ^^^^^^^^^^^
 
 error: duplicate `impl Drop` declaration for opaque type
-  --> tests/ui_fail/drop_impl_check.rs:40:5
+  --> tests/ui_fail/drop_impl_check.rs:50:5
    |
-40 |     type Second;
+50 |     type Second;
    |     ^^^^^^^^^^^^
 
 error: duplicate `impl Drop` declaration for opaque type
-  --> tests/ui_fail/drop_impl_check.rs:61:5
+  --> tests/ui_fail/drop_impl_check.rs:71:5
    |
-61 |     type First;
+71 |     type First;
    |     ^^^^^^^^^^^
 
 error: duplicate `impl Drop` declaration for opaque type
-  --> tests/ui_fail/drop_impl_check.rs:64:5
+  --> tests/ui_fail/drop_impl_check.rs:74:5
    |
-64 |     type Second;
+74 |     type Second;
    |     ^^^^^^^^^^^^
 
 error: Drop for a parameterized exported type must use `dyn Self`
-  --> tests/ui_fail/drop_impl_check.rs:86:30
+  --> tests/ui_fail/drop_impl_check.rs:96:30
    |
-86 |     impl<dyn(u8) T> Drop for Opaque<T>
+96 |     impl<dyn(u8) T> Drop for Opaque<T>
    |                              ^^^^^^^^^
 
 error[E0367]: `Drop` impl requires `_::_::Export1<T>: Kita` but the struct it is implemented for does not
-   --> tests/ui_fail/drop_impl_check.rs:103:15
+   --> tests/ui_fail/drop_impl_check.rs:113:15
     |
-103 |         Self: Kita,
+113 |         Self: Kita,
     |               ^^^^
     |
 note: the implementor must specify the same requirement
-   --> tests/ui_fail/drop_impl_check.rs:94:1
+   --> tests/ui_fail/drop_impl_check.rs:104:1
     |
- 94 | / ffi! {
- 95 | |     #![unsafe(export("C"))]
- 96 | |
- 97 | |     #[unsafe(id(u32))]
- 98 | |     type Export1<T>;
+104 | / ffi! {
+105 | |     #![unsafe(export("C"))]
+106 | |
+107 | |     #[unsafe(id(u32))]
+108 | |     type Export1<T>;
     | |________________^
     = note: this error originates in the macro `ffi` (in Nightly builds, run with -Z macro-backtrace for more info)
 
 error[E0367]: `Drop` impl requires `Extern2<T>: Kita` but the struct it is implemented for does not
-   --> tests/ui_fail/drop_impl_check.rs:120:15
+   --> tests/ui_fail/drop_impl_check.rs:130:15
     |
-120 |         Self: Kita,
+130 |         Self: Kita,
     |               ^^^^
     |
 note: the implementor must specify the same requirement
-   --> tests/ui_fail/drop_impl_check.rs:110:1
+   --> tests/ui_fail/drop_impl_check.rs:120:1
     |
-110 | / ffi! {
-111 | |     #![unsafe(extern("C"))]
-112 | |
-113 | |     #![symbol_prefix = "kita"]
-114 | |
-115 | |     #[unsafe(id(u32))]
-116 | |     type Extern2<T>;
+120 | / ffi! {
+121 | |     #![unsafe(extern("C"))]
+122 | |
+123 | |     #![symbol_prefix = "kita"]
+124 | |
+125 | |     #[unsafe(id(u32))]
+126 | |     type Extern2<T>;
     | |________________^
     = note: this error originates in the macro `ffi` (in Nightly builds, run with -Z macro-backtrace for more info)

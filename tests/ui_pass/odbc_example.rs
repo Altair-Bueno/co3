@@ -44,7 +44,7 @@ ffi! {
             <SQL_OV_ODBC3_80>
         )
     {
-        fn drop(&mut self);
+        fn drop(&mut self) -> SQLSMALLINT;
     }
 }
 
@@ -74,12 +74,12 @@ co3::ffi! {
         use<T> @ <SQLHENV<V>>
     {
         #[symbol_name = "SQLFreeHandle"]
-        fn drop(&mut self);
+        fn drop(&mut self) -> SQLSMALLINT;
     }
 
     impl<V: OdbcVersion, DT> Drop for SQLHDESC<DT, V> {
         #[symbol_name = "SQLFreeHandle"]
-        fn drop(&mut self);
+        fn drop(&mut self) -> SQLSMALLINT;
     }
 
     #[symbol_name = "SQLAllocHandle"]

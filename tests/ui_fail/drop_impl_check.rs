@@ -21,6 +21,16 @@ ffi! {
 }
 
 ffi! {
+    #![unsafe(export("C"))]
+
+    type ReturningDrop;
+
+    impl Drop for ReturningDrop {
+        fn drop(&mut self) -> i16;
+    }
+}
+
+ffi! {
     #![unsafe(extern("C"))]
 
     #![symbol_prefix = "kita"]

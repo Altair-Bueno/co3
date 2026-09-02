@@ -322,17 +322,17 @@ fn dispatch_trait_args(
     generics
         .params
         .iter()
-        .filter_map(|param| match param {
+        .map(|param| match param {
             syn::GenericParam::Lifetime(param) => {
-                Some(syn::GenericArgument::Lifetime(param.lifetime.clone()))
+                syn::GenericArgument::Lifetime(param.lifetime.clone())
             }
             syn::GenericParam::Type(param) => {
                 let ident = &param.ident;
-                Some::<syn::GenericArgument>(syn::parse_quote!(#ident))
+                syn::parse_quote!(#ident)
             }
             syn::GenericParam::Const(param) => {
                 let ident = &param.ident;
-                Some(syn::GenericArgument::Const(syn::parse_quote!(#ident)))
+                syn::GenericArgument::Const(syn::parse_quote!(#ident))
             }
         })
         .collect()
@@ -1915,6 +1915,7 @@ fn expand_dispatch_drop_import(
     let self_handle_bound = self_handle_bound.then(|| quote!(Self: co3::handle::Handle,));
 
     let mut lowered_method = method.clone();
+    lowered_method.sig.output = syn::ReturnType::Default;
     let selector_assignments = lowered_method
         .sig
         .inputs

@@ -337,7 +337,7 @@ impl VisitMut for DispatchMonomorphizer<'_> {
                 rest.segments.push(segment.clone());
             }
 
-            *node = parse_quote!(<#subst>::#rest);
+            *node = parse_quote!(#subst::#rest);
         }
     }
 }

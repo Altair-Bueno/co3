@@ -14,7 +14,7 @@ use crate::{
     is_symbol_name_attr,
     parse::FailureMode,
     symbol_name_value,
-    utils::{co3_path, gen_store_name, soft_for_arg, strip_internal_generic_param},
+    utils::{co3_path, gen_store_name, is_drop_impl, soft_for_arg, strip_internal_generic_param},
 };
 
 pub(crate) fn strip_internal_arg_attrs(signature: &mut syn::Signature) {
@@ -100,6 +100,7 @@ pub fn wrap_impl_definition<const DISPATCHED: bool>(
     } = impl_;
 
     let trait_ = trait_.as_ref().map(|(path, _)| path);
+    let drop_impl = is_drop_impl(impl_);
     let defaultness = &modifiers.defaultness;
     let methods = items.iter().map(|item| {
         let syn::ImplItem::Fn(item) = item else {
@@ -114,9 +115,14 @@ pub fn wrap_impl_definition<const DISPATCHED: bool>(
             .iter()
             .filter(|attr| !is_symbol_name_attr(attr) && !is_by_val_attr(attr));
 
+        let mut wrapper_item = item.clone();
+        if drop_impl && matches!(item.sig.output, syn::ReturnType::Type(_, _)) {
+            sig.output = syn::ReturnType::Default;
+            wrapper_item.sig.output = syn::ReturnType::Default;
+        }
         let body = gen_impl_wrapper_body::<DISPATCHED>(
             failure_mode,
-            item,
+            &wrapper_item,
             self_ty,
             generics,
             erase_declared_receiver,
@@ -304,7 +310,6 @@ pub(crate) fn gen_wrapper_body_with_callee<const DISPATCHED: bool>(
         let return_derase = gen_return_derase::<DISPATCHED>(self_ty, dispatch_generics, output_ty);
         let return_borrow_check = gen_return_borrow_check(output_ty, fn_by_val);
         let decode_error = gen_return_decode_error(failure_mode, output_ty);
-        let ffi_fn_call = gen_ffi_fn_call(sig, &callee);
 
         return quote! {
             #return_borrow_check

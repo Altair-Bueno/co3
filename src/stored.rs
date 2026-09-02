@@ -72,7 +72,6 @@ disjoint_impls! {
     /// return references into the store. [`crate::soft_encode`] correctness relies on it.
     ///
     /// Prefer using [`crate::soft_encode`] whenever possible
-    ///
     pub unsafe trait EncodeOwned: ExternC<CType: Sized> + Sized {
         /// Auxiliary storage used during conversion. If storage is not used, set the type to `()`.
         ///

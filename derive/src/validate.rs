@@ -692,10 +692,15 @@ fn validate_export_impl(
     declared_types: &BTreeSet<syn::Ident>,
 ) -> Result<()> {
     let mut errors = None;
+    let drop_impl = is_drop_impl(&impl_.item);
     for item in &impl_.items {
         let syn::ImplItem::Fn(method) = item else {
             continue;
         };
+        if drop_impl && !matches!(method.sig.output, syn::ReturnType::Default) {
+            let err_msg = "returning `Drop::drop` is supported only in extern declarations";
+            push_error(&mut errors, Error::new_spanned(&method.sig.output, err_msg));
+        }
         if let Err(err) = validate_spread_export(&method.sig) {
             push_error(&mut errors, err);
         }
@@ -1653,11 +1658,6 @@ fn validate_drop_impl(impl_: &syn::ItemImpl) -> Result<()> {
     if method.sig.ident != "drop" {
         return Err(Error::new_spanned(&method.sig.ident, UNKNOWN_METHOD));
     }
-    if !matches!(method.sig.output, syn::ReturnType::Default) {
-        let err_msg = "`Drop::drop` must have no return type";
-        return Err(Error::new_spanned(&method.sig.output, err_msg));
-    }
-
     let mut was_receiver = false;
     for input in &method.sig.inputs {
         match input {
