@@ -12,6 +12,8 @@ trait Allocate: ToOwnedHandle {
     type Source: ?Sized;
 }
 
+trait Version {}
+
 ffi! {
     #![unsafe(extern("C"))]
 
@@ -21,6 +23,18 @@ ffi! {
     #[unsafe(id(HandleKind = 2))]
     type Child<'parent>;
 
+    #[unsafe(id(HandleKind = 3))]
+    type GenericParent<V: Version>;
+
+    #[unsafe(id(HandleKind = 4))]
+    type GenericChild<'parent, V: Version>;
+
+    #[unsafe(id(HandleKind = 5))]
+    type GenericOther<'parent, 'data, V: Version>;
+
+    #[unsafe(id(HandleKind = 6))]
+    type GenericRoot<V: Version>;
+
     impl Drop for dyn Parent {
         fn drop(&mut self);
     }
@@ -29,12 +43,32 @@ ffi! {
         fn drop(&mut self);
     }
 
-    fn allocate<'parent, dyn(HandleKind) H: Allocate>(
-        source: &'parent H::Source,
+    impl<V: Version> Drop for dyn GenericParent<V> {
+        fn drop(&mut self);
+    }
+
+    impl<V: Version> Drop for dyn GenericChild<'_, V> {
+        fn drop(&mut self);
+    }
+
+    impl<V: Version> Drop for dyn GenericOther<'_, '_, V> {
+        fn drop(&mut self);
+    }
+
+    impl<V: Version> Drop for dyn GenericRoot<V> {
+        fn drop(&mut self);
+    }
+
+    fn allocate_generic<'parent, dyn(HandleKind) H: Allocate, V: Version>(
+        source: Option<&'parent H::Source>,
         output: &mut MaybeUninit<H::Owned>,
     )
     where
-        use<H> @ <Child<'parent>>;
+        use<H> @ (
+            <GenericRoot<V>> |
+            <GenericChild<'parent, V>> |
+            <GenericOther<'_, '_, V>>
+        );
 }
 
 impl<'parent> ToOwnedHandle for Child<'parent> {
@@ -45,9 +79,28 @@ impl<'parent> Allocate for Child<'parent> {
     type Source = Parent;
 }
 
-fn allocate_child<'parent>(parent: &'parent Parent) {
-    let mut child = MaybeUninit::uninit();
-    allocate::<Child<'parent>>(parent, &mut child);
+impl<'parent, V: Version> ToOwnedHandle for GenericChild<'parent, V> {
+    type Owned = OwnedGenericChild<'parent, V>;
+}
+
+impl<'parent, V: Version> Allocate for GenericChild<'parent, V> {
+    type Source = GenericParent<V>;
+}
+
+impl<'parent, 'data, V: Version> ToOwnedHandle for GenericOther<'parent, 'data, V> {
+    type Owned = OwnedGenericOther<'parent, 'data, V>;
+}
+
+impl<'parent, 'data, V: Version> Allocate for GenericOther<'parent, 'data, V> {
+    type Source = GenericParent<V>;
+}
+
+impl<V: Version> ToOwnedHandle for GenericRoot<V> {
+    type Owned = OwnedGenericRoot<V>;
+}
+
+impl<V: Version> Allocate for GenericRoot<V> {
+    type Source = GenericParent<V>;
 }
 
 fn main() {}

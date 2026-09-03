@@ -969,14 +969,14 @@ fn validate_spread_export(sig: &syn::Signature) -> Result<()> {
 }
 
 fn validate_spread(sig: &syn::Signature, outer: Option<&syn::Generics>) -> Result<()> {
-    let parameters = outer
+    let payloadless_parameters = outer
         .into_iter()
         .flat_map(|generics| generics.type_params())
         .chain(sig.generics.type_params())
-        .filter(|param| param.attrs.iter().any(is_type_erased))
+        .filter(|param| param.attrs.iter().any(is_type_erased) && param.default.is_none())
         .map(|param| &param.ident)
         .collect::<Vec<_>>();
-    let detector = crate::utils::ParamUseDetector::new(parameters);
+    let detector = crate::utils::ParamUseDetector::new(payloadless_parameters);
 
     for input in &sig.inputs {
         let syn::FnArg::Typed(input) = input else {
@@ -986,8 +986,8 @@ fn validate_spread(sig: &syn::Signature, outer: Option<&syn::Generics>) -> Resul
             continue;
         };
         let (part1, part2) = spread_types(&input.attrs)?.expect("spread attribute was found");
-        let mentions_parameter = detector.type_mentions_param(&input.ty);
-        if mentions_parameter
+        let mentions_payloadless_parameter = detector.type_mentions_param(&input.ty);
+        if mentions_payloadless_parameter
             && (matches!(part1, syn::Type::Infer(_)) || matches!(part2, syn::Type::Infer(_)))
         {
             let err_msg = "runtime-dispatched #[spread] arguments cannot use `_` placeholders";

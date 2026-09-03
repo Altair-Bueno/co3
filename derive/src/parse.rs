@@ -1301,6 +1301,7 @@ fn preprocess_signature_tokens(
     let mut saw_inputs = false;
     let mut saw_fn = false;
     let mut by_val = false;
+    let mut angle_depth = 0usize;
     let mut signature_tokens = signature_tokens.into_iter().peekable();
     while let Some(tt) = signature_tokens.next() {
         if !saw_fn && let proc_macro2::TokenTree::Ident(ident) = &tt {
@@ -1320,8 +1321,17 @@ fn preprocess_signature_tokens(
                 saw_fn = true;
             }
         }
+        if let proc_macro2::TokenTree::Punct(punct) = &tt {
+            match punct.as_char() {
+                '<' => angle_depth += 1,
+                '>' => angle_depth = angle_depth.saturating_sub(1),
+                _ => {}
+            }
+        }
         if let proc_macro2::TokenTree::Group(group) = &tt
             && group.delimiter() == proc_macro2::Delimiter::Parenthesis
+            && saw_fn
+            && angle_depth == 0
             && !saw_inputs
         {
             let rewritten_args = preprocess_signature_inputs(group.stream())?;
@@ -1685,6 +1695,17 @@ mod tests {
                 .iter()
                 .any(|attr| attr.path().is_ident("erased"))
         );
+    }
+
+    #[test]
+    fn parses_tuple_default_before_function_inputs() {
+        let item =
+            Parser::parse_str(parse_fn_item, "fn name<dyn(u8) T = (u8, i8)>(value: T);").unwrap();
+
+        let syn::GenericParam::Type(param) = item.sig.generics.params.first().unwrap() else {
+            panic!("expected type param");
+        };
+        assert_eq!(param.default.as_ref().unwrap().1, parse_quote!((u8, i8)));
     }
 
     #[test]
