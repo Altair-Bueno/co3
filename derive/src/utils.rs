@@ -43,6 +43,16 @@ pub(crate) fn is_type_erased(attr: &Attribute) -> bool {
     attr.path().is_ident("erased")
 }
 
+pub(crate) fn is_payload_erased(param: &syn::TypeParam) -> bool {
+    param.attrs.iter().any(is_type_erased) && param.default.is_some()
+}
+
+pub(crate) fn has_runtime_dispatch(generics: &syn::Generics) -> bool {
+    generics
+        .type_params()
+        .any(|param| param.attrs.iter().any(is_type_erased))
+}
+
 pub(crate) fn strip_internal_generic_param(param: &mut syn::TypeParam) {
     let is_erased = param.attrs.iter().any(is_type_erased);
     param.attrs.retain(|attr| !is_type_erased(attr));

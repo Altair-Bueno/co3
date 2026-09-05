@@ -17,7 +17,8 @@ use crate::{
     },
     parse::FailureMode,
     utils::{
-        DispatchMonomorphizer, ParamUseDetector, erased_id_repr, is_drop_impl, is_type_erased,
+        DispatchMonomorphizer, ParamUseDetector, erased_id_repr, is_drop_impl, is_payload_erased,
+        is_type_erased,
     },
 };
 
@@ -481,7 +482,7 @@ pub(crate) fn gen_dispatch_erased_layout_checks(
     let layout_param_detector = ParamUseDetector::new(
         generics
             .type_params()
-            .filter(|p| p.attrs.iter().any(is_type_erased) && p.default.is_some())
+            .filter(|p| is_payload_erased(p))
             .map(|p| &p.ident),
     );
     let mut checks = Vec::new();
@@ -496,7 +497,7 @@ pub(crate) fn gen_dispatch_erased_layout_checks(
                 syn::FnArg::Typed(syn::PatType { attrs, ty, .. }) => (&attrs[..], &**ty),
             };
 
-            if handle_id(ty).is_some() {
+            if handle_id(ty).is_some() || is_spread_arg(attrs) {
                 continue;
             }
 
@@ -857,8 +858,10 @@ pub(crate) fn erase_dispatch_signature(
                     **ty = erased_params.replace((**ty).clone());
                 }
             }
-            syn::FnArg::Typed(syn::PatType { pat, ty, .. }) => {
-                **ty = erased_params.replace((**ty).clone());
+            syn::FnArg::Typed(syn::PatType { attrs, pat, ty, .. }) => {
+                if !is_spread_arg(attrs) {
+                    **ty = erased_params.replace((**ty).clone());
+                }
 
                 if receiver.is_dyn_self()
                     && (is_synthetic_receiver(pat)
@@ -1057,6 +1060,10 @@ fn gen_handle_retype_stmts(
                         && is_declared_self_type(receiver.ty().unwrap(), ty)),
             ),
         };
+
+        if is_spread_arg(attrs) {
+            continue;
+        }
 
         if !is_self && !detector.type_mentions_param(ty) {
             continue;

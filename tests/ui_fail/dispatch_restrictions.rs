@@ -126,22 +126,6 @@ ffi! {
 ffi! {
     #![unsafe(export("C"))]
 
-    pub fn optional<dyn(u8) T = u8>(#[soft] value: &Option<T>)
-    where
-        use<T> @ <u8>;
-}
-
-ffi! {
-    #![unsafe(extern("C"))]
-
-    pub fn optional<dyn(u8) T = u8>(#[soft] value: &Option<T>)
-    where
-        use<T> @ <u8>;
-}
-
-ffi! {
-    #![unsafe(export("C"))]
-
     impl<dyn T> Kita for T
     where
         use<T> @ <u32>,

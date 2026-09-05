@@ -9,12 +9,19 @@ use crate::{
     is_symbol_name_attr,
     parse::validate_symbol_text,
     symbol_name_value,
-    utils::{has_non_lifetime_generics, is_drop_impl, is_type_erased, push_error},
+    utils::{
+        has_non_lifetime_generics, has_runtime_dispatch, is_drop_impl, is_payload_erased,
+        is_type_erased, push_error,
+    },
 };
 
 const UNUSED_GENERIC_ERR: &str = "unused generic parameter";
 const GENERIC_USE_PREDICATE_ERR: &str = "unconstrained generic parameter";
-const DISPATCH_WRAPPER_ERR: &str = "tagged-dispatch parameters cannot be used inside wrapper types";
+const DISPATCH_OPAQUE_NESTING_ERR: &str =
+    "ABI-erased type parameters cannot be used through named wrappers or associated projections";
+const STATIC_DEFAULT_ERR: &str = "type defaults are only supported on `dyn(Tag) T` parameters";
+const OPEN_PAYLOAD_ERASURE_ERR: &str =
+    "ABI-erased runtime parameters must be constrained by a `use` predicate";
 const PARAMETERIZED_DROP_DECLARATION_ERR: &str =
     "parameterized types require an explicit Drop declaration";
 
@@ -455,22 +462,6 @@ fn is_type_param_path(ty: &syn::TypePath, type_params: &BTreeSet<&syn::Ident>) -
             .is_some_and(|ident| type_params.contains(ident))
 }
 
-struct TypeParamUseVisitor<'params, 'ident> {
-    type_params: &'params BTreeSet<&'ident syn::Ident>,
-    found: bool,
-}
-
-impl Visit<'_> for TypeParamUseVisitor<'_, '_> {
-    fn visit_type_path(&mut self, ty: &syn::TypePath) {
-        if is_type_param_path(ty, self.type_params) {
-            self.found = true;
-            return;
-        }
-
-        syn::visit::visit_type_path(self, ty);
-    }
-}
-
 pub(crate) fn validate_niche_value_sized_tail(fields: &syn::Fields) -> Result<()> {
     fn peel_type(ty: &syn::Type) -> &syn::Type {
         match ty {
@@ -579,7 +570,7 @@ fn validate_extern_static(item: &Co3Static) -> Result<()> {
 }
 
 fn validate_extern_fn(item: &crate::Co3Fn) -> Result<()> {
-    if item.dispatch_args.is_empty() && !has_payload_dispatch(&item.sig.generics) {
+    if item.dispatch_args.is_empty() && !has_runtime_dispatch(&item.sig.generics) {
         return Ok(());
     }
     let params = item
@@ -591,14 +582,14 @@ fn validate_extern_fn(item: &crate::Co3Fn) -> Result<()> {
 }
 
 fn validate_extern_impl(impl_: &crate::Co3Impl) -> Result<()> {
-    let impl_dispatch = !impl_.dispatch_args.is_empty() || has_payload_dispatch(&impl_.generics);
+    let impl_dispatch = !impl_.dispatch_args.is_empty() || has_runtime_dispatch(&impl_.generics);
     let mut errors = None;
     for item in &impl_.items {
         let syn::ImplItem::Fn(method) = item else {
             continue;
         };
         let method_dispatch = impl_.method_dispatch_args.contains_key(&method.sig.ident)
-            || has_payload_dispatch(&method.sig.generics);
+            || has_runtime_dispatch(&method.sig.generics);
         if !impl_dispatch && !method_dispatch {
             continue;
         }
@@ -778,6 +769,16 @@ fn validate_shared(items: &[crate::ForeignItem]) -> Result<()> {
     errors.map_or(Ok(()), Err)
 }
 
+fn validate_type_param_defaults(generics: &syn::Generics) -> Result<()> {
+    let mut errors = None;
+    for param in generics.type_params() {
+        if param.default.is_some() && !param.attrs.iter().any(is_type_erased) {
+            push_error(&mut errors, Error::new_spanned(param, STATIC_DEFAULT_ERR));
+        }
+    }
+    errors.map_or(Ok(()), Err)
+}
+
 fn validate_blanket_dyn_impls(items: &[crate::ForeignItem]) -> Result<()> {
     validate_impls(items, |impl_| {
         let Some(bound) = crate::trait_object_single_trait_bound(&impl_.self_ty) else {
@@ -849,6 +850,9 @@ fn validate_packed_dyn_self_decls(items: &[crate::ForeignItem]) -> Result<()> {
 
 fn validate_shared_fn(item: &crate::Co3Fn) -> Result<()> {
     let mut errors = None;
+    if let Err(err) = validate_type_param_defaults(&item.sig.generics) {
+        push_error(&mut errors, err);
+    }
     if let Err(err) = validate_spread(&item.sig, None) {
         push_error(&mut errors, err);
     }
@@ -863,7 +867,7 @@ fn validate_shared_fn(item: &crate::Co3Fn) -> Result<()> {
             .sig
             .generics
             .type_params()
-            .filter(|param| param.attrs.iter().any(is_type_erased) && param.default.is_some());
+            .filter(|param| is_payload_erased(param));
         if let Err(err) = validate_dispatch_param_positions(params, &item.sig) {
             push_error(&mut errors, err);
         }
@@ -873,6 +877,9 @@ fn validate_shared_fn(item: &crate::Co3Fn) -> Result<()> {
 
 fn validate_shared_impl(impl_: &crate::Co3Impl) -> Result<()> {
     let mut errors = None;
+    if let Err(err) = validate_type_param_defaults(&impl_.generics) {
+        push_error(&mut errors, err);
+    }
     for attr in &impl_.attrs {
         if !attr.path().is_ident("erased") && !is_cfg_attr(attr) {
             push_error(&mut errors, unsupported_attr(attr));
@@ -884,6 +891,9 @@ fn validate_shared_impl(impl_: &crate::Co3Impl) -> Result<()> {
             continue;
         };
         let sig = &method.sig;
+        if let Err(err) = validate_type_param_defaults(&sig.generics) {
+            push_error(&mut errors, err);
+        }
         let method_dispatch = impl_.method_dispatch_args.get(&sig.ident);
         if let Err(err) = validate_spread(sig, Some(&impl_.generics)) {
             push_error(&mut errors, err);
@@ -905,16 +915,11 @@ fn validate_shared_impl(impl_: &crate::Co3Impl) -> Result<()> {
             let params = impl_
                 .generics
                 .type_params()
-                .filter(|param| {
-                    impl_dispatch
-                        && param.attrs.iter().any(is_type_erased)
-                        && param.default.is_some()
-                })
+                .filter(|param| impl_dispatch && is_payload_erased(param))
                 .chain(sig.generics.type_params().filter(|param| {
                     (method_dispatch.is_some_and(|args| !args.is_empty())
                         || has_payload_dispatch(&sig.generics))
-                        && param.attrs.iter().any(is_type_erased)
-                        && param.default.is_some()
+                        && is_payload_erased(param)
                 }));
             if let Err(err) = validate_dispatch_param_positions(params, sig) {
                 push_error(&mut errors, err);
@@ -974,14 +979,14 @@ fn validate_spread_export(sig: &syn::Signature) -> Result<()> {
 }
 
 fn validate_spread(sig: &syn::Signature, outer: Option<&syn::Generics>) -> Result<()> {
-    let payloadless_parameters = outer
+    let runtime_parameters = outer
         .into_iter()
         .flat_map(|generics| generics.type_params())
         .chain(sig.generics.type_params())
-        .filter(|param| param.attrs.iter().any(is_type_erased) && param.default.is_none())
+        .filter(|param| param.attrs.iter().any(is_type_erased))
         .map(|param| &param.ident)
         .collect::<Vec<_>>();
-    let detector = crate::utils::ParamUseDetector::new(payloadless_parameters);
+    let detector = crate::utils::ParamUseDetector::new(runtime_parameters);
 
     for input in &sig.inputs {
         let syn::FnArg::Typed(input) = input else {
@@ -991,8 +996,8 @@ fn validate_spread(sig: &syn::Signature, outer: Option<&syn::Generics>) -> Resul
             continue;
         };
         let (part1, part2) = spread_types(&input.attrs)?.expect("spread attribute was found");
-        let mentions_payloadless_parameter = detector.type_mentions_param(&input.ty);
-        if mentions_payloadless_parameter
+        let mentions_runtime_parameter = detector.type_mentions_param(&input.ty);
+        if mentions_runtime_parameter
             && (matches!(part1, syn::Type::Infer(_)) || matches!(part2, syn::Type::Infer(_)))
         {
             let err_msg = "runtime-dispatched #[spread] arguments cannot use `_` placeholders";
@@ -1264,17 +1269,40 @@ fn validate_callable_parameter_bounds(
     declared_types: &BTreeSet<syn::Ident>,
     require_dispatch: bool,
 ) -> Result<()> {
+    fn runtime_param_has_stable_abi(param: &syn::Ident, sig: &syn::Signature) -> bool {
+        let detector = crate::utils::ParamUseDetector::new([param]);
+        let mut represented = false;
+
+        for input in &sig.inputs {
+            let syn::FnArg::Typed(input) = input else {
+                continue;
+            };
+            if matches!(handle_id(&input.ty), Some(HandleId::DynType(ident)) if ident == param) {
+                represented = true;
+                continue;
+            }
+            if input.attrs.iter().any(is_spread_attr) && detector.type_mentions_param(&input.ty) {
+                represented = true;
+                continue;
+            }
+            if detector.type_mentions_param(&input.ty) {
+                return false;
+            }
+        }
+
+        represented
+            && !matches!(&sig.output, syn::ReturnType::Type(_, ty) if detector.type_mentions_param(ty))
+    }
+
     let mut errors = None;
     for param in &local_generics.params {
         if let syn::GenericParam::Type(param) = param
             && is_open_payload_dispatch_param(param, local_dispatch)
         {
-            if require_dispatch {
-                push_error(
-                    &mut errors,
-                    Error::new_spanned(&param.ident, GENERIC_USE_PREDICATE_ERR),
-                );
-            }
+            push_error(
+                &mut errors,
+                Error::new_spanned(&param.ident, OPEN_PAYLOAD_ERASURE_ERR),
+            );
             continue;
         }
         let (ident, dynamic) = match param {
@@ -1285,6 +1313,10 @@ fn validate_callable_parameter_bounds(
             syn::GenericParam::Lifetime(_) => continue,
         };
         if local_dispatch.contains_param(ident) {
+            continue;
+        }
+
+        if dynamic && !require_dispatch && runtime_param_has_stable_abi(ident, sig) {
             continue;
         }
 
@@ -1370,12 +1402,10 @@ fn validate_impl_generic_bounds(
         if let syn::GenericParam::Type(param) = param
             && is_open_payload_dispatch_param(param, &impl_.dispatch_args)
         {
-            if require_dispatch {
-                push_error(
-                    &mut errors,
-                    Error::new_spanned(&param.ident, GENERIC_USE_PREDICATE_ERR),
-                );
-            }
+            push_error(
+                &mut errors,
+                Error::new_spanned(&param.ident, OPEN_PAYLOAD_ERASURE_ERR),
+            );
             continue;
         }
 
@@ -1403,18 +1433,14 @@ fn validate_impl_generic_bounds(
 }
 
 fn has_payload_dispatch(generics: &syn::Generics) -> bool {
-    generics
-        .type_params()
-        .any(|param| param.attrs.iter().any(is_type_erased) && param.default.is_some())
+    generics.type_params().any(is_payload_erased)
 }
 
 fn is_open_payload_dispatch_param(
     param: &syn::TypeParam,
     dispatch: &crate::DispatchGroups,
 ) -> bool {
-    param.attrs.iter().any(is_type_erased)
-        && param.default.is_some()
-        && !dispatch.contains_param(&param.ident)
+    is_payload_erased(param) && !dispatch.contains_param(&param.ident)
 }
 
 fn impl_param_use(
@@ -1638,34 +1664,15 @@ fn validate_dispatch_param_positions<'a>(
     impl Visit<'_> for DispatchParamPositionValidator<'_> {
         fn visit_type_path(&mut self, ty: &syn::TypePath) {
             if is_type_param_path(ty, &self.params) {
-                return syn::visit::visit_type_path(self, ty);
-            }
-
-            let first_seg = ty.path.segments.first();
-            let is_associated_type_of_param = first_seg
-                .is_some_and(|seg| self.params.contains(&seg.ident))
-                || ty.qself.as_ref().is_some_and(|qself| {
-                    let mut visitor = TypeParamUseVisitor {
-                        type_params: &self.params,
-                        found: false,
-                    };
-                    visitor.visit_type(&qself.ty);
-                    visitor.found
-                });
-            if is_associated_type_of_param {
-                let err = Error::new_spanned(ty, DISPATCH_WRAPPER_ERR);
-                push_error(&mut self.errors, err);
                 return;
             }
 
-            let mut visitor = TypeParamUseVisitor {
-                type_params: &self.params,
-                found: false,
-            };
-            visitor.visit_type_path(ty);
-            if visitor.found {
-                let err = Error::new_spanned(ty, DISPATCH_WRAPPER_ERR);
-                push_error(&mut self.errors, err);
+            let detector = crate::utils::ParamUseDetector::new(self.params.iter().copied());
+            if detector.type_mentions_param(&syn::Type::Path(ty.clone())) {
+                push_error(
+                    &mut self.errors,
+                    Error::new_spanned(ty, DISPATCH_OPAQUE_NESTING_ERR),
+                );
                 return;
             }
 
@@ -1681,10 +1688,16 @@ fn validate_dispatch_param_positions<'a>(
     for input in &sig.inputs {
         let ty = match input {
             syn::FnArg::Receiver(_) => continue,
-            syn::FnArg::Typed(arg) => &arg.ty,
+            syn::FnArg::Typed(arg) => {
+                if arg.attrs.iter().any(is_spread_attr) {
+                    continue;
+                }
+                &arg.ty
+            }
         };
-
-        validator.visit_type(ty);
+        if handle_id(ty).is_none() {
+            validator.visit_type(ty);
+        }
     }
 
     if let syn::ReturnType::Type(_, ty) = &sig.output {
@@ -1828,7 +1841,7 @@ mod tests {
         let sig: syn::Signature = syn::parse_quote!(fn dispatch(value: T::Assoc));
 
         let err = validate_dispatch_param_positions([&param].into_iter(), &sig).unwrap_err();
-        assert!(err.to_string().contains(DISPATCH_WRAPPER_ERR));
+        assert!(err.to_string().contains(DISPATCH_OPAQUE_NESTING_ERR));
     }
 
     #[test]
@@ -1837,7 +1850,54 @@ mod tests {
         let sig: syn::Signature = syn::parse_quote!(fn dispatch(value: <T as Trait>::Assoc));
 
         let err = validate_dispatch_param_positions([&param].into_iter(), &sig).unwrap_err();
-        assert!(err.to_string().contains(DISPATCH_WRAPPER_ERR));
+        assert!(err.to_string().contains(DISPATCH_OPAQUE_NESTING_ERR));
+    }
+
+    #[test]
+    fn rejects_dispatch_param_inside_wrapper() {
+        let param: syn::TypeParam = syn::parse_quote!(T = u8);
+        let sig: syn::Signature = syn::parse_quote!(fn dispatch(value: Option<(u32, T)>));
+
+        let err = validate_dispatch_param_positions([&param].into_iter(), &sig).unwrap_err();
+        assert!(err.to_string().contains(DISPATCH_OPAQUE_NESTING_ERR));
+    }
+
+    #[test]
+    fn accepts_dispatch_param_in_structural_containers() {
+        let param: syn::TypeParam = syn::parse_quote!(T = u8);
+        let sig: syn::Signature = syn::parse_quote!(fn dispatch(value: &(u32, [T; 2])));
+
+        validate_dispatch_param_positions([&param].into_iter(), &sig).unwrap();
+    }
+
+    #[test]
+    fn accepts_dispatch_param_projection_in_spread_argument() {
+        let param: syn::TypeParam = syn::parse_quote!(T = u8);
+        let sig: syn::Signature = syn::parse_quote!(
+            fn dispatch(#[spread(u32, u32)] value: <T as Trait>::Assoc)
+        );
+
+        validate_dispatch_param_positions([&param].into_iter(), &sig).unwrap();
+    }
+
+    #[test]
+    fn accepts_open_runtime_param_used_by_explicit_spread() {
+        let generics: syn::Generics = syn::parse_quote!(<#[erased(u8)] A>);
+        let sig: syn::Signature = syn::parse_quote!(
+            fn dispatch(
+                tag: <dyn A>::ID,
+                #[spread(*const core::ffi::c_void, usize)] value: A::Value,
+            )
+        );
+
+        validate_callable_parameter_bounds(
+            &generics,
+            &crate::DispatchGroups::default(),
+            &sig,
+            &BTreeSet::new(),
+            false,
+        )
+        .unwrap();
     }
 
     #[test]

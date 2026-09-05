@@ -829,9 +829,7 @@ fn synthesize_dispatch_handle_ids_in_decls(items: &mut [ForeignItem]) -> Result<
                 .sig
                 .generics
                 .type_params()
-                .any(|param| {
-                    param.attrs.iter().any(utils::is_type_erased) && param.default.is_some()
-                })
+                .any(|param| param.attrs.iter().any(utils::is_type_erased))
                 .then(|| method.sig.ident.clone())
         }));
 
@@ -844,11 +842,7 @@ fn synthesize_dispatch_handle_ids_in_decls(items: &mut [ForeignItem]) -> Result<
             }
         }
 
-        if !impl_.dispatch_args.is_empty()
-            || generics.type_params().any(|param| {
-                param.attrs.iter().any(utils::is_type_erased) && param.default.is_some()
-            })
-        {
+        if !impl_.dispatch_args.is_empty() || utils::has_runtime_dispatch(&generics) {
             for item in &mut impl_.items {
                 let syn::ImplItem::Fn(method) = item else {
                     continue;
@@ -888,9 +882,7 @@ fn synthesize_dispatch_handle_ids_in_decls(items: &mut [ForeignItem]) -> Result<
             ForeignItem::Impl(impl_) => synthesize_impl(impl_, &declared_types)?,
             ForeignItem::Fn(item)
                 if !item.dispatch_args.is_empty()
-                    || item.sig.generics.type_params().any(|param| {
-                        param.attrs.iter().any(utils::is_type_erased) && param.default.is_some()
-                    }) =>
+                    || utils::has_runtime_dispatch(&item.sig.generics) =>
             {
                 let generics = item.sig.generics.clone();
                 synthesize_dispatch_handle_ids(None, &generics, &mut item.sig.inputs);

@@ -38,6 +38,14 @@ ffi! {
     fn missing_spread_try<dyn(u8) T>(#[try_spread(_, _)] value: &[T])
     where
         use<T> @ <u32>;
+
+    fn missing_payload_spread<dyn(u8) T = (u8, u8)>(#[spread(_, _)] value: T)
+    where
+        use<T> @ <(u8, u8)>;
+
+    fn missing_payload_spread_try<dyn(u8) T = (u8, u8)>(#[try_spread(_, _)] value: T)
+    where
+        use<T> @ <(u8, u8)>;
 }
 
 fn main() {}

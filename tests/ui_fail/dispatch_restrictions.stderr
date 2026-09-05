@@ -52,81 +52,69 @@ error: expected 1 concrete generic argument(s)
 120 |         use<T> @ <'a, u32>,
     |                  ^^^^^^^^^
 
-error: tagged-dispatch parameters cannot be used inside wrapper types
-   --> tests/ui_fail/dispatch_restrictions.rs:129:53
-    |
-129 |     pub fn optional<dyn(u8) T = u8>(#[soft] value: &Option<T>)
-    |                                                     ^^^^^^^^^
-
-error: tagged-dispatch parameters cannot be used inside wrapper types
-   --> tests/ui_fail/dispatch_restrictions.rs:137:53
-    |
-137 |     pub fn optional<dyn(u8) T = u8>(#[soft] value: &Option<T>)
-    |                                                     ^^^^^^^^^
-
 error: tagged-dispatch type parameters must use `dyn(TagTy) T`
-   --> tests/ui_fail/dispatch_restrictions.rs:145:10
+   --> tests/ui_fail/dispatch_restrictions.rs:129:10
     |
-145 |     impl<dyn T> Kita for T
+129 |     impl<dyn T> Kita for T
     |          ^^^
 
 error: tagged-dispatch type parameters must use `dyn(TagTy) T`
-   --> tests/ui_fail/dispatch_restrictions.rs:156:10
+   --> tests/ui_fail/dispatch_restrictions.rs:140:10
     |
-156 |     impl<dyn T> Kita for T
+140 |     impl<dyn T> Kita for T
     |          ^^^
 
 error: `dyn Self` is only supported for declared extern types
-   --> tests/ui_fail/dispatch_restrictions.rs:168:22
+   --> tests/ui_fail/dispatch_restrictions.rs:152:22
     |
-168 |     impl<T> Kita for dyn T
+152 |     impl<T> Kita for dyn T
     |                      ^^^^^
 
 error: `dyn Self` is only supported for declared extern types
-   --> tests/ui_fail/dispatch_restrictions.rs:179:22
+   --> tests/ui_fail/dispatch_restrictions.rs:163:22
     |
-179 |     impl<T> Kita for dyn T
+163 |     impl<T> Kita for dyn T
     |                      ^^^^^
 
 error: `<dyn Type>::ID` is not allowed in return position
-   --> tests/ui_fail/dispatch_restrictions.rs:198:47
+   --> tests/ui_fail/dispatch_restrictions.rs:182:47
     |
-198 |     fn kita(self, self_id: <dyn Self>::ID) -> <dyn T>::ID;
+182 |     fn kita(self, self_id: <dyn Self>::ID) -> <dyn T>::ID;
     |                                               ^^^^^^^^^^^
 
 error: `<dyn Type>::ID` is not allowed in return position
-   --> tests/ui_fail/dispatch_restrictions.rs:195:51
+   --> tests/ui_fail/dispatch_restrictions.rs:179:51
     |
-195 |         fn kita(self, self_id: <dyn Self>::ID) -> <dyn T>::ID;
+179 |         fn kita(self, self_id: <dyn Self>::ID) -> <dyn T>::ID;
     |                                                   ^^^^^^^^^^^
 
 error: `<dyn Type>::ID` is only allowed as a top-level function argument
-   --> tests/ui_fail/dispatch_restrictions.rs:209:33
+   --> tests/ui_fail/dispatch_restrictions.rs:193:33
     |
-209 |         fn kita(self, self_id: (<dyn Self>::ID,)) -> u32;
+193 |         fn kita(self, self_id: (<dyn Self>::ID,)) -> u32;
     |                                 ^
 
 error: `dyn Self` must contain exactly one trait bound
-   --> tests/ui_fail/dispatch_restrictions.rs:235:20
+   --> tests/ui_fail/dispatch_restrictions.rs:219:20
     |
-235 |     impl Trait for dyn Exported + Send {
+219 |     impl Trait for dyn Exported + Send {
     |                    ^^^^^^^^^^^^^^^^^^^
 
 error: `dyn Self` must contain exactly one trait bound
-   --> tests/ui_fail/dispatch_restrictions.rs:246:20
+   --> tests/ui_fail/dispatch_restrictions.rs:230:20
     |
-246 |     impl Trait for dyn Imported + Send {
+230 |     impl Trait for dyn Imported + Send {
     |                    ^^^^^^^^^^^^^^^^^^^
 
 error[E0119]: conflicting implementations of trait `RefKita` for type `Externed1`
-   --> tests/ui_fail/dispatch_restrictions.rs:213:1
+   --> tests/ui_fail/dispatch_restrictions.rs:197:1
     |
-213 | // ffi! {
-214 | ||     #![unsafe(extern("C"))]
-215 | ||     #![symbol_prefix = "kita"]
+197 | // ffi! {
+198 | ||     #![unsafe(extern("C"))]
+199 | ||     #![symbol_prefix = "kita"]
 ...   ||
-221 | ||     where
-222 | ||         use<T> @ (<Externed1> | <Externed1>),
+205 | ||     where
+206 | ||         use<T> @ (<Externed1> | <Externed1>),
     | ||____________________________-_____________^ conflicting implementation for `Externed1`
     | |_____________________________|
     |                               first implementation here

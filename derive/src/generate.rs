@@ -18,7 +18,8 @@ use crate::{
     trait_object_single_trait_bound,
     utils::{
         DispatchMonomorphizer, ParamUseDetector, cfg_attrs, erased_id_repr,
-        has_non_lifetime_generics, is_type_erased, soft_for_arg, strip_internal_generic_param,
+        has_non_lifetime_generics, has_runtime_dispatch, is_payload_erased, is_type_erased,
+        soft_for_arg, strip_internal_generic_param,
     },
     wrapper::{
         gen_extern_decl, gen_impl_wrapper_body, gen_wrapper_body, gen_wrapper_body_with_callee,
@@ -66,7 +67,7 @@ fn split_dyn_methods(mut impl_: Co3Impl) -> (Co3Impl, Vec<Co3Impl>) {
             continue;
         };
         let method_dispatch_args = impl_.method_dispatch_args.remove(&method.sig.ident);
-        if method_dispatch_args.is_none() && !has_payload_dispatch(&method.sig.generics) {
+        if method_dispatch_args.is_none() && !has_runtime_dispatch(&method.sig.generics) {
             plain_items.push(syn::ImplItem::Fn(method));
             continue;
         }
@@ -316,12 +317,6 @@ fn has_static_dispatch(generics: &syn::Generics, args: &DispatchGroups) -> bool 
     })
 }
 
-fn has_payload_dispatch(generics: &syn::Generics) -> bool {
-    generics
-        .type_params()
-        .any(|param| param.attrs.iter().any(is_type_erased) && param.default.is_some())
-}
-
 /// Builds the dispatch-set generic arguments in source declaration order.
 fn dispatch_trait_args(
     generics: &syn::Generics,
@@ -345,65 +340,11 @@ fn dispatch_trait_args(
         .collect()
 }
 
-fn dispatch_trait_generics(generics: &syn::Generics, args: &DispatchGroups) -> syn::Generics {
-    let is_maybe_sized = |bound: &syn::TypeParamBound| {
-        matches!(bound, syn::TypeParamBound::Trait(bound)
-            if bound.maybe.is_some()
-                && bound.path.is_ident("Sized"))
-    };
-    let maybe_sized = generics
-        .where_clause
-        .iter()
-        .flat_map(|clause| &clause.predicates)
-        .filter_map(|predicate| match predicate {
-            syn::WherePredicate::Type(predicate)
-                if predicate.bounds.iter().any(&is_maybe_sized) =>
-            {
-                let syn::Type::Path(ty) = &predicate.bounded_ty else {
-                    return None;
-                };
-                ty.qself.is_none().then(|| ty.path.get_ident()).flatten()
-            }
-            _ => None,
-        })
-        .cloned()
-        .collect::<BTreeSet<_>>();
-    let dispatched_params = generics
-        .params
-        .iter()
-        .filter_map(|param| match param {
-            syn::GenericParam::Type(param) if args.contains_param(&param.ident) => {
-                Some(param.ident.clone())
-            }
-            syn::GenericParam::Const(param) if args.contains_param(&param.ident) => {
-                Some(param.ident.clone())
-            }
-            _ => None,
-        })
-        .collect::<BTreeSet<_>>();
-
+fn dispatch_trait_generics(generics: &syn::Generics, _args: &DispatchGroups) -> syn::Generics {
     let mut trait_generics = generics.clone();
-    trait_generics.type_params_mut().for_each(|param| {
-        let is_maybe_sized =
-            param.bounds.iter().any(&is_maybe_sized) || maybe_sized.contains(&param.ident);
-        strip_internal_generic_param(param);
-        if args.contains_param(&param.ident) {
-            param.bounds.clear();
-            if is_maybe_sized {
-                param.bounds.push(syn::parse_quote!(?Sized));
-            }
-        }
-    });
-    if let Some(where_clause) = &mut trait_generics.where_clause {
-        let dispatched = ParamUseDetector::new(&dispatched_params);
-        where_clause.predicates = core::mem::take(&mut where_clause.predicates)
-            .into_iter()
-            .filter(|predicate| !dispatched.predicate_mentions_param(predicate))
-            .collect();
-        if where_clause.predicates.is_empty() {
-            trait_generics.where_clause = None;
-        }
-    }
+    trait_generics
+        .type_params_mut()
+        .for_each(strip_internal_generic_param);
     trait_generics
 }
 
@@ -508,7 +449,7 @@ fn gen_dispatch_set(
             });
         }
         let lifetimes = generics.lifetimes().collect::<Vec<_>>();
-        let auxiliary_params = generics
+        let mut auxiliary_params = generics
             .params
             .iter()
             .filter_map(|param| match param {
@@ -525,6 +466,51 @@ fn gen_dispatch_set(
                 _ => None,
             })
             .collect::<Vec<_>>();
+        auxiliary_params
+            .iter_mut()
+            .for_each(|param| monomorphizer.visit_generic_param_mut(param));
+        let mut impl_where_clause = trait_generics.where_clause.clone();
+        if let Some(where_clause) = &mut impl_where_clause {
+            monomorphizer.visit_where_clause_mut(where_clause);
+        }
+        if let Some(self_ty) = delegate.and_then(|delegate| delegate.self_ty) {
+            auxiliary_params.iter_mut().for_each(|param| {
+                ffi_fn::SelfConcretizer { self_ty }.visit_generic_param_mut(param);
+                monomorphizer.visit_generic_param_mut(param);
+            });
+            if let Some(where_clause) = &mut impl_where_clause {
+                ffi_fn::SelfConcretizer { self_ty }.visit_where_clause_mut(where_clause);
+                monomorphizer.visit_where_clause_mut(where_clause);
+            }
+        }
+        if let Some(where_clause) = &mut impl_where_clause {
+            let auxiliary_idents = auxiliary_params.iter().filter_map(|param| match param {
+                syn::GenericParam::Type(param) => Some(&param.ident),
+                syn::GenericParam::Const(param) => Some(&param.ident),
+                syn::GenericParam::Lifetime(_) => None,
+            });
+            let auxiliary_detector = ParamUseDetector::new(auxiliary_idents);
+            where_clause.predicates = core::mem::take(&mut where_clause.predicates)
+                .into_iter()
+                .filter_map(|mut predicate| {
+                    if let syn::WherePredicate::Type(predicate) = &mut predicate
+                        && !auxiliary_detector.type_mentions_param(&predicate.bounded_ty)
+                    {
+                        predicate.bounds = core::mem::take(&mut predicate.bounds)
+                            .into_iter()
+                            .filter(|bound| {
+                                !matches!(bound, syn::TypeParamBound::Trait(bound)
+                                    if bound.maybe.is_some() && bound.path.is_ident("Sized"))
+                            })
+                            .collect();
+                        if predicate.bounds.is_empty() {
+                            return None;
+                        }
+                    }
+                    Some(predicate)
+                })
+                .collect();
+        }
         let impl_generics = (!lifetimes.is_empty() || !auxiliary_params.is_empty())
             .then(|| quote!(<#(#lifetimes,)* #(#auxiliary_params),*>));
 
@@ -586,8 +572,8 @@ fn gen_dispatch_set(
             .unwrap_or_default();
 
         impls.push(quote! {
-            impl #impl_generics #sealed_module::Sealed<#selection_args> for () #trait_where_clause {}
-            impl #impl_generics #trait_name<#selection_args> for () #trait_where_clause {
+            impl #impl_generics #sealed_module::Sealed<#selection_args> for () #impl_where_clause {}
+            impl #impl_generics #trait_name<#selection_args> for () #impl_where_clause {
                 #dispatch_impl_items
             }
         });
@@ -610,13 +596,22 @@ fn gen_dispatch_set(
 fn prepare_dispatch_wrapper_sig(
     sig: &syn::Signature,
     dispatch_generics: &syn::Generics,
+    static_dispatch: Option<&DispatchGroups>,
     co3: &TokenStream,
 ) -> syn::Signature {
     let mut wrapper_sig = prepare_dispatch_forwarding_sig(sig);
 
     let dispatch_tys = dispatch_type_idents(dispatch_generics);
+    let erased_tys = dispatch_generics
+        .type_params()
+        .filter(|param| is_payload_erased(param))
+        .map(|param| param.ident.clone())
+        .collect::<Vec<_>>();
     let parameter_idents = dispatch_generics
         .type_params()
+        .filter(|param| {
+            !static_dispatch.is_some_and(|dispatch| dispatch.contains_param(&param.ident))
+        })
         .map(|param| param.ident.clone())
         .collect::<Vec<_>>();
     let where_clause = wrapper_sig.generics.make_where_clause();
@@ -636,7 +631,7 @@ fn prepare_dispatch_wrapper_sig(
         ));
     }
 
-    let detector = ParamUseDetector::new(dispatch_tys.iter());
+    let detector = ParamUseDetector::new(dispatch_tys.iter().chain(erased_tys.iter()));
     let parameter_detector = ParamUseDetector::new(parameter_idents.iter());
     for input in &sig.inputs {
         let FnArg::Typed(input) = input else { continue };
@@ -875,7 +870,13 @@ fn prepare_dispatch_import(
     let trait_args = dispatch_trait_args(&dispatch_generics);
     let dispatch_set_path =
         enclosing_module.map_or_else(|| quote!(#set_name), |module| quote!(#module::#set_name));
-    let delegate_sig = prepare_dispatch_forwarding_sig(&wrapper_source_sig);
+    let co3 = co3_path();
+    let delegate_sig = prepare_dispatch_wrapper_sig(
+        &wrapper_source_sig,
+        &dispatch_generics,
+        Some(dispatch_args),
+        &co3,
+    );
     let mut wrapper_sig = delegate_sig.clone();
     wrapper_sig.generics.make_where_clause().predicates.insert(
         0,
@@ -949,6 +950,8 @@ fn prepare_dynamic_dispatch_import(
     impl_generics: Option<&syn::Generics>,
     declared_self: bool,
     self_id: Option<&syn::Type>,
+    set_name: &syn::Ident,
+    module_name: &syn::Ident,
 ) -> DispatchImportParts {
     let mut wrapper_source_sig = sig.clone();
     ffi_fn::explicitize_signature_lifetimes(&mut wrapper_source_sig);
@@ -956,7 +959,16 @@ fn prepare_dynamic_dispatch_import(
     args.inject_unnamed_lifetimes(&mut wrapper_source_sig.generics);
     let dispatch_generics = combine_dispatch_generics(impl_generics, &wrapper_source_sig.generics);
     let co3 = co3_path();
-    let wrapper_sig = prepare_dispatch_wrapper_sig(&wrapper_source_sig, &dispatch_generics, &co3);
+    let mut wrapper_sig =
+        prepare_dispatch_wrapper_sig(&wrapper_source_sig, &dispatch_generics, None, &co3);
+    let trait_args = dispatch_trait_args(&dispatch_generics);
+    let dispatch_set_path = quote!(#module_name::#set_name);
+    wrapper_sig.generics.make_where_clause().predicates.insert(
+        0,
+        dispatch_membership_bound(&dispatch_set_path, &trait_args),
+    );
+    let sealed_module = format_ident!("sealed");
+    let set = gen_dispatch_set(set_name, &sealed_module, &dispatch_generics, &args, None);
     let id_assignments = dispatch_id_assignments(&wrapper_source_sig, self_ty);
     let dummy_self_ty = syn::parse_quote!(());
     let wrapper_body = gen_wrapper_body::<true>(
@@ -992,7 +1004,7 @@ fn prepare_dynamic_dispatch_import(
     let decl = gen_extern_fn_signature(extern_sig, failure_mode);
 
     DispatchImportParts {
-        set: TokenStream::new(),
+        set,
         id_checks: gen_handle_id_type_checks(&dispatch_generics, &args),
         layout_checks: gen_dispatch_erased_layout_checks(
             &dispatch_generics,
@@ -1441,6 +1453,8 @@ pub(crate) fn expand_extern_decls(
                 None,
                 false,
                 None,
+                &dispatch_set,
+                &module_name,
             )
         };
         let wrapper_attrs = fn_attrs
@@ -1516,6 +1530,8 @@ pub(crate) fn expand_extern_decls(
                 Some(&dispatch.generics),
                 declared_self,
                 self_id,
+                &dispatch_set,
+                &module_name,
             )
         };
         let wrapper_attrs = method
@@ -1614,7 +1630,7 @@ pub(crate) fn expand_extern_decls(
                 if descriptor.items.is_empty() {
                     TokenStream::new()
                 } else if !descriptor.dispatch_args.is_empty()
-                    || has_payload_dispatch(&descriptor.generics)
+                    || has_runtime_dispatch(&descriptor.generics)
                     || dyn_self
                 {
                     let self_id = dyn_self.then_some(type_id).flatten();
@@ -1743,7 +1759,7 @@ pub(crate) fn expand_extern_decls(
             }
         }
         ForeignItem::Fn(item) => {
-            if !item.dispatch_args.is_empty() || has_payload_dispatch(&item.sig.generics) {
+            if !item.dispatch_args.is_empty() || has_runtime_dispatch(&item.sig.generics) {
                 expand_dispatch_fn_import(&abi, failure_mode, attrs, item, symbol_fragments)
             } else {
                 wrap_fn_definition(&abi, failure_mode, attrs, item.item)

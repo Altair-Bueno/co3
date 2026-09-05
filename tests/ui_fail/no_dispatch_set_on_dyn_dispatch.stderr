@@ -1,5 +1,0 @@
-error[E0433]: cannot find module or crate `accessible` in this scope
-  --> tests/ui_fail/no_dispatch_set_on_dyn_dispatch.rs:36:9
-   |
-36 |     (): accessible::DispatchSet<T>,
-   |         ^^^^^^^^^^ function `accessible` is not a crate or module

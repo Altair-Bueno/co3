@@ -34,6 +34,18 @@ error: runtime-dispatched #[spread] arguments cannot use `_` placeholders
 38 |     fn missing_spread_try<dyn(u8) T>(#[try_spread(_, _)] value: &[T])
    |                                      ^^^^^^^^^^^^^^^^^^^
 
+error: runtime-dispatched #[spread] arguments cannot use `_` placeholders
+  --> tests/ui_fail/spread_type.rs:42:53
+   |
+42 |     fn missing_payload_spread<dyn(u8) T = (u8, u8)>(#[spread(_, _)] value: T)
+   |                                                     ^^^^^^^^^^^^^^^
+
+error: runtime-dispatched #[spread] arguments cannot use `_` placeholders
+  --> tests/ui_fail/spread_type.rs:46:57
+   |
+46 |     fn missing_payload_spread_try<dyn(u8) T = (u8, u8)>(#[try_spread(_, _)] value: T)
+   |                                                         ^^^^^^^^^^^^^^^^^^^
+
 error[E0277]: the trait bound `u32: Spread2` is not satisfied
   --> tests/ui_fail/spread_type.rs:10:1
    |

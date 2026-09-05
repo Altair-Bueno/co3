@@ -1,0 +1,17 @@
+error: type defaults are only supported on `dyn(Tag) T` parameters
+  --> tests/ui_fail/static_type_default.rs:23:17
+   |
+23 |     fn function<T = u8>(value: T)
+   |                 ^^^^^^
+
+error: type defaults are only supported on `dyn(Tag) T` parameters
+  --> tests/ui_fail/static_type_default.rs:12:10
+   |
+12 |     impl<T = u8> Declared<T>
+   |          ^^^^^^
+
+error: type defaults are only supported on `dyn(Tag) T` parameters
+  --> tests/ui_fail/static_type_default.rs:17:19
+   |
+17 |         fn method<U = u8>(&self, value: U)
+   |                   ^^^^^^
