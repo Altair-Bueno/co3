@@ -65,11 +65,12 @@ fn split_dyn_methods(mut impl_: Co3Impl) -> (Co3Impl, Vec<Co3Impl>) {
             plain_items.push(item);
             continue;
         };
-        let Some(method_dispatch_args) = impl_.method_dispatch_args.remove(&method.sig.ident)
-        else {
+        let method_dispatch_args = impl_.method_dispatch_args.remove(&method.sig.ident);
+        if method_dispatch_args.is_none() && !has_payload_dispatch(&method.sig.generics) {
             plain_items.push(syn::ImplItem::Fn(method));
             continue;
-        };
+        }
+        let method_dispatch_args = method_dispatch_args.unwrap_or_default();
         let mut method_impl = impl_.item.clone();
         method_impl.items = vec![syn::ImplItem::Fn(method)];
         dispatched.push(Co3Impl {
@@ -313,6 +314,12 @@ fn has_static_dispatch(generics: &syn::Generics, args: &DispatchGroups) -> bool 
         }
         syn::GenericParam::Const(param) => args.contains_param(&param.ident),
     })
+}
+
+fn has_payload_dispatch(generics: &syn::Generics) -> bool {
+    generics
+        .type_params()
+        .any(|param| param.attrs.iter().any(is_type_erased) && param.default.is_some())
 }
 
 /// Builds the dispatch-set generic arguments in source declaration order.
@@ -1606,7 +1613,10 @@ pub(crate) fn expand_extern_decls(
             .map(|descriptor| {
                 if descriptor.items.is_empty() {
                     TokenStream::new()
-                } else if !descriptor.dispatch_args.is_empty() || dyn_self {
+                } else if !descriptor.dispatch_args.is_empty()
+                    || has_payload_dispatch(&descriptor.generics)
+                    || dyn_self
+                {
                     let self_id = dyn_self.then_some(type_id).flatten();
                     synthesize_impl_dispatch_import(
                         abi,
@@ -1733,7 +1743,7 @@ pub(crate) fn expand_extern_decls(
             }
         }
         ForeignItem::Fn(item) => {
-            if !item.dispatch_args.is_empty() {
+            if !item.dispatch_args.is_empty() || has_payload_dispatch(&item.sig.generics) {
                 expand_dispatch_fn_import(&abi, failure_mode, attrs, item, symbol_fragments)
             } else {
                 wrap_fn_definition(&abi, failure_mode, attrs, item.item)
@@ -1812,6 +1822,10 @@ fn gen_non_zst_sized_check(ident: &syn::Ident, generics: &syn::Generics) -> Toke
 }
 
 fn gen_dispatch_helper(generics: &syn::Generics, args: &DispatchGroups) -> Option<TokenStream> {
+    if args.is_empty() {
+        return None;
+    }
+
     let erased_params = generics
         .type_params()
         .filter(|p| p.attrs.iter().any(is_type_erased))

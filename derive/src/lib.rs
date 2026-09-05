@@ -816,11 +816,24 @@ fn synthesize_dispatch_handle_ids_in_decls(items: &mut [ForeignItem]) -> Result<
         let generics = impl_.generics.clone();
         let self_ty = (*impl_.self_ty).clone();
         let dyn_self = is_declared_dyn_self_impl(impl_, declared_types);
-        let dispatched_methods = impl_
+        let mut dispatched_methods = impl_
             .method_dispatch_args
             .keys()
             .cloned()
             .collect::<BTreeSet<_>>();
+        dispatched_methods.extend(impl_.items.iter().filter_map(|item| {
+            let syn::ImplItem::Fn(method) = item else {
+                return None;
+            };
+            method
+                .sig
+                .generics
+                .type_params()
+                .any(|param| {
+                    param.attrs.iter().any(utils::is_type_erased) && param.default.is_some()
+                })
+                .then(|| method.sig.ident.clone())
+        }));
 
         if dyn_self {
             for item in &mut impl_.items {
@@ -831,7 +844,11 @@ fn synthesize_dispatch_handle_ids_in_decls(items: &mut [ForeignItem]) -> Result<
             }
         }
 
-        if !impl_.dispatch_args.is_empty() {
+        if !impl_.dispatch_args.is_empty()
+            || generics.type_params().any(|param| {
+                param.attrs.iter().any(utils::is_type_erased) && param.default.is_some()
+            })
+        {
             for item in &mut impl_.items {
                 let syn::ImplItem::Fn(method) = item else {
                     continue;
@@ -869,7 +886,12 @@ fn synthesize_dispatch_handle_ids_in_decls(items: &mut [ForeignItem]) -> Result<
                 }
             }
             ForeignItem::Impl(impl_) => synthesize_impl(impl_, &declared_types)?,
-            ForeignItem::Fn(item) if !item.dispatch_args.is_empty() => {
+            ForeignItem::Fn(item)
+                if !item.dispatch_args.is_empty()
+                    || item.sig.generics.type_params().any(|param| {
+                        param.attrs.iter().any(utils::is_type_erased) && param.default.is_some()
+                    }) =>
+            {
                 let generics = item.sig.generics.clone();
                 synthesize_dispatch_handle_ids(None, &generics, &mut item.sig.inputs);
             }

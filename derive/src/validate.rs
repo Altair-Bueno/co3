@@ -579,7 +579,7 @@ fn validate_extern_static(item: &Co3Static) -> Result<()> {
 }
 
 fn validate_extern_fn(item: &crate::Co3Fn) -> Result<()> {
-    if item.dispatch_args.is_empty() {
+    if item.dispatch_args.is_empty() && !has_payload_dispatch(&item.sig.generics) {
         return Ok(());
     }
     let params = item
@@ -591,13 +591,14 @@ fn validate_extern_fn(item: &crate::Co3Fn) -> Result<()> {
 }
 
 fn validate_extern_impl(impl_: &crate::Co3Impl) -> Result<()> {
-    let impl_dispatch = !impl_.dispatch_args.is_empty();
+    let impl_dispatch = !impl_.dispatch_args.is_empty() || has_payload_dispatch(&impl_.generics);
     let mut errors = None;
     for item in &impl_.items {
         let syn::ImplItem::Fn(method) = item else {
             continue;
         };
-        let method_dispatch = impl_.method_dispatch_args.contains_key(&method.sig.ident);
+        let method_dispatch = impl_.method_dispatch_args.contains_key(&method.sig.ident)
+            || has_payload_dispatch(&method.sig.generics);
         if !impl_dispatch && !method_dispatch {
             continue;
         }
@@ -857,7 +858,7 @@ fn validate_shared_fn(item: &crate::Co3Fn) -> Result<()> {
     if let Err(err) = validate_signature_shape(&item.sig) {
         push_error(&mut errors, err);
     }
-    if !item.dispatch_args.is_empty() {
+    if !item.dispatch_args.is_empty() || has_payload_dispatch(&item.sig.generics) {
         let params = item
             .sig
             .generics
@@ -877,7 +878,7 @@ fn validate_shared_impl(impl_: &crate::Co3Impl) -> Result<()> {
             push_error(&mut errors, unsupported_attr(attr));
         }
     }
-    let impl_dispatch = !impl_.dispatch_args.is_empty();
+    let impl_dispatch = !impl_.dispatch_args.is_empty() || has_payload_dispatch(&impl_.generics);
     for item in &impl_.items {
         let syn::ImplItem::Fn(method) = item else {
             continue;
@@ -897,7 +898,10 @@ fn validate_shared_impl(impl_: &crate::Co3Impl) -> Result<()> {
         if let Err(err) = validate_signature_shape(sig) {
             push_error(&mut errors, err);
         }
-        if impl_dispatch || method_dispatch.is_some_and(|args| !args.is_empty()) {
+        if impl_dispatch
+            || method_dispatch.is_some_and(|args| !args.is_empty())
+            || has_payload_dispatch(&sig.generics)
+        {
             let params = impl_
                 .generics
                 .type_params()
@@ -907,7 +911,8 @@ fn validate_shared_impl(impl_: &crate::Co3Impl) -> Result<()> {
                         && param.default.is_some()
                 })
                 .chain(sig.generics.type_params().filter(|param| {
-                    method_dispatch.is_some_and(|args| !args.is_empty())
+                    (method_dispatch.is_some_and(|args| !args.is_empty())
+                        || has_payload_dispatch(&sig.generics))
                         && param.attrs.iter().any(is_type_erased)
                         && param.default.is_some()
                 }));
@@ -1221,6 +1226,11 @@ fn validate_callable_parameter_usage(
 ) -> Result<()> {
     let mut errors = None;
     for param in &local_generics.params {
+        if matches!(param, syn::GenericParam::Type(param)
+            if is_open_payload_dispatch_param(param, local_dispatch))
+        {
+            continue;
+        }
         let ident = match param {
             syn::GenericParam::Type(param) => &param.ident,
             syn::GenericParam::Const(param) => &param.ident,
@@ -1256,6 +1266,17 @@ fn validate_callable_parameter_bounds(
 ) -> Result<()> {
     let mut errors = None;
     for param in &local_generics.params {
+        if let syn::GenericParam::Type(param) = param
+            && is_open_payload_dispatch_param(param, local_dispatch)
+        {
+            if require_dispatch {
+                push_error(
+                    &mut errors,
+                    Error::new_spanned(&param.ident, GENERIC_USE_PREDICATE_ERR),
+                );
+            }
+            continue;
+        }
         let (ident, dynamic) = match param {
             syn::GenericParam::Type(param) => {
                 (&param.ident, param.attrs.iter().any(is_type_erased))
@@ -1301,6 +1322,11 @@ fn validate_impl_generic_usage(
 ) -> Result<()> {
     let mut errors = None;
     for param in &impl_.generics.params {
+        if matches!(param, syn::GenericParam::Type(param)
+            if is_open_payload_dispatch_param(param, &impl_.dispatch_args))
+        {
+            continue;
+        }
         let ident = generic_param_ident(param);
         if matches!(param, syn::GenericParam::Lifetime(_)) {
             let mut uses = LifetimeUseDetector::new(match param {
@@ -1341,6 +1367,17 @@ fn validate_impl_generic_bounds(
         if impl_.dispatch_args.contains_param(ident) {
             continue;
         }
+        if let syn::GenericParam::Type(param) = param
+            && is_open_payload_dispatch_param(param, &impl_.dispatch_args)
+        {
+            if require_dispatch {
+                push_error(
+                    &mut errors,
+                    Error::new_spanned(&param.ident, GENERIC_USE_PREDICATE_ERR),
+                );
+            }
+            continue;
+        }
 
         let (used, exposed) = impl_param_use(impl_, declared_types, ident);
         if !used {
@@ -1363,6 +1400,21 @@ fn validate_impl_generic_bounds(
         }
     }
     errors.map_or(Ok(()), Err)
+}
+
+fn has_payload_dispatch(generics: &syn::Generics) -> bool {
+    generics
+        .type_params()
+        .any(|param| param.attrs.iter().any(is_type_erased) && param.default.is_some())
+}
+
+fn is_open_payload_dispatch_param(
+    param: &syn::TypeParam,
+    dispatch: &crate::DispatchGroups,
+) -> bool {
+    param.attrs.iter().any(is_type_erased)
+        && param.default.is_some()
+        && !dispatch.contains_param(&param.ident)
 }
 
 fn impl_param_use(
