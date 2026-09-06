@@ -238,9 +238,7 @@ pub(crate) fn spread_types(attrs: &[syn::Attribute]) -> syn::Result<Option<(Type
     Ok(Some((types[0].clone(), types[1].clone())))
 }
 
-/// Returns the C representation of the value being split. Explicit attribute
-/// types are Rust-side conversion targets; `_` selects the corresponding
-/// associated part type from `Spread2`.
+/// Returns the C representation of the value being split.
 pub(crate) fn spread_abi_type(attrs: &[syn::Attribute], arg_ty: &Type) -> syn::Result<TokenStream> {
     spread_types(attrs)?;
     Ok(item_fn_input_arg_type(attrs, arg_ty))
@@ -251,20 +249,96 @@ pub(crate) fn spread_abi_parts(
     arg_ty: &Type,
 ) -> syn::Result<(Type, Type)> {
     let (part1, part2) = spread_types(attrs)?.expect("spread attribute was validated");
-    let source_abi_ty = spread_abi_type(attrs, arg_ty)?;
-    let source_part1: Type = parse_quote!(<#source_abi_ty as co3::slice::Spread2>::Part1);
-    let source_part2: Type = parse_quote!(<#source_abi_ty as co3::slice::Spread2>::Part2);
     let part1 = if matches!(part1, Type::Infer(_)) {
-        source_part1
+        inferred_spread_part(arg_ty, 1)?
     } else {
         parse_quote!(<#part1 as co3::ExternC>::CType)
     };
     let part2 = if matches!(part2, Type::Infer(_)) {
-        source_part2
+        inferred_spread_part(arg_ty, 2)?
     } else {
         parse_quote!(<#part2 as co3::ExternC>::CType)
     };
     Ok((part1, part2))
+}
+
+fn inferred_spread_part(arg_ty: &Type, part: u8) -> syn::Result<Type> {
+    match arg_ty {
+        Type::Paren(paren) => return inferred_spread_part(&paren.elem, part),
+        Type::Group(group) => return inferred_spread_part(&group.elem, part),
+        _ => {}
+    }
+
+    if let Some((part1, part2)) = tuple_parts(arg_ty) {
+        return Ok(if part == 1 {
+            parse_quote!(<#part1 as co3::ExternC>::CType)
+        } else {
+            parse_quote!(<#part2 as co3::ExternC>::CType)
+        });
+    }
+
+    if let Some(wide_ty) = boxed_wide_type(arg_ty) {
+        return Ok(if part == 1 {
+            parse_quote!(co3::boxed::CBox<<<#wide_ty as co3::wide::Wide>::Data as co3::ExternC>::CType>)
+        } else {
+            parse_quote!(<#wide_ty as co3::wide::Wide>::Metadata)
+        });
+    }
+
+    if let Type::Reference(reference) = arg_ty {
+        let wide_ty = &reference.elem;
+        return Ok(if part == 1 {
+            if reference.mutability.is_some() {
+                parse_quote!(*mut <<#wide_ty as co3::wide::Wide>::Data as co3::ExternC>::CType)
+            } else {
+                parse_quote!(*const <<#wide_ty as co3::wide::Wide>::Data as co3::ExternC>::CType)
+            }
+        } else {
+            parse_quote!(<#wide_ty as co3::wide::Wide>::Metadata)
+        });
+    }
+
+    if part == 2 {
+        return Ok(parse_quote!(<#arg_ty as co3::wide::Wide>::Metadata));
+    }
+
+    Err(syn::Error::new_spanned(
+        arg_ty,
+        "the first `_` spread argument is only supported for two-element tuples and references to `Wide` types",
+    ))
+}
+
+fn boxed_wide_type(ty: &Type) -> Option<&Type> {
+    let Type::Path(path) = ty else {
+        return None;
+    };
+    let segment = path.path.segments.last()?;
+    if segment.ident != "Box" {
+        return None;
+    }
+    let syn::PathArguments::AngleBracketed(arguments) = &segment.arguments else {
+        return None;
+    };
+    let mut types = arguments.args.iter().filter_map(|argument| match argument {
+        syn::GenericArgument::Type(ty) => Some(ty),
+        _ => None,
+    });
+    let wide = types.next()?;
+    types.next().is_none().then_some(wide)
+}
+
+fn tuple_parts(ty: &Type) -> Option<(&Type, &Type)> {
+    match ty {
+        Type::Tuple(tuple) if tuple.elems.len() == 2 => Some((&tuple.elems[0], &tuple.elems[1])),
+        _ => None,
+    }
+}
+
+pub(crate) fn spread_part_idents(arg_name: &Ident) -> (Ident, Ident) {
+    (
+        format_ident!("__Co3Spread_{arg_name}_Part1"),
+        format_ident!("__Co3Spread_{arg_name}_Part2"),
+    )
 }
 
 fn borrowed_arg_ty(attrs: &[syn::Attribute], arg_ty: &Type) -> TokenStream {
@@ -324,12 +398,14 @@ pub(crate) fn gen_input_decode_stmts<'a>(
         let decode_ty = borrowed_arg_ty(attrs, &arg_ty);
         let decode_arg = if is_spread_arg(attrs) {
             let (data_name, metadata_name) = spread_arg_names(&arg_name);
+            let (part1, part2) = spread_part_idents(&arg_name);
             let decode_c_ty =
                 spread_abi_type(attrs, &arg_ty).expect("validated #[spread] attribute");
 
             quote! {{
-                <#decode_c_ty as co3::slice::Spread2>::from_parts(
-                    #data_name, #metadata_name
+                <#decode_c_ty as co3::slice::Spread2<#part1, #part2>>::from_parts(
+                    core::convert::Into::<#part1>::into(#data_name),
+                    core::convert::Into::<#part2>::into(#metadata_name),
                 )
             }}
         } else {
@@ -628,8 +704,9 @@ fn lower_signature_input(generics: &mut syn::Generics, input: syn::FnArg) -> Vec
     if is_spread_arg(&attrs) {
         let arg_name = item_fn_input_ident(&pat);
         let (data_name, metadata_name) = spread_arg_names(arg_name);
-        let (part1_ty, part2_ty) =
+        let (source_part1_ty, source_part2_ty) =
             spread_abi_parts(&attrs, &arg_ty).expect("validated #[spread] attribute");
+        let (part1_ty, part2_ty) = (source_part1_ty, source_part2_ty);
 
         generics
             .make_where_clause()

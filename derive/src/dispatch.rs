@@ -171,24 +171,17 @@ impl ErasedParamReplacer {
         (ty, changed)
     }
 
-    fn has_opaque_tail(ty: &syn::Type) -> bool {
+    fn has_payloadless_tail(&self, ty: &syn::Type) -> bool {
         match ty {
-            syn::Type::Group(group) => Self::has_opaque_tail(&group.elem),
-            syn::Type::Paren(paren) => Self::has_opaque_tail(&paren.elem),
-            syn::Type::Tuple(tuple) => tuple.elems.last().is_some_and(Self::has_opaque_tail),
-            syn::Type::Path(path) if path.qself.is_none() => {
-                if path.path.segments.last().unwrap().ident == "c_void" {
-                    return true;
-                }
-                path.path.segments.iter().rev().find_map(|segment| {
-                    let syn::PathArguments::AngleBracketed(args) = &segment.arguments else {
-                        return None;
-                    };
-                    args.args.iter().rev().find_map(|arg| match arg {
-                        syn::GenericArgument::Type(ty) => Some(Self::has_opaque_tail(ty)),
-                        _ => None,
-                    })
-                }) == Some(true)
+            syn::Type::Group(group) => self.has_payloadless_tail(&group.elem),
+            syn::Type::Paren(paren) => self.has_payloadless_tail(&paren.elem),
+            syn::Type::Tuple(tuple) => tuple
+                .elems
+                .last()
+                .is_some_and(|ty| self.has_payloadless_tail(ty)),
+            syn::Type::Path(path) if path.qself.is_none() && path.path.segments.len() == 1 => {
+                let segment = &path.path.segments[0];
+                segment.arguments.is_none() && self.payloadless_params.contains(&segment.ident)
             }
             _ => false,
         }
@@ -245,12 +238,21 @@ impl VisitMut for ErasedParamReplacer {
             return;
         }
 
+        let opaque_tuple_element = if let syn::Type::Tuple(tuple) = node {
+            tuple
+                .elems
+                .iter()
+                .position(|ty| self.has_payloadless_tail(ty))
+        } else {
+            None
+        };
+
         syn::visit_mut::visit_type_mut(self, node);
 
         let syn::Type::Tuple(tuple) = node else {
             return;
         };
-        let Some(opaque) = tuple.elems.iter().position(Self::has_opaque_tail) else {
+        let Some(opaque) = opaque_tuple_element else {
             return;
         };
         if opaque == 0 {
@@ -1550,11 +1552,15 @@ mod erased_param_replacer_tests {
         );
         assert_eq!(
             erase(syn::parse_quote!((u32, core::ffi::c_void, u32))),
-            "(u32 , core :: ffi :: c_void)"
+            "(u32 , core :: ffi :: c_void , u32)"
         );
         assert_eq!(
             erase(syn::parse_quote!((u32, u32, core::ffi::c_void))),
             "(u32 , u32 , core :: ffi :: c_void)"
+        );
+        assert_eq!(
+            erase(syn::parse_quote!((u32, user::c_void, u32))),
+            "(u32 , user :: c_void , u32)"
         );
     }
 

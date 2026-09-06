@@ -611,7 +611,7 @@ pub fn handle_derive(item: syn::DeriveInput) -> Result<TokenStream> {
 /// }
 /// ```
 ///
-/// **This pattern is not limited to slices**; it applies to every type implementing the [`Spread2`](https://docs.rs/co3/latest/co3/slice/trait.Spread2.html) trait.
+/// **This pattern is not limited to slices**; it applies to every type implementing the [`Spread2`](https://docs.rs/co3/latest/co3/slice/trait.Spread2.html) or [`TrySpread2`](https://docs.rs/co3/latest/co3/slice/trait.TrySpread2.html) trait.
 ///
 /// # Failure modes
 ///

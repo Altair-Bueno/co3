@@ -6,7 +6,6 @@ use crate::{
     layout::attr::{ReprKind, parse_repr},
     layout::item::{derive_fieldless_enum, derive_item},
     utils::push_error,
-    validate::validate_niche_value_sized_tail,
 };
 
 mod attr;
@@ -142,11 +141,6 @@ pub(crate) fn derive_repr_c(input: &syn::DeriveInput) -> syn::Result<TokenStream
     match &input.data {
         syn::Data::Struct(data) => {
             validate_fields_no_ffi_type_attr(&data.fields, &mut errors);
-            if repr_c_attrs.niche_value.is_some()
-                && let Err(err) = validate_niche_value_sized_tail(&data.fields)
-            {
-                push_error(&mut errors, err);
-            }
             if let Err(err) = type_is_valid_closure(&data.fields, &mut repr_c_attrs.is_valid) {
                 push_error(&mut errors, err);
             }

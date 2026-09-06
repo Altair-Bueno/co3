@@ -614,6 +614,7 @@ fn prepare_dispatch_wrapper_sig(
         })
         .map(|param| param.ident.clone())
         .collect::<Vec<_>>();
+    let parameter_detector = ParamUseDetector::new(parameter_idents.iter());
     let where_clause = wrapper_sig.generics.make_where_clause();
 
     for ident in &dispatch_tys {
@@ -632,7 +633,6 @@ fn prepare_dispatch_wrapper_sig(
     }
 
     let detector = ParamUseDetector::new(dispatch_tys.iter().chain(erased_tys.iter()));
-    let parameter_detector = ParamUseDetector::new(parameter_idents.iter());
     for input in &sig.inputs {
         let FnArg::Typed(input) = input else { continue };
         let (attrs, ty) = (&input.attrs[..], &*input.ty);
@@ -643,13 +643,12 @@ fn prepare_dispatch_wrapper_sig(
             let (part1, part2) = ffi_fn::spread_types(attrs)
                 .expect("validated #[spread] attribute")
                 .expect("spread attribute was found");
-            where_clause
-                .predicates
-                .push(syn::parse_quote!(#spread_ty: #co3::slice::Spread2));
+            let (source_part1, source_part2) =
+                ffi_fn::spread_abi_parts(attrs, ty).expect("validated #[spread] attribute");
             let try_spread = ffi_fn::is_try_spread_arg(attrs);
             if matches!(part1, syn::Type::Infer(_)) {
                 where_clause.predicates.push(syn::parse_quote!(
-                    <#spread_ty as #co3::slice::Spread2>::Part1: #co3::CFnArg
+                    #source_part1: #co3::CFnArg
                 ));
             } else {
                 where_clause
@@ -658,13 +657,10 @@ fn prepare_dispatch_wrapper_sig(
                 where_clause.predicates.push(syn::parse_quote!(
                     <#part1 as #co3::ExternC>::CType: #co3::CFnArg
                 ));
-                where_clause.predicates.push(spread_conversion_bound(
-                    &spread_ty, 1, &part1, try_spread, co3,
-                ));
             }
             if matches!(part2, syn::Type::Infer(_)) {
                 where_clause.predicates.push(syn::parse_quote!(
-                    <#spread_ty as #co3::slice::Spread2>::Part2: #co3::CFnArg
+                    #source_part2: #co3::CFnArg
                 ));
             } else {
                 where_clause
@@ -673,10 +669,15 @@ fn prepare_dispatch_wrapper_sig(
                 where_clause.predicates.push(syn::parse_quote!(
                     <#part2 as #co3::ExternC>::CType: #co3::CFnArg
                 ));
-                where_clause.predicates.push(spread_conversion_bound(
-                    &spread_ty, 2, &part2, try_spread, co3,
-                ));
             }
+            let spread_trait = if try_spread {
+                quote!(#co3::slice::TrySpread2)
+            } else {
+                quote!(#co3::slice::Spread2)
+            };
+            where_clause.predicates.push(syn::parse_quote!(
+                #spread_ty: #spread_trait<#source_part1, #source_part2>
+            ));
         }
         if crate::dispatch::handle_id(ty).is_none()
             && (detector.type_mentions_param(ty) || parameterized_spread)
@@ -740,27 +741,6 @@ fn prepare_dispatch_forwarding_sig(sig: &syn::Signature) -> syn::Signature {
         .type_params_mut()
         .for_each(strip_internal_generic_param);
     wrapper_sig
-}
-
-fn spread_conversion_bound(
-    spread_ty: &TokenStream,
-    part: u8,
-    target: &syn::Type,
-    try_spread: bool,
-    co3: &TokenStream,
-) -> syn::WherePredicate {
-    let part = syn::Ident::new(&format!("Part{part}"), proc_macro2::Span::call_site());
-    if try_spread {
-        syn::parse_quote!(
-            <#spread_ty as #co3::slice::Spread2>::#part:
-                core::convert::TryInto<<#target as #co3::ExternC>::CType>
-        )
-    } else {
-        syn::parse_quote!(
-            <#spread_ty as #co3::slice::Spread2>::#part:
-                core::convert::Into<<#target as #co3::ExternC>::CType>
-        )
-    }
 }
 
 fn dispatch_id_assignments(sig: &syn::Signature, self_ty: Option<&syn::Type>) -> Vec<TokenStream> {

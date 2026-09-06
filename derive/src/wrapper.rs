@@ -1,4 +1,4 @@
-use proc_macro2::{Ident, TokenStream};
+use proc_macro2::TokenStream;
 use quote::{format_ident, quote};
 use syn::{FnArg, ItemImpl, punctuated::Punctuated, visit_mut::VisitMut};
 
@@ -494,7 +494,7 @@ fn gen_spread_input_stmts(
     inputs: &Punctuated<FnArg, syn::Token![,]>,
 ) -> TokenStream {
     let stmts = inputs.iter().filter_map(|input| {
-        let FnArg::Typed(syn::PatType { attrs, pat, .. }) = input else {
+        let FnArg::Typed(syn::PatType { attrs, pat, ty, .. }) = input else {
             return None;
         };
         if !is_spread_arg(attrs) {
@@ -502,49 +502,27 @@ fn gen_spread_input_stmts(
         }
         let arg_name = item_fn_input_ident(pat);
         let (data_name, metadata_name) = spread_arg_names(arg_name);
-        let (target1_ty, target2_ty) = ffi_fn::spread_types(attrs)
+        let (target1_ty, target2_ty) = ffi_fn::spread_abi_parts(attrs, ty)
             .expect("validated #[spread] attribute")
-            .unwrap();
-        let try_spread = ffi_fn::is_try_spread_arg(attrs);
-        let data_convert =
-            spread_part_conversion(&data_name, &target1_ty, try_spread, failure_mode);
-        let metadata_convert =
-            spread_part_conversion(&metadata_name, &target2_ty, try_spread, failure_mode);
-        Some(quote! {
-            let (#data_name, #metadata_name) = co3::slice::Spread2::into_parts(#arg_name);
-            let #data_name = #data_convert;
-            let #metadata_name = #metadata_convert;
-        })
+            ;
+        if ffi_fn::is_try_spread_arg(attrs) {
+            let conversion = quote! {
+                <_ as co3::slice::TrySpread2<#target1_ty, #target2_ty>>::try_into_parts(#arg_name)
+            };
+            let conversion = match failure_mode {
+                FailureMode::Panic => quote! { #conversion.unwrap_or_else(|_| panic!("co3 generated FFI spread conversion failure")) },
+                FailureMode::Error => quote! { #conversion.map_err(|_| co3::Error::trap_value())? },
+            };
+            Some(quote! { let (#data_name, #metadata_name) = #conversion; })
+        } else {
+            Some(quote! {
+                let (#data_name, #metadata_name) =
+                    <_ as co3::slice::Spread2<#target1_ty, #target2_ty>>::into_parts(#arg_name);
+            })
+        }
     });
 
     quote!(#(#stmts)*)
-}
-
-fn spread_part_conversion(
-    name: &Ident,
-    target: &syn::Type,
-    try_spread: bool,
-    failure_mode: FailureMode,
-) -> TokenStream {
-    if matches!(target, syn::Type::Infer(_)) {
-        return quote!(#name);
-    }
-
-    let target_abi_ty: syn::Type = syn::parse_quote!(<#target as co3::ExternC>::CType);
-    if try_spread {
-        match failure_mode {
-            FailureMode::Panic => quote! {
-                core::convert::TryInto::<#target_abi_ty>::try_into(#name)
-                    .unwrap_or_else(|_| panic!("co3 generated FFI spread conversion failure"))
-            },
-            FailureMode::Error => quote! {
-                core::convert::TryInto::<#target_abi_ty>::try_into(#name)
-                    .map_err(|_| co3::Error::trap_value())?
-            },
-        }
-    } else {
-        quote!(core::convert::Into::<#target_abi_ty>::into(#name))
-    }
 }
 
 fn gen_ffi_fn_call(sig: &syn::Signature, callee: &TokenStream) -> TokenStream {

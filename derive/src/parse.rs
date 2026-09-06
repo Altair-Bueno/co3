@@ -307,7 +307,7 @@ fn parse_symbol_fragments_attr(attrs: &mut Vec<Attribute>) -> Result<BTreeMap<St
             if is_builtin_symbol_fragment_type(&path) {
                 return Err(syn::Error::new_spanned(
                     path,
-                    "standard-library types have stable, built-in symbol fragments",
+                    "Rust primitive types have stable, built-in symbol fragments",
                 ));
             }
             let key = quote!(#path);
@@ -1185,10 +1185,16 @@ fn push_by_val(attrs: &mut Vec<Attribute>, span: proc_macro2::Span) {
     }
 }
 
-fn mark_reference_by_val(attrs: &mut Vec<Attribute>, ty: &Type) {
-    if let Type::Reference(reference) = ty {
-        push_by_val(attrs, reference.and_token.span);
-    }
+fn mark_pointer_like_by_val(attrs: &mut Vec<Attribute>, ty: &Type) {
+    let span = match ty {
+        Type::Reference(reference) => reference.and_token.span,
+        Type::Ptr(pointer) => pointer.star_token.span,
+        Type::FnPtr(function) => function.fn_token.span,
+        Type::Paren(paren) => return mark_pointer_like_by_val(attrs, &paren.elem),
+        Type::Group(group) => return mark_pointer_like_by_val(attrs, &group.elem),
+        _ => return,
+    };
+    push_by_val(attrs, span);
 }
 
 fn parse_move_by_val(
@@ -1240,7 +1246,7 @@ impl PreprocessedArg {
             } else {
                 parse_quote!(Self)
             };
-            mark_reference_by_val(&mut merged_attrs, &ty);
+            mark_pointer_like_by_val(&mut merged_attrs, &ty);
 
             return Ok(Self {
                 tokens: quote!(#(#merged_attrs)* __co3_self: #ty),
@@ -1254,7 +1260,7 @@ impl PreprocessedArg {
                 input.parse::<syn::Token![self]>()?;
                 input.parse::<syn::Token![:]>()?;
                 let ty = input.parse::<Type>()?;
-                mark_reference_by_val(&mut merged_attrs, &ty);
+                mark_pointer_like_by_val(&mut merged_attrs, &ty);
 
                 return Ok(Self {
                     tokens: quote! { #(#merged_attrs)* __co3_self: #ty },
@@ -1265,7 +1271,7 @@ impl PreprocessedArg {
         let pat = syn::Pat::parse_single(input)?;
         let colon_token = input.parse::<syn::Token![:]>()?;
         let ty = input.parse::<Type>()?;
-        mark_reference_by_val(&mut merged_attrs, &ty);
+        mark_pointer_like_by_val(&mut merged_attrs, &ty);
         let arg = PatType {
             attrs: merged_attrs,
             pat: Box::new(pat),
@@ -1642,6 +1648,28 @@ mod tests {
         let item = Parser::parse_str(parse_fn_item, "move fn name() -> Value;").unwrap();
 
         assert!(item.attrs.iter().any(|attr| attr.path().is_ident("by_val")));
+    }
+
+    #[test]
+    fn marks_pointer_like_arguments_by_value() {
+        let item = Parser::parse_str(
+            parse_fn_item,
+            "fn name(a: *const u8, b: *mut u8, c: extern \"C\" fn(u8) -> u8, d: (*const u8));",
+        )
+        .unwrap();
+
+        for input in &item.sig.inputs {
+            let FnArg::Typed(input) = input else {
+                panic!("expected typed argument");
+            };
+            assert!(
+                input
+                    .attrs
+                    .iter()
+                    .any(|attr| attr.path().is_ident("by_val")),
+                "pointer-like argument was not marked by value",
+            );
+        }
     }
 
     #[test]

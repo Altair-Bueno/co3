@@ -1,4 +1,4 @@
-error: standard-library types have stable, built-in symbol fragments
+error: Rust primitive types have stable, built-in symbol fragments
  --> tests/ui_fail/symbol_fragments_builtins.rs:5:25
   |
 5 |     #![symbol_fragments(u8 = "Byte")]

@@ -11,16 +11,9 @@ struct Value(u16);
 #[repr(transparent)]
 struct Pair(ReprCTuple2<u8, u8>);
 
-impl Spread2 for CPair {
-    type Part1 = u8;
-    type Part2 = u8;
-
-    fn into_parts(self) -> (Self::Part1, Self::Part2) {
-        (self.0.0, self.0.1)
-    }
-
-    fn from_parts(part1: Self::Part1, part2: Self::Part2) -> Self {
-        Self(ReprCTuple2(part1, part2))
+impl Spread2<u16, u16> for CPair {
+    fn into_parts(self) -> (u16, u16) {
+        (self.0.0.into(), self.0.1.into())
     }
 }
 

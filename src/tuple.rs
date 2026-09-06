@@ -288,18 +288,10 @@ impl_tuple! {(A, B, C, D, E, F, G, H, I, J) -> ReprCTuple10}
 impl_tuple! {(A, B, C, D, E, F, G, H, I, J, K) -> ReprCTuple11}
 impl_tuple! {(A, B, C, D, E, F, G, H, I, J, K, L) -> ReprCTuple12}
 
-impl<A: ReprC, B: ReprC> Spread2 for ReprCTuple2<A, B> {
-    type Part1 = A;
-    type Part2 = B;
-
+impl<A: ReprC, B: ReprC> Spread2<A, B> for ReprCTuple2<A, B> {
     #[inline(always)]
-    fn into_parts(self) -> (Self::Part1, Self::Part2) {
+    fn into_parts(self) -> (A, B) {
         (self.0, self.1)
-    }
-
-    #[inline(always)]
-    fn from_parts(part1: Self::Part1, part2: Self::Part2) -> Self {
-        Self(part1, part2)
     }
 }
 

@@ -143,7 +143,7 @@ macro_rules! raw_pointer_derive {
         }
 
         unsafe impl<R: ReprC + ?Sized> ReprC for *$mutability R {}
-        unsafe impl<R: ReprC + ?Sized> CFnArg for *$mutability R {}
+        unsafe impl<R: ReprC> CFnArg for *$mutability R {}
 
         unsafe impl<R: ReprC + ?Sized> BorrowCast for *$mutability R {
             type AsConst = Self;

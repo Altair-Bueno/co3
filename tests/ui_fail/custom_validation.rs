@@ -50,21 +50,21 @@ pub union CustomUnion2 {
 }
 
 #[derive(ReprC)]
-#[reprC(NICHE_VALUE = unsafe {
-    core::mem::zeroed()
-})]
+#[reprC(NICHE_VALUE = unsafe { core::mem::zeroed() })]
 pub struct Parametrized<T: ?Sized>(T);
 
 #[derive(ReprC)]
-#[reprC(NICHE_VALUE = Self::CType(0))]
+#[reprC(NICHE_VALUE = unsafe { core::mem::zeroed() })]
 pub struct UnsizedSlice<T>([T]);
 
 #[derive(ReprC)]
-#[reprC(NICHE_VALUE = Self::CType(""))]
+#[reprC(NICHE_VALUE = unsafe { core::mem::zeroed() })]
 pub struct UnsizedStr(str);
 
-#[derive(ReprC)]
-#[reprC(NICHE_VALUE = Self::CType(0))]
-pub struct UnsizedTraitObject(dyn Send);
+fn unsized_niches_cannot_be_used() {
+    fn require_niche<T: co3::niche::Niche>() {}
+    require_niche::<UnsizedSlice<u8>>();
+    require_niche::<UnsizedStr>();
+}
 
 fn main() {}

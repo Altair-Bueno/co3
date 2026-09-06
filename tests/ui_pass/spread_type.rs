@@ -1,4 +1,4 @@
-use co3::{ReprC, ffi};
+use co3::{ReprC, ffi, slice::Spread2};
 use rust_spec::RustSpec;
 
 trait ExportSpreadLen {
@@ -16,6 +16,16 @@ struct Counter(usize);
 #[derive(RustSpec, ReprC)]
 #[repr(transparent)]
 struct OdbcStr<C>([C]);
+
+#[derive(RustSpec, ReprC)]
+#[repr(C)]
+struct PairParts(u8, u8);
+
+impl Spread2<u32, i32> for CPairParts {
+    fn into_parts(self) -> (u32, i32) {
+        (self.0.into(), self.1.into())
+    }
+}
 
 mod c_symbols {
     use super::*;
@@ -68,11 +78,16 @@ ffi! {
     fn spread_len(#[spread(_, _)] values: &[u32]) -> usize;
 
     #[symbol_name = "spread_convert"]
-    fn spread_convert(#[spread(u32, i32)] value: co3::tuple::ReprCTuple2<u8, u8>) -> u32;
+    fn spread_convert(#[spread(u32, i32)] move value: PairParts) -> u32;
+
+    fn borrowed_box(#[spread(*const u32, usize)] value: Box<[u32]>);
+    fn moved_box(#[spread(_, _)] move value: Box<[u32]>);
+    fn parenthesized_ref(#[spread(_, _)] value: (&[u32]));
+    fn parenthesized_tuple(#[spread(_, _)] move value: ((u8, u16)));
 
     #[symbol_name = "static_spread_{C}"]
     fn static_spread<C>(
-        #[try_spread(_, _)] move value: co3::tuple::ReprCTuple2<C, u8>,
+        #[try_spread(_, _)] move value: (C, u8),
     )
     where
         use<C> @ (<u8> | <u16>);
@@ -118,7 +133,7 @@ ffi! {
 
 fn main() {
     assert_eq!(spread_len(&[1, 2, 3]), 3);
-    assert_eq!(spread_convert(co3::tuple::ReprCTuple2(2, 3)), 5);
+    assert_eq!(spread_convert(PairParts(2, 3)), 5);
 
     let counter = Counter(10);
     assert_eq!(counter.imported_inherent_spread_len(&[1, 2, 3]), 13);

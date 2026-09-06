@@ -167,29 +167,15 @@ impl EnvAttr for SQL_ATTR_CP_MATCH {
     type Value = ConnectionPooling;
 }
 
-impl Spread2 for <CpMatch as ExternC>::CType {
-    type Part1 = u32;
-    type Part2 = i32;
-
-    fn into_parts(self) -> (Self::Part1, Self::Part2) {
+impl Spread2<u32, i32> for <CpMatch as ExternC>::CType {
+    fn into_parts(self) -> (u32, i32) {
         (self.0, 0)
-    }
-
-    fn from_parts(part1: Self::Part1, _part2: Self::Part2) -> Self {
-        Self(part1)
     }
 }
 
-impl Spread2 for CConnectionPooling {
-    type Part1 = u32;
-    type Part2 = i32;
-
-    fn into_parts(self) -> (Self::Part1, Self::Part2) {
+impl Spread2<u32, i32> for CConnectionPooling {
+    fn into_parts(self) -> (u32, i32) {
         (self.0, 0)
-    }
-
-    fn from_parts(part1: Self::Part1, _part2: Self::Part2) -> Self {
-        Self(part1)
     }
 }
 

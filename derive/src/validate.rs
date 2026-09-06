@@ -462,35 +462,6 @@ fn is_type_param_path(ty: &syn::TypePath, type_params: &BTreeSet<&syn::Ident>) -
             .is_some_and(|ident| type_params.contains(ident))
 }
 
-pub(crate) fn validate_niche_value_sized_tail(fields: &syn::Fields) -> Result<()> {
-    fn peel_type(ty: &syn::Type) -> &syn::Type {
-        match ty {
-            syn::Type::Group(ty) => peel_type(&ty.elem),
-            syn::Type::Paren(ty) => peel_type(&ty.elem),
-            _ => ty,
-        }
-    }
-
-    fn is_always_unsized(ty: &syn::Type) -> bool {
-        match peel_type(ty) {
-            syn::Type::Slice(_) | syn::Type::TraitObject(_) => true,
-            syn::Type::Path(ty) if ty.qself.is_none() => ty.path.is_ident("str"),
-            _ => false,
-        }
-    }
-
-    let Some(field) = fields.iter().next_back() else {
-        return Ok(());
-    };
-
-    if !is_always_unsized(&field.ty) {
-        return Ok(());
-    }
-
-    let err_msg = "`NICHE_VALUE` is not supported on unsized types";
-    Err(Error::new_spanned(&field.ty, err_msg))
-}
-
 fn unsupported_attr(attr: &syn::Attribute) -> Error {
     Error::new_spanned(attr, "Attribute not supported in this position")
 }
@@ -987,7 +958,6 @@ fn validate_spread(sig: &syn::Signature, outer: Option<&syn::Generics>) -> Resul
         .map(|param| &param.ident)
         .collect::<Vec<_>>();
     let detector = crate::utils::ParamUseDetector::new(runtime_parameters);
-
     for input in &sig.inputs {
         let syn::FnArg::Typed(input) = input else {
             continue;
@@ -996,12 +966,14 @@ fn validate_spread(sig: &syn::Signature, outer: Option<&syn::Generics>) -> Resul
             continue;
         };
         let (part1, part2) = spread_types(&input.attrs)?.expect("spread attribute was found");
-        let mentions_runtime_parameter = detector.type_mentions_param(&input.ty);
-        if mentions_runtime_parameter
+        if detector.type_mentions_param(&input.ty)
             && (matches!(part1, syn::Type::Infer(_)) || matches!(part2, syn::Type::Infer(_)))
         {
             let err_msg = "runtime-dispatched #[spread] arguments cannot use `_` placeholders";
             return Err(Error::new_spanned(attr, err_msg));
+        }
+        if matches!(part1, syn::Type::Infer(_)) || matches!(part2, syn::Type::Infer(_)) {
+            crate::ffi_fn::spread_abi_parts(&input.attrs, &input.ty)?;
         }
     }
 

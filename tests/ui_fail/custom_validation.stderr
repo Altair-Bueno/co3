@@ -34,20 +34,82 @@ error: Unions are not supported
 50 | | }
    | |_^
 
-error: `NICHE_VALUE` is not supported on unsized types
-  --> tests/ui_fail/custom_validation.rs:60:28
+error[E0277]: the trait bound `[u8]: Copy` is not satisfied
+  --> tests/ui_fail/custom_validation.rs:66:21
    |
-60 | pub struct UnsizedSlice<T>([T]);
-   |                            ^^^
+66 |     require_niche::<UnsizedSlice<u8>>();
+   |                     ^^^^^^^^^^^^^^^^ the trait `Copy` is not implemented for `[u8]`
+   |
+help: the trait `Copy` is implemented for `[T; N]`
+  --> $RUST/core/src/array/mod.rs
+   |
+   | impl<T: Copy, const N: usize> Copy for [T; N] {}
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+note: required for `UnsizedSlice<u8>` to implement `Niche`
+  --> tests/ui_fail/custom_validation.rs:58:12
+   |
+56 | #[derive(ReprC)]
+   |          ----- type parameter would need to implement `Niche`
+57 | #[reprC(NICHE_VALUE = unsafe { core::mem::zeroed() })]
+58 | pub struct UnsizedSlice<T>([T]);
+   |            ^^^^^^^^^^^^^^^
+   = help: consider manually implementing `Niche` to avoid undesired bounds
+note: required by a bound in `require_niche`
+  --> tests/ui_fail/custom_validation.rs:65:25
+   |
+65 |     fn require_niche<T: co3::niche::Niche>() {}
+   |                         ^^^^^^^^^^^^^^^^^ required by this bound in `require_niche`
 
-error: `NICHE_VALUE` is not supported on unsized types
-  --> tests/ui_fail/custom_validation.rs:64:23
+error[E0277]: the trait bound `[u8]: Copy` is not satisfied
+  --> tests/ui_fail/custom_validation.rs:67:21
    |
-64 | pub struct UnsizedStr(str);
-   |                       ^^^
+67 |     require_niche::<UnsizedStr>();
+   |                     ^^^^^^^^^^ the trait `Copy` is not implemented for `[u8]`
+   |
+help: the trait `Copy` is implemented for `[T; N]`
+  --> $RUST/core/src/array/mod.rs
+   |
+   | impl<T: Copy, const N: usize> Copy for [T; N] {}
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+note: required for `CUnsizedStr` to implement `Copy`
+  --> tests/ui_fail/custom_validation.rs:60:10
+   |
+60 | #[derive(ReprC)]
+   |          ^^^^^ type parameter would need to implement `Copy`
+note: required for `UnsizedStr` to implement `Niche`
+  --> tests/ui_fail/custom_validation.rs:62:12
+   |
+60 | #[derive(ReprC)]
+   |          ----- type parameter would need to implement `Niche`
+61 | #[reprC(NICHE_VALUE = unsafe { core::mem::zeroed() })]
+62 | pub struct UnsizedStr(str);
+   |            ^^^^^^^^^^
+   = help: consider manually implementing `Niche` to avoid undesired bounds
+note: required by a bound in `require_niche`
+  --> tests/ui_fail/custom_validation.rs:65:25
+   |
+65 |     fn require_niche<T: co3::niche::Niche>() {}
+   |                         ^^^^^^^^^^^^^^^^^ required by this bound in `require_niche`
+   = note: this error originates in the derive macro `ReprC` (in Nightly builds, run with -Z macro-backtrace for more info)
 
-error: `NICHE_VALUE` is not supported on unsized types
-  --> tests/ui_fail/custom_validation.rs:68:31
+error[E0277]: the size for values of type `str` cannot be known at compilation time
+  --> tests/ui_fail/custom_validation.rs:67:21
    |
-68 | pub struct UnsizedTraitObject(dyn Send);
-   |                               ^^^^^^^^
+67 |     require_niche::<UnsizedStr>();
+   |                     ^^^^^^^^^^ doesn't have a size known at compile-time
+   |
+   = help: within `UnsizedStr`, the trait `std::marker::Sized` is not implemented for `str`
+note: required because it appears within the type `UnsizedStr`
+  --> tests/ui_fail/custom_validation.rs:62:12
+   |
+62 | pub struct UnsizedStr(str);
+   |            ^^^^^^^^^^
+note: required by an implicit `Sized` bound in `require_niche`
+  --> tests/ui_fail/custom_validation.rs:65:22
+   |
+65 |     fn require_niche<T: co3::niche::Niche>() {}
+   |                      ^ required by the implicit `Sized` requirement on this type parameter in `require_niche`
+help: consider relaxing the implicit `Sized` restriction
+   |
+65 |     fn require_niche<T: co3::niche::Niche + ?Sized>() {}
+   |                                           ++++++++

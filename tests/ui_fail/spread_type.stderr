@@ -1,3 +1,15 @@
+error: the first `_` spread argument is only supported for two-element tuples and references to `Wide` types
+ --> tests/ui_fail/spread_type.rs:6:46
+  |
+6 |     fn missing_spread(#[spread(_, _)] value: u32);
+  |                                              ^^^
+
+error: the first `_` spread argument is only supported for two-element tuples and references to `Wide` types
+ --> tests/ui_fail/spread_type.rs:7:54
+  |
+7 |     fn missing_spread_try(#[try_spread(_, _)] value: u32);
+  |                                                      ^^^
+
 error: #[spread] is only supported in extern declarations
  --> tests/ui_fail/spread_type.rs:6:23
   |
@@ -9,6 +21,18 @@ error: #[try_spread] is only supported in extern declarations
   |
 7 |     fn missing_spread_try(#[try_spread(_, _)] value: u32);
   |                           ^^^^^^^^^^^^^^^^^^^
+
+error: the first `_` spread argument is only supported for two-element tuples and references to `Wide` types
+  --> tests/ui_fail/spread_type.rs:13:46
+   |
+13 |     fn missing_spread(#[spread(_, _)] value: u32);
+   |                                              ^^^
+
+error: the first `_` spread argument is only supported for two-element tuples and references to `Wide` types
+  --> tests/ui_fail/spread_type.rs:14:54
+   |
+14 |     fn missing_spread_try(#[try_spread(_, _)] value: u32);
+   |                                                      ^^^
 
 error: #[spread] expects exactly two types
   --> tests/ui_fail/spread_type.rs:20:22
@@ -46,100 +70,7 @@ error: runtime-dispatched #[spread] arguments cannot use `_` placeholders
 46 |     fn missing_payload_spread_try<dyn(u8) T = (u8, u8)>(#[try_spread(_, _)] value: T)
    |                                                         ^^^^^^^^^^^^^^^^^^^
 
-error[E0277]: the trait bound `u32: Spread2` is not satisfied
-  --> tests/ui_fail/spread_type.rs:10:1
-   |
-10 | / ffi! {
-11 | |     #![unsafe(extern("C"))]
-12 | |
-13 | |     fn missing_spread(#[spread(_, _)] value: u32);
-14 | |     fn missing_spread_try(#[try_spread(_, _)] value: u32);
-15 | | }
-   | |_^ the trait `Spread2` is not implemented for `u32`
-   |
-help: the following other types implement trait `Spread2`
-  --> src/tuple.rs
-   |
-   | impl<A: ReprC, B: ReprC> Spread2 for ReprCTuple2<A, B> {
-   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `ReprCTuple2<A, B>`
-   |
-  ::: src/slice.rs
-   |
-   | impl<C: ReprC> Spread2 for CSlice<C> {
-   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `CSlice<C>`
-...
-   | impl<C: ReprC> Spread2 for CSliceMut<C> {
-   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `CSliceMut<C>`
-   |
-  ::: src/boxed.rs
-   |
-   | impl<C: ReprC> Spread2 for CBoxedSlice<C> {
-   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `CBoxedSlice<C>`
-   = note: this error originates in the macro `ffi` (in Nightly builds, run with -Z macro-backtrace for more info)
-
-error[E0277]: the trait bound `u32: Spread2` is not satisfied
-  --> tests/ui_fail/spread_type.rs:13:39
-   |
-10 | / ffi! {
-11 | |     #![unsafe(extern("C"))]
-12 | |
-13 | |     fn missing_spread(#[spread(_, _)] value: u32);
-   | |                                       ^^^^^ the trait `Spread2` is not implemented for `u32`
-14 | |     fn missing_spread_try(#[try_spread(_, _)] value: u32);
-15 | | }
-   | |_- required by a bound introduced by this call
-   |
-help: the following other types implement trait `Spread2`
-  --> src/tuple.rs
-   |
-   | impl<A: ReprC, B: ReprC> Spread2 for ReprCTuple2<A, B> {
-   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `ReprCTuple2<A, B>`
-   |
-  ::: src/slice.rs
-   |
-   | impl<C: ReprC> Spread2 for CSlice<C> {
-   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `CSlice<C>`
-...
-   | impl<C: ReprC> Spread2 for CSliceMut<C> {
-   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `CSliceMut<C>`
-   |
-  ::: src/boxed.rs
-   |
-   | impl<C: ReprC> Spread2 for CBoxedSlice<C> {
-   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `CBoxedSlice<C>`
-
-error[E0277]: the trait bound `u32: Spread2` is not satisfied
-  --> tests/ui_fail/spread_type.rs:14:47
-   |
-10 | / ffi! {
-11 | |     #![unsafe(extern("C"))]
-12 | |
-13 | |     fn missing_spread(#[spread(_, _)] value: u32);
-14 | |     fn missing_spread_try(#[try_spread(_, _)] value: u32);
-   | |                                               ^^^^^ the trait `Spread2` is not implemented for `u32`
-15 | | }
-   | |_- required by a bound introduced by this call
-   |
-help: the following other types implement trait `Spread2`
-  --> src/tuple.rs
-   |
-   | impl<A: ReprC, B: ReprC> Spread2 for ReprCTuple2<A, B> {
-   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `ReprCTuple2<A, B>`
-   |
-  ::: src/slice.rs
-   |
-   | impl<C: ReprC> Spread2 for CSlice<C> {
-   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `CSlice<C>`
-...
-   | impl<C: ReprC> Spread2 for CSliceMut<C> {
-   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `CSliceMut<C>`
-   |
-  ::: src/boxed.rs
-   |
-   | impl<C: ReprC> Spread2 for CBoxedSlice<C> {
-   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `CBoxedSlice<C>`
-
-error[E0277]: the trait bound `CBoxedSlice<u8>: From<u8>` is not satisfied
+error[E0277]: the trait bound `ReprCTuple2<u8, u8>: Spread2<u32, CBoxedSlice<u8>>` is not satisfied
   --> tests/ui_fail/spread_type.rs:24:1
    |
 24 | / ffi! {
@@ -148,12 +79,17 @@ error[E0277]: the trait bound `CBoxedSlice<u8>: From<u8>` is not satisfied
 27 | |     fn missing_into(#[spread(u32, String)] value: ReprCTuple2<u8, u8>);
 28 | |     fn missing_into_try(#[try_spread(u32, String)] value: ReprCTuple2<u8, u8>);
 29 | | }
-   | |_^ the trait `From<u8>` is not implemented for `CBoxedSlice<u8>`
+   | |_^ the trait `Spread2<u32, CBoxedSlice<u8>>` is not implemented for `ReprCTuple2<u8, u8>`
    |
-   = note: required for `u8` to implement `Into<CBoxedSlice<u8>>`
+help: the trait `Spread2<u32, CBoxedSlice<u8>>` is not implemented for `ReprCTuple2<u8, u8>`
+      but trait `Spread2<u8, u8>` is implemented for it
+  --> src/tuple.rs
+   |
+   | impl<A: ReprC, B: ReprC> Spread2<A, B> for ReprCTuple2<A, B> {
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
    = note: this error originates in the macro `ffi` (in Nightly builds, run with -Z macro-backtrace for more info)
 
-error[E0277]: the trait bound `CBoxedSlice<u8>: From<u8>` is not satisfied
+error[E0277]: the trait bound `ReprCTuple2<u8, u8>: TrySpread2<u32, CBoxedSlice<u8>>` is not satisfied
   --> tests/ui_fail/spread_type.rs:24:1
    |
 24 | / ffi! {
@@ -162,8 +98,13 @@ error[E0277]: the trait bound `CBoxedSlice<u8>: From<u8>` is not satisfied
 27 | |     fn missing_into(#[spread(u32, String)] value: ReprCTuple2<u8, u8>);
 28 | |     fn missing_into_try(#[try_spread(u32, String)] value: ReprCTuple2<u8, u8>);
 29 | | }
-   | |_^ the trait `From<u8>` is not implemented for `CBoxedSlice<u8>`
+   | |_^ the trait `Spread2<u32, CBoxedSlice<u8>>` is not implemented for `ReprCTuple2<u8, u8>`
    |
-   = note: required for `u8` to implement `Into<CBoxedSlice<u8>>`
-   = note: required for `CBoxedSlice<u8>` to implement `TryFrom<u8>`
+help: the trait `Spread2<u32, CBoxedSlice<u8>>` is not implemented for `ReprCTuple2<u8, u8>`
+      but trait `Spread2<u8, u8>` is implemented for it
+  --> src/tuple.rs
+   |
+   | impl<A: ReprC, B: ReprC> Spread2<A, B> for ReprCTuple2<A, B> {
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   = note: required for `ReprCTuple2<u8, u8>` to implement `TrySpread2<u32, CBoxedSlice<u8>>`
    = note: this error originates in the macro `ffi` (in Nightly builds, run with -Z macro-backtrace for more info)
