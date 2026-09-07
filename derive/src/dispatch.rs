@@ -1,7 +1,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use proc_macro2::{Span, TokenStream, TokenTree};
-use quote::{format_ident, quote, quote_spanned};
+use quote::{format_ident, quote};
 use syn::{
     GenericParam, ReturnType, parse_quote, punctuated::Punctuated, spanned::Spanned, visit::Visit,
     visit_mut::VisitMut,
@@ -591,20 +591,7 @@ fn dispatch_layout_checks(
             StaticLifetimeNormalizer.visit_type_mut(&mut concrete_ty);
             StaticLifetimeNormalizer.visit_type_mut(&mut erased_ty);
 
-            quote_spanned! {span=>
-                const {
-                    assert!(
-                        core::mem::size_of::<#concrete_ty>()
-                            == core::mem::size_of::<#erased_ty>(),
-                        "tagged-dispatch argument size mismatch",
-                    );
-                    assert!(
-                        core::mem::align_of::<#concrete_ty>()
-                            == core::mem::align_of::<#erased_ty>(),
-                        "tagged-dispatch argument alignment mismatch",
-                    );
-                }
-            }
+            crate::abi_retype::gen_assertion(&concrete_ty, &erased_ty, span)
         })
         .collect()
 }
@@ -994,8 +981,7 @@ fn erase_dyn_self_type(self_ty: &syn::Type, ty: &syn::Type) -> syn::Type {
 }
 
 fn gen_retype(arg_name: &TokenStream, source_ty: &syn::Type, target_ty: &syn::Type) -> TokenStream {
-    // TODO: Write a safety comment.
-    quote! { unsafe { core::mem::transmute_copy::<#source_ty, #target_ty>(&#arg_name) } }
+    crate::abi_retype::gen_retype(arg_name.clone(), source_ty, target_ty)
 }
 
 pub(crate) fn set_token_stream_span(tokens: TokenStream, span: Span) -> TokenStream {

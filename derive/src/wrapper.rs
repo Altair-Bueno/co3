@@ -453,12 +453,30 @@ fn gen_input_conversion_stmts(inputs: &Punctuated<FnArg, syn::Token![,]>) -> Tok
     let mut stmts = quote! {};
 
     for input in inputs {
-        let (attrs, arg_name) = match input {
-            FnArg::Typed(syn::PatType { attrs, pat, .. }) => {
-                (attrs, item_fn_input_ident(pat).clone())
+        let (attrs, arg_name, ty) = match input {
+            FnArg::Typed(syn::PatType { attrs, pat, ty, .. }) => {
+                (attrs, item_fn_input_ident(pat).clone(), Some(ty.as_ref()))
             }
-            FnArg::Receiver(receiver) => (&receiver.attrs, format_ident!("__co3_self")),
+            FnArg::Receiver(receiver) => (&receiver.attrs, format_ident!("__co3_self"), None),
         };
+
+        if let Some(inner_ty) = ty.and_then(|ty| {
+            ffi_fn::inferred_spread_option_inner(attrs, ty).expect("validated #[spread] attribute")
+        }) {
+            stmts.extend(quote! {
+                let #arg_name: core::option::Option<#inner_ty> = #arg_name;
+                {
+                    fn __co3_assert_option_ctype_is_transparent<T>()
+                    where
+                        T: co3::ExternC,
+                        core::option::Option<T>: co3::ExternC<
+                            CType = <T as co3::ExternC>::CType,
+                        >,
+                    {}
+                    __co3_assert_option_ctype_is_transparent::<#inner_ty>();
+                }
+            });
+        }
 
         let store_name = gen_store_name(&arg_name);
         if OwnershipMode::Borrow == ownership_mode_for_arg(attrs) {
@@ -502,9 +520,13 @@ fn gen_spread_input_stmts(
         }
         let arg_name = item_fn_input_ident(pat);
         let (data_name, metadata_name) = spread_arg_names(arg_name);
-        let (target1_ty, target2_ty) = ffi_fn::spread_abi_parts(attrs, ty)
+        let (target1_ty, target2_ty) = ffi_fn::spread_logical_parts(attrs, ty)
             .expect("validated #[spread] attribute")
             ;
+        let (abi1_ty, abi2_ty) =
+            ffi_fn::spread_abi_parts(attrs, ty).expect("validated #[spread] attribute");
+        let (part1, part2) =
+            ffi_fn::spread_parts(attrs).expect("validated #[spread] attribute").unwrap();
         if ffi_fn::is_try_spread_arg(attrs) {
             let conversion = quote! {
                 <_ as co3::slice::TrySpread2<#target1_ty, #target2_ty>>::try_into_parts(#arg_name)
@@ -513,16 +535,62 @@ fn gen_spread_input_stmts(
                 FailureMode::Panic => quote! { #conversion.unwrap_or_else(|_| panic!("co3 generated FFI spread conversion failure")) },
                 FailureMode::Error => quote! { #conversion.map_err(|_| co3::Error::trap_value())? },
             };
-            Some(quote! { let (#data_name, #metadata_name) = #conversion; })
+            let erase1 = gen_spread_erase_stmt(
+                &data_name,
+                &target1_ty,
+                &abi1_ty,
+                part1.abi.is_some(),
+            );
+            let erase2 = gen_spread_erase_stmt(
+                &metadata_name,
+                &target2_ty,
+                &abi2_ty,
+                part2.abi.is_some(),
+            );
+            Some(quote! {
+                let (#data_name, #metadata_name) = #conversion;
+                #erase1
+                #erase2
+            })
         } else {
+            let erase1 = gen_spread_erase_stmt(
+                &data_name,
+                &target1_ty,
+                &abi1_ty,
+                part1.abi.is_some(),
+            );
+            let erase2 = gen_spread_erase_stmt(
+                &metadata_name,
+                &target2_ty,
+                &abi2_ty,
+                part2.abi.is_some(),
+            );
             Some(quote! {
                 let (#data_name, #metadata_name) =
                     <_ as co3::slice::Spread2<#target1_ty, #target2_ty>>::into_parts(#arg_name);
+                #erase1
+                #erase2
             })
         }
     });
 
     quote!(#(#stmts)*)
+}
+
+fn gen_spread_erase_stmt(
+    name: &syn::Ident,
+    logical: &syn::Type,
+    abi: &syn::Type,
+    erased: bool,
+) -> TokenStream {
+    if !erased {
+        return TokenStream::new();
+    }
+
+    let retype = crate::abi_retype::gen_retype(quote!(#name), logical, abi);
+    quote! {
+        let #name: #abi = #retype;
+    }
 }
 
 fn gen_ffi_fn_call(sig: &syn::Signature, callee: &TokenStream) -> TokenStream {

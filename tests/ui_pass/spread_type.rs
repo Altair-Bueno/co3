@@ -38,6 +38,16 @@ mod c_symbols {
         data + metadata as u32
     }
 
+    fn optional_slice_len_impl(data: *const u32, len: usize) -> usize {
+        assert_eq!(data.is_null(), len == 0);
+        len
+    }
+
+    fn optional_slice_mut_len_impl(data: *mut u32, len: u16) -> usize {
+        assert_eq!(data.is_null(), len == 0);
+        len.into()
+    }
+
     impl Counter {
         fn inherent_spread_len(&self, _: *const u32, len: usize) -> usize {
             self.0 + len
@@ -58,6 +68,12 @@ mod c_symbols {
 
         #[symbol_name = "spread_convert"]
         fn spread_convert_export(data: u32, metadata: i32) -> u32;
+
+        #[symbol_name = "optional_slice_len_impl"]
+        fn optional_slice_len_impl(data: *const u32, len: usize) -> usize;
+
+        #[symbol_name = "optional_slice_mut_len_impl"]
+        fn optional_slice_mut_len_impl(data: *mut u32, len: u16) -> usize;
 
         impl Counter {
             #[symbol_name = "inherent_spread_len"]
@@ -80,8 +96,15 @@ ffi! {
     #[symbol_name = "spread_convert"]
     fn spread_convert(#[spread(u32, i32)] move value: PairParts) -> u32;
 
+    #[symbol_name = "optional_slice_len_impl"]
+    fn optional_slice_len(#[spread(_, _)] values: Option<&[u32]>) -> usize;
+
+    #[symbol_name = "optional_slice_mut_len_impl"]
+    fn optional_slice_mut_len(#[try_spread(_, u16)] values: Option<&mut [u32]>) -> usize;
+
     fn borrowed_box(#[spread(*const u32, usize)] value: Box<[u32]>);
     fn moved_box(#[spread(_, _)] move value: Box<[u32]>);
+    fn optional_moved_box(#[spread(_, _)] move value: Option<Box<[u32]>>);
     fn parenthesized_ref(#[spread(_, _)] value: (&[u32]));
     fn parenthesized_tuple(#[spread(_, _)] move value: ((u8, u16)));
 
@@ -131,9 +154,27 @@ ffi! {
     }
 }
 
+mod aliased_core_option {
+    use super::*;
+
+    type Option<T> = core::option::Option<T>;
+
+    ffi! {
+        #![unsafe(extern("C"))]
+
+        fn aliased_optional_slice(#[spread(_, _)] values: Option<&[u32]>);
+    }
+}
+
 fn main() {
     assert_eq!(spread_len(&[1, 2, 3]), 3);
     assert_eq!(spread_convert(PairParts(2, 3)), 5);
+    assert_eq!(optional_slice_len(Some(&[1, 2, 3])), 3);
+    assert_eq!(optional_slice_len(None), 0);
+
+    let mut values = [1, 2, 3, 4];
+    assert_eq!(optional_slice_mut_len(Some(&mut values)), 4);
+    assert_eq!(optional_slice_mut_len(None), 0);
 
     let counter = Counter(10);
     assert_eq!(counter.imported_inherent_spread_len(&[1, 2, 3]), 13);

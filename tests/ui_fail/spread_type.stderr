@@ -1,14 +1,26 @@
-error: the first `_` spread argument is only supported for two-element tuples and references to `Wide` types
+error: the first `_` spread argument is only supported for two-element tuples, references to `Wide` types, and `Box`es of `Wide` types
  --> tests/ui_fail/spread_type.rs:6:46
   |
 6 |     fn missing_spread(#[spread(_, _)] value: u32);
   |                                              ^^^
 
-error: the first `_` spread argument is only supported for two-element tuples and references to `Wide` types
+error: the first `_` spread argument is only supported for two-element tuples, references to `Wide` types, and `Box`es of `Wide` types
  --> tests/ui_fail/spread_type.rs:7:54
   |
 7 |     fn missing_spread_try(#[try_spread(_, _)] value: u32);
   |                                                      ^^^
+
+error: the second `_` spread argument is only supported for two-element tuples, references to `Wide` types, and `Box`es of `Wide` types
+ --> tests/ui_fail/spread_type.rs:8:54
+  |
+8 |     fn missing_second_spread(#[spread(u8, _)] value: u32);
+  |                                                      ^^^
+
+error: the second `_` spread argument is only supported for two-element tuples, references to `Wide` types, and `Box`es of `Wide` types
+ --> tests/ui_fail/spread_type.rs:9:62
+  |
+9 |     fn missing_second_spread_try(#[try_spread(u8, _)] value: u32);
+  |                                                              ^^^
 
 error: #[spread] is only supported in extern declarations
  --> tests/ui_fail/spread_type.rs:6:23
@@ -22,63 +34,87 @@ error: #[try_spread] is only supported in extern declarations
 7 |     fn missing_spread_try(#[try_spread(_, _)] value: u32);
   |                           ^^^^^^^^^^^^^^^^^^^
 
-error: the first `_` spread argument is only supported for two-element tuples and references to `Wide` types
-  --> tests/ui_fail/spread_type.rs:13:46
+error: #[spread] is only supported in extern declarations
+ --> tests/ui_fail/spread_type.rs:8:30
+  |
+8 |     fn missing_second_spread(#[spread(u8, _)] value: u32);
+  |                              ^^^^^^^^^^^^^^^^
+
+error: #[try_spread] is only supported in extern declarations
+ --> tests/ui_fail/spread_type.rs:9:34
+  |
+9 |     fn missing_second_spread_try(#[try_spread(u8, _)] value: u32);
+  |                                  ^^^^^^^^^^^^^^^^^^^^
+
+error: the first `_` spread argument is only supported for two-element tuples, references to `Wide` types, and `Box`es of `Wide` types
+  --> tests/ui_fail/spread_type.rs:15:46
    |
-13 |     fn missing_spread(#[spread(_, _)] value: u32);
+15 |     fn missing_spread(#[spread(_, _)] value: u32);
    |                                              ^^^
 
-error: the first `_` spread argument is only supported for two-element tuples and references to `Wide` types
-  --> tests/ui_fail/spread_type.rs:14:54
+error: the first `_` spread argument is only supported for two-element tuples, references to `Wide` types, and `Box`es of `Wide` types
+  --> tests/ui_fail/spread_type.rs:16:54
    |
-14 |     fn missing_spread_try(#[try_spread(_, _)] value: u32);
+16 |     fn missing_spread_try(#[try_spread(_, _)] value: u32);
    |                                                      ^^^
 
-error: #[spread] expects exactly two types
-  --> tests/ui_fail/spread_type.rs:20:22
+error: #[spread] expects exactly two parts
+  --> tests/ui_fail/spread_type.rs:22:22
    |
-20 |     fn missing_types(#[spread] value: ReprCTuple2<u8, u8>);
+22 |     fn missing_types(#[spread] value: ReprCTuple2<u8, u8>);
    |                      ^^^^^^^^^
 
-error: #[try_spread] expects exactly two types
-  --> tests/ui_fail/spread_type.rs:21:26
+error: #[try_spread] expects exactly two parts
+  --> tests/ui_fail/spread_type.rs:23:26
    |
-21 |     fn missing_types_try(#[try_spread] value: ReprCTuple2<u8, u8>);
+23 |     fn missing_types_try(#[try_spread] value: ReprCTuple2<u8, u8>);
    |                          ^^^^^^^^^^^^^
 
-error: runtime-dispatched #[spread] arguments cannot use `_` placeholders
-  --> tests/ui_fail/spread_type.rs:34:34
+error: the ABI type after `=>` cannot be `_`
+  --> tests/ui_fail/spread_type.rs:24:43
    |
-34 |     fn missing_spread<dyn(u8) T>(#[spread(_, _)] value: &[T])
+24 |     fn missing_erased_type(#[spread(u8 => _, u8)] value: ReprCTuple2<u8, u8>);
+   |                                           ^
+
+error: the first `_` spread argument is only supported for two-element tuples, references to `Wide` types, and `Box`es of `Wide` types
+  --> tests/ui_fail/spread_type.rs:25:52
+   |
+25 |     fn nested_option(#[spread(_, _)] value: Option<Option<&[u8]>>);
+   |                                                    ^^^^^^^^^^^^^
+
+error: runtime-dispatched #[spread] arguments cannot use `_` placeholders
+  --> tests/ui_fail/spread_type.rs:38:34
+   |
+38 |     fn missing_spread<dyn(u8) T>(#[spread(_, _)] value: &[T])
    |                                  ^^^^^^^^^^^^^^^
 
 error: runtime-dispatched #[spread] arguments cannot use `_` placeholders
-  --> tests/ui_fail/spread_type.rs:38:38
+  --> tests/ui_fail/spread_type.rs:42:38
    |
-38 |     fn missing_spread_try<dyn(u8) T>(#[try_spread(_, _)] value: &[T])
+42 |     fn missing_spread_try<dyn(u8) T>(#[try_spread(_, _)] value: &[T])
    |                                      ^^^^^^^^^^^^^^^^^^^
 
 error: runtime-dispatched #[spread] arguments cannot use `_` placeholders
-  --> tests/ui_fail/spread_type.rs:42:53
+  --> tests/ui_fail/spread_type.rs:46:53
    |
-42 |     fn missing_payload_spread<dyn(u8) T = (u8, u8)>(#[spread(_, _)] value: T)
+46 |     fn missing_payload_spread<dyn(u8) T = (u8, u8)>(#[spread(_, _)] value: T)
    |                                                     ^^^^^^^^^^^^^^^
 
 error: runtime-dispatched #[spread] arguments cannot use `_` placeholders
-  --> tests/ui_fail/spread_type.rs:46:57
+  --> tests/ui_fail/spread_type.rs:50:57
    |
-46 |     fn missing_payload_spread_try<dyn(u8) T = (u8, u8)>(#[try_spread(_, _)] value: T)
+50 |     fn missing_payload_spread_try<dyn(u8) T = (u8, u8)>(#[try_spread(_, _)] value: T)
    |                                                         ^^^^^^^^^^^^^^^^^^^
 
 error[E0277]: the trait bound `ReprCTuple2<u8, u8>: Spread2<u32, CBoxedSlice<u8>>` is not satisfied
-  --> tests/ui_fail/spread_type.rs:24:1
+  --> tests/ui_fail/spread_type.rs:28:1
    |
-24 | / ffi! {
-25 | |     #![unsafe(extern("C"))]
-26 | |
-27 | |     fn missing_into(#[spread(u32, String)] value: ReprCTuple2<u8, u8>);
-28 | |     fn missing_into_try(#[try_spread(u32, String)] value: ReprCTuple2<u8, u8>);
-29 | | }
+28 | / ffi! {
+29 | |     #![unsafe(extern("C"))]
+30 | |
+31 | |     fn missing_into(#[spread(u32, String)] value: ReprCTuple2<u8, u8>);
+32 | |     fn missing_into_try(#[try_spread(u32, String)] value: ReprCTuple2<u8, u8>);
+33 | | }
    | |_^ the trait `Spread2<u32, CBoxedSlice<u8>>` is not implemented for `ReprCTuple2<u8, u8>`
    |
 help: the trait `Spread2<u32, CBoxedSlice<u8>>` is not implemented for `ReprCTuple2<u8, u8>`
@@ -90,14 +126,14 @@ help: the trait `Spread2<u32, CBoxedSlice<u8>>` is not implemented for `ReprCTup
    = note: this error originates in the macro `ffi` (in Nightly builds, run with -Z macro-backtrace for more info)
 
 error[E0277]: the trait bound `ReprCTuple2<u8, u8>: TrySpread2<u32, CBoxedSlice<u8>>` is not satisfied
-  --> tests/ui_fail/spread_type.rs:24:1
+  --> tests/ui_fail/spread_type.rs:28:1
    |
-24 | / ffi! {
-25 | |     #![unsafe(extern("C"))]
-26 | |
-27 | |     fn missing_into(#[spread(u32, String)] value: ReprCTuple2<u8, u8>);
-28 | |     fn missing_into_try(#[try_spread(u32, String)] value: ReprCTuple2<u8, u8>);
-29 | | }
+28 | / ffi! {
+29 | |     #![unsafe(extern("C"))]
+30 | |
+31 | |     fn missing_into(#[spread(u32, String)] value: ReprCTuple2<u8, u8>);
+32 | |     fn missing_into_try(#[try_spread(u32, String)] value: ReprCTuple2<u8, u8>);
+33 | | }
    | |_^ the trait `Spread2<u32, CBoxedSlice<u8>>` is not implemented for `ReprCTuple2<u8, u8>`
    |
 help: the trait `Spread2<u32, CBoxedSlice<u8>>` is not implemented for `ReprCTuple2<u8, u8>`

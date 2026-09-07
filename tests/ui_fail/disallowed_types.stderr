@@ -315,11 +315,25 @@ error[E0080]: evaluation panicked: OpaqueZst must not be zero-sized
 76 | |     }
    | |_____^ evaluation of `provider::_::_::_::_` failed here
 
-error[E0080]: evaluation panicked: tagged-dispatch argument size mismatch
+error[E0080]: evaluation panicked: ABI retype size mismatch
    --> tests/ui_fail/disallowed_types.rs:114:49
     |
 114 |         impl<dyn(usize) T = Array> Dispatch for T
-    |                                                 ^ evaluation of `provider::_::_::{constant#0}` failed here
+    |                                                 ^ evaluation of `provider::_::_::{constant#0}` failed inside this call
+    |
+note: inside `co3::transmute::assert_abi_retype::<CHandleConstView, CArrayConstView>`
+   --> $RUST/core/src/panic.rs
+    |
+    |           $crate::panicking::panic_fmt($crate::const_format_args!($($t)+));
+    |           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ the failure occurred here
+    |
+   ::: src/transmute.rs
+    |
+    | /     assert!(
+    | |         core::mem::size_of::<Source>() == core::mem::size_of::<Target>(),
+    | |         "ABI retype size mismatch",
+    | |     );
+    | |_____- in this macro invocation
 
 note: erroneous constant encountered
    --> tests/ui_fail/disallowed_types.rs:114:49
@@ -327,11 +341,25 @@ note: erroneous constant encountered
 114 |         impl<dyn(usize) T = Array> Dispatch for T
     |                                                 ^
 
-error[E0080]: evaluation panicked: tagged-dispatch argument alignment mismatch
+error[E0080]: evaluation panicked: ABI retype alignment mismatch
    --> tests/ui_fail/disallowed_types.rs:124:50
     |
 124 |         impl<dyn(usize) T = Array2> Dispatch for T
-    |                                                  ^ evaluation of `provider::_::_::{constant#0}` failed here
+    |                                                  ^ evaluation of `provider::_::_::{constant#0}` failed inside this call
+    |
+note: inside `co3::transmute::assert_abi_retype::<CHandle2ConstView, CArray2ConstView>`
+   --> $RUST/core/src/panic.rs
+    |
+    |           $crate::panicking::panic_fmt($crate::const_format_args!($($t)+));
+    |           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ the failure occurred here
+    |
+   ::: src/transmute.rs
+    |
+    | /     assert!(
+    | |         core::mem::align_of::<Source>() == core::mem::align_of::<Target>(),
+    | |         "ABI retype alignment mismatch",
+    | |     );
+    | |_____- in this macro invocation
 
 note: erroneous constant encountered
    --> tests/ui_fail/disallowed_types.rs:124:50
@@ -607,11 +635,25 @@ help: the trait `co3::borrow::Borrow` is not implemented for `OwnedMyType`
             and $N others
     = note: this error originates in the macro `ffi` (in Nightly builds, run with -Z macro-backtrace for more info)
 
-error[E0080]: evaluation panicked: tagged-dispatch argument size mismatch
+error[E0080]: evaluation panicked: ABI retype size mismatch
    --> tests/ui_fail/disallowed_types.rs:199:46
     |
 199 |     impl<dyn(usize) T = Handle> Dispatch for T
-    |                                              ^ evaluation of `_::_::{constant#0}` failed here
+    |                                              ^ evaluation of `_::_::{constant#0}` failed inside this call
+    |
+note: inside `co3::transmute::assert_abi_retype::<CArrayConstView, CHandleConstView>`
+   --> $RUST/core/src/panic.rs
+    |
+    |           $crate::panicking::panic_fmt($crate::const_format_args!($($t)+));
+    |           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ the failure occurred here
+    |
+   ::: src/transmute.rs
+    |
+    | /     assert!(
+    | |         core::mem::size_of::<Source>() == core::mem::size_of::<Target>(),
+    | |         "ABI retype size mismatch",
+    | |     );
+    | |_____- in this macro invocation
 
 note: erroneous constant encountered
    --> tests/ui_fail/disallowed_types.rs:199:46
@@ -619,11 +661,25 @@ note: erroneous constant encountered
 199 |     impl<dyn(usize) T = Handle> Dispatch for T
     |                                              ^
 
-error[E0080]: evaluation panicked: tagged-dispatch argument alignment mismatch
+error[E0080]: evaluation panicked: ABI retype alignment mismatch
    --> tests/ui_fail/disallowed_types.rs:212:47
     |
 212 |     impl<dyn(usize) T = Handle2> Dispatch for T
-    |                                               ^ evaluation of `_::_::{constant#0}` failed here
+    |                                               ^ evaluation of `_::_::{constant#0}` failed inside this call
+    |
+note: inside `co3::transmute::assert_abi_retype::<CArray2ConstView, CHandle2ConstView>`
+   --> $RUST/core/src/panic.rs
+    |
+    |           $crate::panicking::panic_fmt($crate::const_format_args!($($t)+));
+    |           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ the failure occurred here
+    |
+   ::: src/transmute.rs
+    |
+    | /     assert!(
+    | |         core::mem::align_of::<Source>() == core::mem::align_of::<Target>(),
+    | |         "ABI retype alignment mismatch",
+    | |     );
+    | |_____- in this macro invocation
 
 note: erroneous constant encountered
    --> tests/ui_fail/disallowed_types.rs:212:47

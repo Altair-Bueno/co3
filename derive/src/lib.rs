@@ -45,6 +45,7 @@ use crate::{
     validate::{validate_export_attrs, validate_export_decls, validate_extern_decls},
 };
 
+mod abi_retype;
 mod cfg_attr;
 mod dispatch;
 mod ffi_fn;
@@ -612,6 +613,33 @@ pub fn handle_derive(item: syn::DeriveInput) -> Result<TokenStream> {
 /// ```
 ///
 /// **This pattern is not limited to slices**; it applies to every type implementing the [`Spread2`](https://docs.rs/co3/latest/co3/slice/trait.Spread2.html) or [`TrySpread2`](https://docs.rs/co3/latest/co3/slice/trait.TrySpread2.html) trait.
+/// A single syntactically visible `Option` around an inferable shape is inferred like its inner type,
+/// provided generated checks prove that the path denotes [`core::option::Option`] and that the
+/// inner type and its `Option` have exactly the same [`ExternC::CType`]. For example,
+/// `Option<&[T]>` is inferred like `&[T]`.
+///
+/// A spread part may use `Logical => Abi` to retain a logical type while selecting the
+/// [`Spread2`](https://docs.rs/co3/latest/co3/slice/trait.Spread2.html) implementation, then erase
+/// it to an ABI-equivalent type in the raw declaration:
+///
+/// ```ignore
+/// # use co3::ffi;
+/// # struct Definition;
+/// # struct AttrLength<D, L>(D, L);
+/// # struct Value;
+/// ffi! {
+///     #![unsafe(extern("C"))]
+///
+///     fn set_attr(
+///         #[spread(*mut core::ffi::c_void, AttrLength<Definition, i32> => i32)]
+///         move value: Value,
+///     );
+/// }
+/// ```
+///
+/// `T` is shorthand for `T => T`. The user must guarantee that the C representations of the
+/// logical and ABI types use the same calling convention; generated code checks their size and
+/// alignment but those properties alone cannot prove ABI equivalence.
 ///
 /// # Failure modes
 ///

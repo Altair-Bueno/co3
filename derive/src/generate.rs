@@ -644,6 +644,8 @@ fn prepare_dispatch_wrapper_sig(
                 .expect("validated #[spread] attribute")
                 .expect("spread attribute was found");
             let (source_part1, source_part2) =
+                ffi_fn::spread_logical_parts(attrs, ty).expect("validated #[spread] attribute");
+            let (abi_part1, abi_part2) =
                 ffi_fn::spread_abi_parts(attrs, ty).expect("validated #[spread] attribute");
             let try_spread = ffi_fn::is_try_spread_arg(attrs);
             if matches!(part1, syn::Type::Infer(_)) {
@@ -678,6 +680,12 @@ fn prepare_dispatch_wrapper_sig(
             where_clause.predicates.push(syn::parse_quote!(
                 #spread_ty: #spread_trait<#source_part1, #source_part2>
             ));
+            where_clause
+                .predicates
+                .push(syn::parse_quote!(#abi_part1: #co3::CFnArg));
+            where_clause
+                .predicates
+                .push(syn::parse_quote!(#abi_part2: #co3::CFnArg));
         }
         if crate::dispatch::handle_id(ty).is_none()
             && (detector.type_mentions_param(ty) || parameterized_spread)

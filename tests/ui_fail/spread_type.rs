@@ -5,6 +5,8 @@ ffi! {
 
     fn missing_spread(#[spread(_, _)] value: u32);
     fn missing_spread_try(#[try_spread(_, _)] value: u32);
+    fn missing_second_spread(#[spread(u8, _)] value: u32);
+    fn missing_second_spread_try(#[try_spread(u8, _)] value: u32);
 }
 
 ffi! {
@@ -19,6 +21,8 @@ ffi! {
 
     fn missing_types(#[spread] value: ReprCTuple2<u8, u8>);
     fn missing_types_try(#[try_spread] value: ReprCTuple2<u8, u8>);
+    fn missing_erased_type(#[spread(u8 => _, u8)] value: ReprCTuple2<u8, u8>);
+    fn nested_option(#[spread(_, _)] value: Option<Option<&[u8]>>);
 }
 
 ffi! {

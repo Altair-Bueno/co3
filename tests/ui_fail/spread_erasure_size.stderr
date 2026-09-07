@@ -1,0 +1,39 @@
+error[E0080]: evaluation panicked: ABI retype size mismatch
+ --> src/transmute.rs
+  |
+  |     const { assert_abi_retype::<Source, Target>() };
+  |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ evaluation of `co3::transmute::abi_retype::<CLogical, u32>::{constant#0}` failed inside this call
+  |
+note: inside `co3::transmute::assert_abi_retype::<CLogical, u32>`
+ --> $RUST/core/src/panic.rs
+  |
+  |           $crate::panicking::panic_fmt($crate::const_format_args!($($t)+));
+  |           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ the failure occurred here
+  |
+ ::: src/transmute.rs
+  |
+  | /     assert!(
+  | |         core::mem::size_of::<Source>() == core::mem::size_of::<Target>(),
+  | |         "ABI retype size mismatch",
+  | |     );
+  | |_____- in this macro invocation
+
+note: erroneous constant encountered
+ --> src/transmute.rs
+  |
+  |     const { assert_abi_retype::<Source, Target>() };
+  |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+note: the above error was encountered while instantiating `fn co3::transmute::abi_retype::<CLogical, u32>`
+  --> tests/ui_fail/spread_erasure_size.rs:18:1
+   |
+18 | / ffi! {
+19 | |     #![unsafe(extern("C"))]
+20 | |
+21 | |     fn size_mismatch(
+...  |
+24 | |     );
+25 | | }
+   | |_^
+   |
+   = note: this note originates in the macro `ffi` (in Nightly builds, run with -Z macro-backtrace for more info)

@@ -3,7 +3,9 @@ use std::collections::{BTreeMap, BTreeSet};
 use proc_macro2::{Span, TokenStream};
 use quote::{format_ident, quote};
 use syn::{
-    Ident, Meta, Path, Type, parse_quote,
+    Ident, Meta, Path, Type,
+    parse::{Parse, ParseStream},
+    parse_quote,
     punctuated::Punctuated,
     spanned::Spanned,
     token::Comma,
@@ -221,21 +223,53 @@ pub(crate) fn is_try_spread_arg(attrs: &[syn::Attribute]) -> bool {
     attrs.iter().any(|attr| attr.path().is_ident("try_spread"))
 }
 
-pub(crate) fn spread_types(attrs: &[syn::Attribute]) -> syn::Result<Option<(Type, Type)>> {
+#[derive(Clone)]
+pub(crate) struct SpreadPart {
+    pub(crate) logical: Type,
+    pub(crate) abi: Option<Type>,
+}
+
+impl Parse for SpreadPart {
+    fn parse(input: ParseStream<'_>) -> syn::Result<Self> {
+        let logical = input.parse()?;
+        let abi = if input.peek(syn::Token![=>]) {
+            input.parse::<syn::Token![=>]>()?;
+            let abi: Type = input.parse()?;
+            if matches!(abi, Type::Infer(_)) {
+                return Err(syn::Error::new_spanned(
+                    abi,
+                    "the ABI type after `=>` cannot be `_`",
+                ));
+            }
+            Some(abi)
+        } else {
+            None
+        };
+        Ok(Self { logical, abi })
+    }
+}
+
+pub(crate) fn spread_parts(
+    attrs: &[syn::Attribute],
+) -> syn::Result<Option<(SpreadPart, SpreadPart)>> {
     let Some(attr) = attrs.iter().find(|attr| is_spread_attr(attr)) else {
         return Ok(None);
     };
-    let syntax_err = || format!("{} expects exactly two types", spread_attr_name(attr));
-    let types = match &attr.meta {
-        Meta::List(_) => attr.parse_args_with(Punctuated::<Type, Comma>::parse_terminated)?,
+    let syntax_err = || format!("{} expects exactly two parts", spread_attr_name(attr));
+    let parts = match &attr.meta {
+        Meta::List(_) => attr.parse_args_with(Punctuated::<SpreadPart, Comma>::parse_terminated)?,
         Meta::NameValue(_) | Meta::Path(_) => {
             return Err(syn::Error::new_spanned(attr, syntax_err()));
         }
     };
-    if types.len() != 2 {
+    if parts.len() != 2 {
         return Err(syn::Error::new_spanned(attr, syntax_err()));
     }
-    Ok(Some((types[0].clone(), types[1].clone())))
+    Ok(Some((parts[0].clone(), parts[1].clone())))
+}
+
+pub(crate) fn spread_types(attrs: &[syn::Attribute]) -> syn::Result<Option<(Type, Type)>> {
+    Ok(spread_parts(attrs)?.map(|(part1, part2)| (part1.logical, part2.logical)))
 }
 
 /// Returns the C representation of the value being split.
@@ -248,24 +282,53 @@ pub(crate) fn spread_abi_parts(
     attrs: &[syn::Attribute],
     arg_ty: &Type,
 ) -> syn::Result<(Type, Type)> {
-    let (part1, part2) = spread_types(attrs)?.expect("spread attribute was validated");
-    let part1 = if matches!(part1, Type::Infer(_)) {
-        inferred_spread_part(arg_ty, 1)?
+    let (part1, part2) = spread_parts(attrs)?.expect("spread attribute was validated");
+    Ok((
+        abi_spread_part(arg_ty, part1, 1)?,
+        abi_spread_part(arg_ty, part2, 2)?,
+    ))
+}
+
+pub(crate) fn spread_logical_parts(
+    attrs: &[syn::Attribute],
+    arg_ty: &Type,
+) -> syn::Result<(Type, Type)> {
+    let (part1, part2) = spread_parts(attrs)?.expect("spread attribute was validated");
+    Ok((
+        logical_spread_part(arg_ty, &part1.logical, 1)?,
+        logical_spread_part(arg_ty, &part2.logical, 2)?,
+    ))
+}
+
+fn abi_spread_part(arg_ty: &Type, part: SpreadPart, position: u8) -> syn::Result<Type> {
+    match part.abi {
+        Some(abi) => Ok(parse_quote!(<#abi as co3::ExternC>::CType)),
+        None => logical_spread_part(arg_ty, &part.logical, position),
+    }
+}
+
+fn logical_spread_part(arg_ty: &Type, part: &Type, position: u8) -> syn::Result<Type> {
+    if matches!(part, Type::Infer(_)) {
+        inferred_spread_part(arg_ty, position)
     } else {
-        parse_quote!(<#part1 as co3::ExternC>::CType)
-    };
-    let part2 = if matches!(part2, Type::Infer(_)) {
-        inferred_spread_part(arg_ty, 2)?
-    } else {
-        parse_quote!(<#part2 as co3::ExternC>::CType)
-    };
-    Ok((part1, part2))
+        Ok(parse_quote!(<#part as co3::ExternC>::CType))
+    }
 }
 
 fn inferred_spread_part(arg_ty: &Type, part: u8) -> syn::Result<Type> {
+    let arg_ty = peel_grouped_type(arg_ty);
+
+    if let Some(inner_ty) = option_inner_type(arg_ty) {
+        return inferred_non_option_spread_part(inner_ty, part);
+    }
+
+    inferred_non_option_spread_part(arg_ty, part)
+}
+
+fn inferred_non_option_spread_part(arg_ty: &Type, part: u8) -> syn::Result<Type> {
     match arg_ty {
-        Type::Paren(paren) => return inferred_spread_part(&paren.elem, part),
-        Type::Group(group) => return inferred_spread_part(&group.elem, part),
+        Type::Paren(paren) => return inferred_non_option_spread_part(&paren.elem, part),
+        Type::Group(group) => return inferred_non_option_spread_part(&group.elem, part),
         _ => {}
     }
 
@@ -298,14 +361,57 @@ fn inferred_spread_part(arg_ty: &Type, part: u8) -> syn::Result<Type> {
         });
     }
 
-    if part == 2 {
-        return Ok(parse_quote!(<#arg_ty as co3::wide::Wide>::Metadata));
-    }
-
+    let position = if part == 1 { "first" } else { "second" };
     Err(syn::Error::new_spanned(
         arg_ty,
-        "the first `_` spread argument is only supported for two-element tuples and references to `Wide` types",
+        format!(
+            "the {position} `_` spread argument is only supported for two-element tuples, references to `Wide` types, and `Box`es of `Wide` types"
+        ),
     ))
+}
+
+pub(crate) fn inferred_spread_option_inner<'a>(
+    attrs: &[syn::Attribute],
+    arg_ty: &'a Type,
+) -> syn::Result<Option<&'a Type>> {
+    let Some((part1, part2)) = spread_parts(attrs)? else {
+        return Ok(None);
+    };
+    if !matches!(part1.logical, Type::Infer(_)) && !matches!(part2.logical, Type::Infer(_)) {
+        return Ok(None);
+    }
+
+    Ok(option_inner_type(peel_grouped_type(arg_ty)))
+}
+
+fn peel_grouped_type(mut ty: &Type) -> &Type {
+    loop {
+        ty = match ty {
+            Type::Paren(paren) => &paren.elem,
+            Type::Group(group) => &group.elem,
+            _ => return ty,
+        };
+    }
+}
+
+fn option_inner_type(ty: &Type) -> Option<&Type> {
+    let Type::Path(path) = ty else {
+        return None;
+    };
+    let segment = path.path.segments.last()?;
+    if segment.ident != "Option" {
+        return None;
+    }
+    let syn::PathArguments::AngleBracketed(arguments) = &segment.arguments else {
+        return None;
+    };
+    if arguments.args.len() != 1 {
+        return None;
+    }
+    match arguments.args.first()? {
+        syn::GenericArgument::Type(inner) => Some(inner),
+        _ => None,
+    }
 }
 
 fn boxed_wide_type(ty: &Type) -> Option<&Type> {
