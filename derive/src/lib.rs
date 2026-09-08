@@ -607,8 +607,8 @@ pub fn handle_derive(item: syn::DeriveInput) -> Result<TokenStream> {
 /// ffi! {
 ///     #![unsafe(extern("system"))]
 ///
-///     // - imported as `sum(*const u32, u16)`
-///     fn sum(#[try_spread(_, u16)] values: &[u32]) -> u32;
+///     // - imported as `sum(*const u32, usize)`
+///     fn sum(#[try_spread(_, usize)] values: &[u32]) -> u32;
 /// }
 /// ```
 ///

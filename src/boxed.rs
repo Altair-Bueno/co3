@@ -7,7 +7,7 @@ use rust_spec::RustSpec;
 use crate::{
     CFnArg, Decode, Encode, ExternC, ReprC,
     borrow::{Borrow, BorrowCast, BorrowCastMut, FromBorrow},
-    slice::{CSlice, CSliceMut, Spread2, TrySpread2},
+    slice::{CSlice, CSliceMut, Spread2},
     stored::{DecodeOwned, EncodeOwned},
     transmute::CheckedTransmute,
 };
@@ -296,24 +296,12 @@ unsafe impl<C: ReprC> BorrowCastMut for CBoxedSlice<C> {
     type AsMut = CSliceMut<C>;
 }
 
-impl<C: ReprC> Spread2<CBox<C>, usize> for CBoxedSlice<C> {
+impl<R: ?Sized, C: ReprC> Spread2<CBox<C>, usize> for Box<R>
+where
+    Self: ExternC<CType = CBoxedSlice<C>>,
+{
     #[inline(always)]
-    fn into_parts(self) -> (CBox<C>, usize) {
-        (CBox { data: self.data }, self.len)
+    fn into_parts(value: Self::CType) -> (CBox<C>, usize) {
+        (CBox { data: value.data }, value.len)
     }
 }
-
-macro_rules! impl_try_spread_boxed_slice_len {
-    ($($len:ty),+ $(,)?) => {$(
-        impl<C: ReprC> TrySpread2<CBox<C>, $len> for CBoxedSlice<C> {
-            type Error = core::num::TryFromIntError;
-
-            #[inline(always)]
-            fn try_into_parts(self) -> Result<(CBox<C>, $len), Self::Error> {
-                Ok((CBox { data: self.data }, self.len.try_into()?))
-            }
-        }
-    )+};
-}
-
-impl_try_spread_boxed_slice_len!(u8, u16, u32, u64, i8, i16, i32, i64, isize);

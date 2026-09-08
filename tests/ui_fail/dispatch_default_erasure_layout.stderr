@@ -2,62 +2,10 @@ error[E0080]: evaluation panicked: ABI retype size mismatch
   --> tests/ui_fail/dispatch_default_erasure_layout.rs:13:53
    |
 13 |     fn layout_mismatch<dyn(u8) T = u16>(move value: T)
-   |                                                     ^ evaluation of `layout_mismatch::<Value>::{constant#0}` failed inside this call
-   |
-note: inside `co3::transmute::assert_abi_retype::<CValue, u16>`
-  --> $RUST/core/src/panic.rs
-   |
-   |           $crate::panicking::panic_fmt($crate::const_format_args!($($t)+));
-   |           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ the failure occurred here
-   |
-  ::: src/transmute.rs
-   |
-   | /     assert!(
-   | |         core::mem::size_of::<Source>() == core::mem::size_of::<Target>(),
-   | |         "ABI retype size mismatch",
-   | |     );
-   | |_____- in this macro invocation
+   |                                                     ^ evaluation of `layout_mismatch::{constant#0}::{constant#0}` failed here
 
 note: erroneous constant encountered
   --> tests/ui_fail/dispatch_default_erasure_layout.rs:13:53
    |
 13 |     fn layout_mismatch<dyn(u8) T = u16>(move value: T)
    |                                                     ^
-
-note: the above error was encountered while instantiating `fn layout_mismatch::<Value>`
-  --> tests/ui_fail/dispatch_default_erasure_layout.rs:19:5
-   |
-19 |     layout_mismatch(Value(1));
-   |     ^^^^^^^^^^^^^^^^^^^^^^^^^
-
-error[E0080]: evaluation panicked: ABI retype size mismatch
- --> src/transmute.rs
-  |
-  |     const { assert_abi_retype::<Source, Target>() };
-  |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ evaluation of `co3::transmute::abi_retype::<CValue, u16>::{constant#0}` failed inside this call
-  |
-note: inside `co3::transmute::assert_abi_retype::<CValue, u16>`
- --> $RUST/core/src/panic.rs
-  |
-  |           $crate::panicking::panic_fmt($crate::const_format_args!($($t)+));
-  |           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ the failure occurred here
-  |
- ::: src/transmute.rs
-  |
-  | /     assert!(
-  | |         core::mem::size_of::<Source>() == core::mem::size_of::<Target>(),
-  | |         "ABI retype size mismatch",
-  | |     );
-  | |_____- in this macro invocation
-
-note: erroneous constant encountered
- --> src/transmute.rs
-  |
-  |     const { assert_abi_retype::<Source, Target>() };
-  |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-note: the above error was encountered while instantiating `fn co3::transmute::abi_retype::<CValue, u16>`
-  --> tests/ui_fail/dispatch_default_erasure_layout.rs:13:5
-   |
-13 |     fn layout_mismatch<dyn(u8) T = u16>(move value: T)
-   |     ^^

@@ -27,7 +27,7 @@ const PARAMETERIZED_DROP_DECLARATION_ERR: &str =
 
 pub(crate) fn validate_export_decls(items: &[crate::ForeignItem]) -> Result<()> {
     let declared_types = crate::declared_foreign_type_idents(items);
-    let mut errors = validate_shared(items).err();
+    let mut errors = validate_shared(items, false).err();
     if let Err(err) = validate_export_type_ids(items) {
         push_error(&mut errors, err);
     }
@@ -59,7 +59,7 @@ pub(crate) fn validate_export_decls(items: &[crate::ForeignItem]) -> Result<()> 
 
 pub(crate) fn validate_extern_decls(items: &[crate::ForeignItem]) -> Result<()> {
     let mut errors = None;
-    if let Err(err) = validate_shared(items) {
+    if let Err(err) = validate_shared(items, true) {
         push_error(&mut errors, err);
     }
     if let Err(err) = validate_parameterized_drop_declarations(items) {
@@ -704,7 +704,7 @@ fn validate_export_receiver_position(sig: &syn::Signature) -> Result<()> {
     Err(Error::new_spanned(receiver, err_msg))
 }
 
-fn validate_shared(items: &[crate::ForeignItem]) -> Result<()> {
+fn validate_shared(items: &[crate::ForeignItem], validate_spreads: bool) -> Result<()> {
     validate_method_generic_declarations(items)?;
 
     let declared_types = crate::declared_foreign_type_idents(items);
@@ -727,14 +727,14 @@ fn validate_shared(items: &[crate::ForeignItem]) -> Result<()> {
                 validate_no_dispatch_attrs(&item.ty.attrs, &mut errors);
             }
             crate::ForeignItem::Fn(item) => {
-                if let Err(err) = validate_shared_fn(item) {
+                if let Err(err) = validate_shared_fn(item, validate_spreads) {
                     push_error(&mut errors, err);
                 }
             }
             crate::ForeignItem::Impl(_) => {}
         }
     }
-    if let Err(err) = validate_impls(items, validate_shared_impl) {
+    if let Err(err) = validate_impls(items, |impl_| validate_shared_impl(impl_, validate_spreads)) {
         push_error(&mut errors, err);
     }
     errors.map_or(Ok(()), Err)
@@ -819,12 +819,12 @@ fn validate_packed_dyn_self_decls(items: &[crate::ForeignItem]) -> Result<()> {
     errors.map_or(Ok(()), Err)
 }
 
-fn validate_shared_fn(item: &crate::Co3Fn) -> Result<()> {
+fn validate_shared_fn(item: &crate::Co3Fn, validate_spreads: bool) -> Result<()> {
     let mut errors = None;
     if let Err(err) = validate_type_param_defaults(&item.sig.generics) {
         push_error(&mut errors, err);
     }
-    if let Err(err) = validate_spread(&item.sig, None) {
+    if validate_spreads && let Err(err) = validate_spread(&item.sig, None) {
         push_error(&mut errors, err);
     }
     if let Err(err) = ensure_no_handle_arg_attrs(&item.sig) {
@@ -846,7 +846,7 @@ fn validate_shared_fn(item: &crate::Co3Fn) -> Result<()> {
     errors.map_or(Ok(()), Err)
 }
 
-fn validate_shared_impl(impl_: &crate::Co3Impl) -> Result<()> {
+fn validate_shared_impl(impl_: &crate::Co3Impl, validate_spreads: bool) -> Result<()> {
     let mut errors = None;
     if let Err(err) = validate_type_param_defaults(&impl_.generics) {
         push_error(&mut errors, err);
@@ -866,7 +866,7 @@ fn validate_shared_impl(impl_: &crate::Co3Impl) -> Result<()> {
             push_error(&mut errors, err);
         }
         let method_dispatch = impl_.method_dispatch_args.get(&sig.ident);
-        if let Err(err) = validate_spread(sig, Some(&impl_.generics)) {
+        if validate_spreads && let Err(err) = validate_spread(sig, Some(&impl_.generics)) {
             push_error(&mut errors, err);
         }
         if let Err(err) = ensure_no_handle_arg_attrs(sig) {
@@ -969,7 +969,10 @@ fn validate_spread(sig: &syn::Signature, outer: Option<&syn::Generics>) -> Resul
         if detector.type_mentions_param(&input.ty)
             && (matches!(part1, syn::Type::Infer(_)) || matches!(part2, syn::Type::Infer(_)))
         {
-            let err_msg = "runtime-dispatched #[spread] arguments cannot use `_` placeholders";
+            let err_msg = format!(
+                "runtime-dispatched {} arguments cannot use `_` placeholders",
+                spread_attr_name(attr),
+            );
             return Err(Error::new_spanned(attr, err_msg));
         }
         if matches!(part1, syn::Type::Infer(_)) || matches!(part2, syn::Type::Infer(_)) {

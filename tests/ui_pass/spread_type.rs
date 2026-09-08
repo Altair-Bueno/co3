@@ -1,8 +1,13 @@
-use co3::{ReprC, ffi, slice::Spread2};
+#![allow(unused_parens)]
+
+use co3::{
+    ReprC, ffi,
+    slice::{Spread2, TrySpread2},
+};
 use rust_spec::RustSpec;
 
 trait ExportSpreadLen {
-    fn export_trait_spread_len(&self, _: *const u32, len: u16) -> usize;
+    fn export_trait_spread_len(&self, _: *const u32, len: usize) -> usize;
 }
 
 trait ImportSpreadLen {
@@ -21,9 +26,21 @@ struct OdbcStr<C>([C]);
 #[repr(C)]
 struct PairParts(u8, u8);
 
-impl Spread2<u32, i32> for CPairParts {
-    fn into_parts(self) -> (u32, i32) {
-        (self.0.into(), self.1.into())
+impl Spread2<u32, i32> for PairParts {
+    fn into_parts(value: Self::CType) -> (u32, i32) {
+        (value.0.into(), value.1.into())
+    }
+}
+
+impl<C: ReprC> TrySpread2<*const C, i16> for &OdbcStr<C>
+where
+    Self: Spread2<*const C, usize>,
+{
+    type Error = core::num::TryFromIntError;
+
+    fn try_into_parts(value: Self::CType) -> Result<(*const C, i16), Self::Error> {
+        let (data, len) = <Self as Spread2<*const C, usize>>::into_parts(value);
+        Ok((data, len.try_into()?))
     }
 }
 
@@ -43,9 +60,9 @@ mod c_symbols {
         len
     }
 
-    fn optional_slice_mut_len_impl(data: *mut u32, len: u16) -> usize {
+    fn optional_slice_mut_len_impl(data: *mut u32, len: usize) -> usize {
         assert_eq!(data.is_null(), len == 0);
-        len.into()
+        len
     }
 
     impl Counter {
@@ -55,8 +72,8 @@ mod c_symbols {
     }
 
     impl ExportSpreadLen for Counter {
-        fn export_trait_spread_len(&self, _: *const u32, len: u16) -> usize {
-            self.0 + len as usize + 1
+        fn export_trait_spread_len(&self, _: *const u32, len: usize) -> usize {
+            self.0 + len + 1
         }
     }
 
@@ -73,7 +90,7 @@ mod c_symbols {
         fn optional_slice_len_impl(data: *const u32, len: usize) -> usize;
 
         #[symbol_name = "optional_slice_mut_len_impl"]
-        fn optional_slice_mut_len_impl(data: *mut u32, len: u16) -> usize;
+        fn optional_slice_mut_len_impl(data: *mut u32, len: usize) -> usize;
 
         impl Counter {
             #[symbol_name = "inherent_spread_len"]
@@ -82,7 +99,7 @@ mod c_symbols {
 
         impl ExportSpreadLen for Counter {
             #[symbol_name = "export_trait_spread_len"]
-            fn export_trait_spread_len(&self, _data: *const u32, len: u16) -> usize;
+            fn export_trait_spread_len(&self, _data: *const u32, len: usize) -> usize;
         }
     }
 }
@@ -100,7 +117,7 @@ ffi! {
     fn optional_slice_len(#[spread(_, _)] values: Option<&[u32]>) -> usize;
 
     #[symbol_name = "optional_slice_mut_len_impl"]
-    fn optional_slice_mut_len(#[try_spread(_, u16)] values: Option<&mut [u32]>) -> usize;
+    fn optional_slice_mut_len(#[try_spread(_, usize)] values: Option<&mut [u32]>) -> usize;
 
     fn borrowed_box(#[spread(*const u32, usize)] value: Box<[u32]>);
     fn moved_box(#[spread(_, _)] move value: Box<[u32]>);
@@ -122,7 +139,7 @@ ffi! {
 
     impl ImportSpreadLen for Counter {
         #[symbol_name = "export_trait_spread_len"]
-        fn import_trait_spread_len(&self, #[try_spread(_, u16)] values: &[u32]) -> usize;
+        fn import_trait_spread_len(&self, #[try_spread(_, usize)] values: &[u32]) -> usize;
     }
 }
 

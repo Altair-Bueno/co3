@@ -591,7 +591,7 @@ fn dispatch_layout_checks(
             StaticLifetimeNormalizer.visit_type_mut(&mut concrete_ty);
             StaticLifetimeNormalizer.visit_type_mut(&mut erased_ty);
 
-            crate::abi_retype::gen_assertion(&concrete_ty, &erased_ty, span)
+            crate::abi_retype::gen_forced_assertion(&concrete_ty, &erased_ty, span)
         })
         .collect()
 }
@@ -666,20 +666,6 @@ pub(crate) fn synthesize_dispatch_handle_ids(
 
     synthesized.extend(core::mem::take(inputs));
     *inputs = synthesized.into_iter().collect();
-
-    mark_dispatch_handle_ids_by_value(inputs);
-}
-
-fn mark_dispatch_handle_ids_by_value(inputs: &mut Punctuated<syn::FnArg, syn::Token![,]>) {
-    for input in inputs {
-        let syn::FnArg::Typed(input) = input else {
-            continue;
-        };
-
-        if handle_id(&input.ty).is_some() && !input.attrs.iter().any(ffi_fn::is_by_val_attr) {
-            input.attrs.push(parse_quote!(#[by_val]));
-        }
-    }
 }
 
 #[expect(clippy::too_many_arguments)]
@@ -981,7 +967,7 @@ fn erase_dyn_self_type(self_ty: &syn::Type, ty: &syn::Type) -> syn::Type {
 }
 
 fn gen_retype(arg_name: &TokenStream, source_ty: &syn::Type, target_ty: &syn::Type) -> TokenStream {
-    crate::abi_retype::gen_retype(arg_name.clone(), source_ty, target_ty)
+    crate::abi_retype::gen_retype_after_check(arg_name.clone(), source_ty, target_ty)
 }
 
 pub(crate) fn set_token_stream_span(tokens: TokenStream, span: Span) -> TokenStream {

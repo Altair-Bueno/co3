@@ -273,11 +273,6 @@ pub(crate) fn spread_types(attrs: &[syn::Attribute]) -> syn::Result<Option<(Type
 }
 
 /// Returns the C representation of the value being split.
-pub(crate) fn spread_abi_type(attrs: &[syn::Attribute], arg_ty: &Type) -> syn::Result<TokenStream> {
-    spread_types(attrs)?;
-    Ok(item_fn_input_arg_type(attrs, arg_ty))
-}
-
 pub(crate) fn spread_abi_parts(
     attrs: &[syn::Attribute],
     arg_ty: &Type,
@@ -440,15 +435,8 @@ fn tuple_parts(ty: &Type) -> Option<(&Type, &Type)> {
     }
 }
 
-pub(crate) fn spread_part_idents(arg_name: &Ident) -> (Ident, Ident) {
-    (
-        format_ident!("__Co3Spread_{arg_name}_Part1"),
-        format_ident!("__Co3Spread_{arg_name}_Part2"),
-    )
-}
-
 fn borrowed_arg_ty(attrs: &[syn::Attribute], arg_ty: &Type) -> TokenStream {
-    match ownership_mode_for_arg(attrs) {
+    match ownership_mode_for_arg(attrs, arg_ty) {
         OwnershipMode::ByValue => quote!(#arg_ty),
         OwnershipMode::Borrow => quote! {
             <#arg_ty as co3::borrow::Borrow>::Borrowed<'_>
@@ -502,21 +490,7 @@ pub(crate) fn gen_input_decode_stmts<'a>(
         };
 
         let decode_ty = borrowed_arg_ty(attrs, &arg_ty);
-        let decode_arg = if is_spread_arg(attrs) {
-            let (data_name, metadata_name) = spread_arg_names(&arg_name);
-            let (part1, part2) = spread_part_idents(&arg_name);
-            let decode_c_ty =
-                spread_abi_type(attrs, &arg_ty).expect("validated #[spread] attribute");
-
-            quote! {{
-                <#decode_c_ty as co3::slice::Spread2<#part1, #part2>>::from_parts(
-                    core::convert::Into::<#part1>::into(#data_name),
-                    core::convert::Into::<#part2>::into(#metadata_name),
-                )
-            }}
-        } else {
-            quote! { #arg_name }
-        };
+        let decode_arg = quote! { #arg_name };
 
         let decode_call = if soft_for_arg(attrs) {
             quote! { co3::soft_decode(#decode_arg, &mut __co3_input_stores.#idx) }
@@ -524,7 +498,7 @@ pub(crate) fn gen_input_decode_stmts<'a>(
             quote! { co3::decode(#decode_arg) }
         };
 
-        let from_borrow = match ownership_mode_for_arg(attrs) {
+        let from_borrow = match ownership_mode_for_arg(attrs, &arg_ty) {
             OwnershipMode::ByValue => quote!(#arg_name),
             OwnershipMode::Borrow => quote! {
                 #arg_name.map(co3::borrow::FromBorrow::from_borrow)
@@ -1072,7 +1046,7 @@ fn synthesize_lifetime_bounds(sig: &mut syn::Signature) {
 pub(crate) fn item_fn_input_arg_type(attrs: &[syn::Attribute], arg_ty: &Type) -> TokenStream {
     let c_type = quote! { <#arg_ty as co3::ExternC>::CType };
 
-    match ownership_mode_for_arg(attrs) {
+    match ownership_mode_for_arg(attrs, arg_ty) {
         OwnershipMode::ByValue => quote! { #c_type },
         OwnershipMode::Borrow => quote! {
             <#c_type as co3::borrow::BorrowCast>::AsConst
@@ -1099,12 +1073,61 @@ pub(crate) fn normalize_fn_signature(sig: &mut syn::Signature, self_ty: Option<&
     }
 }
 
-pub(crate) fn ownership_mode_for_arg(attrs: &[syn::Attribute]) -> OwnershipMode {
-    if attrs.iter().any(is_by_val_attr) {
+pub(crate) fn ownership_mode_for_arg(attrs: &[syn::Attribute], ty: &Type) -> OwnershipMode {
+    if attrs.iter().any(is_by_val_attr) || is_implicitly_by_value(ty) {
         return OwnershipMode::ByValue;
     }
 
     OwnershipMode::Borrow
+}
+
+fn is_implicitly_by_value(ty: &Type) -> bool {
+    let ty = peel_grouped_type(ty);
+
+    if handle_id(ty).is_some() {
+        return true;
+    }
+
+    match ty {
+        Type::Reference(_) | Type::Ptr(_) | Type::FnPtr(_) => true,
+        Type::Path(path) => {
+            is_copy_primitive_path(path)
+                || option_inner_type(ty).is_some_and(is_implicitly_by_value)
+        }
+        Type::Tuple(tuple) => {
+            !tuple.elems.is_empty() && tuple.elems.iter().all(is_implicitly_by_value)
+        }
+        _ => false,
+    }
+}
+
+fn is_copy_primitive_path(path: &syn::TypePath) -> bool {
+    if path.qself.is_some() {
+        return false;
+    }
+
+    path.path.segments.last().is_some_and(|segment| {
+        segment.arguments.is_empty()
+            && matches!(
+                segment.ident.to_string().as_str(),
+                "bool"
+                    | "char"
+                    | "u8"
+                    | "u16"
+                    | "u32"
+                    | "u64"
+                    | "u128"
+                    | "usize"
+                    | "i8"
+                    | "i16"
+                    | "i32"
+                    | "i64"
+                    | "i128"
+                    | "isize"
+                    | "f32"
+                    | "f64"
+            )
+    })
 }
 
 pub(crate) struct SelfConcretizer<'a> {
@@ -1297,5 +1320,58 @@ mod tests {
         );
 
         assert_eq!(sig, expected);
+    }
+
+    #[test]
+    fn selects_implicit_by_value_argument_types_during_generation() {
+        let by_value: &[Type] = &[
+            parse_quote!(<dyn Trait>::ID),
+            parse_quote!(&u8),
+            parse_quote!(&mut str),
+            parse_quote!(*const u8),
+            parse_quote!(unsafe extern "C" fn(u8) -> u16),
+            parse_quote!(u32),
+            parse_quote!(core::primitive::char),
+            parse_quote!(Option<&u8>),
+            parse_quote!(Option<Option<&u8>>),
+            parse_quote!((<dyn Trait>::ID, Option<&u8>, (u32, fn()))),
+            parse_quote!((&u8)),
+        ];
+
+        for ty in by_value {
+            assert_eq!(
+                ownership_mode_for_arg(&[], ty),
+                OwnershipMode::ByValue,
+                "expected `{}` to use by-value conversion",
+                quote!(#ty),
+            );
+        }
+    }
+
+    #[test]
+    fn leaves_other_argument_types_borrowed_by_default() {
+        let borrowed: &[Type] = &[
+            parse_quote!(String),
+            parse_quote!(Option<String>),
+            parse_quote!((&u8, String)),
+            parse_quote!([u8; 4]),
+            parse_quote!(()),
+            parse_quote!(str),
+        ];
+
+        for ty in borrowed {
+            assert_eq!(
+                ownership_mode_for_arg(&[], ty),
+                OwnershipMode::Borrow,
+                "expected `{}` to use borrowed conversion",
+                quote!(#ty),
+            );
+        }
+
+        let attrs = [parse_quote!(#[by_val])];
+        assert_eq!(
+            ownership_mode_for_arg(&attrs, &parse_quote!(String)),
+            OwnershipMode::ByValue,
+        );
     }
 }

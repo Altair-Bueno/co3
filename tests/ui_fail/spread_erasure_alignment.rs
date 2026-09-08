@@ -9,9 +9,9 @@ struct Abi(u32, u32);
 #[repr(C)]
 struct Value(u64);
 
-impl Spread2<u8, u64> for CValue {
-    fn into_parts(self) -> (u8, u64) {
-        (0, self.0)
+impl Spread2<u8, u64> for Value {
+    fn into_parts(value: Self::CType) -> (u8, u64) {
+        (0, value.0)
     }
 }
 

@@ -1185,18 +1185,6 @@ fn push_by_val(attrs: &mut Vec<Attribute>, span: proc_macro2::Span) {
     }
 }
 
-fn mark_pointer_like_by_val(attrs: &mut Vec<Attribute>, ty: &Type) {
-    let span = match ty {
-        Type::Reference(reference) => reference.and_token.span,
-        Type::Ptr(pointer) => pointer.star_token.span,
-        Type::FnPtr(function) => function.fn_token.span,
-        Type::Paren(paren) => return mark_pointer_like_by_val(attrs, &paren.elem),
-        Type::Group(group) => return mark_pointer_like_by_val(attrs, &group.elem),
-        _ => return,
-    };
-    push_by_val(attrs, span);
-}
-
 fn parse_move_by_val(
     input: syn::parse::ParseStream,
     attrs: &mut Vec<Attribute>,
@@ -1246,8 +1234,6 @@ impl PreprocessedArg {
             } else {
                 parse_quote!(Self)
             };
-            mark_pointer_like_by_val(&mut merged_attrs, &ty);
-
             return Ok(Self {
                 tokens: quote!(#(#merged_attrs)* __co3_self: #ty),
             });
@@ -1260,8 +1246,6 @@ impl PreprocessedArg {
                 input.parse::<syn::Token![self]>()?;
                 input.parse::<syn::Token![:]>()?;
                 let ty = input.parse::<Type>()?;
-                mark_pointer_like_by_val(&mut merged_attrs, &ty);
-
                 return Ok(Self {
                     tokens: quote! { #(#merged_attrs)* __co3_self: #ty },
                 });
@@ -1271,7 +1255,6 @@ impl PreprocessedArg {
         let pat = syn::Pat::parse_single(input)?;
         let colon_token = input.parse::<syn::Token![:]>()?;
         let ty = input.parse::<Type>()?;
-        mark_pointer_like_by_val(&mut merged_attrs, &ty);
         let arg = PatType {
             attrs: merged_attrs,
             pat: Box::new(pat),
@@ -1651,7 +1634,7 @@ mod tests {
     }
 
     #[test]
-    fn marks_pointer_like_arguments_by_value() {
+    fn leaves_implicit_ownership_unmarked_during_parsing() {
         let item = Parser::parse_str(
             parse_fn_item,
             "fn name(a: *const u8, b: *mut u8, c: extern \"C\" fn(u8) -> u8, d: (*const u8));",
@@ -1663,11 +1646,10 @@ mod tests {
                 panic!("expected typed argument");
             };
             assert!(
-                input
+                !input
                     .attrs
                     .iter()
-                    .any(|attr| attr.path().is_ident("by_val")),
-                "pointer-like argument was not marked by value",
+                    .any(|attr| attr.path().is_ident("by_val"))
             );
         }
     }

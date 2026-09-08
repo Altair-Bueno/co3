@@ -453,33 +453,27 @@ fn gen_input_conversion_stmts(inputs: &Punctuated<FnArg, syn::Token![,]>) -> Tok
     let mut stmts = quote! {};
 
     for input in inputs {
+        let receiver_ty;
         let (attrs, arg_name, ty) = match input {
             FnArg::Typed(syn::PatType { attrs, pat, ty, .. }) => {
-                (attrs, item_fn_input_ident(pat).clone(), Some(ty.as_ref()))
+                (attrs, item_fn_input_ident(pat).clone(), ty.as_ref())
             }
-            FnArg::Receiver(receiver) => (&receiver.attrs, format_ident!("__co3_self"), None),
+            FnArg::Receiver(receiver) => {
+                receiver_ty = crate::utils::receiver_ty(receiver);
+                (&receiver.attrs, format_ident!("__co3_self"), &receiver_ty)
+            }
         };
 
-        if let Some(inner_ty) = ty.and_then(|ty| {
+        if let Some(inner_ty) =
             ffi_fn::inferred_spread_option_inner(attrs, ty).expect("validated #[spread] attribute")
-        }) {
+        {
             stmts.extend(quote! {
                 let #arg_name: core::option::Option<#inner_ty> = #arg_name;
-                {
-                    fn __co3_assert_option_ctype_is_transparent<T>()
-                    where
-                        T: co3::ExternC,
-                        core::option::Option<T>: co3::ExternC<
-                            CType = <T as co3::ExternC>::CType,
-                        >,
-                    {}
-                    __co3_assert_option_ctype_is_transparent::<#inner_ty>();
-                }
             });
         }
 
         let store_name = gen_store_name(&arg_name);
-        if OwnershipMode::Borrow == ownership_mode_for_arg(attrs) {
+        if OwnershipMode::Borrow == ownership_mode_for_arg(attrs, ty) {
             let owner_name = format_ident!("__co3_{arg_name}_owner");
 
             stmts.extend(quote! {
@@ -523,13 +517,26 @@ fn gen_spread_input_stmts(
         let (target1_ty, target2_ty) = ffi_fn::spread_logical_parts(attrs, ty)
             .expect("validated #[spread] attribute")
             ;
+        let inferred_option_ty = ffi_fn::inferred_spread_option_inner(attrs, ty)
+            .expect("validated #[spread] attribute")
+            .map(|inner_ty| quote!(core::option::Option<#inner_ty>));
+        let spread_ty = match (ownership_mode_for_arg(attrs, ty), inferred_option_ty) {
+            (OwnershipMode::ByValue, Some(option_ty)) => option_ty,
+            (OwnershipMode::ByValue, None) => quote!(#ty),
+            (OwnershipMode::Borrow, Some(option_ty)) => {
+                quote!(<#option_ty as co3::borrow::Borrow>::Borrowed<'_>)
+            }
+            (OwnershipMode::Borrow, None) => {
+                quote!(<#ty as co3::borrow::Borrow>::Borrowed<'_>)
+            }
+        };
         let (abi1_ty, abi2_ty) =
             ffi_fn::spread_abi_parts(attrs, ty).expect("validated #[spread] attribute");
         let (part1, part2) =
             ffi_fn::spread_parts(attrs).expect("validated #[spread] attribute").unwrap();
         if ffi_fn::is_try_spread_arg(attrs) {
             let conversion = quote! {
-                <_ as co3::slice::TrySpread2<#target1_ty, #target2_ty>>::try_into_parts(#arg_name)
+                <#spread_ty as co3::slice::TrySpread2<#target1_ty, #target2_ty>>::try_into_parts(#arg_name)
             };
             let conversion = match failure_mode {
                 FailureMode::Panic => quote! { #conversion.unwrap_or_else(|_| panic!("co3 generated FFI spread conversion failure")) },
@@ -567,7 +574,7 @@ fn gen_spread_input_stmts(
             );
             Some(quote! {
                 let (#data_name, #metadata_name) =
-                    <_ as co3::slice::Spread2<#target1_ty, #target2_ty>>::into_parts(#arg_name);
+                    <#spread_ty as co3::slice::Spread2<#target1_ty, #target2_ty>>::into_parts(#arg_name);
                 #erase1
                 #erase2
             })

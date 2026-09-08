@@ -11,18 +11,26 @@ use crate::{
 /// Splits a C-compatible representation into two ABI arguments.
 ///
 /// This is used by `#[spread(T1, T2)]` in [`crate::ffi!`] declarations.
-pub trait Spread2<Part1: ReprC, Part2: ReprC>: ReprC + core::marker::Sized {
-    /// Consumes the spreadable type, returning its constituents.
-    fn into_parts(self) -> (Part1, Part2);
+pub trait Spread2<Part1, Part2>: ExternC<CType: Sized>
+where
+    Part1: ReprC,
+    Part2: ReprC,
+{
+    /// Splits the C representation into its constituents.
+    fn into_parts(value: Self::CType) -> (Part1, Part2);
 }
 
 /// Fallibly splits a C-compatible representation into two ABI arguments.
-pub trait TrySpread2<Part1: ReprC, Part2: ReprC>: ReprC + core::marker::Sized {
+pub trait TrySpread2<Part1, Part2>: ExternC<CType: Sized>
+where
+    Part1: ReprC,
+    Part2: ReprC,
+{
     /// Error returned when either constituent cannot be produced.
     type Error;
 
-    /// Consumes the spreadable type, returning its constituents.
-    fn try_into_parts(self) -> Result<(Part1, Part2), Self::Error>;
+    /// Tries to split the C representation into its constituents.
+    fn try_into_parts(value: Self::CType) -> Result<(Part1, Part2), Self::Error>;
 }
 
 impl<T, Part1, Part2> TrySpread2<Part1, Part2> for T
@@ -34,8 +42,21 @@ where
     type Error = core::convert::Infallible;
 
     #[inline(always)]
-    fn try_into_parts(self) -> Result<(Part1, Part2), Self::Error> {
-        Ok(self.into_parts())
+    fn try_into_parts(value: Self::CType) -> Result<(Part1, Part2), Self::Error> {
+        Ok(T::into_parts(value))
+    }
+}
+
+impl<T, Part1, Part2> Spread2<Part1, Part2> for Option<T>
+where
+    T: Spread2<Part1, Part2>,
+    Self: ExternC<CType = T::CType>,
+    Part1: ReprC,
+    Part2: ReprC,
+{
+    #[inline(always)]
+    fn into_parts(value: Self::CType) -> (Part1, Part2) {
+        T::into_parts(value)
     }
 }
 
@@ -265,43 +286,35 @@ macro_rules! impl_slice_carrier {
 impl_slice_carrier! { CSlice }
 impl_slice_carrier! { CSliceMut }
 
-impl<C: ReprC> Spread2<*const C, usize> for CSlice<C> {
+impl<'a, R: ?Sized, C: ReprC> Spread2<*const C, usize> for &'a R
+where
+    Self: ExternC<CType = CSlice<C>>,
+{
     #[inline(always)]
-    fn into_parts(self) -> (*const C, usize) {
-        (self.data, self.len)
+    fn into_parts(value: Self::CType) -> (*const C, usize) {
+        (value.data, value.len)
     }
 }
 
-impl<C: ReprC> Spread2<*mut C, usize> for CSliceMut<C> {
+impl<'a, R: ?Sized, C: ReprC> Spread2<*mut C, usize> for &'a R
+where
+    Self: ExternC<CType = CSliceMut<C>>,
+{
     #[inline(always)]
-    fn into_parts(self) -> (*mut C, usize) {
-        (self.data, self.len)
+    fn into_parts(value: Self::CType) -> (*mut C, usize) {
+        (value.data, value.len)
     }
 }
 
-macro_rules! impl_try_spread_slice_len {
-    ($($len:ty),+ $(,)?) => {$(
-        impl<C: ReprC> TrySpread2<*const C, $len> for CSlice<C> {
-            type Error = core::num::TryFromIntError;
-
-            #[inline(always)]
-            fn try_into_parts(self) -> Result<(*const C, $len), Self::Error> {
-                Ok((self.data, self.len.try_into()?))
-            }
-        }
-
-        impl<C: ReprC> TrySpread2<*mut C, $len> for CSliceMut<C> {
-            type Error = core::num::TryFromIntError;
-
-            #[inline(always)]
-            fn try_into_parts(self) -> Result<(*mut C, $len), Self::Error> {
-                Ok((self.data, self.len.try_into()?))
-            }
-        }
-    )+};
+impl<'a, R: ?Sized, C: ReprC> Spread2<*mut C, usize> for &'a mut R
+where
+    Self: ExternC<CType = CSliceMut<C>>,
+{
+    #[inline(always)]
+    fn into_parts(value: Self::CType) -> (*mut C, usize) {
+        (value.data, value.len)
+    }
 }
-
-impl_try_spread_slice_len!(u8, u16, u32, u64, i8, i16, i32, i64, isize);
 
 #[cfg(feature = "alloc")]
 impl<C> CSlice<C> {

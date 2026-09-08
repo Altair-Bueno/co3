@@ -639,7 +639,6 @@ fn prepare_dispatch_wrapper_sig(
         let parameterized_spread =
             ffi_fn::is_spread_arg(attrs) && parameter_detector.type_mentions_param(ty);
         if parameterized_spread {
-            let spread_ty = ffi_fn::item_fn_input_arg_type(attrs, ty);
             let (part1, part2) = ffi_fn::spread_types(attrs)
                 .expect("validated #[spread] attribute")
                 .expect("spread attribute was found");
@@ -677,9 +676,18 @@ fn prepare_dispatch_wrapper_sig(
             } else {
                 quote!(#co3::slice::Spread2)
             };
-            where_clause.predicates.push(syn::parse_quote!(
-                #spread_ty: #spread_trait<#source_part1, #source_part2>
-            ));
+            let spread_bound =
+                if ffi_fn::ownership_mode_for_arg(attrs, ty) == OwnershipMode::ByValue {
+                    syn::parse_quote!(
+                        #ty: #spread_trait<#source_part1, #source_part2>
+                    )
+                } else {
+                    syn::parse_quote!(
+                        for<'__co3_spread> <#ty as #co3::borrow::Borrow>::Borrowed<'__co3_spread>:
+                            #spread_trait<#source_part1, #source_part2>
+                    )
+                };
+            where_clause.predicates.push(spread_bound);
             where_clause
                 .predicates
                 .push(syn::parse_quote!(#abi_part1: #co3::CFnArg));
@@ -690,7 +698,7 @@ fn prepare_dispatch_wrapper_sig(
         if crate::dispatch::handle_id(ty).is_none()
             && (detector.type_mentions_param(ty) || parameterized_spread)
         {
-            if attrs.iter().any(ffi_fn::is_by_val_attr) {
+            if ffi_fn::ownership_mode_for_arg(attrs, ty) == OwnershipMode::ByValue {
                 let bound = if soft_for_arg(attrs) {
                     syn::parse_quote!(#ty: #co3::Encode)
                 } else {

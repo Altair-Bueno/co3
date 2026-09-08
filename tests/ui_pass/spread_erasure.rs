@@ -29,17 +29,17 @@ struct AttrPointer<D>(u32, PhantomData<fn() -> D>);
 #[repr(C)]
 struct Parts(u32, u16);
 
-impl<D> Spread2<u32, CAttrLength<D>> for CParts {
-    fn into_parts(self) -> (u32, CAttrLength<D>) {
-        (self.0, CAttrLength(self.1, PhantomData))
+impl<D> Spread2<u32, CAttrLength<D>> for Parts {
+    fn into_parts(value: Self::CType) -> (u32, CAttrLength<D>) {
+        (value.0, CAttrLength(value.1, PhantomData))
     }
 }
 
-impl<D> Spread2<CAttrPointer<D>, CAttrLength<D>> for CParts {
-    fn into_parts(self) -> (CAttrPointer<D>, CAttrLength<D>) {
+impl<D> Spread2<CAttrPointer<D>, CAttrLength<D>> for Parts {
+    fn into_parts(value: Self::CType) -> (CAttrPointer<D>, CAttrLength<D>) {
         (
-            CAttrPointer(self.0, PhantomData),
-            CAttrLength(self.1, PhantomData),
+            CAttrPointer(value.0, PhantomData),
+            CAttrLength(value.1, PhantomData),
         )
     }
 }

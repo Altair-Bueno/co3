@@ -9,9 +9,9 @@ struct Logical(u16);
 #[repr(transparent)]
 struct Value(u16);
 
-impl Spread2<u8, CLogical> for CValue {
-    fn into_parts(self) -> (u8, CLogical) {
-        (0, CLogical(self.0))
+impl Spread2<u8, CLogical> for Value {
+    fn into_parts(value: Self::CType) -> (u8, CLogical) {
+        (0, CLogical(value.0))
     }
 }
 
