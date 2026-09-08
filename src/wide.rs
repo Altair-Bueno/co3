@@ -2,6 +2,10 @@
 use alloc::boxed::Box;
 #[cfg(feature = "alloc")]
 use core::ptr::NonNull;
+use core::{
+    cell::{Cell, UnsafeCell},
+    mem::ManuallyDrop,
+};
 
 /// A dynamically sized value with data and metadata (also called a `fat` pointer).
 ///
@@ -59,6 +63,63 @@ pub trait Wide {
     #[cfg(feature = "alloc")]
     unsafe fn from_non_null(data: NonNull<Self::Data>, metadata: Self::Metadata) -> Box<Self>;
 }
+
+macro_rules! impl_wide_for_transparent_wrapper {
+    ($($wrapper:ident),+ $(,)?) => {$(
+        // TODO: It's super weird that we require Wide::Data: ExternC here
+        impl<R: Wide<Data: crate::ExternC> + ?Sized> Wide for $wrapper<R> {
+            type Data = R::Data;
+            type Metadata = R::Metadata;
+
+            fn metadata(&self) -> Self::Metadata {
+                // SAFETY: Each listed wrapper has the same layout and pointer metadata as `R`.
+                // The temporary reference is used only to obtain that immutable metadata.
+                unsafe { (&*(self as *const Self as *const R)).metadata() }
+            }
+
+            fn as_ptr(&self) -> *const Self::Data {
+                self as *const Self as *const Self::Data
+            }
+
+            fn as_mut_ptr(&mut self) -> *mut Self::Data {
+                self as *mut Self as *mut Self::Data
+            }
+
+            #[cfg(feature = "alloc")]
+            fn into_non_null(self: Box<Self>) -> NonNull<Self::Data> {
+                let ptr = Box::into_raw(self).cast::<Self::Data>();
+                unsafe { NonNull::new_unchecked(ptr) }
+            }
+
+            unsafe fn from_raw_parts<'a>(
+                data: *const Self::Data,
+                metadata: Self::Metadata,
+            ) -> &'a Self {
+                let inner = unsafe { R::from_raw_parts(data, metadata) };
+                unsafe { &*(inner as *const R as *const Self) }
+            }
+
+            unsafe fn from_raw_parts_mut<'a>(
+                data: *mut Self::Data,
+                metadata: Self::Metadata,
+            ) -> &'a mut Self {
+                let inner = unsafe { R::from_raw_parts_mut(data, metadata) };
+                unsafe { &mut *(inner as *mut R as *mut Self) }
+            }
+
+            #[cfg(feature = "alloc")]
+            unsafe fn from_non_null(
+                data: NonNull<Self::Data>,
+                metadata: Self::Metadata,
+            ) -> Box<Self> {
+                let inner = unsafe { R::from_raw_parts_mut(data.as_ptr(), metadata) };
+                unsafe { Box::from_raw(inner as *mut R as *mut Self) }
+            }
+        }
+    )+};
+}
+
+impl_wide_for_transparent_wrapper!(UnsafeCell, Cell, ManuallyDrop);
 
 impl<R> Wide for [R] {
     type Data = R;
@@ -141,6 +202,11 @@ impl Wide for str {
 
 #[cfg(test)]
 mod tests {
+    use core::{
+        cell::{Cell, UnsafeCell},
+        mem::ManuallyDrop,
+    };
+
     use static_assertions::{assert_impl_all, assert_not_impl_any};
 
     use super::Wide;
@@ -149,6 +215,12 @@ mod tests {
     fn wide_is_implemented_for_builtin_wide_types() {
         assert_impl_all!([u8]: Wide<Data = u8, Metadata = usize>);
         assert_impl_all!(str: Wide<Data = u8, Metadata = usize>);
+        assert_impl_all!(UnsafeCell<[u8]>: Wide<Data = u8, Metadata = usize>);
+        assert_impl_all!(UnsafeCell<str>: Wide<Data = u8, Metadata = usize>);
+        assert_impl_all!(Cell<[u8]>: Wide<Data = u8, Metadata = usize>);
+        assert_impl_all!(Cell<str>: Wide<Data = u8, Metadata = usize>);
+        assert_impl_all!(ManuallyDrop<[u8]>: Wide<Data = u8, Metadata = usize>);
+        assert_impl_all!(ManuallyDrop<str>: Wide<Data = u8, Metadata = usize>);
     }
 
     #[test]
