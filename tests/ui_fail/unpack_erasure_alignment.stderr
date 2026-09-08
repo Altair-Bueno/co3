@@ -1,5 +1,5 @@
 error[E0080]: evaluation panicked: ABI retype alignment mismatch
-  --> tests/ui_fail/spread_erasure_alignment.rs:18:1
+  --> tests/ui_fail/unpack_erasure_alignment.rs:18:1
    |
 18 | / ffi! {
 19 | |     #![unsafe(extern("C"))]
@@ -11,7 +11,7 @@ error[E0080]: evaluation panicked: ABI retype alignment mismatch
    | |_^ evaluation of `alignment_mismatch::{constant#0}` failed here
 
 note: erroneous constant encountered
-  --> tests/ui_fail/spread_erasure_alignment.rs:18:1
+  --> tests/ui_fail/unpack_erasure_alignment.rs:18:1
    |
 18 | / ffi! {
 19 | |     #![unsafe(extern("C"))]

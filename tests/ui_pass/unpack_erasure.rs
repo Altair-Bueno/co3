@@ -1,6 +1,6 @@
 use core::marker::PhantomData;
 
-use co3::{Handle, ReprC, ffi, slice::Spread2};
+use co3::{Handle, ReprC, ffi, slice::UnpackAs};
 use rust_spec::RustSpec;
 
 trait Prop {
@@ -29,13 +29,13 @@ struct AttrPointer<D>(u32, PhantomData<fn() -> D>);
 #[repr(C)]
 struct Parts(u32, u16);
 
-impl<D> Spread2<u32, CAttrLength<D>> for Parts {
+impl<D> UnpackAs<u32, CAttrLength<D>> for Parts {
     fn into_parts(value: Self::CType) -> (u32, CAttrLength<D>) {
         (value.0, CAttrLength(value.1, PhantomData))
     }
 }
 
-impl<D> Spread2<CAttrPointer<D>, CAttrLength<D>> for Parts {
+impl<D> UnpackAs<CAttrPointer<D>, CAttrLength<D>> for Parts {
     fn into_parts(value: Self::CType) -> (CAttrPointer<D>, CAttrLength<D>) {
         (
             CAttrPointer(value.0, PhantomData),
@@ -61,7 +61,7 @@ ffi! {
     #[symbol_name = "projected"]
     fn projected<dyn(u8) A: Prop>(
         move attribute: <dyn A>::ID,
-        #[spread(u32, AttrLength<<A as Prop>::DefinedBy> => u16)]
+        #[unpack_as(u32, AttrLength<<A as Prop>::DefinedBy> => u16)]
         move value: Parts,
     )
     where
@@ -70,7 +70,7 @@ ffi! {
     #[symbol_name = "projected_try"]
     fn projected_try<dyn(u8) A: Prop>(
         move attribute: <dyn A>::ID,
-        #[try_spread(u32, AttrLength<<A as Prop>::DefinedBy> => u16)]
+        #[try_unpack_as(u32, AttrLength<<A as Prop>::DefinedBy> => u16)]
         move value: Parts,
     )
     where
@@ -78,7 +78,7 @@ ffi! {
 
     #[symbol_name = "both_parts"]
     fn both_parts(
-        #[spread(AttrPointer<OdbcDefined> => u32, AttrLength<OdbcDefined> => u16)]
+        #[unpack_as(AttrPointer<OdbcDefined> => u32, AttrLength<OdbcDefined> => u16)]
         move value: Parts,
     );
 }

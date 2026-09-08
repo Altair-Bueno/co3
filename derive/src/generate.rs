@@ -636,17 +636,17 @@ fn prepare_dispatch_wrapper_sig(
     for input in &sig.inputs {
         let FnArg::Typed(input) = input else { continue };
         let (attrs, ty) = (&input.attrs[..], &*input.ty);
-        let parameterized_spread =
-            ffi_fn::is_spread_arg(attrs) && parameter_detector.type_mentions_param(ty);
-        if parameterized_spread {
-            let (part1, part2) = ffi_fn::spread_types(attrs)
-                .expect("validated #[spread] attribute")
-                .expect("spread attribute was found");
+        let parameterized_unpack =
+            ffi_fn::is_unpack_arg(attrs) && parameter_detector.type_mentions_param(ty);
+        if parameterized_unpack {
+            let (part1, part2) = ffi_fn::unpack_types(attrs)
+                .expect("validated #[unpack_as] attribute")
+                .expect("unpack attribute was found");
             let (source_part1, source_part2) =
-                ffi_fn::spread_logical_parts(attrs, ty).expect("validated #[spread] attribute");
+                ffi_fn::unpack_logical_parts(attrs, ty).expect("validated #[unpack_as] attribute");
             let (abi_part1, abi_part2) =
-                ffi_fn::spread_abi_parts(attrs, ty).expect("validated #[spread] attribute");
-            let try_spread = ffi_fn::is_try_spread_arg(attrs);
+                ffi_fn::unpack_abi_parts(attrs, ty).expect("validated #[unpack_as] attribute");
+            let try_unpack_as = ffi_fn::is_try_unpack_as_arg(attrs);
             if matches!(part1, syn::Type::Infer(_)) {
                 where_clause.predicates.push(syn::parse_quote!(
                     #source_part1: #co3::CFnArg
@@ -671,23 +671,23 @@ fn prepare_dispatch_wrapper_sig(
                     <#part2 as #co3::ExternC>::CType: #co3::CFnArg
                 ));
             }
-            let spread_trait = if try_spread {
-                quote!(#co3::slice::TrySpread2)
+            let unpack_trait = if try_unpack_as {
+                quote!(#co3::slice::TryUnpackAs)
             } else {
-                quote!(#co3::slice::Spread2)
+                quote!(#co3::slice::UnpackAs)
             };
-            let spread_bound =
+            let unpack_bound =
                 if ffi_fn::ownership_mode_for_arg(attrs, ty) == OwnershipMode::ByValue {
                     syn::parse_quote!(
-                        #ty: #spread_trait<#source_part1, #source_part2>
+                        #ty: #unpack_trait<#source_part1, #source_part2>
                     )
                 } else {
                     syn::parse_quote!(
-                        for<'__co3_spread> <#ty as #co3::borrow::Borrow>::Borrowed<'__co3_spread>:
-                            #spread_trait<#source_part1, #source_part2>
+                        for<'__co3_unpack> <#ty as #co3::borrow::Borrow>::Borrowed<'__co3_unpack>:
+                            #unpack_trait<#source_part1, #source_part2>
                     )
                 };
-            where_clause.predicates.push(spread_bound);
+            where_clause.predicates.push(unpack_bound);
             where_clause
                 .predicates
                 .push(syn::parse_quote!(#abi_part1: #co3::CFnArg));
@@ -696,7 +696,7 @@ fn prepare_dispatch_wrapper_sig(
                 .push(syn::parse_quote!(#abi_part2: #co3::CFnArg));
         }
         if crate::dispatch::handle_id(ty).is_none()
-            && (detector.type_mentions_param(ty) || parameterized_spread)
+            && (detector.type_mentions_param(ty) || parameterized_unpack)
         {
             if ffi_fn::ownership_mode_for_arg(attrs, ty) == OwnershipMode::ByValue {
                 let bound = if soft_for_arg(attrs) {
@@ -878,14 +878,16 @@ fn prepare_dispatch_import(
         0,
         dispatch_membership_bound(&dispatch_set_path, &trait_args),
     );
-    if let Some(impl_generics) = impl_generics
-        && !declared_self
-        && extern_sig
-            .inputs
-            .iter()
-            .any(|input| matches!(input, FnArg::Receiver(_)))
-    {
-        merge_generics(impl_generics.clone(), &mut extern_sig.generics);
+    if let Some(impl_generics) = impl_generics {
+        // The normalized receiver no longer records that it came from an impl, but a
+        // nested foreign item still must bind every outer lifetime it mentions. Type
+        // and const parameters remain excluded: they are irrelevant after ABI erasure
+        // and foreign functions cannot be generic over them.
+        ffi_fn::merge_impl_generics_for_raw_decl(
+            impl_generics.clone(),
+            false,
+            &mut extern_sig.generics,
+        );
     }
     strip_erased_param_predicates(&extern_generics, &mut extern_sig.generics);
     let receiver = self_ty.map_or(crate::dispatch::DispatchReceiver::None, |ty| {
@@ -978,14 +980,14 @@ fn prepare_dynamic_dispatch_import(
 
     let mut extern_sig = wrapper_source_sig.clone();
     normalize_fn_signature(&mut extern_sig, self_ty);
-    if let Some(impl_generics) = impl_generics
-        && !declared_self
-        && extern_sig
-            .inputs
-            .iter()
-            .any(|input| matches!(input, FnArg::Receiver(_)))
-    {
-        merge_generics(impl_generics.clone(), &mut extern_sig.generics);
+    if let Some(impl_generics) = impl_generics {
+        // See `prepare_dispatch_import`: raw foreign declarations retain only
+        // outer lifetime binders after receiver normalization and ABI erasure.
+        ffi_fn::merge_impl_generics_for_raw_decl(
+            impl_generics.clone(),
+            false,
+            &mut extern_sig.generics,
+        );
     }
     strip_erased_param_predicates(&dispatch_generics, &mut extern_sig.generics);
     let receiver = self_ty.map_or(crate::dispatch::DispatchReceiver::None, |ty| {

@@ -8,10 +8,10 @@ use crate::{
     transmute::CheckedTransmute,
 };
 
-/// Splits a C-compatible representation into two ABI arguments.
+/// Unpacks a C-compatible representation as two ABI arguments.
 ///
-/// This is used by `#[spread(T1, T2)]` in [`crate::ffi!`] declarations.
-pub trait Spread2<Part1, Part2>: ExternC<CType: Sized>
+/// This is used by `#[unpack_as(T1, T2)]` in [`crate::ffi!`] declarations.
+pub trait UnpackAs<Part1, Part2>: ExternC<CType: Sized>
 where
     Part1: ReprC,
     Part2: ReprC,
@@ -20,8 +20,8 @@ where
     fn into_parts(value: Self::CType) -> (Part1, Part2);
 }
 
-/// Fallibly splits a C-compatible representation into two ABI arguments.
-pub trait TrySpread2<Part1, Part2>: ExternC<CType: Sized>
+/// Fallibly unpacks a C-compatible representation as two ABI arguments.
+pub trait TryUnpackAs<Part1, Part2>: ExternC<CType: Sized>
 where
     Part1: ReprC,
     Part2: ReprC,
@@ -33,9 +33,9 @@ where
     fn try_into_parts(value: Self::CType) -> Result<(Part1, Part2), Self::Error>;
 }
 
-impl<T, Part1, Part2> TrySpread2<Part1, Part2> for T
+impl<T, Part1, Part2> TryUnpackAs<Part1, Part2> for T
 where
-    T: Spread2<Part1, Part2>,
+    T: UnpackAs<Part1, Part2>,
     Part1: ReprC,
     Part2: ReprC,
 {
@@ -47,9 +47,9 @@ where
     }
 }
 
-impl<T, Part1, Part2> Spread2<Part1, Part2> for Option<T>
+impl<T, Part1, Part2> UnpackAs<Part1, Part2> for Option<T>
 where
-    T: Spread2<Part1, Part2>,
+    T: UnpackAs<Part1, Part2>,
     Self: ExternC<CType = T::CType>,
     Part1: ReprC,
     Part2: ReprC,
@@ -286,7 +286,7 @@ macro_rules! impl_slice_carrier {
 impl_slice_carrier! { CSlice }
 impl_slice_carrier! { CSliceMut }
 
-impl<'a, R: ?Sized, C: ReprC> Spread2<*const C, usize> for &'a R
+impl<'a, R: ?Sized, C: ReprC> UnpackAs<*const C, usize> for &'a R
 where
     Self: ExternC<CType = CSlice<C>>,
 {
@@ -296,7 +296,7 @@ where
     }
 }
 
-impl<'a, R: ?Sized, C: ReprC> Spread2<*mut C, usize> for &'a R
+impl<'a, R: ?Sized, C: ReprC> UnpackAs<*mut C, usize> for &'a R
 where
     Self: ExternC<CType = CSliceMut<C>>,
 {
@@ -306,7 +306,7 @@ where
     }
 }
 
-impl<'a, R: ?Sized, C: ReprC> Spread2<*mut C, usize> for &'a mut R
+impl<'a, R: ?Sized, C: ReprC> UnpackAs<*mut C, usize> for &'a mut R
 where
     Self: ExternC<CType = CSliceMut<C>>,
 {

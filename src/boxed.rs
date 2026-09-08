@@ -7,7 +7,7 @@ use rust_spec::RustSpec;
 use crate::{
     CFnArg, Decode, Encode, ExternC, ReprC,
     borrow::{Borrow, BorrowCast, BorrowCastMut, FromBorrow},
-    slice::{CSlice, CSliceMut, Spread2},
+    slice::{CSlice, CSliceMut, UnpackAs},
     stored::{DecodeOwned, EncodeOwned},
     transmute::CheckedTransmute,
 };
@@ -296,7 +296,7 @@ unsafe impl<C: ReprC> BorrowCastMut for CBoxedSlice<C> {
     type AsMut = CSliceMut<C>;
 }
 
-impl<R: ?Sized, C: ReprC> Spread2<CBox<C>, usize> for Box<R>
+impl<R: ?Sized, C: ReprC> UnpackAs<CBox<C>, usize> for Box<R>
 where
     Self: ExternC<CType = CBoxedSlice<C>>,
 {

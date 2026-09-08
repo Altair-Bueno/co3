@@ -1,7 +1,7 @@
 #![expect(non_camel_case_types, non_snake_case)]
 use std::{ffi::c_void, marker::PhantomData};
 
-use co3::{Handle, ReprC, ffi, slice::Spread2};
+use co3::{Handle, ReprC, ffi, slice::UnpackAs};
 use rust_spec::RustSpec;
 
 pub trait OdbcVersion {}
@@ -104,9 +104,9 @@ co3::ffi! {
         pub fn get_attr<dyn(i32) A: EnvAttr>(
             &self,
             attribute: <dyn A>::ID,
-            #[spread(u32, i32)]
+            #[unpack_as(u32, i32)]
             move value1: <A as EnvAttr>::Value,
-            #[spread(u32, i32)]
+            #[unpack_as(u32, i32)]
             value2: <A as EnvAttr>::Value,
             string_length: &mut i32,
         )
@@ -167,13 +167,13 @@ impl EnvAttr for SQL_ATTR_CP_MATCH {
     type Value = ConnectionPooling;
 }
 
-impl Spread2<u32, i32> for CpMatch {
+impl UnpackAs<u32, i32> for CpMatch {
     fn into_parts(value: Self::CType) -> (u32, i32) {
         (value.0, 0)
     }
 }
 
-impl Spread2<u32, i32> for ConnectionPooling {
+impl UnpackAs<u32, i32> for ConnectionPooling {
     fn into_parts(value: Self::CType) -> (u32, i32) {
         (value.0, 0)
     }

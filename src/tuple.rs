@@ -58,7 +58,7 @@ use crate::{
     CFnArg, Decode, Encode, ExternC, ReprC, Store,
     borrow::{Borrow, BorrowCast, BorrowCastMut, FromBorrow},
     niche::Niche,
-    slice::Spread2,
+    slice::UnpackAs,
     stored::{DecodeOwned, EncodeOwned},
     transmute::CheckedTransmute,
 };
@@ -288,7 +288,7 @@ impl_tuple! {(A, B, C, D, E, F, G, H, I, J) -> ReprCTuple10}
 impl_tuple! {(A, B, C, D, E, F, G, H, I, J, K) -> ReprCTuple11}
 impl_tuple! {(A, B, C, D, E, F, G, H, I, J, K, L) -> ReprCTuple12}
 
-impl<A, B, Part1: ReprC, Part2: ReprC> Spread2<Part1, Part2> for (A, B)
+impl<A, B, Part1: ReprC, Part2: ReprC> UnpackAs<Part1, Part2> for (A, B)
 where
     Self: ExternC<CType = ReprCTuple2<Part1, Part2>>,
 {

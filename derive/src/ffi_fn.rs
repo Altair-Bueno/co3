@@ -203,33 +203,35 @@ pub(crate) fn item_fn_input_ident(input: &syn::Pat) -> &Ident {
     ident
 }
 
-pub(crate) fn is_spread_attr(attr: &syn::Attribute) -> bool {
-    attr.path().is_ident("spread") || attr.path().is_ident("try_spread")
+pub(crate) fn is_unpack_attr(attr: &syn::Attribute) -> bool {
+    attr.path().is_ident("unpack_as") || attr.path().is_ident("try_unpack_as")
 }
 
-pub(crate) fn spread_attr_name(attr: &syn::Attribute) -> &'static str {
-    if attr.path().is_ident("try_spread") {
-        "#[try_spread]"
+pub(crate) fn unpack_attr_name(attr: &syn::Attribute) -> &'static str {
+    if attr.path().is_ident("try_unpack_as") {
+        "#[try_unpack_as]"
     } else {
-        "#[spread]"
+        "#[unpack_as]"
     }
 }
 
-pub(crate) fn is_spread_arg(attrs: &[syn::Attribute]) -> bool {
-    attrs.iter().any(is_spread_attr)
+pub(crate) fn is_unpack_arg(attrs: &[syn::Attribute]) -> bool {
+    attrs.iter().any(is_unpack_attr)
 }
 
-pub(crate) fn is_try_spread_arg(attrs: &[syn::Attribute]) -> bool {
-    attrs.iter().any(|attr| attr.path().is_ident("try_spread"))
+pub(crate) fn is_try_unpack_as_arg(attrs: &[syn::Attribute]) -> bool {
+    attrs
+        .iter()
+        .any(|attr| attr.path().is_ident("try_unpack_as"))
 }
 
 #[derive(Clone)]
-pub(crate) struct SpreadPart {
+pub(crate) struct UnpackPart {
     pub(crate) logical: Type,
     pub(crate) abi: Option<Type>,
 }
 
-impl Parse for SpreadPart {
+impl Parse for UnpackPart {
     fn parse(input: ParseStream<'_>) -> syn::Result<Self> {
         let logical = input.parse()?;
         let abi = if input.peek(syn::Token![=>]) {
@@ -249,15 +251,15 @@ impl Parse for SpreadPart {
     }
 }
 
-pub(crate) fn spread_parts(
+pub(crate) fn unpack_parts(
     attrs: &[syn::Attribute],
-) -> syn::Result<Option<(SpreadPart, SpreadPart)>> {
-    let Some(attr) = attrs.iter().find(|attr| is_spread_attr(attr)) else {
+) -> syn::Result<Option<(UnpackPart, UnpackPart)>> {
+    let Some(attr) = attrs.iter().find(|attr| is_unpack_attr(attr)) else {
         return Ok(None);
     };
-    let syntax_err = || format!("{} expects exactly two parts", spread_attr_name(attr));
+    let syntax_err = || format!("{} expects exactly two parts", unpack_attr_name(attr));
     let parts = match &attr.meta {
-        Meta::List(_) => attr.parse_args_with(Punctuated::<SpreadPart, Comma>::parse_terminated)?,
+        Meta::List(_) => attr.parse_args_with(Punctuated::<UnpackPart, Comma>::parse_terminated)?,
         Meta::NameValue(_) | Meta::Path(_) => {
             return Err(syn::Error::new_spanned(attr, syntax_err()));
         }
@@ -268,62 +270,62 @@ pub(crate) fn spread_parts(
     Ok(Some((parts[0].clone(), parts[1].clone())))
 }
 
-pub(crate) fn spread_types(attrs: &[syn::Attribute]) -> syn::Result<Option<(Type, Type)>> {
-    Ok(spread_parts(attrs)?.map(|(part1, part2)| (part1.logical, part2.logical)))
+pub(crate) fn unpack_types(attrs: &[syn::Attribute]) -> syn::Result<Option<(Type, Type)>> {
+    Ok(unpack_parts(attrs)?.map(|(part1, part2)| (part1.logical, part2.logical)))
 }
 
 /// Returns the C representation of the value being split.
-pub(crate) fn spread_abi_parts(
+pub(crate) fn unpack_abi_parts(
     attrs: &[syn::Attribute],
     arg_ty: &Type,
 ) -> syn::Result<(Type, Type)> {
-    let (part1, part2) = spread_parts(attrs)?.expect("spread attribute was validated");
+    let (part1, part2) = unpack_parts(attrs)?.expect("unpack attribute was validated");
     Ok((
-        abi_spread_part(arg_ty, part1, 1)?,
-        abi_spread_part(arg_ty, part2, 2)?,
+        abi_unpack_part(arg_ty, part1, 1)?,
+        abi_unpack_part(arg_ty, part2, 2)?,
     ))
 }
 
-pub(crate) fn spread_logical_parts(
+pub(crate) fn unpack_logical_parts(
     attrs: &[syn::Attribute],
     arg_ty: &Type,
 ) -> syn::Result<(Type, Type)> {
-    let (part1, part2) = spread_parts(attrs)?.expect("spread attribute was validated");
+    let (part1, part2) = unpack_parts(attrs)?.expect("unpack attribute was validated");
     Ok((
-        logical_spread_part(arg_ty, &part1.logical, 1)?,
-        logical_spread_part(arg_ty, &part2.logical, 2)?,
+        logical_unpack_part(arg_ty, &part1.logical, 1)?,
+        logical_unpack_part(arg_ty, &part2.logical, 2)?,
     ))
 }
 
-fn abi_spread_part(arg_ty: &Type, part: SpreadPart, position: u8) -> syn::Result<Type> {
+fn abi_unpack_part(arg_ty: &Type, part: UnpackPart, position: u8) -> syn::Result<Type> {
     match part.abi {
         Some(abi) => Ok(parse_quote!(<#abi as co3::ExternC>::CType)),
-        None => logical_spread_part(arg_ty, &part.logical, position),
+        None => logical_unpack_part(arg_ty, &part.logical, position),
     }
 }
 
-fn logical_spread_part(arg_ty: &Type, part: &Type, position: u8) -> syn::Result<Type> {
+fn logical_unpack_part(arg_ty: &Type, part: &Type, position: u8) -> syn::Result<Type> {
     if matches!(part, Type::Infer(_)) {
-        inferred_spread_part(arg_ty, position)
+        inferred_unpack_part(arg_ty, position)
     } else {
         Ok(parse_quote!(<#part as co3::ExternC>::CType))
     }
 }
 
-fn inferred_spread_part(arg_ty: &Type, part: u8) -> syn::Result<Type> {
+fn inferred_unpack_part(arg_ty: &Type, part: u8) -> syn::Result<Type> {
     let arg_ty = peel_grouped_type(arg_ty);
 
     if let Some(inner_ty) = option_inner_type(arg_ty) {
-        return inferred_non_option_spread_part(inner_ty, part);
+        return inferred_non_option_unpack_part(inner_ty, part);
     }
 
-    inferred_non_option_spread_part(arg_ty, part)
+    inferred_non_option_unpack_part(arg_ty, part)
 }
 
-fn inferred_non_option_spread_part(arg_ty: &Type, part: u8) -> syn::Result<Type> {
+fn inferred_non_option_unpack_part(arg_ty: &Type, part: u8) -> syn::Result<Type> {
     match arg_ty {
-        Type::Paren(paren) => return inferred_non_option_spread_part(&paren.elem, part),
-        Type::Group(group) => return inferred_non_option_spread_part(&group.elem, part),
+        Type::Paren(paren) => return inferred_non_option_unpack_part(&paren.elem, part),
+        Type::Group(group) => return inferred_non_option_unpack_part(&group.elem, part),
         _ => {}
     }
 
@@ -360,16 +362,16 @@ fn inferred_non_option_spread_part(arg_ty: &Type, part: u8) -> syn::Result<Type>
     Err(syn::Error::new_spanned(
         arg_ty,
         format!(
-            "the {position} `_` spread argument is only supported for two-element tuples, references to `Wide` types, and `Box`es of `Wide` types"
+            "the {position} `_` unpack argument is only supported for two-element tuples, references to `Wide` types, and `Box`es of `Wide` types"
         ),
     ))
 }
 
-pub(crate) fn inferred_spread_option_inner<'a>(
+pub(crate) fn inferred_unpack_option_inner<'a>(
     attrs: &[syn::Attribute],
     arg_ty: &'a Type,
 ) -> syn::Result<Option<&'a Type>> {
-    let Some((part1, part2)) = spread_parts(attrs)? else {
+    let Some((part1, part2)) = unpack_parts(attrs)? else {
         return Ok(None);
     };
     if !matches!(part1.logical, Type::Infer(_)) && !matches!(part2.logical, Type::Infer(_)) {
@@ -444,7 +446,7 @@ fn borrowed_arg_ty(attrs: &[syn::Attribute], arg_ty: &Type) -> TokenStream {
     }
 }
 
-pub(crate) fn spread_arg_names(arg_name: &Ident) -> (Ident, Ident) {
+pub(crate) fn unpack_arg_names(arg_name: &Ident) -> (Ident, Ident) {
     (
         format_ident!("__co3_{arg_name}_data"),
         format_ident!("__co3_{arg_name}_metadata"),
@@ -781,11 +783,11 @@ fn lower_signature_input(generics: &mut syn::Generics, input: syn::FnArg) -> Vec
         }
     };
 
-    if is_spread_arg(&attrs) {
+    if is_unpack_arg(&attrs) {
         let arg_name = item_fn_input_ident(&pat);
-        let (data_name, metadata_name) = spread_arg_names(arg_name);
+        let (data_name, metadata_name) = unpack_arg_names(arg_name);
         let (source_part1_ty, source_part2_ty) =
-            spread_abi_parts(&attrs, &arg_ty).expect("validated #[spread] attribute");
+            unpack_abi_parts(&attrs, &arg_ty).expect("validated #[unpack_as] attribute");
         let (part1_ty, part2_ty) = (source_part1_ty, source_part2_ty);
 
         generics
@@ -1011,7 +1013,13 @@ fn synthesize_lifetime_bounds(sig: &mut syn::Signature) {
     for input in &sig.inputs {
         match input {
             syn::FnArg::Receiver(_) => {}
-            syn::FnArg::Typed(arg) => lifetime_collector.visit_type(&arg.ty),
+            // Unpacked arguments are replaced by their two ABI parts below. Bounds implied by
+            // the source type therefore do not belong to the raw declaration and, for dispatch
+            // parameters, can refer to a generic that has already been erased from it.
+            syn::FnArg::Typed(arg) if !is_unpack_arg(&arg.attrs) => {
+                lifetime_collector.visit_type(&arg.ty)
+            }
+            syn::FnArg::Typed(_) => {}
         }
     }
     if let syn::ReturnType::Type(_, ty) = &sig.output {

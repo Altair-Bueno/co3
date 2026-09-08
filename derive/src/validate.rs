@@ -5,7 +5,7 @@ use syn::{Attribute, Error, Expr, Result, Type, visit::Visit};
 use crate::{
     Co3Static,
     dispatch::{HandleId, handle_id},
-    ffi_fn::{is_by_val_attr, is_spread_attr, spread_attr_name, spread_types},
+    ffi_fn::{is_by_val_attr, is_unpack_attr, unpack_attr_name, unpack_types},
     is_symbol_name_attr,
     parse::validate_symbol_text,
     symbol_name_value,
@@ -637,7 +637,7 @@ fn validate_export_static(item: &Co3Static) -> Result<()> {
 }
 
 fn validate_export_fn(item: &crate::Co3Fn) -> Result<()> {
-    validate_spread_export(&item.sig)?;
+    validate_unpack_export(&item.sig)?;
     validate_export_fn_attrs(&item.attrs)
 }
 
@@ -664,7 +664,7 @@ fn validate_export_impl(
             let err_msg = "returning `Drop::drop` is supported only in extern declarations";
             push_error(&mut errors, Error::new_spanned(&method.sig.output, err_msg));
         }
-        if let Err(err) = validate_spread_export(&method.sig) {
+        if let Err(err) = validate_unpack_export(&method.sig) {
             push_error(&mut errors, err);
         }
         if let Err(err) = validate_export_fn_attrs(&method.attrs) {
@@ -704,7 +704,7 @@ fn validate_export_receiver_position(sig: &syn::Signature) -> Result<()> {
     Err(Error::new_spanned(receiver, err_msg))
 }
 
-fn validate_shared(items: &[crate::ForeignItem], validate_spreads: bool) -> Result<()> {
+fn validate_shared(items: &[crate::ForeignItem], validate_unpacks: bool) -> Result<()> {
     validate_method_generic_declarations(items)?;
 
     let declared_types = crate::declared_foreign_type_idents(items);
@@ -727,14 +727,14 @@ fn validate_shared(items: &[crate::ForeignItem], validate_spreads: bool) -> Resu
                 validate_no_dispatch_attrs(&item.ty.attrs, &mut errors);
             }
             crate::ForeignItem::Fn(item) => {
-                if let Err(err) = validate_shared_fn(item, validate_spreads) {
+                if let Err(err) = validate_shared_fn(item, validate_unpacks) {
                     push_error(&mut errors, err);
                 }
             }
             crate::ForeignItem::Impl(_) => {}
         }
     }
-    if let Err(err) = validate_impls(items, |impl_| validate_shared_impl(impl_, validate_spreads)) {
+    if let Err(err) = validate_impls(items, |impl_| validate_shared_impl(impl_, validate_unpacks)) {
         push_error(&mut errors, err);
     }
     errors.map_or(Ok(()), Err)
@@ -819,12 +819,12 @@ fn validate_packed_dyn_self_decls(items: &[crate::ForeignItem]) -> Result<()> {
     errors.map_or(Ok(()), Err)
 }
 
-fn validate_shared_fn(item: &crate::Co3Fn, validate_spreads: bool) -> Result<()> {
+fn validate_shared_fn(item: &crate::Co3Fn, validate_unpacks: bool) -> Result<()> {
     let mut errors = None;
     if let Err(err) = validate_type_param_defaults(&item.sig.generics) {
         push_error(&mut errors, err);
     }
-    if validate_spreads && let Err(err) = validate_spread(&item.sig, None) {
+    if validate_unpacks && let Err(err) = validate_unpack(&item.sig, None) {
         push_error(&mut errors, err);
     }
     if let Err(err) = ensure_no_handle_arg_attrs(&item.sig) {
@@ -846,7 +846,7 @@ fn validate_shared_fn(item: &crate::Co3Fn, validate_spreads: bool) -> Result<()>
     errors.map_or(Ok(()), Err)
 }
 
-fn validate_shared_impl(impl_: &crate::Co3Impl, validate_spreads: bool) -> Result<()> {
+fn validate_shared_impl(impl_: &crate::Co3Impl, validate_unpacks: bool) -> Result<()> {
     let mut errors = None;
     if let Err(err) = validate_type_param_defaults(&impl_.generics) {
         push_error(&mut errors, err);
@@ -866,7 +866,7 @@ fn validate_shared_impl(impl_: &crate::Co3Impl, validate_spreads: bool) -> Resul
             push_error(&mut errors, err);
         }
         let method_dispatch = impl_.method_dispatch_args.get(&sig.ident);
-        if validate_spreads && let Err(err) = validate_spread(sig, Some(&impl_.generics)) {
+        if validate_unpacks && let Err(err) = validate_unpack(sig, Some(&impl_.generics)) {
             push_error(&mut errors, err);
         }
         if let Err(err) = ensure_no_handle_arg_attrs(sig) {
@@ -932,15 +932,15 @@ fn validate_method_generic_declarations(items: &[crate::ForeignItem]) -> Result<
     })
 }
 
-fn validate_spread_export(sig: &syn::Signature) -> Result<()> {
+fn validate_unpack_export(sig: &syn::Signature) -> Result<()> {
     for input in &sig.inputs {
         let syn::FnArg::Typed(input) = input else {
             continue;
         };
-        if let Some(attr) = input.attrs.iter().find(|attr| is_spread_attr(attr)) {
+        if let Some(attr) = input.attrs.iter().find(|attr| is_unpack_attr(attr)) {
             let err_msg = format!(
                 "{} is only supported in extern declarations",
-                spread_attr_name(attr)
+                unpack_attr_name(attr)
             );
 
             return Err(Error::new_spanned(attr, err_msg));
@@ -949,7 +949,7 @@ fn validate_spread_export(sig: &syn::Signature) -> Result<()> {
     Ok(())
 }
 
-fn validate_spread(sig: &syn::Signature, outer: Option<&syn::Generics>) -> Result<()> {
+fn validate_unpack(sig: &syn::Signature, outer: Option<&syn::Generics>) -> Result<()> {
     let runtime_parameters = outer
         .into_iter()
         .flat_map(|generics| generics.type_params())
@@ -962,21 +962,21 @@ fn validate_spread(sig: &syn::Signature, outer: Option<&syn::Generics>) -> Resul
         let syn::FnArg::Typed(input) = input else {
             continue;
         };
-        let Some(attr) = input.attrs.iter().find(|attr| is_spread_attr(attr)) else {
+        let Some(attr) = input.attrs.iter().find(|attr| is_unpack_attr(attr)) else {
             continue;
         };
-        let (part1, part2) = spread_types(&input.attrs)?.expect("spread attribute was found");
+        let (part1, part2) = unpack_types(&input.attrs)?.expect("unpack attribute was found");
         if detector.type_mentions_param(&input.ty)
             && (matches!(part1, syn::Type::Infer(_)) || matches!(part2, syn::Type::Infer(_)))
         {
             let err_msg = format!(
                 "runtime-dispatched {} arguments cannot use `_` placeholders",
-                spread_attr_name(attr),
+                unpack_attr_name(attr),
             );
             return Err(Error::new_spanned(attr, err_msg));
         }
         if matches!(part1, syn::Type::Infer(_)) || matches!(part2, syn::Type::Infer(_)) {
-            crate::ffi_fn::spread_abi_parts(&input.attrs, &input.ty)?;
+            crate::ffi_fn::unpack_abi_parts(&input.attrs, &input.ty)?;
         }
     }
 
@@ -1256,7 +1256,7 @@ fn validate_callable_parameter_bounds(
                 represented = true;
                 continue;
             }
-            if input.attrs.iter().any(is_spread_attr) && detector.type_mentions_param(&input.ty) {
+            if input.attrs.iter().any(is_unpack_attr) && detector.type_mentions_param(&input.ty) {
                 represented = true;
                 continue;
             }
@@ -1664,7 +1664,7 @@ fn validate_dispatch_param_positions<'a>(
         let ty = match input {
             syn::FnArg::Receiver(_) => continue,
             syn::FnArg::Typed(arg) => {
-                if arg.attrs.iter().any(is_spread_attr) {
+                if arg.attrs.iter().any(is_unpack_attr) {
                     continue;
                 }
                 &arg.ty
@@ -1846,22 +1846,22 @@ mod tests {
     }
 
     #[test]
-    fn accepts_dispatch_param_projection_in_spread_argument() {
+    fn accepts_dispatch_param_projection_in_unpack_argument() {
         let param: syn::TypeParam = syn::parse_quote!(T = u8);
         let sig: syn::Signature = syn::parse_quote!(
-            fn dispatch(#[spread(u32, u32)] value: <T as Trait>::Assoc)
+            fn dispatch(#[unpack_as(u32, u32)] value: <T as Trait>::Assoc)
         );
 
         validate_dispatch_param_positions([&param].into_iter(), &sig).unwrap();
     }
 
     #[test]
-    fn accepts_open_runtime_param_used_by_explicit_spread() {
+    fn accepts_open_runtime_param_used_by_explicit_unpack() {
         let generics: syn::Generics = syn::parse_quote!(<#[erased(u8)] A>);
         let sig: syn::Signature = syn::parse_quote!(
             fn dispatch(
                 tag: <dyn A>::ID,
-                #[spread(*const core::ffi::c_void, usize)] value: A::Value,
+                #[unpack_as(*const core::ffi::c_void, usize)] value: A::Value,
             )
         );
 

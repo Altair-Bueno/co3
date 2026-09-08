@@ -8,7 +8,7 @@ use crate::{
     },
     ffi_fn::{
         self, gen_return_borrow_check, gen_soft_sync_error_value, gen_trap_value, is_by_val_attr,
-        is_spread_arg, item_fn_input_ident, ownership_mode_for_arg, spread_arg_names,
+        is_unpack_arg, item_fn_input_ident, ownership_mode_for_arg, unpack_arg_names,
     },
     generate::OwnershipMode,
     is_symbol_name_attr,
@@ -25,8 +25,8 @@ pub(crate) fn strip_internal_arg_attrs(signature: &mut syn::Signature) {
             node.attrs.retain(|attr| {
                 !is_by_val_attr(attr)
                     && !attr.path().is_ident("soft")
-                    && !attr.path().is_ident("spread")
-                    && !attr.path().is_ident("try_spread")
+                    && !attr.path().is_ident("unpack_as")
+                    && !attr.path().is_ident("try_unpack_as")
             });
         }
 
@@ -34,8 +34,8 @@ pub(crate) fn strip_internal_arg_attrs(signature: &mut syn::Signature) {
             node.attrs.retain(|attr| {
                 !is_by_val_attr(attr)
                     && !attr.path().is_ident("soft")
-                    && !attr.path().is_ident("spread")
-                    && !attr.path().is_ident("try_spread")
+                    && !attr.path().is_ident("unpack_as")
+                    && !attr.path().is_ident("try_unpack_as")
             });
         }
     }
@@ -293,7 +293,7 @@ pub(crate) fn gen_wrapper_body_with_callee<const DISPATCHED: bool>(
     };
 
     let input_convert = gen_input_conversion_stmts(&sig.inputs);
-    let spread_inputs = gen_spread_input_stmts(failure_mode, &sig.inputs);
+    let unpack_inputs = gen_unpack_input_stmts(failure_mode, &sig.inputs);
     let declared_receiver_erase = if !DISPATCHED
         && erase_declared_receiver
         && crate::dispatch::has_declared_self_input(self_ty.unwrap(), sig)
@@ -318,7 +318,7 @@ pub(crate) fn gen_wrapper_body_with_callee<const DISPATCHED: bool>(
             #(#declared_receiver_erase)*
             let __co3_out = {
                 #(#handle_erase_stmts)*
-                #spread_inputs
+                #unpack_inputs
                 #ffi_fn_call
             };
 
@@ -342,7 +342,7 @@ pub(crate) fn gen_wrapper_body_with_callee<const DISPATCHED: bool>(
 
         {
             #(#handle_erase_stmts)*
-            #spread_inputs
+            #unpack_inputs
             #ffi_fn_call;
         }
 
@@ -464,8 +464,8 @@ fn gen_input_conversion_stmts(inputs: &Punctuated<FnArg, syn::Token![,]>) -> Tok
             }
         };
 
-        if let Some(inner_ty) =
-            ffi_fn::inferred_spread_option_inner(attrs, ty).expect("validated #[spread] attribute")
+        if let Some(inner_ty) = ffi_fn::inferred_unpack_option_inner(attrs, ty)
+            .expect("validated #[unpack_as] attribute")
         {
             stmts.extend(quote! {
                 let #arg_name: core::option::Option<#inner_ty> = #arg_name;
@@ -501,7 +501,7 @@ fn gen_input_conversion_stmts(inputs: &Punctuated<FnArg, syn::Token![,]>) -> Tok
     stmts
 }
 
-fn gen_spread_input_stmts(
+fn gen_unpack_input_stmts(
     failure_mode: FailureMode,
     inputs: &Punctuated<FnArg, syn::Token![,]>,
 ) -> TokenStream {
@@ -509,18 +509,18 @@ fn gen_spread_input_stmts(
         let FnArg::Typed(syn::PatType { attrs, pat, ty, .. }) = input else {
             return None;
         };
-        if !is_spread_arg(attrs) {
+        if !is_unpack_arg(attrs) {
             return None;
         }
         let arg_name = item_fn_input_ident(pat);
-        let (data_name, metadata_name) = spread_arg_names(arg_name);
-        let (target1_ty, target2_ty) = ffi_fn::spread_logical_parts(attrs, ty)
-            .expect("validated #[spread] attribute")
+        let (data_name, metadata_name) = unpack_arg_names(arg_name);
+        let (target1_ty, target2_ty) = ffi_fn::unpack_logical_parts(attrs, ty)
+            .expect("validated #[unpack_as] attribute")
             ;
-        let inferred_option_ty = ffi_fn::inferred_spread_option_inner(attrs, ty)
-            .expect("validated #[spread] attribute")
+        let inferred_option_ty = ffi_fn::inferred_unpack_option_inner(attrs, ty)
+            .expect("validated #[unpack_as] attribute")
             .map(|inner_ty| quote!(core::option::Option<#inner_ty>));
-        let spread_ty = match (ownership_mode_for_arg(attrs, ty), inferred_option_ty) {
+        let unpack_ty = match (ownership_mode_for_arg(attrs, ty), inferred_option_ty) {
             (OwnershipMode::ByValue, Some(option_ty)) => option_ty,
             (OwnershipMode::ByValue, None) => quote!(#ty),
             (OwnershipMode::Borrow, Some(option_ty)) => {
@@ -531,24 +531,24 @@ fn gen_spread_input_stmts(
             }
         };
         let (abi1_ty, abi2_ty) =
-            ffi_fn::spread_abi_parts(attrs, ty).expect("validated #[spread] attribute");
+            ffi_fn::unpack_abi_parts(attrs, ty).expect("validated #[unpack_as] attribute");
         let (part1, part2) =
-            ffi_fn::spread_parts(attrs).expect("validated #[spread] attribute").unwrap();
-        if ffi_fn::is_try_spread_arg(attrs) {
+            ffi_fn::unpack_parts(attrs).expect("validated #[unpack_as] attribute").unwrap();
+        if ffi_fn::is_try_unpack_as_arg(attrs) {
             let conversion = quote! {
-                <#spread_ty as co3::slice::TrySpread2<#target1_ty, #target2_ty>>::try_into_parts(#arg_name)
+                <#unpack_ty as co3::slice::TryUnpackAs<#target1_ty, #target2_ty>>::try_into_parts(#arg_name)
             };
             let conversion = match failure_mode {
-                FailureMode::Panic => quote! { #conversion.unwrap_or_else(|_| panic!("co3 generated FFI spread conversion failure")) },
+                FailureMode::Panic => quote! { #conversion.unwrap_or_else(|_| panic!("co3 generated FFI unpack conversion failure")) },
                 FailureMode::Error => quote! { #conversion.map_err(|_| co3::Error::trap_value())? },
             };
-            let erase1 = gen_spread_erase_stmt(
+            let erase1 = gen_unpack_erase_stmt(
                 &data_name,
                 &target1_ty,
                 &abi1_ty,
                 part1.abi.is_some(),
             );
-            let erase2 = gen_spread_erase_stmt(
+            let erase2 = gen_unpack_erase_stmt(
                 &metadata_name,
                 &target2_ty,
                 &abi2_ty,
@@ -560,13 +560,13 @@ fn gen_spread_input_stmts(
                 #erase2
             })
         } else {
-            let erase1 = gen_spread_erase_stmt(
+            let erase1 = gen_unpack_erase_stmt(
                 &data_name,
                 &target1_ty,
                 &abi1_ty,
                 part1.abi.is_some(),
             );
-            let erase2 = gen_spread_erase_stmt(
+            let erase2 = gen_unpack_erase_stmt(
                 &metadata_name,
                 &target2_ty,
                 &abi2_ty,
@@ -574,7 +574,7 @@ fn gen_spread_input_stmts(
             );
             Some(quote! {
                 let (#data_name, #metadata_name) =
-                    <#spread_ty as co3::slice::Spread2<#target1_ty, #target2_ty>>::into_parts(#arg_name);
+                    <#unpack_ty as co3::slice::UnpackAs<#target1_ty, #target2_ty>>::into_parts(#arg_name);
                 #erase1
                 #erase2
             })
@@ -584,7 +584,7 @@ fn gen_spread_input_stmts(
     quote!(#(#stmts)*)
 }
 
-fn gen_spread_erase_stmt(
+fn gen_unpack_erase_stmt(
     name: &syn::Ident,
     logical: &syn::Type,
     abi: &syn::Type,
@@ -605,8 +605,8 @@ fn gen_ffi_fn_call(sig: &syn::Signature, callee: &TokenStream) -> TokenStream {
         FnArg::Receiver(_) => quote!(__co3_self),
         FnArg::Typed(syn::PatType { attrs, pat, .. }) => {
             let arg_name = item_fn_input_ident(pat);
-            if is_spread_arg(attrs) {
-                let (data_name, metadata_name) = spread_arg_names(arg_name);
+            if is_unpack_arg(attrs) {
+                let (data_name, metadata_name) = unpack_arg_names(arg_name);
                 quote!(#data_name, #metadata_name)
             } else {
                 quote!(#arg_name)

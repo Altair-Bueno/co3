@@ -12,7 +12,7 @@ use crate::{
     ffi_fn::{
         self, emit_extern_definition, gen_definition_body, gen_failure_panic,
         gen_fn_signature_drift_check, gen_input_decode_stmts, gen_store_sync_stmts, gen_sync_check,
-        gen_sync_error, gen_unknown_handle_error, is_spread_arg, item_fn_input_arg_type,
+        gen_sync_error, gen_unknown_handle_error, is_unpack_arg, item_fn_input_arg_type,
         item_fn_output_type, merge_generics, normalize_fn_signature, strip_dispatch_params,
     },
     parse::FailureMode,
@@ -499,7 +499,7 @@ pub(crate) fn gen_dispatch_erased_layout_checks(
                 syn::FnArg::Typed(syn::PatType { attrs, ty, .. }) => (&attrs[..], &**ty),
             };
 
-            if handle_id(ty).is_some() || is_spread_arg(attrs) {
+            if handle_id(ty).is_some() || is_unpack_arg(attrs) {
                 continue;
             }
 
@@ -604,9 +604,9 @@ impl VisitMut for StaticLifetimeNormalizer {
 }
 
 fn input_abi_tys(attrs: &[syn::Attribute], ty: &syn::Type) -> Vec<syn::Type> {
-    if is_spread_arg(attrs) {
+    if is_unpack_arg(attrs) {
         let (part1, part2) =
-            crate::ffi_fn::spread_abi_parts(attrs, ty).expect("validated #[spread] attribute");
+            crate::ffi_fn::unpack_abi_parts(attrs, ty).expect("validated #[unpack_as] attribute");
         return vec![part1, part2];
     }
 
@@ -834,7 +834,7 @@ pub(crate) fn erase_dispatch_signature(
                 }
             }
             syn::FnArg::Typed(syn::PatType { attrs, pat, ty, .. }) => {
-                if !is_spread_arg(attrs) {
+                if !is_unpack_arg(attrs) {
                     **ty = erased_params.replace((**ty).clone());
                 }
 
@@ -1035,7 +1035,7 @@ fn gen_handle_retype_stmts(
             ),
         };
 
-        if is_spread_arg(attrs) {
+        if is_unpack_arg(attrs) {
             continue;
         }
 
