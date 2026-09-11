@@ -1,9 +1,9 @@
-use co3::{Handle, ffi};
+use co3::{Tag, ffi};
 
 struct Wrapper<T>(T);
 
-#[derive(Handle)]
-#[handle(unsafe(id(u8 = 1)))]
+#[derive(Tag)]
+#[tag(unsafe(id(u8 = 1)))]
 struct Value;
 
 ffi! {

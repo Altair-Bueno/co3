@@ -21,7 +21,7 @@ use crate::{
 const FN_BODIES_NOT_ALLOWED_MSG: &str = "fn bodies are not allowed in declarations";
 const ITEM_NOT_SUPPORTED_MSG: &str = "item not supported";
 const EXPECTED_FEATURE_NAME_MSG: &str = "Expected feature name in `#![feature(...)]`";
-const EXPECTED_HANDLE_ID_ATTR_MSG: &str = "expected `#[unsafe(id(repr))]`";
+const EXPECTED_TAG_ID_ATTR_MSG: &str = "expected `#[unsafe(id(repr))]`";
 
 pub(crate) struct ParsedInput {
     pub(crate) kind: DeclKind,
@@ -118,7 +118,7 @@ impl ParsedItem {
     pub(crate) fn normalize(self) -> Result<ForeignItem> {
         match self {
             Self::Type(mut ty) => {
-                let (id, id_value) = parse_handle_id_attr(&mut ty.attrs)?;
+                let (id, id_value) = parse_tag_id_attr(&mut ty.attrs)?;
                 Ok(ForeignItem::Type(crate::ForeignItemType {
                     ty,
                     id: id.map(Box::new),
@@ -135,7 +135,7 @@ impl ParsedItem {
 }
 
 fn normalize_impl(mut item: ItemImpl) -> Result<crate::Co3Impl> {
-    crate::normalize_dyn_self_handle_ids(&mut item);
+    crate::normalize_dyn_self_tag_ids(&mut item);
 
     let mut errors = None;
     let mut dispatch_args = match parse_dispatch_attr(&item.attrs, &item.generics) {
@@ -877,7 +877,7 @@ fn parse_dispatch_group(
     errors.map_or(Ok(group), Err)
 }
 
-pub(crate) fn parse_handle_id_attr(
+pub(crate) fn parse_tag_id_attr(
     attrs: &mut Vec<syn::Attribute>,
 ) -> Result<(Option<syn::Type>, Option<syn::Expr>)> {
     let mut kept = Vec::with_capacity(attrs.len());
@@ -891,21 +891,21 @@ pub(crate) fn parse_handle_id_attr(
         }
 
         let syn::Meta::List(list) = &attr.meta else {
-            return Err(syn::Error::new_spanned(attr, EXPECTED_HANDLE_ID_ATTR_MSG));
+            return Err(syn::Error::new_spanned(attr, EXPECTED_TAG_ID_ATTR_MSG));
         };
 
         let list = if list.path.is_ident("unsafe") {
             let nested = syn::parse2::<syn::Meta>(list.tokens.clone())
-                .map_err(|_| syn::Error::new_spanned(&attr, EXPECTED_HANDLE_ID_ATTR_MSG))?;
+                .map_err(|_| syn::Error::new_spanned(&attr, EXPECTED_TAG_ID_ATTR_MSG))?;
             let syn::Meta::List(nested) = nested else {
-                return Err(syn::Error::new_spanned(attr, EXPECTED_HANDLE_ID_ATTR_MSG));
+                return Err(syn::Error::new_spanned(attr, EXPECTED_TAG_ID_ATTR_MSG));
             };
             if !nested.path.is_ident("id") {
-                return Err(syn::Error::new_spanned(attr, EXPECTED_HANDLE_ID_ATTR_MSG));
+                return Err(syn::Error::new_spanned(attr, EXPECTED_TAG_ID_ATTR_MSG));
             }
             nested
         } else {
-            return Err(syn::Error::new_spanned(attr, EXPECTED_HANDLE_ID_ATTR_MSG));
+            return Err(syn::Error::new_spanned(attr, EXPECTED_TAG_ID_ATTR_MSG));
         };
 
         let (ty, value) = list
@@ -919,7 +919,7 @@ pub(crate) fn parse_handle_id_attr(
                 };
                 Ok::<_, syn::Error>((ty, value))
             })
-            .map_err(|_| syn::Error::new_spanned(&attr, EXPECTED_HANDLE_ID_ATTR_MSG))?;
+            .map_err(|_| syn::Error::new_spanned(&attr, EXPECTED_TAG_ID_ATTR_MSG))?;
 
         if id_ty.replace(ty).is_some() {
             return Err(syn::Error::new_spanned(
@@ -1484,7 +1484,7 @@ fn parse_impl_item(input: syn::parse::ParseStream) -> syn::Result<ItemImpl> {
     rewrite_erased_param_bounds_to_where_clause(&mut impl_.generics);
     normalize_const_generic_args_in_impl(&mut impl_);
 
-    normalize_self_handle_ids(&mut impl_);
+    normalize_self_tag_ids(&mut impl_);
 
     for item in &mut impl_.items {
         let syn::ImplItem::Fn(method) = item else {
@@ -1498,12 +1498,12 @@ fn parse_impl_item(input: syn::parse::ParseStream) -> syn::Result<ItemImpl> {
     Ok(impl_)
 }
 
-fn normalize_self_handle_ids(impl_: &mut ItemImpl) {
-    struct SelfHandleIdNormalizer {
+fn normalize_self_tag_ids(impl_: &mut ItemImpl) {
+    struct SelfTagIdNormalizer {
         self_ty: syn::Type,
     }
 
-    impl VisitMut for SelfHandleIdNormalizer {
+    impl VisitMut for SelfTagIdNormalizer {
         fn visit_type_mut(&mut self, node: &mut Type) {
             syn::visit_mut::visit_type_mut(self, node);
 
@@ -1518,7 +1518,7 @@ fn normalize_self_handle_ids(impl_: &mut ItemImpl) {
         }
     }
 
-    let mut normalizer = SelfHandleIdNormalizer {
+    let mut normalizer = SelfTagIdNormalizer {
         self_ty: (*impl_.self_ty).clone(),
     };
 
@@ -1737,7 +1737,7 @@ mod tests {
     }
 
     #[test]
-    fn normalizes_dyn_self_handle_id() {
+    fn normalizes_dyn_self_tag_id() {
         let impl_ = "impl<dyn(u32) U> Trait<T> for U { fn name(self_id: <dyn Self>::ID); }";
         let item = Parser::parse_str(parse_impl_item, impl_).unwrap();
 

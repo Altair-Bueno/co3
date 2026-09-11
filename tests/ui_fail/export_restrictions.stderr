@@ -120,7 +120,7 @@ error: tagged-dispatch predicates are not allowed in this position
 174 |         use<T> @ <>;
     |         ^^^
 
-error: an exported method receiver must be the first non-handle argument
+error: an exported method receiver must be the first non-tag argument
    --> tests/ui_fail/export_restrictions.rs:188:31
     |
 188 |         fn method(value: u32, &self);

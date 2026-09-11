@@ -1,10 +1,10 @@
 use core::{borrow::Borrow, ffi::c_void};
 
 use rust_spec::RustSpec;
-use co3::{Handle, ReprC, ffi};
+use co3::{Tag, ReprC, ffi};
 
-#[derive(RustSpec, ReprC, Handle)]
-#[handle(unsafe(id(u8)))]
+#[derive(RustSpec, ReprC, Tag)]
+#[tag(unsafe(id(u8)))]
 #[repr(transparent)]
 struct Unsized<T: ?Sized>(T);
 
@@ -12,7 +12,7 @@ struct Unsized<T: ?Sized>(T);
 #[repr(C)]
 struct Wrapper<T: ?Sized>(Box<T>);
 
-unsafe impl co3::handle::Handle for Unsized<str> {
+unsafe impl co3::tag::Tagged for Unsized<str> {
     const ID: u8 = 0;
 }
 
@@ -78,7 +78,7 @@ ffi! {
     where
         use<T> @ <Unsized<str>>,
     {
-        fn take(self, handle_id: <dyn T>::ID) -> usize;
+        fn take(self, tag_id: <dyn T>::ID) -> usize;
     }
 }
 

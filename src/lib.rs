@@ -70,7 +70,6 @@ pub mod boxed;
 pub mod cell;
 #[doc(hidden)]
 pub mod either;
-pub mod handle;
 pub mod niche;
 pub mod option;
 mod primitives;
@@ -78,6 +77,7 @@ pub mod result;
 pub mod slice;
 mod std_impls;
 pub mod stored;
+pub mod tag;
 pub mod transmute;
 pub mod tuple;
 pub mod wide;
@@ -95,7 +95,7 @@ impl<K: MetadataKind> Dst for MetaSized<K> {}
 
 pub trait Error {
     fn trap_value() -> Self;
-    fn unknown_handle() -> Self;
+    fn unknown_tag() -> Self;
     fn soft_sync_error() -> Self;
 }
 

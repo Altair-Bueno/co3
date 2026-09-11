@@ -1,6 +1,6 @@
 use co3::ffi;
 
-unsafe impl co3::handle::Handle for OpaqueSlice<u8> {
+unsafe impl co3::tag::Tagged for OpaqueSlice<u8> {
     const ID: u8 = 0;
 }
 

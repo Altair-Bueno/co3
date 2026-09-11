@@ -34,7 +34,7 @@ use syn::{
 
 use crate::{
     cfg_attr::{emit_macro_invocations, expand as expand_cfg_attr},
-    dispatch::synthesize_dispatch_handle_ids,
+    dispatch::synthesize_dispatch_tag_ids,
     generate::{expand_export_decls, expand_extern_decls},
     layout::derive_repr_c,
     parse::{ParsedInput, ParsedItem},
@@ -50,10 +50,10 @@ mod cfg_attr;
 mod dispatch;
 mod ffi_fn;
 mod generate;
-mod handle;
 mod layout;
 mod parse;
 mod statics;
+mod tag;
 mod utils;
 mod validate;
 mod wrapper;
@@ -326,20 +326,20 @@ impl DispatchGroups {
 /// pub struct Hello(u32);
 /// ```
 #[manyhow]
-// FIXME: It's totally weird that `handle` is part of ReprC
-#[proc_macro_derive(ReprC, attributes(reprC, handle))]
+// FIXME: It's totally weird that `tag` is part of ReprC
+#[proc_macro_derive(ReprC, attributes(reprC, tag))]
 pub fn repr_c_derive(item: syn::DeriveInput) -> Result<TokenStream> {
     derive_repr_c(&item)
 }
 
-/// Derives the tagged-dispatch handle traits for a Rust type.
+/// Derives the tagged-dispatch traits for a Rust type.
 ///
-/// `#[handle(unsafe(id(Type)))]` defines the handle-ID type, and adding
-/// `= value` also defines the handle's ID value.
+/// `#[tag(unsafe(id(Type)))]` defines the tag type, and adding
+/// `= value` also defines the type's tag value.
 #[manyhow]
-#[proc_macro_derive(Handle, attributes(handle))]
-pub fn handle_derive(item: syn::DeriveInput) -> Result<TokenStream> {
-    handle::derive_handle(&item)
+#[proc_macro_derive(Tag, attributes(tag))]
+pub fn tag_derive(item: syn::DeriveInput) -> Result<TokenStream> {
+    tag::derive_tag(&item)
 }
 
 /// Declare your FFI exports or imports.
@@ -525,10 +525,11 @@ pub fn handle_derive(item: syn::DeriveInput) -> Result<TokenStream> {
 /// The example corresponds to this C counterpart:
 ///
 /// ```rust
-/// use co3::{ffi, handle::Handle, ReprC, rust_spec::RustSpec};
+/// use co3::{ffi, Tag, ReprC, rust_spec::RustSpec};
+/// use co3::tag::Tagged;
 ///
-/// #[derive(RustSpec, Handle, ReprC)]
-/// #[handle(unsafe(id(u8 = 1)))]
+/// #[derive(RustSpec, Tag, ReprC)]
+/// #[tag(unsafe(id(u8 = 1)))]
 /// struct LocalCounter(u16);
 ///
 /// trait Counter {
@@ -539,11 +540,11 @@ pub fn handle_derive(item: syn::DeriveInput) -> Result<TokenStream> {
 ///     fn reset(&mut self);
 /// }
 ///
-/// unsafe impl Handle for CounterHandle<i16> {
+/// unsafe impl Tagged for CounterHandle<i16> {
 ///     const ID: u8 = 3;
 /// }
 ///
-/// unsafe impl Handle for CounterHandle<u16> {
+/// unsafe impl Tagged for CounterHandle<u16> {
 ///     const ID: u8 = 4;
 /// }
 ///
@@ -629,7 +630,7 @@ pub fn handle_derive(item: syn::DeriveInput) -> Result<TokenStream> {
 ///
 /// impl Error for ApiError {
 ///     fn trap_value() -> Self { Self::InvalidRepresentation }
-///     fn unknown_handle() -> Self { Self::UnknownHandle }
+///     fn unknown_tag() -> Self { Self::UnknownHandle }
 ///     fn soft_sync_error() -> Self { Self::SoftSync }
 /// }
 ///
@@ -715,7 +716,7 @@ fn validate_items(kind: DeclKind, attrs: &[Attribute], items: &[ForeignItem]) ->
 }
 
 fn synthesize_items(symbol_prefix: &LitStr, items: &mut [ForeignItem]) -> Result<()> {
-    synthesize_dispatch_handle_ids_in_decls(items)?;
+    synthesize_dispatch_tag_ids_in_decls(items)?;
 
     let declared_types = declared_foreign_type_idents(items);
     for item in &mut *items {
@@ -727,7 +728,7 @@ fn synthesize_items(symbol_prefix: &LitStr, items: &mut [ForeignItem]) -> Result
     Ok(())
 }
 
-fn normalize_dyn_self_handle_ids(impl_: &mut ItemImpl) {
+fn normalize_dyn_self_tag_ids(impl_: &mut ItemImpl) {
     struct Normalizer<'a> {
         receiver: &'a Type,
     }
@@ -810,7 +811,7 @@ fn synthesize_default_drop_impls(
     Ok(())
 }
 
-fn synthesize_dispatch_handle_ids_in_decls(items: &mut [ForeignItem]) -> Result<()> {
+fn synthesize_dispatch_tag_ids_in_decls(items: &mut [ForeignItem]) -> Result<()> {
     let declared_types = declared_foreign_type_idents(items);
 
     fn synthesize_impl(impl_: &mut Co3Impl, declared_types: &BTreeSet<syn::Ident>) -> Result<()> {
@@ -839,7 +840,7 @@ fn synthesize_dispatch_handle_ids_in_decls(items: &mut [ForeignItem]) -> Result<
                 let syn::ImplItem::Fn(method) = item else {
                     continue;
                 };
-                synthesize_dispatch_handle_ids(Some(&self_ty), &generics, &mut method.sig.inputs);
+                synthesize_dispatch_tag_ids(Some(&self_ty), &generics, &mut method.sig.inputs);
             }
         }
 
@@ -848,7 +849,7 @@ fn synthesize_dispatch_handle_ids_in_decls(items: &mut [ForeignItem]) -> Result<
                 let syn::ImplItem::Fn(method) = item else {
                     continue;
                 };
-                synthesize_dispatch_handle_ids(None, &generics, &mut method.sig.inputs);
+                synthesize_dispatch_tag_ids(None, &generics, &mut method.sig.inputs);
             }
         }
 
@@ -859,7 +860,7 @@ fn synthesize_dispatch_handle_ids_in_decls(items: &mut [ForeignItem]) -> Result<
             if dispatched_methods.contains(&method.sig.ident) {
                 let mut visible_generics = method.sig.generics.clone();
                 ffi_fn::merge_generics(generics.clone(), &mut visible_generics);
-                synthesize_dispatch_handle_ids(
+                synthesize_dispatch_tag_ids(
                     dyn_self.then_some(&self_ty),
                     &visible_generics,
                     &mut method.sig.inputs,
@@ -886,7 +887,7 @@ fn synthesize_dispatch_handle_ids_in_decls(items: &mut [ForeignItem]) -> Result<
                     || utils::has_runtime_dispatch(&item.sig.generics) =>
             {
                 let generics = item.sig.generics.clone();
-                synthesize_dispatch_handle_ids(None, &generics, &mut item.sig.inputs);
+                synthesize_dispatch_tag_ids(None, &generics, &mut item.sig.inputs);
             }
             ForeignItem::Fn(_) | ForeignItem::Static(_) => {}
         }
@@ -1335,7 +1336,7 @@ fn ensure_symbol_name_on_impl_fn(
 }
 
 #[cfg(test)]
-mod dyn_self_handle_id_tests {
+mod dyn_self_tag_id_tests {
     use super::*;
 
     fn id_type(item: &ItemImpl) -> &Type {
@@ -1356,7 +1357,7 @@ mod dyn_self_handle_id_tests {
             }
         };
 
-        normalize_dyn_self_handle_ids(&mut item);
+        normalize_dyn_self_tag_ids(&mut item);
         let expected = parse_quote!(<dyn T>::ID);
         assert_eq!(id_type(&item), &expected);
     }
@@ -1369,7 +1370,7 @@ mod dyn_self_handle_id_tests {
             }
         };
 
-        normalize_dyn_self_handle_ids(&mut item);
+        normalize_dyn_self_tag_ids(&mut item);
         let expected = parse_quote!(<dyn Self>::ID);
         assert_eq!(id_type(&item), &expected);
     }

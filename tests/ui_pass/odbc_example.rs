@@ -1,7 +1,7 @@
 #![expect(non_camel_case_types, non_snake_case)]
 use std::{ffi::c_void, marker::PhantomData};
 
-use co3::{Handle, ReprC, ffi, slice::Unpack2};
+use co3::{Tag, ReprC, ffi, slice::Unpack2};
 use rust_spec::RustSpec;
 
 pub trait OdbcVersion {}
@@ -15,8 +15,8 @@ pub enum Payload {}
 
 impl OdbcVersion for Payload {}
 
-#[derive(Debug, RustSpec, Handle, ReprC)]
-#[handle(unsafe(id(SQLSMALLINT)))]
+#[derive(Debug, RustSpec, Tag, ReprC)]
+#[tag(unsafe(id(SQLSMALLINT)))]
 #[repr(transparent)]
 pub struct MyType<V: OdbcVersion = Payload> {
     pub(crate) handle: *mut c_void,
@@ -155,12 +155,12 @@ pub trait EnvAttr {
     type Value;
 }
 
-#[derive(Clone, Handle)]
-#[handle(unsafe(id(i32 = 80)))]
+#[derive(Clone, Tag)]
+#[tag(unsafe(id(i32 = 80)))]
 enum SQL_ATTR_ODBC_VERSION {}
 
-#[derive(Clone, Handle)]
-#[handle(unsafe(id(i32 = 81)))]
+#[derive(Clone, Tag)]
+#[tag(unsafe(id(i32 = 81)))]
 enum SQL_ATTR_CP_MATCH {}
 impl EnvAttr for SQL_ATTR_ODBC_VERSION {
     type Value = CpMatch;

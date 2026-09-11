@@ -1,17 +1,17 @@
-use co3::{Handle, ReprC, ffi};
+use co3::{Tag, ReprC, ffi};
 use rust_spec::RustSpec;
 
 trait ByteValue {
     fn byte(&self) -> u8;
 }
 
-#[derive(Clone, RustSpec, ReprC, Handle)]
-#[handle(unsafe(id(u8 = 1)))]
+#[derive(Clone, RustSpec, ReprC, Tag)]
+#[tag(unsafe(id(u8 = 1)))]
 #[repr(transparent)]
 struct First(u8);
 
-#[derive(Clone, RustSpec, Handle, ReprC)]
-#[handle(unsafe(id(u8 = 2)))]
+#[derive(Clone, RustSpec, Tag, ReprC)]
+#[tag(unsafe(id(u8 = 2)))]
 #[repr(transparent)]
 struct Second(u8);
 

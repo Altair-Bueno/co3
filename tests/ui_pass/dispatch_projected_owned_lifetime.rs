@@ -2,9 +2,9 @@ use core::mem::MaybeUninit;
 
 use co3::ffi;
 
-type HandleKind = u8;
+type TagKind = u8;
 
-trait ToOwnedHandle: co3::handle::Handle {
+trait ToOwnedHandle: co3::tag::Tagged {
     type Owned;
 }
 
@@ -17,22 +17,22 @@ trait Version {}
 ffi! {
     #![unsafe(extern("C"))]
 
-    #[unsafe(id(HandleKind = 1))]
+    #[unsafe(id(TagKind = 1))]
     type Parent;
 
-    #[unsafe(id(HandleKind = 2))]
+    #[unsafe(id(TagKind = 2))]
     type Child<'parent>;
 
-    #[unsafe(id(HandleKind = 3))]
+    #[unsafe(id(TagKind = 3))]
     type GenericParent<V: Version>;
 
-    #[unsafe(id(HandleKind = 4))]
+    #[unsafe(id(TagKind = 4))]
     type GenericChild<'parent, V: Version>;
 
-    #[unsafe(id(HandleKind = 5))]
+    #[unsafe(id(TagKind = 5))]
     type GenericOther<'parent, 'data, V: Version>;
 
-    #[unsafe(id(HandleKind = 6))]
+    #[unsafe(id(TagKind = 6))]
     type GenericRoot<V: Version>;
 
     impl Drop for dyn Parent {
@@ -59,7 +59,7 @@ ffi! {
         fn drop(&mut self);
     }
 
-    fn allocate_generic<'parent, dyn(HandleKind) H: Allocate, V: Version>(
+    fn allocate_generic<'parent, dyn(TagKind) H: Allocate, V: Version>(
         source: Option<&'parent H::Source>,
         output: &mut MaybeUninit<H::Owned>,
     )

@@ -12,7 +12,7 @@ use crate::{
     ffi_fn::{
         self, emit_extern_definition, gen_definition_body, gen_failure_panic,
         gen_fn_signature_drift_check, gen_input_decode_stmts, gen_store_sync_stmts, gen_sync_check,
-        gen_sync_error, gen_unknown_handle_error, is_unpack_arg, item_fn_input_arg_type,
+        gen_sync_error, gen_unknown_tag_error, is_unpack_arg, item_fn_input_arg_type,
         item_fn_output_type, merge_generics, normalize_fn_signature, strip_dispatch_params,
     },
     parse::FailureMode,
@@ -105,7 +105,7 @@ enum RetypeDirection {
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-pub(crate) enum HandleId<'a> {
+pub(crate) enum TagId<'a> {
     DynType(&'a syn::Ident),
     DynSelf,
 }
@@ -365,9 +365,9 @@ fn synthesize_dispatch_export_fn(
 
     let fn_by_val = attrs.iter().any(crate::ffi_fn::is_by_val_attr);
     let selector_inputs = dispatch_selector_inputs(&sig.inputs)
-        .filter_map(|(_, pat, handle_id)| {
-            let handle_id_ty = resolve_handle_id_type(generics, receiver, handle_id)?;
-            Some((pat, handle_id_ty))
+        .filter_map(|(_, pat, tag_id)| {
+            let tag_id_ty = resolve_tag_id_type(generics, receiver, tag_id)?;
+            Some((pat, tag_id_ty))
         })
         .collect::<Vec<_>>();
     let selector_names = selector_inputs
@@ -394,7 +394,7 @@ fn synthesize_dispatch_export_fn(
 
     let decode_selector_stmts = gen_input_decode_stmts(&selector_inputs, failure_mode);
     let sync_selector_stores = gen_store_sync_stmts(selector_inputs.len());
-    let unknown_handle = gen_unknown_handle_error(failure_mode);
+    let unknown_tag = gen_unknown_tag_error(failure_mode);
     let sync_error = gen_sync_error(failure_mode);
     let selector_sync_check = gen_sync_check(sync_selector_stores, sync_error);
 
@@ -405,7 +405,7 @@ fn synthesize_dispatch_export_fn(
             #deny_unreachable
             match (#(#selector_names,)*) {
                 #(#dispatch_arms,)*
-                _ => #unknown_handle,
+                _ => #unknown_tag,
             }
         };
 
@@ -424,7 +424,7 @@ fn synthesize_dispatch_export_fn(
 }
 
 /// Imports permit repeated IDs; only their tag representation is asserted.
-pub(crate) fn gen_handle_id_type_checks(
+pub(crate) fn gen_tag_id_type_checks(
     generics: &syn::Generics,
     args: &DispatchGroups,
 ) -> TokenStream {
@@ -470,7 +470,7 @@ pub(crate) fn gen_handle_id_type_checks(
             if auxiliary_detector.generic_arg_mentions_param(&ty) {
                 return;
             }
-            checks.push(quote!(let _: #repr = <#ty as co3::handle::Handle>::ID;));
+            checks.push(quote!(let _: #repr = <#ty as co3::tag::Tagged>::ID;));
         });
     }
     quote!(#(#checks)*)
@@ -499,7 +499,7 @@ pub(crate) fn gen_dispatch_erased_layout_checks(
                 syn::FnArg::Typed(syn::PatType { attrs, ty, .. }) => (&attrs[..], &**ty),
             };
 
-            if handle_id(ty).is_some()
+            if tag_id(ty).is_some()
                 || is_unpack_arg(attrs)
                 || crate::ffi_fn::is_single_unpack_arg(attrs)
             {
@@ -617,7 +617,7 @@ fn input_abi_tys(attrs: &[syn::Attribute], ty: &syn::Type) -> Vec<syn::Type> {
     vec![parse_quote!(#abi_ty)]
 }
 
-pub(crate) fn synthesize_dispatch_handle_ids(
+pub(crate) fn synthesize_dispatch_tag_ids(
     self_id: Option<&syn::Type>,
     impl_generics: &syn::Generics,
     inputs: &mut Punctuated<syn::FnArg, syn::Token![,]>,
@@ -631,7 +631,7 @@ pub(crate) fn synthesize_dispatch_handle_ids(
         .collect::<BTreeSet<_>>();
 
     let explicit_ids = dispatch_selector_inputs(inputs)
-        .map(|(_, _, handle_id)| handle_id)
+        .map(|(_, _, tag_id)| tag_id)
         .collect::<BTreeSet<_>>();
     let has_explicit_self_id = inputs.iter().any(|input| {
         let syn::FnArg::Typed(input) = input else {
@@ -653,13 +653,13 @@ pub(crate) fn synthesize_dispatch_handle_ids(
     if erased_params.is_empty()
         && self_id.is_some()
         && !has_explicit_self_id
-        && !explicit_ids.contains(&HandleId::DynSelf)
+        && !explicit_ids.contains(&TagId::DynSelf)
     {
         synthesized.push(parse_quote!(__co3_self_id: <dyn Self>::ID));
     }
 
     for ident in erased_params {
-        if explicit_ids.contains(&HandleId::DynType(ident)) {
+        if explicit_ids.contains(&TagId::DynType(ident)) {
             continue;
         }
 
@@ -682,11 +682,10 @@ fn synthesize_dispatch_arms(
     args: &DispatchGroups,
     failure_mode: FailureMode,
 ) -> Vec<TokenStream> {
-    let derase_handle_stmts =
-        gen_handle_retype_stmts(RetypeDirection::Derase, generics, receiver, sig);
+    let derase_tag_stmts = gen_tag_retype_stmts(RetypeDirection::Derase, generics, receiver, sig);
 
     let dispatch_selectors = dispatch_selector_inputs(&sig.inputs)
-        .map(|(_, _, handle_id)| handle_id)
+        .map(|(_, _, tag_id)| tag_id)
         .collect::<Vec<_>>();
 
     let mut arms = Vec::new();
@@ -695,25 +694,25 @@ fn synthesize_dispatch_arms(
         let mut arm_sig = sig.clone();
         let mut patterns = dispatch_selectors
             .iter()
-            .map(|handle_id| {
-                let handle_ty = match handle_id {
-                    HandleId::DynSelf => {
+            .map(|tag_id| {
+                let tag_ty = match tag_id {
+                    TagId::DynSelf => {
                         let ty = receiver
                             .ty()
                             .expect("`dyn Self` selector requires an impl self type");
                         quote!(#ty)
                     }
-                    HandleId::DynType(ident) => quote!(#ident),
+                    TagId::DynType(ident) => quote!(#ident),
                 };
 
-                parse_quote! { <#handle_ty as co3::handle::Handle>::ID }
+                parse_quote! { <#tag_ty as co3::tag::Tagged>::ID }
             })
             .collect::<Vec<syn::Expr>>();
 
         arm_sig.inputs = arm_sig
             .inputs
             .into_iter()
-            .filter(|input| !is_handle_id_arg(input))
+            .filter(|input| !is_tag_id_arg(input))
             .collect();
 
         let retype_sig = arm_sig.clone();
@@ -750,7 +749,7 @@ fn synthesize_dispatch_arms(
 
             parse_quote! {{
                 match (|| -> Result<_, _> {
-                    #(#derase_handle_stmts)*
+                    #(#derase_tag_stmts)*
                     #signature_check
                     #arm_body
                 })() {
@@ -761,7 +760,7 @@ fn synthesize_dispatch_arms(
         } else {
             parse_quote! {{
                 (|| -> Result<_, _> {
-                    #(#derase_handle_stmts)*
+                    #(#derase_tag_stmts)*
                     #signature_check
                     #arm_body
                 })()
@@ -823,9 +822,9 @@ pub(crate) fn erase_dispatch_signature(
 ) {
     let mut erased_params = ErasedParamReplacer::new(generics);
 
-    let handle_ids = dispatch_selector_inputs(&sig.inputs)
-        .filter_map(|(idx, _, handle_id)| {
-            Some((idx, resolve_handle_id_type(generics, receiver, handle_id)?))
+    let tag_ids = dispatch_selector_inputs(&sig.inputs)
+        .filter_map(|(idx, _, tag_id)| {
+            Some((idx, resolve_tag_id_type(generics, receiver, tag_id)?))
         })
         .collect::<Vec<_>>();
 
@@ -859,7 +858,7 @@ pub(crate) fn erase_dispatch_signature(
         **ty = erased_params.replace((**ty).clone());
     }
 
-    for (idx, lowered_ty) in handle_ids {
+    for (idx, lowered_ty) in tag_ids {
         let syn::FnArg::Typed(syn::PatType { ty, .. }) = &mut sig.inputs[idx] else {
             continue;
         };
@@ -868,7 +867,7 @@ pub(crate) fn erase_dispatch_signature(
     }
 }
 
-pub(crate) fn gen_handle_erase_stmts(
+pub(crate) fn gen_tag_erase_stmts(
     self_ty: &syn::Type,
     generics: &syn::Generics,
     erase_declared_self: bool,
@@ -877,7 +876,7 @@ pub(crate) fn gen_handle_erase_stmts(
     let mut sig = sig.clone();
 
     normalize_fn_signature(&mut sig, Some(self_ty));
-    gen_handle_retype_stmts(
+    gen_tag_retype_stmts(
         RetypeDirection::Erase,
         generics,
         if erase_declared_self {
@@ -901,7 +900,7 @@ pub(crate) fn gen_dyn_self_erase_stmts(
 ) -> Vec<TokenStream> {
     let mut sig = sig.clone();
     normalize_fn_signature(&mut sig, Some(self_ty));
-    gen_handle_retype_stmts(
+    gen_tag_retype_stmts(
         RetypeDirection::Erase,
         &syn::Generics::default(),
         DispatchReceiver::DynSelf {
@@ -1009,13 +1008,13 @@ pub(crate) fn gen_return_derase_expr(
     gen_retype(&value, &erased_ty, &concrete_ty)
 }
 
-fn gen_handle_retype_stmts(
+fn gen_tag_retype_stmts(
     direction: RetypeDirection,
     generics: &syn::Generics,
     receiver: DispatchReceiver,
     sig: &syn::Signature,
 ) -> Vec<TokenStream> {
-    let handles = sig.inputs.iter().filter(|input| !is_handle_id_arg(input));
+    let args = sig.inputs.iter().filter(|input| !is_tag_id_arg(input));
     let mut erased_params = ErasedParamReplacer::new(generics);
     let erased_idents = generics
         .type_params()
@@ -1025,7 +1024,7 @@ fn gen_handle_retype_stmts(
     let detector = ParamUseDetector::new(erased_idents);
 
     let mut stmts = vec![];
-    for input in handles {
+    for input in args {
         let receiver_ty;
         let (attrs, arg_name, ty, is_self) = match input {
             syn::FnArg::Receiver(receiver) => {
@@ -1081,7 +1080,7 @@ fn gen_handle_retype_stmts(
     stmts
 }
 
-pub(crate) fn handle_id(ty: &syn::Type) -> Option<HandleId<'_>> {
+pub(crate) fn tag_id(ty: &syn::Type) -> Option<TagId<'_>> {
     let syn::Type::Path(syn::TypePath {
         qself:
             Some(syn::QSelf {
@@ -1124,40 +1123,40 @@ pub(crate) fn handle_id(ty: &syn::Type) -> Option<HandleId<'_>> {
     if let Some(arg_path) = arg_ty.path.get_ident()
         && arg_path == "Self"
     {
-        return Some(HandleId::DynSelf);
+        return Some(TagId::DynSelf);
     }
 
-    Some(HandleId::DynType(&arg_ty.path.segments.first()?.ident))
+    Some(TagId::DynType(&arg_ty.path.segments.first()?.ident))
 }
 
-pub(crate) fn is_handle_id_arg(input: &syn::FnArg) -> bool {
+pub(crate) fn is_tag_id_arg(input: &syn::FnArg) -> bool {
     let syn::FnArg::Typed(arg) = input else {
         return false;
     };
 
-    handle_id(&arg.ty).is_some()
+    tag_id(&arg.ty).is_some()
 }
 
 fn dispatch_selector_inputs(
     inputs: &Punctuated<syn::FnArg, syn::Token![,]>,
-) -> impl Iterator<Item = (usize, &syn::Pat, HandleId<'_>)> {
+) -> impl Iterator<Item = (usize, &syn::Pat, TagId<'_>)> {
     inputs.iter().enumerate().filter_map(|(idx, input)| {
         let syn::FnArg::Typed(syn::PatType { pat, ty, .. }) = input else {
             return None;
         };
 
-        Some((idx, pat.as_ref(), handle_id(ty)?))
+        Some((idx, pat.as_ref(), tag_id(ty)?))
     })
 }
 
-fn resolve_handle_id_type(
+fn resolve_tag_id_type(
     generics: &syn::Generics,
     receiver: DispatchReceiver<'_>,
-    handle_id: HandleId<'_>,
+    tag_id: TagId<'_>,
 ) -> Option<syn::Type> {
-    match handle_id {
-        HandleId::DynSelf => receiver.id().cloned(),
-        HandleId::DynType(ident) => generics
+    match tag_id {
+        TagId::DynSelf => receiver.id().cloned(),
+        TagId::DynType(ident) => generics
             .type_params()
             .find(|param| param.ident == *ident)
             .and_then(erased_id_repr),

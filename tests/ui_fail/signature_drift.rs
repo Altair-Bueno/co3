@@ -1,6 +1,6 @@
 use std::ops::Deref;
 
-use co3::{Handle, ReprC, ffi};
+use co3::{Tag, ReprC, ffi};
 use rust_spec::RustSpec;
 
 trait ExportDispatchTrait {
@@ -9,8 +9,8 @@ trait ExportDispatchTrait {
 
 struct ExportImpl;
 
-#[derive(RustSpec, Handle, ReprC)]
-#[handle(unsafe(id(u8 = 0)))]
+#[derive(RustSpec, Tag, ReprC)]
+#[tag(unsafe(id(u8 = 0)))]
 #[repr(transparent)]
 struct DriftHandle(u32);
 

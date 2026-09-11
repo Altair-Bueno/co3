@@ -1,24 +1,24 @@
-use co3::{Handle, ReprC, ffi};
+use co3::{Tag, ReprC, ffi};
 use rust_spec::RustSpec;
 
 trait Dispatch {
     fn me(self);
 }
 
-#[derive(RustSpec, Handle, ReprC)]
-#[handle(unsafe(id(usize = 1)))]
+#[derive(RustSpec, Tag, ReprC)]
+#[tag(unsafe(id(usize = 1)))]
 struct Handle(usize);
 
-#[derive(RustSpec, Handle, ReprC)]
-#[handle(unsafe(id(usize = 2)))]
+#[derive(RustSpec, Tag, ReprC)]
+#[tag(unsafe(id(usize = 2)))]
 struct Handle2(u64);
 
-#[derive(RustSpec, Handle, ReprC)]
-#[handle(unsafe(id(usize = 3)))]
+#[derive(RustSpec, Tag, ReprC)]
+#[tag(unsafe(id(usize = 3)))]
 struct Array([u8; 2]);
 
-#[derive(RustSpec, Handle, ReprC)]
-#[handle(unsafe(id(usize = 4)))]
+#[derive(RustSpec, Tag, ReprC)]
+#[tag(unsafe(id(usize = 4)))]
 struct Array2([u8; 8]);
 
 #[derive(RustSpec, ReprC)]

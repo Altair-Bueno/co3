@@ -1,4 +1,4 @@
-use co3::{Handle, ReprC, ffi};
+use co3::{Tag, ReprC, ffi};
 use rust_spec::RustSpec;
 
 trait Version {
@@ -13,8 +13,8 @@ impl Version for Version1 {
 
 trait Attribute {}
 
-#[derive(Clone, Copy, RustSpec, ReprC, Handle)]
-#[handle(unsafe(id(u8 = 1)))]
+#[derive(Clone, Copy, RustSpec, ReprC, Tag)]
+#[tag(unsafe(id(u8 = 1)))]
 #[repr(transparent)]
 struct Attr(u8);
 

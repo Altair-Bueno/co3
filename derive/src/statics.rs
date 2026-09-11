@@ -150,12 +150,14 @@ fn gen_export_wrapper(
         }
     };
     let mutable_methods = mutable.then(|| quote! {
+        #[allow(clippy::useless_transmute)]
         #[inline]
         pub unsafe fn set(&self, value: #ty) {
             let value = unsafe { core::mem::transmute::<#ty, _>(value) };
             unsafe { core::ptr::write(core::ptr::addr_of_mut!(#raw_ident), value); }
         }
 
+        #[allow(clippy::useless_transmute)]
         #[inline]
         pub unsafe fn take(&self) -> Option<#ty>
         where for<'_dummy> #ty: core::default::Default,
@@ -354,6 +356,7 @@ pub(crate) fn gen_export_static(item: Co3Static) -> TokenStream {
 
         #(#cfg_attrs)*
         #(#attrs)*
+        #[allow(clippy::useless_transmute)]
         #static_token #mutability #raw_ident: <#ty as #co3::ExternC>::CType =
             unsafe { core::mem::transmute::<#ty, _>(#expr) };
     }

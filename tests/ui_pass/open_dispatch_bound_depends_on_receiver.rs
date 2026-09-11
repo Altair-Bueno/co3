@@ -1,6 +1,6 @@
-use co3::{Handle, ffi};
+use co3::{Tag, ffi};
 
-trait Field<H>: co3::handle::Handle<Kind = u8> {}
+trait Field<H>: co3::tag::Tagged<Kind = u8> {}
 
 ffi! {
     #![unsafe(extern("C"))]
@@ -20,8 +20,8 @@ ffi! {
     }
 }
 
-#[derive(Handle)]
-#[handle(unsafe(id(u8 = 2)))]
+#[derive(Tag)]
+#[tag(unsafe(id(u8 = 2)))]
 enum CustomField {}
 
 impl<V> Field<Resource<V>> for CustomField {}

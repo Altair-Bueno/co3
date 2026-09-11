@@ -42,7 +42,7 @@ impl FfiStruct1 {
 
 #[test]
 fn export_shared_fns() {
-    use co3::handle::Handle as _;
+    use co3::tag::Tagged as _;
 
     let name = String::from("X");
 
@@ -103,4 +103,3 @@ fn export_shared_fns() {
         ;;
     }
 }
-

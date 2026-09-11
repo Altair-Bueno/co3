@@ -1,6 +1,6 @@
 use core::marker::PhantomData;
 
-use co3::{ExternC, Handle, ReprC, encode, ffi, slice::Unpack2};
+use co3::{ExternC, Tag, ReprC, encode, ffi, slice::Unpack2};
 use rust_spec::RustSpec;
 
 trait Prop {
@@ -9,8 +9,8 @@ trait Prop {
 
 enum OdbcDefined {}
 
-#[derive(Handle)]
-#[handle(unsafe(id(u8 = 1)))]
+#[derive(Tag)]
+#[tag(unsafe(id(u8 = 1)))]
 enum Attribute {}
 
 impl Prop for Attribute {

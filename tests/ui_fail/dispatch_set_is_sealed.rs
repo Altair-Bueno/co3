@@ -1,13 +1,13 @@
-use co3::{Handle, ReprC, ffi};
+use co3::{Tag, ReprC, ffi};
 use rust_spec::RustSpec;
 
-#[derive(RustSpec, Handle, ReprC)]
-#[handle(unsafe(id(u8 = 1)))]
+#[derive(RustSpec, Tag, ReprC)]
+#[tag(unsafe(id(u8 = 1)))]
 #[repr(transparent)]
 struct First(u8);
 
-#[derive(RustSpec, Handle, ReprC)]
-#[handle(unsafe(id(u8 = 3)))]
+#[derive(RustSpec, Tag, ReprC)]
+#[tag(unsafe(id(u8 = 3)))]
 #[repr(transparent)]
 struct Second(u8);
 

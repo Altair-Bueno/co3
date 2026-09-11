@@ -1,11 +1,11 @@
-use co3::{Handle, ffi};
+use co3::{Tag, ffi};
 
-#[derive(Handle)]
-#[handle(unsafe(id(u8 = 1)))]
+#[derive(Tag)]
+#[tag(unsafe(id(u8 = 1)))]
 enum First {}
 
-#[derive(Handle)]
-#[handle(unsafe(id(u8 = 2)))]
+#[derive(Tag)]
+#[tag(unsafe(id(u8 = 2)))]
 enum Unlisted {}
 
 ffi! {

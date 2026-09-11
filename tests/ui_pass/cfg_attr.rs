@@ -1,4 +1,4 @@
-use co3::{Handle, ReprC, ffi};
+use co3::{Tag, ReprC, ffi};
 use rust_spec::RustSpec;
 
 trait Attr {}
@@ -15,8 +15,8 @@ trait ByteValue {
 #[repr(transparent)]
 struct EnvAttr(usize);
 
-#[derive(Clone, RustSpec, Handle, ReprC)]
-#[handle(unsafe(id(u16 = 1)))]
+#[derive(Clone, RustSpec, Tag, ReprC)]
+#[tag(unsafe(id(u16 = 1)))]
 struct Custom(usize);
 
 impl Attr for Custom {}
@@ -105,8 +105,8 @@ mod imported {
 mod provider {
     use super::*;
 
-    #[derive(Clone, RustSpec, ReprC, Handle)]
-    #[handle(unsafe(id(u16 = 1)))]
+    #[derive(Clone, RustSpec, ReprC, Tag)]
+    #[tag(unsafe(id(u16 = 1)))]
     pub(super) struct Custom(usize);
 
     impl Attr for Custom {}
@@ -144,7 +144,7 @@ ffi! {
         use<T> @ <Custom>,
     {
         #[cfg(all())]
-        fn into_byte(handle_id: <dyn T>::ID, self) -> u8;
+        fn into_byte(tag_id: <dyn T>::ID, self) -> u8;
     }
 }
 

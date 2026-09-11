@@ -3,9 +3,7 @@ use quote::{format_ident, quote};
 use syn::{FnArg, ItemImpl, punctuated::Punctuated, visit_mut::VisitMut};
 
 use crate::{
-    dispatch::{
-        HandleId, gen_handle_erase_stmts, gen_return_derase_expr, handle_id, is_handle_id_arg,
-    },
+    dispatch::{TagId, gen_return_derase_expr, gen_tag_erase_stmts, is_tag_id_arg, tag_id},
     ffi_fn::{
         self, gen_return_borrow_check, gen_soft_sync_error_value, gen_trap_value, is_by_val_attr,
         is_unpack_arg, item_fn_input_ident, ownership_mode_for_arg, unpack_arg_names,
@@ -129,7 +127,7 @@ pub fn wrap_impl_definition<const DISPATCHED: bool>(
         sig.inputs = if DISPATCHED {
             sig.inputs
                 .into_iter()
-                .filter(|i| !is_handle_id_arg(i))
+                .filter(|i| !is_tag_id_arg(i))
                 .collect()
         } else {
             core::mem::take(&mut sig.inputs)
@@ -204,12 +202,12 @@ pub(crate) fn gen_impl_wrapper_body<const DISPATCHED: bool>(
             return None;
         };
 
-        let handle_ty = match handle_id(ty)? {
-            HandleId::DynType(ty_param) => quote!(#ty_param),
-            HandleId::DynSelf => quote!(#self_ty),
+        let tag_ty = match tag_id(ty)? {
+            TagId::DynType(ty_param) => quote!(#ty_param),
+            TagId::DynSelf => quote!(#self_ty),
         };
 
-        Some(quote! { let #pat = <#handle_ty as co3::handle::Handle>::ID; })
+        Some(quote! { let #pat = <#tag_ty as co3::tag::Tagged>::ID; })
     });
     let wrapper_body = gen_wrapper_body::<DISPATCHED>(
         failure_mode,
@@ -279,11 +277,11 @@ pub(crate) fn gen_wrapper_body_with_callee<const DISPATCHED: bool>(
     sig: &syn::Signature,
     callee: TokenStream,
 ) -> TokenStream {
-    let handle_erase_stmts = if DISPATCHED {
+    let tag_erase_stmts = if DISPATCHED {
         self_ty
             .zip(dispatch_generics)
             .map(|(self_ty, generics)| {
-                gen_handle_erase_stmts(self_ty, generics, erase_declared_receiver, sig)
+                gen_tag_erase_stmts(self_ty, generics, erase_declared_receiver, sig)
             })
             .unwrap_or_default()
     } else {
@@ -317,7 +315,7 @@ pub(crate) fn gen_wrapper_body_with_callee<const DISPATCHED: bool>(
             #single_unpack_inputs
             #(#declared_receiver_erase)*
             let __co3_out = {
-                #(#handle_erase_stmts)*
+                #(#tag_erase_stmts)*
                 #unpack_inputs
                 #ffi_fn_call
             };
@@ -342,7 +340,7 @@ pub(crate) fn gen_wrapper_body_with_callee<const DISPATCHED: bool>(
         #(#declared_receiver_erase)*
 
         {
-            #(#handle_erase_stmts)*
+            #(#tag_erase_stmts)*
             #unpack_inputs
             #ffi_fn_call;
         }

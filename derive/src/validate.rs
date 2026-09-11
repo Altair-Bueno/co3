@@ -4,7 +4,7 @@ use syn::{Attribute, Error, Expr, Result, Type, visit::Visit};
 
 use crate::{
     Co3Static,
-    dispatch::{HandleId, handle_id},
+    dispatch::{TagId, tag_id},
     ffi_fn::{is_by_val_attr, is_unpack_attr, unpack_attr_name, unpack_types},
     is_symbol_name_attr,
     parse::validate_symbol_text,
@@ -510,7 +510,7 @@ fn validate_no_dispatch_attrs(attrs: &[syn::Attribute], errors: &mut Option<Erro
     }
 }
 
-fn ensure_no_handle_arg_attrs(sig: &syn::Signature) -> Result<()> {
+fn ensure_no_tag_arg_attrs(sig: &syn::Signature) -> Result<()> {
     let mut errors = None;
     for input in &sig.inputs {
         match input {
@@ -711,16 +711,16 @@ fn validate_export_receiver_position(sig: &syn::Signature) -> Result<()> {
     else {
         return Ok(());
     };
-    let first_non_handle_position = sig
+    let first_non_tag_position = sig
         .inputs
         .iter()
-        .position(|input| !matches!(input, syn::FnArg::Typed(arg) if handle_id(&arg.ty).is_some()));
+        .position(|input| !matches!(input, syn::FnArg::Typed(arg) if tag_id(&arg.ty).is_some()));
 
-    if first_non_handle_position == Some(receiver_position) {
+    if first_non_tag_position == Some(receiver_position) {
         return Ok(());
     }
 
-    let err_msg = "an exported method receiver must be the first non-handle argument";
+    let err_msg = "an exported method receiver must be the first non-tag argument";
     Err(Error::new_spanned(receiver, err_msg))
 }
 
@@ -847,7 +847,7 @@ fn validate_shared_fn(item: &crate::Co3Fn, validate_unpacks: bool) -> Result<()>
     if validate_unpacks && let Err(err) = validate_unpack(&item.sig, None) {
         push_error(&mut errors, err);
     }
-    if let Err(err) = ensure_no_handle_arg_attrs(&item.sig) {
+    if let Err(err) = ensure_no_tag_arg_attrs(&item.sig) {
         push_error(&mut errors, err);
     }
     if let Err(err) = validate_signature_shape(&item.sig) {
@@ -889,7 +889,7 @@ fn validate_shared_impl(impl_: &crate::Co3Impl, validate_unpacks: bool) -> Resul
         if validate_unpacks && let Err(err) = validate_unpack(sig, Some(&impl_.generics)) {
             push_error(&mut errors, err);
         }
-        if let Err(err) = ensure_no_handle_arg_attrs(sig) {
+        if let Err(err) = ensure_no_tag_arg_attrs(sig) {
             push_error(&mut errors, err);
         }
         if impl_.trait_.is_some() && has_non_lifetime_generics(&sig.generics) {
@@ -1284,7 +1284,7 @@ fn validate_callable_parameter_bounds(
             let syn::FnArg::Typed(input) = input else {
                 continue;
             };
-            if matches!(handle_id(&input.ty), Some(HandleId::DynType(ident)) if ident == param) {
+            if matches!(tag_id(&input.ty), Some(TagId::DynType(ident)) if ident == param) {
                 represented = true;
                 continue;
             }
@@ -1603,7 +1603,7 @@ fn reject_explicit_dispatch_ids(sig: &syn::Signature) -> Result<()> {
             continue;
         };
 
-        if handle_id(&arg.ty).is_some() {
+        if tag_id(&arg.ty).is_some() {
             push_error(&mut errors, Error::new_spanned(&arg.ty, err_msg));
         }
     }
@@ -1619,9 +1619,9 @@ fn validate_extern_dispatch_sig<'a>(
     dispatch_params: impl Iterator<Item = &'a syn::TypeParam>,
     sig: &syn::Signature,
 ) -> Result<()> {
-    let mut handle_ids = BTreeSet::new();
+    let mut tag_ids = BTreeSet::new();
 
-    let handle_tys = dispatch_params
+    let tag_tys = dispatch_params
         .map(|param| &param.ident)
         .collect::<BTreeSet<_>>();
 
@@ -1631,13 +1631,13 @@ fn validate_extern_dispatch_sig<'a>(
             continue;
         };
 
-        let Some(handle_id) = handle_id(&arg.ty) else {
+        let Some(tag_id) = tag_id(&arg.ty) else {
             continue;
         };
 
-        let is_dyn_param = match handle_id {
-            HandleId::DynType(ident) => handle_tys.contains(ident),
-            HandleId::DynSelf => true,
+        let is_dyn_param = match tag_id {
+            TagId::DynType(ident) => tag_tys.contains(ident),
+            TagId::DynSelf => true,
         };
 
         if !is_dyn_param {
@@ -1646,7 +1646,7 @@ fn validate_extern_dispatch_sig<'a>(
             continue;
         }
 
-        if !handle_ids.insert(handle_id) {
+        if !tag_ids.insert(tag_id) {
             let err_msg = "duplicate `<dyn Type>::ID`";
             push_error(&mut errors, Error::new_spanned(&arg.ty, err_msg));
         }
@@ -1702,7 +1702,7 @@ fn validate_dispatch_param_positions<'a>(
                 &arg.ty
             }
         };
-        if handle_id(ty).is_none() {
+        if tag_id(ty).is_none() {
             validator.visit_type(ty);
         }
     }
@@ -1733,7 +1733,7 @@ fn validate_drop_impl(impl_: &syn::ItemImpl) -> Result<()> {
     let mut was_receiver = false;
     for input in &method.sig.inputs {
         match input {
-            syn::FnArg::Typed(arg) if handle_id(&arg.ty).is_some() => {}
+            syn::FnArg::Typed(arg) if tag_id(&arg.ty).is_some() => {}
             syn::FnArg::Receiver(syn::Receiver {
                 kind: syn::ReceiverKind::Reference(_, _, Some(_)),
                 ..
@@ -1746,7 +1746,7 @@ fn validate_drop_impl(impl_: &syn::ItemImpl) -> Result<()> {
                 was_receiver = true;
             }
             _ => {
-                let err_msg = "`Drop::drop` supports only `&mut self` and optionally a handle ID";
+                let err_msg = "`Drop::drop` supports only `&mut self` and optionally a tag ID";
                 return Err(Error::new_spanned(&method.sig.inputs, err_msg));
             }
         }
@@ -1775,16 +1775,16 @@ fn validate_signature_shape(sig: &syn::Signature) -> Result<()> {
         };
 
         validate_pat_type_shape(arg)?;
-        validate_handle_id_pos(&arg.ty)?;
+        validate_tag_id_pos(&arg.ty)?;
     }
 
     if let syn::ReturnType::Type(_, output) = &sig.output {
-        if handle_id(output).is_some() {
+        if tag_id(output).is_some() {
             let err_msg = "`<dyn Type>::ID` is not allowed in return position";
             return Err(Error::new_spanned(output, err_msg));
         }
 
-        validate_handle_id_pos(output)?;
+        validate_tag_id_pos(output)?;
     }
 
     Ok(())
@@ -1805,15 +1805,15 @@ fn validate_pat_type_shape(arg: &syn::PatType) -> Result<()> {
     }
 }
 
-fn validate_handle_id_pos(ty: &Type) -> Result<()> {
-    struct NestedHandleIdVisitor {
+fn validate_tag_id_pos(ty: &Type) -> Result<()> {
+    struct NestedTagIdVisitor {
         errors: Option<Error>,
         depth: usize,
     }
 
-    impl Visit<'_> for NestedHandleIdVisitor {
+    impl Visit<'_> for NestedTagIdVisitor {
         fn visit_type(&mut self, node: &Type) {
-            if self.depth != 0 && handle_id(node).is_some() {
+            if self.depth != 0 && tag_id(node).is_some() {
                 let err_msg = "`<dyn Type>::ID` is only allowed as a top-level function argument";
                 push_error(&mut self.errors, Error::new_spanned(node, err_msg));
                 return;
@@ -1825,7 +1825,7 @@ fn validate_handle_id_pos(ty: &Type) -> Result<()> {
         }
     }
 
-    let mut visitor = NestedHandleIdVisitor {
+    let mut visitor = NestedTagIdVisitor {
         errors: None,
         depth: 0,
     };
@@ -1908,7 +1908,7 @@ mod tests {
     }
 
     #[test]
-    fn rejects_nested_handle_id_in_free_function() {
+    fn rejects_nested_tag_id_in_free_function() {
         let sig: syn::Signature = syn::parse_quote!(fn dispatch(value: (<dyn T>::ID,)));
 
         let err = validate_signature_shape(&sig).unwrap_err();
@@ -1919,7 +1919,7 @@ mod tests {
     }
 
     #[test]
-    fn rejects_handle_id_return_in_free_function() {
+    fn rejects_tag_id_return_in_free_function() {
         let sig: syn::Signature = syn::parse_quote!(fn dispatch() -> <dyn T>::ID);
 
         let err = validate_signature_shape(&sig).unwrap_err();

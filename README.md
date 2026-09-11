@@ -79,24 +79,30 @@ ffi! {
 }
 ```
 
+Note that type deriving `ReprC`, although recommended, is not required to have a stable representation.
+
 ## Tagged Dispatch
 
-It is common in FFI for several concrete types to share one C representation.
+It is common in FFI for several concrete types to share one C representation. Think of FFI functions
+like [SQLAllocHandle](https://learn.microsoft.com/en-us/sql/odbc/reference/syntax/sqlallochandle-function)
+which works for different tag types
+or [`SQLSetEnvAttr`](https://learn.microsoft.com/en-us/sql/odbc/reference/syntax/sqlsetenvattr-function)
+where an attribute's concrete type determines the accepted value representation.
 
 ```rust
-use co3::{ffi, rust_spec::RustSpec, Handle, ReprC};
+use co3::{ffi, rust_spec::RustSpec, Tag, ReprC};
 
 trait Calibrate {
     fn calibrate(&mut self, by: u16);
 }
 
-#[derive(RustSpec, Handle, ReprC)]
-#[handle(unsafe(id(u8 = 1)))]
+#[derive(RustSpec, Tag, ReprC)]
+#[tag(unsafe(id(u8 = 1)))]
 #[repr(transparent)]
 struct Celsius(u16);
 
-#[derive(RustSpec, Handle, ReprC)]
-#[handle(unsafe(id(u8 = 2)))]
+#[derive(RustSpec, Tag, ReprC)]
+#[tag(unsafe(id(u8 = 2)))]
 #[repr(transparent)]
 struct Fahrenheit(u16);
 

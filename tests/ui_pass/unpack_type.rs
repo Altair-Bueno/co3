@@ -19,8 +19,8 @@ trait TargetType {
 #[repr(transparent)]
 struct Counter(usize);
 
-#[derive(RustSpec, ReprC, co3::Handle)]
-#[handle(unsafe(id(u8 = 1)))]
+#[derive(RustSpec, ReprC, co3::Tag)]
+#[tag(unsafe(id(u8 = 1)))]
 #[repr(transparent)]
 struct ByteTarget(u8);
 

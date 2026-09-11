@@ -1,6 +1,6 @@
 use co3::{
-    Handle, ReprC, ffi,
-    handle::{Handle, HandleFamily},
+    Tag, ReprC, ffi,
+    tag::{Tagged, TagFamily},
 };
 use rust_spec::RustSpec;
 
@@ -14,17 +14,17 @@ trait Dispatch {
 #[repr(transparent)]
 struct CustomAttribute(u32);
 
-#[derive(RustSpec, Handle, ReprC)]
-#[handle(unsafe(id(u8)))]
+#[derive(RustSpec, Tag, ReprC)]
+#[tag(unsafe(id(u8)))]
 #[repr(transparent)]
 struct CustomAttributeRef<'a>(&'a u32);
 
 impl Attribute for &CustomAttribute {}
-impl HandleFamily for &CustomAttribute {
+impl TagFamily for &CustomAttribute {
     type Kind = u8;
 }
 
-unsafe impl Handle for &CustomAttribute {
+unsafe impl Tagged for &CustomAttribute {
     const ID: u8 = 1;
 }
 
@@ -63,7 +63,7 @@ ffi! {
         use<T> @ <&CustomAttribute>,
     {
         #[symbol_name = "len"]
-        fn len(handle_id: <dyn T>::ID, values: &[u32], attr: &T) -> usize;
+        fn len(tag_id: <dyn T>::ID, values: &[u32], attr: &T) -> usize;
     }
 }
 

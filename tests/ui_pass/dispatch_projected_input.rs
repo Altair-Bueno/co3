@@ -1,13 +1,13 @@
 use core::mem::MaybeUninit;
 
-use co3::{Handle, ffi};
+use co3::{Tag, ffi};
 
 trait Field {
     type Buffer;
 }
 
-#[derive(Handle)]
-#[handle(unsafe(id(u16 = 1)))]
+#[derive(Tag)]
+#[tag(unsafe(id(u16 = 1)))]
 enum NumericField {}
 
 impl Field for NumericField {

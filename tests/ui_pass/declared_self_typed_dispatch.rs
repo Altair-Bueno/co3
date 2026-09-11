@@ -1,8 +1,8 @@
-use co3::{Handle, ffi};
+use co3::{Tag, ffi};
 
 struct Version;
-#[derive(Handle)]
-#[handle(unsafe(id(u8 = 2)))]
+#[derive(Tag)]
+#[tag(unsafe(id(u8 = 2)))]
 struct Attribute;
 
 ffi! {
@@ -19,7 +19,7 @@ ffi! {
     }
 
     impl<V> Environment<V> {
-        fn get_attr<dyn(u8) A>(handle: &Self)
+        fn get_attr<dyn(u8) A>(tag: &Self)
         where
             use<A> @ <Attribute>;
     }

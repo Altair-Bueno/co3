@@ -4,13 +4,13 @@ trait Custom {
     fn inc(&mut self, by: u8);
 }
 
-unsafe impl co3::handle::Handle for Opaque<bool, u8> {
+unsafe impl co3::tag::Tagged for Opaque<bool, u8> {
     const ID: u8 = 1;
 }
-unsafe impl co3::handle::Handle for Opaque<bool, u32> {
+unsafe impl co3::tag::Tagged for Opaque<bool, u32> {
     const ID: u8 = 2;
 }
-unsafe impl co3::handle::Handle for Opaque<u8, bool> {
+unsafe impl co3::tag::Tagged for Opaque<u8, bool> {
     const ID: u8 = 3;
 }
 
@@ -81,13 +81,13 @@ mod provider {
         marker: PhantomData<(T, U)>,
     }
 
-    unsafe impl co3::handle::Handle for Opaque<bool, u8> {
+    unsafe impl co3::tag::Tagged for Opaque<bool, u8> {
         const ID: u8 = 1;
     }
-    unsafe impl co3::handle::Handle for Opaque<bool, u32> {
+    unsafe impl co3::tag::Tagged for Opaque<bool, u32> {
         const ID: u8 = 2;
     }
-    unsafe impl co3::handle::Handle for Opaque<u8, bool> {
+    unsafe impl co3::tag::Tagged for Opaque<u8, bool> {
         const ID: u8 = 3;
     }
 

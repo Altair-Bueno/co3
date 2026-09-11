@@ -1,4 +1,4 @@
-use co3::{handle::Handle, ffi};
+use co3::{tag::Tagged, ffi};
 
 trait Kita {}
 
@@ -6,7 +6,7 @@ struct Export1<T>(T);
 
 impl<T> Kita for Export1<T> {}
 
-unsafe impl Handle for Export1<u32> {
+unsafe impl Tagged for Export1<u32> {
     const ID: Self::Kind = 0;
 }
 

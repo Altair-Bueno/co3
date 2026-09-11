@@ -1,4 +1,4 @@
-use co3::{ffi, handle::Handle};
+use co3::{ffi, tag::Tagged};
 
 pub trait Unimplemented {}
 
@@ -13,7 +13,7 @@ impl RefKita for Exported2<u32> {
     }
 }
 
-unsafe impl<T> Handle for Exported2<T> {
+unsafe impl<T> Tagged for Exported2<T> {
     const ID: Self::Kind = 0;
 }
 

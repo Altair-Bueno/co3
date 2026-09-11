@@ -1,15 +1,15 @@
 use core::marker::PhantomData;
 
-use co3::{Handle, ReprC, ffi};
+use co3::{Tag, ReprC, ffi};
 use rust_spec::RustSpec;
 
-#[derive(Handle, RustSpec, ReprC)]
-#[handle(unsafe(id(u8 = 1)))]
+#[derive(Tag, RustSpec, ReprC)]
+#[tag(unsafe(id(u8 = 1)))]
 #[repr(transparent)]
 pub struct First(u8);
 
-#[derive(Handle, RustSpec, ReprC)]
-#[handle(unsafe(id(u8 = 2)))]
+#[derive(Tag, RustSpec, ReprC)]
+#[tag(unsafe(id(u8 = 2)))]
 #[repr(transparent)]
 pub struct Second(u8);
 

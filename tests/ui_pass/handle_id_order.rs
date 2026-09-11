@@ -1,6 +1,6 @@
 use co3::{
     ffi,
-    handle::{Handle, HandleFamily},
+    tag::{Tagged, TagFamily},
 };
 
 ffi! {
@@ -39,8 +39,8 @@ ffi! {
     }
 
     fn kita1(
-        inc_id: <Opaque2 as HandleFamily>::Kind,
-        a_id: <Opaque1 as HandleFamily>::Kind,
+        inc_id: <Opaque2 as TagFamily>::Kind,
+        a_id: <Opaque1 as TagFamily>::Kind,
         a: &mut Opaque1,
         inc: &Opaque2,
     ) -> u8;

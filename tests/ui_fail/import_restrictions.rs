@@ -122,16 +122,16 @@ ffi! {
     #![unsafe(extern("C"))]
 
     #[unsafe(id(u8))]
-    type Handle<T>;
+    type Tag<T>;
 
-    impl<T> Drop for dyn Handle<T>
+    impl<T> Drop for dyn Tag<T>
     where
         use<T> @ <u32>,
     {
         fn drop(self_id: <dyn Self>::ID, &mut self);
     }
 
-    impl<dyn(u8) T> Clone for Handle<T>
+    impl<dyn(u8) T> Clone for Tag<T>
     where
         use<T> @ <>,
     {
@@ -154,9 +154,9 @@ ffi! {
     #![unsafe(extern("C"))]
 
     #[unsafe(id(u8))]
-    type Handle<T>;
+    type Tag<T>;
 
-    impl<dyn(u8) T> Clone for Handle<T>
+    impl<dyn(u8) T> Clone for Tag<T>
     where
         use<T> @ <u8, i8>,
     {

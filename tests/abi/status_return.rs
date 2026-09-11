@@ -17,7 +17,7 @@ impl Error for CustomStatus {
         Self::TrapValue
     }
 
-    fn unknown_handle() -> Self {
+    fn unknown_tag() -> Self {
         Self::UnknownHandle
     }
 

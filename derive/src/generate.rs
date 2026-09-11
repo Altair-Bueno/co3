@@ -8,7 +8,7 @@ use crate::{
     Co3Fn, Co3Impl, DispatchGroups, ForeignItem, ForeignItemType, co3_path,
     dispatch::{
         StaticLifetimeNormalizer, erase_dispatch_signature, gen_dispatch_erased_layout_checks,
-        gen_dispatch_export, gen_dispatch_fn_export, gen_handle_id_type_checks,
+        gen_dispatch_export, gen_dispatch_fn_export, gen_tag_id_type_checks,
     },
     ffi_fn::{
         self, gen_extern_fn_signature, merge_generics, normalize_fn_signature,
@@ -412,7 +412,7 @@ fn dispatch_delegate_sig(
 fn dispatch_source_arg_names(sig: &syn::Signature) -> Vec<TokenStream> {
     sig.inputs
         .iter()
-        .filter(|input| !crate::dispatch::is_handle_id_arg(input))
+        .filter(|input| !crate::dispatch::is_tag_id_arg(input))
         .map(|input| match input {
             FnArg::Typed(input) => {
                 let ident = ffi_fn::item_fn_input_ident(&input.pat);
@@ -634,10 +634,10 @@ fn prepare_dispatch_wrapper_sig(
             .and_then(erased_id_repr)
             .expect("dispatch type has an ID representation");
         where_clause.predicates.push(syn::parse_quote!(
-            #ident: #co3::handle::Handle
+            #ident: #co3::tag::Tagged
         ));
         where_clause.predicates.push(syn::parse_quote!(
-            <#ident as #co3::handle::HandleFamily>::Kind:
+            <#ident as #co3::tag::TagFamily>::Kind:
                 #co3::Encode<CType = #id_repr, Store: #co3::stored::EmptyStore>
         ));
     }
@@ -722,7 +722,7 @@ fn prepare_dispatch_wrapper_sig(
                 .predicates
                 .push(syn::parse_quote!(#abi_part2: #co3::CFnArg));
         }
-        if crate::dispatch::handle_id(ty).is_none()
+        if crate::dispatch::tag_id(ty).is_none()
             && (detector.type_mentions_param(ty) || parameterized_unpack)
         {
             if ffi_fn::ownership_mode_for_arg(attrs, ty) == OwnershipMode::ByValue {
@@ -776,7 +776,7 @@ fn prepare_dispatch_forwarding_sig(sig: &syn::Signature) -> syn::Signature {
     wrapper_sig.inputs = wrapper_sig
         .inputs
         .into_iter()
-        .filter(|input| !crate::dispatch::is_handle_id_arg(input))
+        .filter(|input| !crate::dispatch::is_tag_id_arg(input))
         .collect();
     strip_internal_arg_attrs(&mut wrapper_sig);
     wrapper_sig
@@ -793,13 +793,13 @@ fn dispatch_id_assignments(sig: &syn::Signature, self_ty: Option<&syn::Type>) ->
             let FnArg::Typed(syn::PatType { pat, ty, .. }) = input else {
                 return None;
             };
-            match crate::dispatch::handle_id(ty)? {
-                crate::dispatch::HandleId::DynType(ident) => {
-                    Some(quote! { let #pat = <#ident as co3::handle::Handle>::ID; })
+            match crate::dispatch::tag_id(ty)? {
+                crate::dispatch::TagId::DynType(ident) => {
+                    Some(quote! { let #pat = <#ident as co3::tag::Tagged>::ID; })
                 }
-                crate::dispatch::HandleId::DynSelf => {
+                crate::dispatch::TagId::DynSelf => {
                     let self_ty = self_ty?;
-                    Some(quote! { let #pat = <#self_ty as co3::handle::Handle>::ID; })
+                    Some(quote! { let #pat = <#self_ty as co3::tag::Tagged>::ID; })
                 }
             }
         })
@@ -954,7 +954,7 @@ fn prepare_dispatch_import(
             dispatch_args,
             Some(&delegate),
         ),
-        id_checks: gen_handle_id_type_checks(&dispatch_generics, dispatch_args),
+        id_checks: gen_tag_id_type_checks(&dispatch_generics, dispatch_args),
         layout_checks: gen_dispatch_erased_layout_checks(&dispatch_generics, sig, dispatch_args),
         wrapper_sig,
         id_assignments: Vec::new(),
@@ -1030,7 +1030,7 @@ fn prepare_dynamic_dispatch_import(
 
     DispatchImportParts {
         set,
-        id_checks: gen_handle_id_type_checks(&dispatch_generics, &args),
+        id_checks: gen_tag_id_type_checks(&dispatch_generics, &args),
         layout_checks: gen_dispatch_erased_layout_checks(
             &dispatch_generics,
             &wrapper_source_sig,
@@ -1110,16 +1110,16 @@ pub(crate) fn expand_export_decls(
                 quote! { co3::rust_spec::size::Sized<co3::rust_spec::Gt<rust_spec::Zero>> },
                 quote! { co3::rust_spec::niche::WithoutNiche },
             );
-            let handle_impl = id_value
+            let tag_impl = id_value
                 .as_deref()
-                .map(|value| gen_handle_impl(ident, &ty.generics, value));
+                .map(|value| gen_tag_impl(ident, &ty.generics, value));
             let size_check = gen_non_zst_sized_check(ident, &ty.generics);
 
             quote! {
                 #(#type_cfg_attrs)*
                 const _: () = {
                     #opaque
-                    #handle_impl
+                    #tag_impl
 
                     #drop
                     #size_check
@@ -1379,7 +1379,7 @@ pub(crate) fn expand_extern_decls(
         args.inject_unnamed_lifetimes(&mut impl_.generics);
 
         let dispatch_helper = gen_dispatch_helper(&impl_.generics, &args);
-        let id_checks = gen_handle_id_type_checks(&impl_.generics, &args);
+        let id_checks = gen_tag_id_type_checks(&impl_.generics, &args);
         let mut check_generics = impl_.generics.clone();
         strip_erased_param_predicates(&impl_.generics, &mut check_generics);
         check_generics.params = core::mem::take(&mut check_generics.params)
@@ -1873,7 +1873,7 @@ pub(crate) fn expand_extern_decls(
     quote! { #(#imports)* }
 }
 
-pub(crate) fn gen_handle_family_impl(
+pub(crate) fn gen_tag_family_impl(
     ident: &syn::Ident,
     generics: &syn::Generics,
     id: &syn::Type,
@@ -1881,17 +1881,17 @@ pub(crate) fn gen_handle_family_impl(
     let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
 
     quote! {
-        impl #impl_generics co3::handle::HandleFamily for #ident #ty_generics #where_clause {
+        impl #impl_generics co3::tag::TagFamily for #ident #ty_generics #where_clause {
             type Kind = #id;
         }
     }
 }
 
-fn gen_handle_impl(ident: &syn::Ident, generics: &syn::Generics, value: &syn::Expr) -> TokenStream {
+fn gen_tag_impl(ident: &syn::Ident, generics: &syn::Generics, value: &syn::Expr) -> TokenStream {
     let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
 
     quote! {
-        unsafe impl #impl_generics co3::handle::Handle for #ident #ty_generics #where_clause {
+        unsafe impl #impl_generics co3::tag::Tagged for #ident #ty_generics #where_clause {
             const ID: Self::Kind = #value;
         }
     }
@@ -2031,11 +2031,11 @@ fn expand_dispatch_drop_import(
         .attrs
         .iter()
         .filter(|attr| !crate::is_symbol_name_attr(attr) && !ffi_fn::is_by_val_attr(attr));
-    let self_handle_bound = method.sig.inputs.iter().any(|input| {
+    let self_tag_bound = method.sig.inputs.iter().any(|input| {
         matches!(input, FnArg::Typed(input)
-            if matches!(crate::dispatch::handle_id(&input.ty), Some(crate::dispatch::HandleId::DynSelf)))
+            if matches!(crate::dispatch::tag_id(&input.ty), Some(crate::dispatch::TagId::DynSelf)))
     });
-    let self_handle_bound = self_handle_bound.then(|| quote!(Self: co3::handle::Handle,));
+    let self_tag_bound = self_tag_bound.then(|| quote!(Self: co3::tag::Tagged,));
 
     let mut lowered_method = method.clone();
     lowered_method.sig.output = syn::ReturnType::Default;
@@ -2047,19 +2047,19 @@ fn expand_dispatch_drop_import(
             let FnArg::Typed(syn::PatType { pat, ty, .. }) = input else {
                 return None;
             };
-            let (handle_ty, id_ty) = match crate::dispatch::handle_id(ty)? {
-                crate::dispatch::HandleId::DynType(ident) => {
+            let (tag_ty, id_ty) = match crate::dispatch::tag_id(ty)? {
+                crate::dispatch::TagId::DynType(ident) => {
                     let param = generics.type_params().find(|param| param.ident == *ident)?;
                     (quote!(#ident), erased_id_repr(param)?.clone())
                 }
-                crate::dispatch::HandleId::DynSelf => (quote!(Self), declared_id_ty?.clone()),
+                crate::dispatch::TagId::DynSelf => (quote!(Self), declared_id_ty?.clone()),
             };
             **ty = id_ty.clone();
             Some(quote! {
                 let #pat: #id_ty = {
                     // FIXME: https://github.com/mversic/co3/issues/93
-                    let __co3_handle_id = <#handle_ty as co3::handle::Handle>::ID;
-                    unsafe { core::mem::transmute_copy(&__co3_handle_id) }
+                    let __co3_tag_id = <#tag_ty as co3::tag::Tagged>::ID;
+                    unsafe { core::mem::transmute_copy(&__co3_tag_id) }
                 };
             })
         })
@@ -2080,7 +2080,7 @@ fn expand_dispatch_drop_import(
 
             #(#impl_attrs)*
             impl #impl_generics Drop for #self_ty where
-                #self_handle_bound
+                #self_tag_bound
                 #predicates
             {
                 #(#wrapper_attrs)*
@@ -2144,7 +2144,7 @@ fn wrap_extern_type_decl(
     has_dyn_self_drop: bool,
     mut type_: syn::ForeignItemType,
 ) -> TokenStream {
-    // A `dyn Self` drop dispatches through the opaque type's Handle
+    // A `dyn Self` drop dispatches through the opaque type's `Tagged` implementation.
     // implementation, so generic opaque types need the bound on their
     // declaration. Other drops, including the generated Owned wrapper drop,
     // do not require it.
@@ -2158,7 +2158,7 @@ fn wrap_extern_type_decl(
             .generics
             .make_where_clause()
             .predicates
-            .push(syn::parse_quote! { #extern_type: #co3::handle::Handle });
+            .push(syn::parse_quote! { #extern_type: #co3::tag::Tagged });
     }
 
     let syn::ForeignItemType {
@@ -2277,11 +2277,11 @@ fn gen_extern_type_impls(
         quote! { co3::rust_spec::size::ExternTypeLike },
         quote! { co3::rust_spec::niche::WithoutNiche },
     );
-    let handle_impl = id_value.map(|value| gen_handle_impl(ident, generics, value));
+    let tag_impl = id_value.map(|value| gen_tag_impl(ident, generics, value));
 
     quote! {
         #opaque_impls
-        #handle_impl
+        #tag_impl
 
         unsafe impl #impl_generics co3::borrow::BorrowCast for #ident #ty_generics #where_clause {
             type AsConst = Self;
@@ -2379,10 +2379,10 @@ fn gen_owned_extern_type_impls(
 
     let owned_ident = gen_owned_extern_type_name(ident);
     let owned_repr_c_name = gen_owned_repr_c_name(ident);
-    let handle_family_impl = id
-        .map(|id| gen_handle_family_impl(&owned_ident, generics, id))
+    let tag_family_impl = id
+        .map(|id| gen_tag_family_impl(&owned_ident, generics, id))
         .unwrap_or_default();
-    let handle_impl = id_value.map(|value| gen_handle_impl(&owned_ident, generics, value));
+    let tag_impl = id_value.map(|value| gen_tag_impl(&owned_ident, generics, value));
 
     quote! {
         unsafe impl #impl_generics co3::rust_spec::RustSpec for #owned_ident #ty_generics #where_clause {
@@ -2395,8 +2395,8 @@ fn gen_owned_extern_type_impls(
             type __IndirectTrap = co3::rust_spec::layout::Robust;
         }
 
-        #handle_family_impl
-        #handle_impl
+        #tag_family_impl
+        #tag_impl
 
         unsafe impl #impl_generics co3::transmute::CheckedTransmute for #owned_ident #ty_generics #where_clause {
             #[inline(always)]
@@ -2488,10 +2488,10 @@ fn derive_opaque_item(
     niche_kind: TokenStream,
 ) -> TokenStream {
     let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
-    let handle_family_impl = id.map(|id| gen_handle_family_impl(ident, generics, id));
+    let tag_family_impl = id.map(|id| gen_tag_family_impl(ident, generics, id));
 
     quote! {
-        #handle_family_impl
+        #tag_family_impl
 
         unsafe impl #impl_generics co3::rust_spec::RustSpec for #ident #ty_generics #where_clause {
             type Layout = co3::rust_spec::Stable;

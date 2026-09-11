@@ -14,7 +14,7 @@ use syn::{
 };
 
 use crate::{
-    dispatch::{StaticLifetimeNormalizer, handle_id, set_token_stream_span},
+    dispatch::{StaticLifetimeNormalizer, set_token_stream_span, tag_id},
     generate::OwnershipMode,
     parse::FailureMode,
     symbol_name_value,
@@ -97,10 +97,10 @@ pub(crate) fn gen_sync_check(
     }
 }
 
-pub(crate) fn gen_unknown_handle_error(failure_mode: FailureMode) -> TokenStream {
+pub(crate) fn gen_unknown_tag_error(failure_mode: FailureMode) -> TokenStream {
     match failure_mode {
-        FailureMode::Panic => quote! { panic!("co3 generated FFI unknown handle") },
-        FailureMode::Error => quote! { Err(co3::Error::unknown_handle()) },
+        FailureMode::Panic => quote! { panic!("co3 generated FFI unknown tag") },
+        FailureMode::Error => quote! { Err(co3::Error::unknown_tag()) },
     }
 }
 
@@ -1139,7 +1139,7 @@ pub(crate) fn ownership_mode_for_arg(attrs: &[syn::Attribute], ty: &Type) -> Own
 fn is_implicitly_by_value(ty: &Type) -> bool {
     let ty = peel_grouped_type(ty);
 
-    if handle_id(ty).is_some() {
+    if tag_id(ty).is_some() {
         return true;
     }
 
@@ -1232,7 +1232,7 @@ fn qualify_self_path(self_ty: &Type, rest: &Path) -> Type {
 
 impl VisitMut for SelfConcretizer<'_> {
     fn visit_type_mut(&mut self, node: &mut Type) {
-        if handle_id(node).is_some() {
+        if tag_id(node).is_some() {
             return;
         }
 

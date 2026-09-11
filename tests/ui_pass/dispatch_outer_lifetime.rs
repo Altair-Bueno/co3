@@ -1,8 +1,8 @@
-use co3::{Handle, ReprC, ffi};
+use co3::{Tag, ReprC, ffi};
 use rust_spec::RustSpec;
 
-#[derive(Handle, ReprC, RustSpec)]
-#[handle(unsafe(id(u8 = 1)))]
+#[derive(Tag, ReprC, RustSpec)]
+#[tag(unsafe(id(u8 = 1)))]
 #[repr(transparent)]
 struct Target(u8);
 
