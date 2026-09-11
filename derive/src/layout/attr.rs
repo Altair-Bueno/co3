@@ -16,16 +16,17 @@ pub enum ReprKind {
     Primitive(Box<syn::Type>),
 }
 
-#[derive(Debug, Clone, Eq, PartialEq)]
-pub enum Alignment {
-    Aligned(syn::LitInt),
-    Packed,
+#[derive(Debug, Clone, Default, Eq, PartialEq)]
+pub struct Repr {
+    pub kind: Option<ReprKind>,
+    pub alignment: Option<syn::LitInt>,
 }
 
 #[derive(Debug)]
 enum ReprToken {
     Kind(ReprKind),
-    Align(Alignment),
+    Align(syn::LitInt),
+    Packed,
 }
 
 impl quote::ToTokens for ReprKind {
@@ -93,28 +94,30 @@ impl Parse for ReprToken {
                     ReprToken::Kind(ReprKind::Primitive(syn::parse_quote!(isize))),
                     after_token,
                 )),
-                "packed" => Ok((ReprToken::Align(Alignment::Packed), after_token)),
+                "packed"
+                    if let Some((_inside_of_group, _group_span, after_group)) =
+                        after_token.group(Delimiter::Parenthesis) =>
+                {
+                    Ok((ReprToken::Packed, after_group))
+                }
+                "packed" => Ok((ReprToken::Packed, after_token)),
                 "align"
                     if let Some((inside_of_group, _group_span, after_group)) =
                         after_token.group(Delimiter::Parenthesis) =>
                 {
-                    let alignment = syn::parse2::<syn::LitInt>(inside_of_group.token_stream())
-                        .unwrap_or_else(|_| syn::parse_quote!(1));
+                    let alignment = syn::parse2::<syn::LitInt>(inside_of_group.token_stream())?;
 
-                    Ok((ReprToken::Align(Alignment::Aligned(alignment)), after_group))
+                    Ok((ReprToken::Align(alignment), after_group))
                 }
-                "align" => Ok((
-                    ReprToken::Align(Alignment::Aligned(syn::parse_quote!(1))),
-                    after_token,
-                )),
+                "align" => Err(cursor.error("expected `align(...)`")),
                 _ => Err(cursor.error("Unrecognized repr kind")),
             }
         })
     }
 }
 
-pub fn parse_repr(attrs: &[Attribute]) -> syn::Result<Option<ReprKind>> {
-    let mut alignment: Option<Alignment> = None;
+pub fn parse_repr(attrs: &[Attribute]) -> syn::Result<Repr> {
+    let mut alignment = None;
     let mut kind: Option<ReprKind> = None;
     let mut errors = None::<syn::Error>;
 
@@ -123,62 +126,114 @@ pub fn parse_repr(attrs: &[Attribute]) -> syn::Result<Option<ReprKind>> {
         .filter(|attr| attr.path().is_ident("repr"))
         .collect();
 
-    if repr_attrs.len() > 1 {
-        for attr in &repr_attrs[1..] {
-            push_error(
-                &mut errors,
-                syn::Error::new_spanned(attr, "Multiple repr attributes"),
-            );
-        }
-
-        return match errors {
-            Some(err) => Err(err),
-            None => Ok(None),
-        };
+    if repr_attrs.is_empty() {
+        return Ok(Repr::default());
     }
 
-    let Some(&attr) = repr_attrs.first() else {
-        return Ok(None);
-    };
+    for attr in repr_attrs {
+        let Meta::List(list) = &attr.meta else {
+            continue;
+        };
 
-    let Meta::List(list) = &attr.meta else {
-        return Ok(None);
-    };
-
-    let tokens =
-        Punctuated::<ReprToken, Token![,]>::parse_terminated.parse2(list.tokens.clone())?;
-
-    for token in tokens {
-        match token {
-            ReprToken::Kind(new_kind) => match (&mut kind, new_kind) {
-                (Some(ReprKind::C(None)), ReprKind::Primitive(prim)) => {
-                    kind = Some(ReprKind::C(Some(prim)));
+        let tokens =
+            Punctuated::<ReprToken, Token![,]>::parse_terminated.parse2(list.tokens.clone())?;
+        for token in tokens {
+            match token {
+                ReprToken::Kind(new_kind) => match (&mut kind, new_kind) {
+                    (Some(ReprKind::C(None)), ReprKind::Primitive(prim)) => {
+                        kind = Some(ReprKind::C(Some(prim)));
+                    }
+                    (Some(ReprKind::Primitive(prim)), ReprKind::C(None)) => {
+                        kind = Some(ReprKind::C(Some(prim.clone())));
+                    }
+                    (Some(existing), new_kind) if *existing == new_kind => {}
+                    (Some(_), _) => {
+                        push_error(
+                            &mut errors,
+                            syn::Error::new_spanned(attr, "Duplicate repr kind"),
+                        );
+                    }
+                    (None, new_kind) => kind = Some(new_kind),
+                },
+                ReprToken::Align(new_alignment) => {
+                    let replace = match alignment.as_ref() {
+                        Some(existing) => {
+                            new_alignment_value(&new_alignment)? > new_alignment_value(existing)?
+                        }
+                        None => true,
+                    };
+                    if replace {
+                        alignment = Some(new_alignment);
+                    }
                 }
-                (Some(ReprKind::Primitive(prim)), ReprKind::C(None)) => {
-                    kind = Some(ReprKind::C(Some(prim.clone())));
-                }
-                (Some(_), _) => {
-                    push_error(
-                        &mut errors,
-                        syn::Error::new_spanned(attr, "Duplicate repr kind within attribute"),
-                    );
-                }
-                (None, new_kind) => kind = Some(new_kind),
-            },
-            ReprToken::Align(new_alignment) => {
-                if alignment.is_some() {
-                    push_error(
-                        &mut errors,
-                        syn::Error::new_spanned(attr, "Duplicate repr alignment within attribute"),
-                    );
-                }
-                alignment = Some(new_alignment);
+                ReprToken::Packed => push_error(
+                    &mut errors,
+                    syn::Error::new_spanned(attr, "`repr(packed)` is not supported by `ReprC`"),
+                ),
             }
         }
     }
 
     match errors {
         Some(err) => Err(err),
-        None => Ok(kind),
+        None => Ok(Repr { kind, alignment }),
+    }
+}
+
+fn new_alignment_value(alignment: &syn::LitInt) -> syn::Result<u128> {
+    alignment.base10_parse()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn accepts_repr_parts_in_separate_attributes() {
+        let attrs = [
+            syn::parse_quote!(#[repr(C)]),
+            syn::parse_quote!(#[repr(align(16))]),
+        ];
+
+        assert_eq!(
+            parse_repr(&attrs).unwrap(),
+            Repr {
+                kind: Some(ReprKind::C(None)),
+                alignment: Some(syn::parse_quote!(16)),
+            }
+        );
+    }
+
+    #[test]
+    fn rejects_duplicate_repr_kinds() {
+        let kind_attrs = [
+            syn::parse_quote!(#[repr(C)]),
+            syn::parse_quote!(#[repr(transparent)]),
+        ];
+        assert!(parse_repr(&kind_attrs).is_err());
+    }
+
+    #[test]
+    fn accepts_matching_duplicate_repr_parts() {
+        let attrs = [
+            syn::parse_quote!(#[repr(C, align(16))]),
+            syn::parse_quote!(#[repr(C, align(16))]),
+        ];
+
+        assert!(parse_repr(&attrs).is_ok());
+    }
+
+    #[test]
+    fn keeps_the_largest_alignment() {
+        let attrs = [
+            syn::parse_quote!(#[repr(align(8))]),
+            syn::parse_quote!(#[repr(align(16))]),
+            syn::parse_quote!(#[repr(align(4))]),
+        ];
+
+        assert_eq!(
+            parse_repr(&attrs).unwrap().alignment,
+            Some(syn::parse_quote!(16))
+        );
     }
 }

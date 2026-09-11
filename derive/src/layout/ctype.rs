@@ -26,6 +26,7 @@ fn lowered_field_ty(field_ty: &syn::Type) -> TokenStream {
 /// union, this is always a transparent newtype over its discriminant.
 pub(super) fn gen_fieldless_enum_ctype(
     tag_type: &syn::Type,
+    alignment: Option<&syn::LitInt>,
     vis: &syn::Visibility,
     name: &syn::Ident,
     generics: &syn::Generics,
@@ -35,22 +36,31 @@ pub(super) fn gen_fieldless_enum_ctype(
     let predicates = where_clause
         .as_ref()
         .map(|where_clause| &where_clause.predicates);
+    // `repr(transparent)` cannot be combined with `align`, so use the
+    // equivalent single-field C layout when an explicit alignment is present.
+    let repr_kind = if alignment.is_none() {
+        &ReprKind::Transparent
+    } else {
+        &ReprKind::C(None)
+    };
+    let repr = gen_ctype_repr_attr(Some(repr_kind), alignment);
     let ctype: syn::ItemStruct = parse_quote! {
         #[doc(hidden)]
-        #[repr(transparent)]
+        #repr
         #vis struct #ctype_name #impl_generics(pub #tag_type)
         where
             #predicates;
     };
     // Keep the normal non-ZST CFnArg size guard. In particular, a one-variant
     // fieldless enum is represented by `CEnum(())` and must not become a CFnArg.
-    let impls = gen_struct_ctype_impls::<false, true>(&ctype, true);
+    let impls = gen_struct_ctype_impls::<false, true>(&ctype, true, alignment);
 
     quote! { #ctype #impls }
 }
 
 pub(super) fn gen_item_ctype(
     repr: Option<&ReprKind>,
+    alignment: Option<&syn::LitInt>,
     input: &syn::DeriveInput,
     generate_views_and_spec: bool,
 ) -> TokenStream {
@@ -60,6 +70,7 @@ pub(super) fn gen_item_ctype(
     match &input.data {
         syn::Data::Struct(data) => derive_ctype_struct::<false>(
             repr,
+            alignment,
             vis,
             name,
             generics,
@@ -74,6 +85,7 @@ pub(super) fn gen_item_ctype(
 
             derive_ctype_struct::<true>(
                 repr,
+                alignment,
                 vis,
                 name,
                 generics,
@@ -84,14 +96,21 @@ pub(super) fn gen_item_ctype(
         }
         syn::Data::Enum(data) if repr.is_none() => {
             let tag_type = infer_repr(data.variants.len());
-            derive_data_enum_ctype(tag_type, vis, name, generics, &data.variants)
+            derive_data_enum_ctype(tag_type, alignment, vis, name, generics, &data.variants)
         }
         syn::Data::Enum(data) if let Some(ReprKind::Primitive(repr)) = repr => {
-            derive_data_enum_ctype((**repr).clone(), vis, name, generics, &data.variants)
+            derive_data_enum_ctype(
+                (**repr).clone(),
+                alignment,
+                vis,
+                name,
+                generics,
+                &data.variants,
+            )
         }
         syn::Data::Enum(data) if matches!(repr, Some(&ReprKind::C(Some(_)))) => {
             let tag_type = primitive_tag_type(repr.expect("C primitive representation")).clone();
-            derive_repr_c_data_enum_ctype(tag_type, vis, name, generics, &data.variants)
+            derive_repr_c_data_enum_ctype(tag_type, alignment, vis, name, generics, &data.variants)
         }
         syn::Data::Union(_) | syn::Data::Enum(_) => {
             unreachable!()
@@ -101,6 +120,7 @@ pub(super) fn gen_item_ctype(
 
 fn derive_data_enum_ctype(
     tag_type: syn::Type,
+    alignment: Option<&syn::LitInt>,
     vis: &syn::Visibility,
     name: &syn::Ident,
     generics: &syn::Generics,
@@ -109,13 +129,14 @@ fn derive_data_enum_ctype(
     let union_name = gen_ctype_name(name);
     let (union_def, variant_structs) = gen_data_enum_union(
         Some(tag_type.clone()),
+        alignment,
         vis,
         &union_name,
         name,
         generics,
         variants,
     );
-    let union_impls = gen_union_ctype_impls(&union_def);
+    let union_impls = gen_union_ctype_impls(&union_def, alignment);
     let partial_eq_impl = gen_tagged_union_partial_eq(&union_def, &tag_type, variants);
     quote! { #(#variant_structs)* #union_def #union_impls #partial_eq_impl }
 }
@@ -156,8 +177,10 @@ fn gen_tagged_union_partial_eq(
     }
 }
 
+#[expect(clippy::too_many_arguments)]
 fn derive_ctype_struct<const ADD_COPY: bool>(
     repr: Option<&ReprKind>,
+    alignment: Option<&syn::LitInt>,
     vis: &syn::Visibility,
     name: &syn::Ident,
     generics: &syn::Generics,
@@ -165,8 +188,9 @@ fn derive_ctype_struct<const ADD_COPY: bool>(
     generate_views_and_spec: bool,
     generate_wide: bool,
 ) -> TokenStream {
-    let ctype_def = gen_ctype_struct_item::<ADD_COPY>(repr, vis, name, generics, fields);
-    let ctype_impls = gen_struct_ctype_impls::<ADD_COPY, true>(&ctype_def, generate_views_and_spec);
+    let ctype_def = gen_ctype_struct_item::<ADD_COPY>(repr, alignment, vis, name, generics, fields);
+    let ctype_impls =
+        gen_struct_ctype_impls::<ADD_COPY, true>(&ctype_def, generate_views_and_spec, alignment);
     let wide_impl = generate_wide.then(|| gen_ctype_wide_impl(repr, &ctype_def, fields, generics));
 
     quote! {
@@ -263,6 +287,7 @@ fn gen_ctype_wide_impl(
 
 fn derive_repr_c_data_enum_ctype(
     tag_type: syn::Type,
+    alignment: Option<&syn::LitInt>,
     vis: &syn::Visibility,
     name: &syn::Ident,
     generics: &syn::Generics,
@@ -271,17 +296,18 @@ fn derive_repr_c_data_enum_ctype(
     let payload_name = format_ident!("{name}Payload");
 
     let (payload_def, variant_structs) =
-        gen_data_enum_union(None, vis, &payload_name, name, generics, variants);
+        gen_data_enum_union(None, None, vis, &payload_name, name, generics, variants);
 
-    let payload_impls = gen_union_ctype_impls(&payload_def);
+    let payload_impls = gen_union_ctype_impls(&payload_def, None);
     let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
     let predicates = where_clause.as_ref().map(|w| &w.predicates);
     let ctype_name = gen_ctype_name(name);
     let ctype_bounds = gen_union_extern_c_bounds(generics, variants);
 
+    let repr = gen_ctype_repr_attr(Some(&ReprKind::C(None)), alignment);
     let ctype_def: syn::ItemStruct = parse_quote! {
         #[doc(hidden)]
-        #[repr(C)]
+        #repr
         #vis struct #ctype_name #impl_generics
         where
             #(#ctype_bounds,)*
@@ -292,7 +318,7 @@ fn derive_repr_c_data_enum_ctype(
         }
     };
 
-    let ctype_impls = gen_struct_ctype_impls::<true, false>(&ctype_def, true);
+    let ctype_impls = gen_struct_ctype_impls::<true, false>(&ctype_def, true, alignment);
     let partial_eq_impl = gen_tagged_payload_partial_eq(&ctype_def, &payload_def, variants);
 
     quote! {
@@ -343,6 +369,7 @@ fn gen_tagged_payload_partial_eq(
 
 fn gen_ctype_struct_item<const ADD_COPY: bool>(
     repr: Option<&ReprKind>,
+    alignment: Option<&syn::LitInt>,
     vis: &syn::Visibility,
     name: &syn::Ident,
     generics: &syn::Generics,
@@ -352,7 +379,7 @@ fn gen_ctype_struct_item<const ADD_COPY: bool>(
     let predicates = where_clause.as_ref().map(|w| &w.predicates);
 
     let ctype_name = gen_ctype_name(name);
-    let repr = gen_ctype_repr_attr(repr);
+    let repr = gen_ctype_repr_attr(repr, alignment);
 
     let field_types = fields.iter().map(|f| &f.ty).collect::<Vec<_>>();
     let extern_c_bounds = gen_extern_c_bounds_for_ctype::<ADD_COPY>(generics, &field_types);
@@ -398,6 +425,7 @@ fn gen_ctype_struct_item<const ADD_COPY: bool>(
 
 fn gen_data_enum_union(
     variant_tag: Option<syn::Type>,
+    alignment: Option<&syn::LitInt>,
     vis: &syn::Visibility,
     union_name: &syn::Ident,
     enum_name: &syn::Ident,
@@ -417,10 +445,11 @@ fn gen_data_enum_union(
     let predicates = where_clause.as_ref().map(|w| &w.predicates);
     let union_extern_c_bounds = gen_union_extern_c_bounds(generics, variants);
 
+    let repr = gen_ctype_repr_attr(Some(&ReprKind::C(None)), alignment);
     let union_def = parse_quote! {
         #[expect(non_snake_case)]
         #[doc(hidden)]
-        #[repr(C)]
+        #repr
         #vis union #union_name #impl_generics
         where
             #(#union_extern_c_bounds,)*
@@ -457,8 +486,8 @@ fn gen_variant_struct(
         }
     }
 
-    let ctype = gen_ctype_struct_item::<true>(repr, vis, &name, generics, &fields);
-    let ctype_impls = gen_struct_ctype_impls::<true, true>(&ctype, true);
+    let ctype = gen_ctype_struct_item::<true>(repr, None, vis, &name, generics, &fields);
+    let ctype_impls = gen_struct_ctype_impls::<true, true>(&ctype, true, None);
     quote! { #ctype #ctype_impls }
 }
 
@@ -517,6 +546,7 @@ fn gen_union_extern_c_bounds(
 fn gen_struct_ctype_impls<const ADD_COPY: bool, const GEN_PARTIAL_EQ: bool>(
     ctype: &syn::ItemStruct,
     generate_views_and_spec: bool,
+    alignment: Option<&syn::LitInt>,
 ) -> TokenStream {
     let fields = ctype.fields.iter().map(|f| &f.ty).collect::<Vec<_>>();
     let all_phantom_data = !fields.is_empty() && fields.iter().all(|ty| is_phantom_data(ty));
@@ -526,11 +556,12 @@ fn gen_struct_ctype_impls<const ADD_COPY: bool, const GEN_PARTIAL_EQ: bool>(
     let partial_eq_impl = GEN_PARTIAL_EQ.then(|| gen_struct_partial_eq(ctype));
     let default_impl = gen_default_impl::<ADD_COPY>(&ctype.ident, &ctype.generics, &fields);
     let robust_impls = gen_robust_impls::<ADD_COPY>(&ctype.ident, &ctype.generics, &fields);
-    let type_spec_impl =
-        generate_views_and_spec.then(|| gen_type_spec(&ctype.ident, &ctype.generics, &fields));
+    let type_spec_impl = generate_views_and_spec
+        .then(|| gen_type_spec(&ctype.ident, &ctype.generics, &fields, alignment));
     let const_view =
-        generate_views.then(|| gen_ctype_struct_view::<ADD_COPY>(ctype.clone(), false));
-    let mut_view = generate_views.then(|| gen_ctype_struct_view::<ADD_COPY>(ctype.clone(), true));
+        generate_views.then(|| gen_ctype_struct_view::<ADD_COPY>(ctype.clone(), false, alignment));
+    let mut_view =
+        generate_views.then(|| gen_ctype_struct_view::<ADD_COPY>(ctype.clone(), true, alignment));
 
     let borrow_cast_impl = if generate_views {
         gen_borrow_cast_impl::<ADD_COPY>(&ctype.ident, &ctype.generics, &fields)
@@ -584,15 +615,15 @@ fn gen_struct_partial_eq(ctype: &syn::ItemStruct) -> TokenStream {
     }
 }
 
-fn gen_union_ctype_impls(ctype: &syn::ItemUnion) -> TokenStream {
+fn gen_union_ctype_impls(ctype: &syn::ItemUnion, alignment: Option<&syn::LitInt>) -> TokenStream {
     let fields = ctype.fields.named.iter().map(|f| &f.ty).collect::<Vec<_>>();
 
     let copy_impls = gen_copy_impls::<true>(&ctype.ident, &ctype.generics, &fields);
     let default_impl = gen_default_impl::<true>(&ctype.ident, &ctype.generics, &fields);
     let robust_impls = gen_robust_impls::<true>(&ctype.ident, &ctype.generics, &fields);
-    let type_spec_impl = gen_type_spec(&ctype.ident, &ctype.generics, &fields);
-    let const_view = gen_ctype_union_view(ctype.clone(), false);
-    let mut_view = gen_ctype_union_view(ctype.clone(), true);
+    let type_spec_impl = gen_type_spec(&ctype.ident, &ctype.generics, &fields, alignment);
+    let const_view = gen_ctype_union_view(ctype.clone(), false, alignment);
+    let mut_view = gen_ctype_union_view(ctype.clone(), true, alignment);
 
     let borrow_cast_impl = gen_borrow_cast_impl::<true>(&ctype.ident, &ctype.generics, &fields);
 
@@ -653,6 +684,7 @@ fn gen_type_spec(
     ident: &syn::Ident,
     generics: &syn::Generics,
     fields: &[&syn::Type],
+    repr_alignment: Option<&syn::LitInt>,
 ) -> TokenStream {
     let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
     let predicates = where_clause.as_ref().map(|w| &w.predicates);
@@ -663,13 +695,16 @@ fn gen_type_spec(
         quote! { Size },
         quote! { co3::rust_spec::size::Sized<co3::rust_spec::Zero> },
     );
-    let (alignment, alignment_bounds) = gen_field_family(
+    let (mut alignment, alignment_bounds) = gen_field_family(
         generics,
         fields,
         quote! { co3::rust_spec::Max },
         quote! { Alignment },
         quote! { co3::rust_spec::One },
     );
+    if repr_alignment.is_some_and(|alignment| alignment.base10_digits() != "1") {
+        alignment = quote!(co3::rust_spec::Gt<co3::rust_spec::One>);
+    }
     let rust_spec_bounds = fields
         .iter()
         .filter(|field| !is_type_parametrized(field, generics))
@@ -869,17 +904,20 @@ fn gen_identity_borrow_cast_impl(ident: &syn::Ident, generics: &syn::Generics) -
     }
 }
 
-fn gen_ctype_repr_attr(repr: Option<&ReprKind>) -> TokenStream {
-    if repr == Some(&ReprKind::Transparent) {
-        quote! { #[repr(transparent)] }
+fn gen_ctype_repr_attr(repr: Option<&ReprKind>, alignment: Option<&syn::LitInt>) -> TokenStream {
+    let kind = if repr == Some(&ReprKind::Transparent) {
+        quote!(transparent)
     } else {
-        quote! { #[repr(C)] }
-    }
+        quote!(C)
+    };
+    let alignment = alignment.map(|alignment| quote!(, align(#alignment)));
+    quote! { #[repr(#kind #alignment)] }
 }
 
 fn gen_ctype_struct_view<const ADD_COPY: bool>(
     mut ctype: syn::ItemStruct,
     is_mut: bool,
+    alignment: Option<&syn::LitInt>,
 ) -> TokenStream {
     rewrite_ctype_view_struct::<ADD_COPY>(&mut ctype, is_mut);
 
@@ -892,7 +930,7 @@ fn gen_ctype_struct_view<const ADD_COPY: bool>(
     let copy_impls = gen_copy_impls::<ADD_COPY>(&ctype.ident, &ctype.generics, &fields);
     let default_impl = gen_default_impl::<ADD_COPY>(&ctype.ident, &ctype.generics, &fields);
     let robust_impls = gen_robust_impls::<ADD_COPY>(&ctype.ident, &ctype.generics, &fields);
-    let type_spec_impl = gen_type_spec(&ctype.ident, &ctype.generics, &fields);
+    let type_spec_impl = gen_type_spec(&ctype.ident, &ctype.generics, &fields, alignment);
 
     quote! {
         #ctype
@@ -903,7 +941,11 @@ fn gen_ctype_struct_view<const ADD_COPY: bool>(
     }
 }
 
-fn gen_ctype_union_view(mut ctype: syn::ItemUnion, is_mut: bool) -> TokenStream {
+fn gen_ctype_union_view(
+    mut ctype: syn::ItemUnion,
+    is_mut: bool,
+    alignment: Option<&syn::LitInt>,
+) -> TokenStream {
     rewrite_ctype_view_union(&mut ctype, is_mut);
 
     let fields = ctype
@@ -916,7 +958,7 @@ fn gen_ctype_union_view(mut ctype: syn::ItemUnion, is_mut: bool) -> TokenStream 
     let copy_impls = gen_copy_impls::<true>(&ctype.ident, &ctype.generics, &fields);
     let default_impl = gen_default_impl::<true>(&ctype.ident, &ctype.generics, &fields);
     let robust_impls = gen_robust_impls::<true>(&ctype.ident, &ctype.generics, &fields);
-    let type_spec_impl = gen_type_spec(&ctype.ident, &ctype.generics, &fields);
+    let type_spec_impl = gen_type_spec(&ctype.ident, &ctype.generics, &fields, alignment);
 
     quote! {
         #ctype

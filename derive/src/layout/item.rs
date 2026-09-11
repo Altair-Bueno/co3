@@ -22,6 +22,7 @@ use crate::layout::{
 
 pub(super) fn derive_item(
     repr: Option<&ReprKind>,
+    alignment: Option<&syn::LitInt>,
     input: &syn::DeriveInput,
     attrs: &ReprCAttrs,
     variant_attrs: &[VariantReprCAttrs],
@@ -37,7 +38,7 @@ pub(super) fn derive_item(
     let is_view = attrs.is_view;
     let is_wide_data = attrs.is_wide_data;
 
-    let ctype_def = (!is_view).then(|| gen_item_ctype(repr, input, !is_wide_data));
+    let ctype_def = (!is_view).then(|| gen_item_ctype(repr, alignment, input, !is_wide_data));
     let view_def = (!is_view && !is_wide_data).then(|| gen_item_view(input, attrs, variant_attrs));
 
     let borrow_impls = (!is_view && !is_wide_data).then(|| gen_item_borrow_impls(input));
@@ -822,6 +823,7 @@ fn gen_record_is_valid(
 
 pub(super) fn derive_fieldless_enum(
     repr: Option<&ReprKind>,
+    alignment: Option<&syn::LitInt>,
     vis: &syn::Visibility,
     name: &Ident,
     generics: &syn::Generics,
@@ -888,7 +890,7 @@ pub(super) fn derive_fieldless_enum(
 
     let ctype_name = gen_ctype_name(name);
     let ctype_ty = quote!(#ctype_name #ty_generics);
-    let ctype_def = gen_fieldless_enum_ctype(&tag_ctype, vis, name, generics);
+    let ctype_def = gen_fieldless_enum_ctype(&tag_ctype, alignment, vis, name, generics);
     let encode_impl = tag_type
         .as_ref()
         .map(|repr| quote! { #ctype_name(self as #repr) })

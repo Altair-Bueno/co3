@@ -1,0 +1,11 @@
+error: `repr(packed)` is not supported by `ReprC`
+ --> tests/ui_fail/repr_packed.rs:4:1
+  |
+4 | #[repr(C, packed)]
+  | ^^^^^^^^^^^^^^^^^^
+
+error: `repr(packed)` is not supported by `ReprC`
+ --> tests/ui_fail/repr_packed.rs:8:1
+  |
+8 | #[repr(C, packed(2))]
+  | ^^^^^^^^^^^^^^^^^^^^^

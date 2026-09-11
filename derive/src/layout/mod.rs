@@ -134,7 +134,9 @@ fn type_is_valid_closure(
 pub(crate) fn derive_repr_c(input: &syn::DeriveInput) -> syn::Result<TokenStream> {
     let mut errors = None::<syn::Error>;
 
-    let repr_attr = parse_repr(&input.attrs)?;
+    let repr = parse_repr(&input.attrs)?;
+    let repr_attr = repr.kind.as_ref();
+    let repr_alignment = repr.alignment.as_ref();
     let mut repr_c_attrs = parse_repr_c_attrs(&input.attrs)?;
     let mut variant_attrs = Vec::new();
 
@@ -156,7 +158,7 @@ pub(crate) fn derive_repr_c(input: &syn::DeriveInput) -> syn::Result<TokenStream
                 push_error(&mut errors, syn::Error::new_spanned(&input.ident, err_msg));
             }
 
-            if matches!(repr_attr.as_ref(), Some(ReprKind::C(None))) {
+            if matches!(repr_attr, Some(ReprKind::C(None))) {
                 let err_msg = "#[repr(C)]` not supported; use `#[repr(int)]`/`#[repr(C, int)]`";
                 push_error(&mut errors, syn::Error::new_spanned(&input.ident, err_msg));
             }
@@ -206,9 +208,9 @@ pub(crate) fn derive_repr_c(input: &syn::DeriveInput) -> syn::Result<TokenStream
     generics.make_where_clause();
     let tokens = match &input.data {
         syn::Data::Struct(_) => {
-            let item = derive_item(repr_attr.as_ref(), input, &repr_c_attrs, &[]);
+            let item = derive_item(repr_attr, repr_alignment, input, &repr_c_attrs, &[]);
             let wide = (!repr_c_attrs.is_view && !repr_c_attrs.is_wide_data)
-                .then(|| wide::expand(input, repr_attr.as_ref()))
+                .then(|| wide::expand(input, repr_attr))
                 .transpose()?;
             quote! { #item #wide }
         }
@@ -226,14 +228,21 @@ pub(crate) fn derive_repr_c(input: &syn::DeriveInput) -> syn::Result<TokenStream
                 .all(|v| matches!(v.fields, syn::Fields::Unit))
             {
                 derive_fieldless_enum(
-                    repr_attr.as_ref(),
+                    repr_attr,
+                    repr_alignment,
                     &input.vis,
                     &input.ident,
                     &generics,
                     &data.variants,
                 )
             } else {
-                derive_item(repr_attr.as_ref(), input, &repr_c_attrs, &variant_attrs)
+                derive_item(
+                    repr_attr,
+                    repr_alignment,
+                    input,
+                    &repr_c_attrs,
+                    &variant_attrs,
+                )
             }
         }
         syn::Data::Union(_) => unreachable!(),
