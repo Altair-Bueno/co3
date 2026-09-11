@@ -11,7 +11,8 @@ use crate::layout::{
         gen_view_owner_name,
     },
     ctype::{
-        gen_ctype_name, gen_extern_c_bounds_for_ctype, gen_fieldless_enum_ctype, gen_item_ctype,
+        gen_ctype_name, gen_extern_c_bounds_for_ctype, gen_fieldless_enum_ctype,
+        gen_identity_borrow_cast_impl, gen_identity_repr_c_impls, gen_item_ctype,
         gen_variant_struct_name,
     },
     enum_tag_type, generic_param_idents, infer_repr, is_exhaustive_enum, is_phantom_data,
@@ -37,6 +38,35 @@ pub(super) fn derive_item(
 
     let is_view = attrs.is_view;
     let is_wide_data = attrs.is_wide_data;
+
+    if attrs.is_identity {
+        let syn::Data::Struct(data) = &input.data else {
+            return quote! {};
+        };
+        let name = &input.ident;
+        let fields = data
+            .fields
+            .iter()
+            .map(|field| &field.ty)
+            .collect::<Vec<_>>();
+        let mut identity_generics = input.generics.clone();
+        for field in &fields {
+            identity_generics
+                .make_where_clause()
+                .predicates
+                .push(parse_quote!(#field: co3::ReprC));
+        }
+
+        let repr_c_impls = gen_identity_repr_c_impls(name, &identity_generics, &fields);
+        let borrow_impls = gen_identity_borrow_impls(name, &identity_generics);
+        let borrow_cast_impls = gen_identity_borrow_cast_impl(name, &identity_generics);
+
+        return quote! {
+            #repr_c_impls
+            #borrow_impls
+            #borrow_cast_impls
+        };
+    }
 
     let ctype_def = (!is_view).then(|| gen_item_ctype(repr, alignment, input, !is_wide_data));
     let view_def = (!is_view && !is_wide_data).then(|| gen_item_view(input, attrs, variant_attrs));

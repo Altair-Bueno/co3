@@ -1,27 +1,109 @@
-error[E0080]: evaluation panicked: custom NICHE_VALUE cannot override an inferred niche
+error[E0271]: type mismatch resolving `<(NonZero<u8>,) as RustSpec>::Niche == WithoutNiche`
+  --> tests/ui_fail/custom_niche_override.rs:6:20
+   |
+ 6 | #[derive(RustSpec, ReprC)]
+   |                    ^^^^^ expected `WithoutNiche`, found `WithNiche<Stable>`
+   |
+   = note: expected enum `WithoutNiche`
+            found struct `WithNiche<Stable>`
+note: required for `OverridesInferredNiche` to implement `Niche`
+  --> tests/ui_fail/custom_niche_override.rs:10:12
+   |
+ 6 | #[derive(RustSpec, ReprC)]
+   |                    ----- type parameter would need to implement `Niche`
+...
+10 | pub struct OverridesInferredNiche(NonZeroU8);
+   |            ^^^^^^^^^^^^^^^^^^^^^^
+   = help: consider manually implementing `Niche` to avoid undesired bounds
+   = note: associated types for the current `impl` cannot be restricted in `where` clauses
+   = note: associated types for the current `impl` cannot be restricted in `where` clauses
+   = note: associated types for the current `impl` cannot be restricted in `where` clauses
+   = note: associated types for the current `impl` cannot be restricted in `where` clauses
+   = note: this error originates in the derive macro `ReprC` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error[E0271]: type mismatch resolving `<(NonZero<u8>,) as RustSpec>::Niche == WithoutNiche`
  --> tests/ui_fail/custom_niche_override.rs:6:20
   |
 6 | #[derive(RustSpec, ReprC)]
-  |                    ^^^^^ evaluation of `<OverridesInferredNiche as _::AssertNoInferredNiche>::assert_no_inferred_niche::{constant#0}` failed here
-
-note: erroneous constant encountered
- --> tests/ui_fail/custom_niche_override.rs:6:20
+  |                    ^^^^^ expected `WithoutNiche`, found `WithNiche<Stable>`
   |
-6 | #[derive(RustSpec, ReprC)]
-  |                    ^^^^^
-  |
-  = note: this note originates in the derive macro `ReprC` (in Nightly builds, run with -Z macro-backtrace for more info)
+  = note: expected enum `WithoutNiche`
+           found struct `WithNiche<Stable>`
+  = note: this error originates in the derive macro `ReprC` (in Nightly builds, run with -Z macro-backtrace for more info)
 
-error[E0080]: evaluation panicked: custom NICHE_VALUE requires RustSpec<Niche = WithNiche<Unstable>>
+error[E0277]: the trait bound `CustomNicheRequiresUnstable: Niche` is not satisfied
   --> tests/ui_fail/custom_niche_override.rs:12:10
    |
 12 | #[derive(ReprC)]
-   |          ^^^^^ evaluation of `<CustomNicheRequiresUnstable as _::AssertNoInferredNiche>::assert_no_inferred_niche::{constant#0}` failed here
+   |          ^^^^^ unsatisfied trait bound
+   |
+help: the trait `RustSpec` is not implemented for `CustomNicheRequiresUnstable`
+  --> tests/ui_fail/custom_niche_override.rs:14:1
+   |
+14 | struct CustomNicheRequiresUnstable(u8);
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   = help: the following other types implement trait `RustSpec`:
+             &'_lšč0 _TŠČ0
+             &'_lšč0 mut _TŠČ0
+             ()
+             (A, B)
+             (A, B, C)
+             (A, B, C, D)
+             (A, B, C, D, E)
+             (A, B, C, D, E, F)
+           and $N others
+note: required for `CustomNicheRequiresUnstable` to implement `Niche`
+  --> tests/ui_fail/custom_niche_override.rs:14:8
+   |
+12 | #[derive(ReprC)]
+   |          ----- type parameter would need to implement `Niche`
+13 | #[reprC(NICHE_VALUE = CCustomNicheRequiresUnstable(1))]
+14 | struct CustomNicheRequiresUnstable(u8);
+   |        ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   = help: consider manually implementing `Niche` to avoid undesired bounds
+   = note: this error originates in the derive macro `ReprC` (in Nightly builds, run with -Z macro-backtrace for more info)
 
-note: erroneous constant encountered
+error[E0277]: the trait bound `CustomNicheRequiresUnstable: RustSpec` is not satisfied
   --> tests/ui_fail/custom_niche_override.rs:12:10
    |
 12 | #[derive(ReprC)]
-   |          ^^^^^
+   |          ^^^^^ unsatisfied trait bound
    |
-   = note: this note originates in the derive macro `ReprC` (in Nightly builds, run with -Z macro-backtrace for more info)
+help: the trait `RustSpec` is not implemented for `CustomNicheRequiresUnstable`
+  --> tests/ui_fail/custom_niche_override.rs:14:1
+   |
+14 | struct CustomNicheRequiresUnstable(u8);
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   = help: the following other types implement trait `RustSpec`:
+             &'_lšč0 _TŠČ0
+             &'_lšč0 mut _TŠČ0
+             ()
+             (A, B)
+             (A, B, C)
+             (A, B, C, D)
+             (A, B, C, D, E)
+             (A, B, C, D, E, F)
+           and $N others
+   = note: this error originates in the derive macro `ReprC` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error[E0271]: type mismatch resolving `<(NonZero<u8>,) as RustSpec>::Niche == WithoutNiche`
+  --> tests/ui_fail/custom_niche_override.rs:10:12
+   |
+10 | pub struct OverridesInferredNiche(NonZeroU8);
+   |            ^^^^^^^^^^^^^^^^^^^^^^ expected `WithoutNiche`, found `WithNiche<Stable>`
+   |
+   = note: expected enum `WithoutNiche`
+            found struct `WithNiche<Stable>`
+note: required for `OverridesInferredNiche` to implement `Niche`
+  --> tests/ui_fail/custom_niche_override.rs:10:12
+   |
+ 6 | #[derive(RustSpec, ReprC)]
+   |                    ----- type parameter would need to implement `Niche`
+...
+10 | pub struct OverridesInferredNiche(NonZeroU8);
+   |            ^^^^^^^^^^^^^^^^^^^^^^
+   = help: consider manually implementing `Niche` to avoid undesired bounds
+   = note: associated types for the current `impl` cannot be restricted in `where` clauses
+   = note: associated types for the current `impl` cannot be restricted in `where` clauses
+   = note: associated types for the current `impl` cannot be restricted in `where` clauses
+   = note: associated types for the current `impl` cannot be restricted in `where` clauses

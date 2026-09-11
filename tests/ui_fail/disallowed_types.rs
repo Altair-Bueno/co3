@@ -21,10 +21,6 @@ struct Array([u8; 2]);
 #[tag(unsafe(id(usize = 4)))]
 struct Array2([u8; 8]);
 
-#[derive(RustSpec, ReprC)]
-#[repr(C)]
-struct NonTransparentDst([u8]);
-
 #[derive(RustSpec)]
 #[repr(C)]
 struct StableButNotCStatic(u32);

@@ -152,6 +152,42 @@ note: required by a bound in `borrow_cast`
    |                                                 ^^^^ required by this bound in `borrow_cast`
    = note: this error originates in the derive macro `co3::ReprC` which comes from the expansion of the derive macro `ReprC` (in Nightly builds, run with -Z macro-backtrace for more info)
 
+error[E0277]: the trait bound `UnsizedSlice<u8>: Niche` is not satisfied
+  --> tests/ui_fail/custom_validation.rs:63:21
+   |
+63 |     require_niche::<UnsizedSlice<u8>>();
+   |                     ^^^^^^^^^^^^^^^^ unsatisfied trait bound
+   |
+help: the trait `RustSpec` is not implemented for `UnsizedSlice<u8>`
+  --> tests/ui_fail/custom_validation.rs:59:1
+   |
+59 | pub struct UnsizedSlice<T>([T]);
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^
+   = help: the following other types implement trait `RustSpec`:
+             &'_lšč0 _TŠČ0
+             &'_lšč0 mut _TŠČ0
+             ()
+             (A, B)
+             (A, B, C)
+             (A, B, C, D)
+             (A, B, C, D, E)
+             (A, B, C, D, E, F)
+           and $N others
+note: required for `UnsizedSlice<u8>` to implement `Niche`
+  --> tests/ui_fail/custom_validation.rs:59:12
+   |
+57 | #[derive(ReprC)]
+   |          ----- type parameter would need to implement `Niche`
+58 | #[reprC(NICHE_VALUE = unsafe { core::mem::zeroed() })]
+59 | pub struct UnsizedSlice<T>([T]);
+   |            ^^^^^^^^^^^^^^^
+   = help: consider manually implementing `Niche` to avoid undesired bounds
+note: required by a bound in `require_niche`
+  --> tests/ui_fail/custom_validation.rs:62:25
+   |
+62 |     fn require_niche<T: co3::niche::Niche>() {}
+   |                         ^^^^^^^^^^^^^^^^^ required by this bound in `require_niche`
+
 error[E0277]: the trait bound `[u8]: Copy` is not satisfied
   --> tests/ui_fail/custom_validation.rs:63:21
    |

@@ -308,13 +308,16 @@ impl DispatchGroups {
 
 /// Generate a C-compatible counterpart and conversions to and from the Rust type.
 ///
-/// A type deriving [`co3::ReprC`] can participate in [`ffi!`] declarations that use C ABI.
-/// Note that most types will also require an implementation of [`rust_spec::RustSpec`].
+/// A type deriving [`co3::ReprC`](https://docs.rs/co3/latest/co3/derive.ReprC.html) can participate
+/// in [`ffi!`] declarations that use C ABI. Note that most types will also require an
+/// implementation of [`rust_spec::RustSpec`](https://docs.rs/rust-spec/latest/rust_spec/trait.RustSpec.html).
 ///
 /// # Helper Attributes
 ///
-/// * `#[reprC(NICHE_VALUE = <expr>)]` on a struct customizes [`co3::niche::Niche::NICHE_VALUE`]
+/// * `#[reprC(NICHE_VALUE = <expr>)]` on a struct customizes
+///   [`co3::niche::Niche::NICHE_VALUE`](https://docs.rs/co3/latest/co3/niche/trait.Niche.html#associatedconstant.NICHE_VALUE)
 /// * `#[reprC(is_valid = |[fieldN]| ...)]` on a struct or enum variant customizes validation
+/// * `#[reprC(identity)]` uses a `repr(C)` or `repr(transparent)` struct directly as its CType
 ///
 /// # Example
 ///
@@ -342,27 +345,31 @@ pub fn tag_derive(item: syn::DeriveInput) -> Result<TokenStream> {
     tag::derive_tag(&item)
 }
 
-/// Declare your FFI exports or imports.
+/// Declare FFI exports or imports via native API.
 ///
-/// `ffi!` generates the ABI-facing wrappers and the conversion glue through a familiar API. The
-/// macro can be used to either produce the FFI bindings or to bind against an existing library.
-/// It accepts static items, bare functions, inherent and trait `impl`s, and extern/opaque types.
-/// All type conversions are checked for trap representations (with indirections followed) while
-/// ownership transfer is made opt-in.
+/// `ffi!` generates ABI-facing wrappers and conversions for statics, free functions, inherent and
+/// trait methods, and extern/opaque types. Value representations are checked for traps, including
+/// pointed-to values. **Ownership transfer is opt-in**.
 ///
-/// **The syntax of exports and imports is completely interchangeable.**
+/// **Except for statics, export declarations are completely interchangeable for imports**
+///
+/// # Safety
+///
+/// An import declaration is an unsafe assertion that the linked provider matches the declared ABI
+/// contract, including symbol names, calling convention, complete item signatures, ownership,
+/// lifetime, mutability, and aliasing requirements.
+///
+/// Foreign callers must ensure that non-null pointer-backed arguments satisfy Rust's reference
+/// rules for the types declared by the exported function for the duration of the call.
+///
+/// The exporting crate must ensure that exported symbol names are unique among linked definitions.
+/// Multiple `ffi!` blocks can generate colliding names, so prefer a single export block per crate
+/// and prefer exporting **only** symbols defined in that crate.
 ///
 /// # Import from an external library
 ///
 /// Use `#![unsafe(extern("ABI"))]` to declare the Rust-facing interface implemented by an external
-/// library.
-///
-/// ## Safety
-///
-/// Import declarations must match the provider's contract for:
-/// - ABI, symbol names, and function signatures
-/// - ownership and lifetime requirements, when opted into
-/// - pointer validity, mutability, and aliasing requirements
+/// library:
 ///
 /// ```rust
 /// use co3::{ffi, ReprC};
@@ -390,16 +397,9 @@ pub fn tag_derive(item: syn::DeriveInput) -> Result<TokenStream> {
 /// # Export from Rust
 ///
 /// Use `#![unsafe(export("ABI"))]` to expose existing Rust items. Although an ABI can be exported
-/// on its own, the provider will often also provide a Rust client as well. In this common case,
+/// on its own, the provider will often also provide a Rust client as well. In the common case,
 /// export declarations are naturally paired with matching import declarations via a shared crate
 /// that defines the application interface.
-///
-/// ## Safety
-///
-/// Export declarations must ensure:
-/// - ABI symbol names do not collide with other symbols
-/// - ownership and lifetime requirements, when opted into
-/// - pointer-backed received input arguments are valid
 ///
 /// ```rust
 /// use co3::ffi;
@@ -433,10 +433,10 @@ pub fn tag_derive(item: syn::DeriveInput) -> Result<TokenStream> {
 ///
 /// ABI symbols follow a stable naming convention:
 ///
-/// - Static items: `{prefix}__{static}`
-/// - Free functions: `{prefix}__{function}`
-/// - Inherent methods: `{prefix}__{SelfType}__{method}`
-/// - Trait methods: `{prefix}__{TraitPath}__{SelfType}__{method}`
+/// - Static items: `{prefix}__{static_name}`
+/// - Free functions: `{prefix}__{function_name}`
+/// - Inherent methods: `{prefix}__{SelfType}__{method_name}`
+/// - Trait methods: `{prefix}__{TraitPath}__{SelfType}__{method_name}`
 ///
 /// By default, `ffi!` uses `CARGO_CRATE_NAME` as the symbol prefix. `#![symbol_prefix = "..."]`
 /// overrides the prefix for the entire scope, whereas `#[symbol_name = "..."]` overrides the name
@@ -471,40 +471,39 @@ pub fn tag_derive(item: syn::DeriveInput) -> Result<TokenStream> {
 /// }
 /// ```
 ///
-/// # Ownership transfer
+/// # Static parameter interpolation
 ///
-/// In Rust, passing a value to a function transfers its ownership. Across an FFI boundary, however,
-/// ownership transfer carries additional requirements which are a common cause of UB, such as
-/// agreeing on the allocator and who is responsible for freeing the allocation.
+/// A generic parameter is selected at compile time with `where use<Param, ...> @ (ConcreteTy | ...)`
+/// where each selection of a static parameter generates a specialized function export or import with
+/// a distinct ABI symbol.
 ///
-/// Because it is designed to eliminate common footguns in FFI, `CO3` takes an opinionated stance here.
-/// By default, all owned values (e.g. `Vec<T>`) are exported as references and immediately cloned on
-/// the importing side. The universal guarantee is that any reference be valid for the duration of
-/// the function call; past that, it is the user's responsibility to ensure reference validity.
-///
-/// Apply `move` to transfer ownership of an argument or return value:
+/// An explicit `#[symbol_name]` **MUST** interpolate every selected static parameter exactly once
+/// using `{Parameter}`. `#![symbol_fragments { ... }]` defines the interpolated string value.
 ///
 /// ```rust
 /// use co3::ffi;
 ///
-/// fn passthrough(input: Vec<u8>) -> Vec<u8> {
-///     input
-/// }
-///
-/// fn clone_into(input: Vec<u8>) {
-///     input
-/// }
+/// pub struct SQLCHAR;
+/// pub struct SQLWCHAR;
 ///
 /// ffi! {
-///     #![unsafe(export("C"))]
+///     #![unsafe(extern("C"))]
+///     #![symbol_fragments {
+///         SQLCHAR = "A",
+///         SQLWCHAR = "W",
+///     }]
 ///
-///     // `input` and the return both transfer ownership
-///     move fn passthrough(move input: Vec<u8>) -> Vec<u8>;
-///
-///     // `input` is passed by reference
-///     fn clone_into(input: Vec<u8>);
+///     #[symbol_name = "convert_{T}"]
+///     fn convert<T>()
+///     where
+///         use<T> @ (<SQLCHAR> | <SQLWCHAR>);
 /// }
 /// ```
+///
+/// This synthesizes 2 function imports: `convert_A` and `convert_W`. Primitive types have stable
+/// built-in fragments, while const arguments are converted directly into valid symbol fragments.
+///
+/// **Runtime-dispatched `dyn(...)` parameters use tag IDs instead and are not interpolated.**
 ///
 /// # Tagged dispatch
 ///
@@ -574,13 +573,51 @@ pub fn tag_derive(item: syn::DeriveInput) -> Result<TokenStream> {
 /// }
 /// ```
 ///
+/// # Ownership transfer
+///
+/// In Rust, passing a value to a function transfers its ownership. Across an FFI boundary, however,
+/// ownership transfer carries additional requirements which are a common cause of UB, such as
+/// agreeing on the allocator and who is responsible for freeing the allocation.
+///
+/// Because it is designed to eliminate common footguns in FFI, `CO3` takes an opinionated stance here.
+/// By default, all owned values (e.g. `Vec<T>`) are exported as references and immediately cloned on
+/// the importing side. The universal guarantee is that any reference be valid for the duration of
+/// the function call; past that, it is the user's responsibility to ensure reference validity.
+///
+/// Apply `move` to transfer ownership of an argument or return value:
+///
+/// ```rust
+/// use co3::ffi;
+///
+/// fn passthrough(input: Vec<u8>) -> Vec<u8> {
+///     input
+/// }
+///
+/// fn clone_into(input: Vec<u8>) {
+///     input
+/// }
+///
+/// ffi! {
+///     #![unsafe(export("C"))]
+///
+///     // `input` and the return both transfer ownership
+///     move fn passthrough(move input: Vec<u8>) -> Vec<u8>;
+///
+///     // `input` is passed by reference
+///     fn clone_into(input: Vec<u8>);
+/// }
+/// ```
 /// # Soft references
 ///
-/// Converting references to types with an unstable layout implies a clone of the pointed-to value.
-/// The cloned value is lowered to it's C-compatible counterpart and a pointer to the store, rather
-/// than the actual pointer, is returned. **The pointer identity is not preserved**.
+/// `#[soft]` opts a function argument into conversion through temporary backing storage. This enables
+/// references to non-robust values (e.g. `&mut bool`) or values that cannot be represented in place
+/// (e.g. `&(u32, u32)`). The caveat is that the referent is converted into a temporary C-compatible
+/// representation instead of reusing its original address. **Pointer identity is not preserved.**
 ///
-/// Apply `#[soft]` to a function argument to opt into conversion of such types:
+/// Changes made through mutable references are synchronized back to the original value after the
+/// call. A synchronization failure follows the configured failure mode.
+///
+/// Apply `#[soft]` to a function argument to opt into this kind of conversion:
 ///
 /// ```rust
 /// use co3::ffi;
@@ -596,7 +633,7 @@ pub fn tag_derive(item: syn::DeriveInput) -> Result<TokenStream> {
 /// }
 /// ```
 ///
-/// # Unpack operator
+/// # Unpacking at the ABI boundary
 ///
 /// Rust slices are lowered into [`CSlice`](https://docs.rs/co3/latest/co3/slice/struct.CSlice.html)/[`CSliceMut`](https://docs.rs/co3/latest/co3/slice/struct.CSliceMut.html)
 /// which are C-ABI containers holding a data pointer and a length. However, it is common for FFI APIs to instead accept those components as separate function arguments.
@@ -618,7 +655,8 @@ pub fn tag_derive(item: syn::DeriveInput) -> Result<TokenStream> {
 /// # Failure modes
 ///
 /// Select how failures are reported over the FFI boundary:
-/// - `#![failure = "error"]`: return type must implement [`co3::Error`].
+/// - `#![failure = "error"]`: return type must implement
+///   [`co3::Error`](https://docs.rs/co3/latest/co3/trait.Error.html).
 /// - `#![failure = "panic"]`: panic on failure (the default).
 ///
 /// ```rust

@@ -1,3 +1,16 @@
+error[E0283]: type annotations needed
+  --> tests/ui_fail/impl_drop_assert.rs:13:6
+   |
+13 | enum PrimitiveEnumWithDrop {
+   |      ^^^^^^^^^^^^^^^^^^^^^ cannot infer type
+   |
+note: multiple `impl`s satisfying `PrimitiveEnumWithDrop: <PrimitiveEnumWithDrop as _::AssertNoDrop>::assert_no_drop::CustomDropIsNotSupported<_>` found
+  --> tests/ui_fail/impl_drop_assert.rs:11:20
+   |
+11 | #[derive(RustSpec, ReprC)]
+   |                    ^^^^^
+   = note: this error originates in the derive macro `ReprC` (in Nightly builds, run with -Z macro-backtrace for more info)
+
 error: cannot cast enum `PrimitiveEnumWithDrop` into integer `u8` because it implements `Drop`
   --> tests/ui_fail/impl_drop_assert.rs:11:20
    |
@@ -6,33 +19,96 @@ error: cannot cast enum `PrimitiveEnumWithDrop` into integer `u8` because it imp
    |
    = note: this error originates in the derive macro `ReprC` (in Nightly builds, run with -Z macro-backtrace for more info)
 
-error[E0080]: evaluation panicked: Types with custom Drop are not yet supported
-  --> tests/ui_fail/impl_drop_assert.rs:11:20
+error[E0283]: type annotations needed
+  --> tests/ui_fail/impl_drop_assert.rs:30:6
    |
-11 | #[derive(RustSpec, ReprC)]
-   |                    ^^^^^ evaluation of `<PrimitiveEnumWithDrop as _::AssertNoDrop>::assert_no_drop::{constant#0}` failed here
-
-note: erroneous constant encountered
-  --> tests/ui_fail/impl_drop_assert.rs:11:20
+30 | enum TransparentEnumWithDrop {
+   |      ^^^^^^^^^^^^^^^^^^^^^^^ cannot infer type
    |
-11 | #[derive(RustSpec, ReprC)]
-   |                    ^^^^^
-   |
-   = note: this note originates in the derive macro `ReprC` (in Nightly builds, run with -Z macro-backtrace for more info)
-
-error[E0080]: evaluation panicked: Types with custom Drop are not yet supported
-  --> tests/ui_fail/impl_drop_assert.rs:28:27
-   |
-28 | #[derive(Clone, RustSpec, ReprC)]
-   |                           ^^^^^ evaluation of `<TransparentEnumWithDrop as _::AssertNoDrop>::assert_no_drop::{constant#0}` failed here
-
-note: erroneous constant encountered
+note: multiple `impl`s satisfying `TransparentEnumWithDrop: <TransparentEnumWithDrop as _::AssertNoDrop>::assert_no_drop::CustomDropIsNotSupported<_>` found
   --> tests/ui_fail/impl_drop_assert.rs:28:27
    |
 28 | #[derive(Clone, RustSpec, ReprC)]
    |                           ^^^^^
+   = note: this error originates in the derive macro `ReprC` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error[E0283]: type annotations needed
+  --> tests/ui_fail/impl_drop_assert.rs:46:6
    |
-   = note: this note originates in the derive macro `ReprC` (in Nightly builds, run with -Z macro-backtrace for more info)
+46 | enum ReprCDataEnumWithDrop {
+   |      ^^^^^^^^^^^^^^^^^^^^^ cannot infer type
+   |
+note: multiple `impl`s satisfying `ReprCDataEnumWithDrop: <ReprCDataEnumWithDrop as _::AssertNoDrop>::assert_no_drop::CustomDropIsNotSupported<_>` found
+  --> tests/ui_fail/impl_drop_assert.rs:44:20
+   |
+44 | #[derive(RustSpec, ReprC)]
+   |                    ^^^^^
+   = note: this error originates in the derive macro `ReprC` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error[E0283]: type annotations needed
+  --> tests/ui_fail/impl_drop_assert.rs:62:6
+   |
+62 | enum DataEnumWithDrop {
+   |      ^^^^^^^^^^^^^^^^ cannot infer type
+   |
+note: multiple `impl`s satisfying `DataEnumWithDrop: <DataEnumWithDrop as _::AssertNoDrop>::assert_no_drop::CustomDropIsNotSupported<_>` found
+  --> tests/ui_fail/impl_drop_assert.rs:60:20
+   |
+60 | #[derive(RustSpec, ReprC)]
+   |                    ^^^^^
+   = note: this error originates in the derive macro `ReprC` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error[E0283]: type annotations needed
+  --> tests/ui_fail/impl_drop_assert.rs:76:6
+   |
+76 | enum ReprRustDataEnumWithDrop {
+   |      ^^^^^^^^^^^^^^^^^^^^^^^^ cannot infer type
+   |
+note: multiple `impl`s satisfying `ReprRustDataEnumWithDrop: <ReprRustDataEnumWithDrop as _::AssertNoDrop>::assert_no_drop::CustomDropIsNotSupported<_>` found
+  --> tests/ui_fail/impl_drop_assert.rs:75:20
+   |
+75 | #[derive(RustSpec, ReprC)]
+   |                    ^^^^^
+   = note: this error originates in the derive macro `ReprC` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error[E0283]: type annotations needed
+  --> tests/ui_fail/impl_drop_assert.rs:90:8
+   |
+90 | struct ReprCStructWithDrop(u8);
+   |        ^^^^^^^^^^^^^^^^^^^ cannot infer type
+   |
+note: multiple `impl`s satisfying `ReprCStructWithDrop: <ReprCStructWithDrop as _::AssertNoDrop>::assert_no_drop::CustomDropIsNotSupported<_>` found
+  --> tests/ui_fail/impl_drop_assert.rs:88:20
+   |
+88 | #[derive(RustSpec, ReprC)]
+   |                    ^^^^^
+   = note: this error originates in the derive macro `ReprC` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error[E0283]: type annotations needed
+   --> tests/ui_fail/impl_drop_assert.rs:102:8
+    |
+102 | struct TransparentStructWithDrop(u8);
+    |        ^^^^^^^^^^^^^^^^^^^^^^^^^ cannot infer type
+    |
+note: multiple `impl`s satisfying `TransparentStructWithDrop: <TransparentStructWithDrop as _::AssertNoDrop>::assert_no_drop::CustomDropIsNotSupported<_>` found
+   --> tests/ui_fail/impl_drop_assert.rs:100:27
+    |
+100 | #[derive(Clone, RustSpec, ReprC)]
+    |                           ^^^^^
+    = note: this error originates in the derive macro `ReprC` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error[E0283]: type annotations needed
+   --> tests/ui_fail/impl_drop_assert.rs:112:8
+    |
+112 | struct ReprRustStructWithDrop(u8);
+    |        ^^^^^^^^^^^^^^^^^^^^^^ cannot infer type
+    |
+note: multiple `impl`s satisfying `ReprRustStructWithDrop: <ReprRustStructWithDrop as _::AssertNoDrop>::assert_no_drop::CustomDropIsNotSupported<_>` found
+   --> tests/ui_fail/impl_drop_assert.rs:111:20
+    |
+111 | #[derive(RustSpec, ReprC)]
+    |                    ^^^^^
+    = note: this error originates in the derive macro `ReprC` (in Nightly builds, run with -Z macro-backtrace for more info)
 
 error[E0509]: cannot move out of type `TransparentEnumWithDrop`, which implements the `Drop` trait
   --> tests/ui_fail/impl_drop_assert.rs:28:27
@@ -44,87 +120,3 @@ error[E0509]: cannot move out of type `TransparentEnumWithDrop`, which implement
    |                           data moved here because `_0` has type `String`, which does not implement the `Copy` trait
    |
    = note: this error originates in the derive macro `ReprC` (in Nightly builds, run with -Z macro-backtrace for more info)
-
-error[E0080]: evaluation panicked: Types with custom Drop are not yet supported
-  --> tests/ui_fail/impl_drop_assert.rs:44:20
-   |
-44 | #[derive(RustSpec, ReprC)]
-   |                    ^^^^^ evaluation of `<ReprCDataEnumWithDrop as _::AssertNoDrop>::assert_no_drop::{constant#0}` failed here
-
-note: erroneous constant encountered
-  --> tests/ui_fail/impl_drop_assert.rs:44:20
-   |
-44 | #[derive(RustSpec, ReprC)]
-   |                    ^^^^^
-   |
-   = note: this note originates in the derive macro `ReprC` (in Nightly builds, run with -Z macro-backtrace for more info)
-
-error[E0080]: evaluation panicked: Types with custom Drop are not yet supported
-  --> tests/ui_fail/impl_drop_assert.rs:60:20
-   |
-60 | #[derive(RustSpec, ReprC)]
-   |                    ^^^^^ evaluation of `<DataEnumWithDrop as _::AssertNoDrop>::assert_no_drop::{constant#0}` failed here
-
-note: erroneous constant encountered
-  --> tests/ui_fail/impl_drop_assert.rs:60:20
-   |
-60 | #[derive(RustSpec, ReprC)]
-   |                    ^^^^^
-   |
-   = note: this note originates in the derive macro `ReprC` (in Nightly builds, run with -Z macro-backtrace for more info)
-
-error[E0080]: evaluation panicked: Types with custom Drop are not yet supported
-  --> tests/ui_fail/impl_drop_assert.rs:75:20
-   |
-75 | #[derive(RustSpec, ReprC)]
-   |                    ^^^^^ evaluation of `<ReprRustDataEnumWithDrop as _::AssertNoDrop>::assert_no_drop::{constant#0}` failed here
-
-note: erroneous constant encountered
-  --> tests/ui_fail/impl_drop_assert.rs:75:20
-   |
-75 | #[derive(RustSpec, ReprC)]
-   |                    ^^^^^
-   |
-   = note: this note originates in the derive macro `ReprC` (in Nightly builds, run with -Z macro-backtrace for more info)
-
-error[E0080]: evaluation panicked: Types with custom Drop are not yet supported
-  --> tests/ui_fail/impl_drop_assert.rs:88:20
-   |
-88 | #[derive(RustSpec, ReprC)]
-   |                    ^^^^^ evaluation of `<ReprCStructWithDrop as _::AssertNoDrop>::assert_no_drop::{constant#0}` failed here
-
-note: erroneous constant encountered
-  --> tests/ui_fail/impl_drop_assert.rs:88:20
-   |
-88 | #[derive(RustSpec, ReprC)]
-   |                    ^^^^^
-   |
-   = note: this note originates in the derive macro `ReprC` (in Nightly builds, run with -Z macro-backtrace for more info)
-
-error[E0080]: evaluation panicked: Types with custom Drop are not yet supported
-   --> tests/ui_fail/impl_drop_assert.rs:100:27
-    |
-100 | #[derive(Clone, RustSpec, ReprC)]
-    |                           ^^^^^ evaluation of `<TransparentStructWithDrop as _::AssertNoDrop>::assert_no_drop::{constant#0}` failed here
-
-note: erroneous constant encountered
-   --> tests/ui_fail/impl_drop_assert.rs:100:27
-    |
-100 | #[derive(Clone, RustSpec, ReprC)]
-    |                           ^^^^^
-    |
-    = note: this note originates in the derive macro `ReprC` (in Nightly builds, run with -Z macro-backtrace for more info)
-
-error[E0080]: evaluation panicked: Types with custom Drop are not yet supported
-   --> tests/ui_fail/impl_drop_assert.rs:111:20
-    |
-111 | #[derive(RustSpec, ReprC)]
-    |                    ^^^^^ evaluation of `<ReprRustStructWithDrop as _::AssertNoDrop>::assert_no_drop::{constant#0}` failed here
-
-note: erroneous constant encountered
-   --> tests/ui_fail/impl_drop_assert.rs:111:20
-    |
-111 | #[derive(RustSpec, ReprC)]
-    |                    ^^^^^
-    |
-    = note: this note originates in the derive macro `ReprC` (in Nightly builds, run with -Z macro-backtrace for more info)

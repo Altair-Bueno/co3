@@ -78,6 +78,7 @@ It must always start with a declaration of direction and ABI (e.g. `#![unsafe(ex
 A C-compatible companion type is a type with a defined C ABI and no trap representations, whose fields are themselves C-compatible companion types.
 
 - By default, the derive defines a C-compatible companion type and conversions between the two types.
+- `#[reprC(identity)]` uses a `#[repr(C)]` or `#[repr(transparent)]` struct directly as its companion.
 - Conversion of types with explicit representation (i.e. `#[repr(C)]`/`repr(transmute)`) are optimized.
 - `#[reprC(is_valid = |field0, ...| {...})]` provides additional validity invariant of a struct/variant.
 - `#[reprC(NICHE_VALUE = <expr>)]` defines the struct's trap value that is used for niche optimization.

@@ -21,6 +21,7 @@ const FFI_TYPE_ATTR: &str = "reprC";
 pub(super) struct ReprCAttrs {
     pub(super) niche_value: Option<syn::Expr>,
     pub(super) is_valid: Option<syn::ExprClosure>,
+    pub(super) is_identity: bool,
     pub(super) is_view: bool,
     pub(super) is_wide_data: bool,
 }
@@ -41,6 +42,14 @@ fn parse_repr_c_attrs(attrs: &[Attribute]) -> syn::Result<ReprCAttrs> {
         found_attr = true;
 
         attr.parse_nested_meta(|meta| {
+            if meta.path.is_ident("identity") {
+                if repr_c.is_identity {
+                    return Err(meta.error("Duplicate `identity` within attribute"));
+                }
+                repr_c.is_identity = true;
+                return Ok(());
+            }
+
             if meta.path.is_ident("view") {
                 if repr_c.is_view {
                     return Err(meta.error("Duplicate `view` within attribute"));
@@ -83,6 +92,7 @@ fn parse_repr_c_attrs(attrs: &[Attribute]) -> syn::Result<ReprCAttrs> {
 
     if repr_c.niche_value.is_none()
         && repr_c.is_valid.is_none()
+        && !repr_c.is_identity
         && !repr_c.is_view
         && !repr_c.is_wide_data
     {
@@ -140,6 +150,54 @@ pub(crate) fn derive_repr_c(input: &syn::DeriveInput) -> syn::Result<TokenStream
     let mut repr_c_attrs = parse_repr_c_attrs(&input.attrs)?;
     let mut variant_attrs = Vec::new();
 
+    if repr_c_attrs.is_identity {
+        match &input.data {
+            syn::Data::Struct(_)
+                if !matches!(repr_attr, Some(ReprKind::C(None) | ReprKind::Transparent)) =>
+            {
+                push_error(
+                    &mut errors,
+                    syn::Error::new_spanned(
+                        &input.ident,
+                        "`identity` requires `#[repr(C)]` or `#[repr(transparent)]`",
+                    ),
+                );
+            }
+            syn::Data::Struct(_) => {}
+            _ => push_error(
+                &mut errors,
+                syn::Error::new_spanned(&input.ident, "`identity` is only supported on structs"),
+            ),
+        }
+        if repr_c_attrs.is_valid.is_some() {
+            push_error(
+                &mut errors,
+                syn::Error::new_spanned(
+                    &input.ident,
+                    "`identity` cannot be combined with `is_valid`",
+                ),
+            );
+        }
+        if repr_c_attrs.niche_value.is_some() {
+            push_error(
+                &mut errors,
+                syn::Error::new_spanned(
+                    &input.ident,
+                    "`identity` cannot be combined with `NICHE_VALUE`",
+                ),
+            );
+        }
+        if repr_c_attrs.is_view || repr_c_attrs.is_wide_data {
+            push_error(
+                &mut errors,
+                syn::Error::new_spanned(
+                    &input.ident,
+                    "`identity` cannot be combined with generated representation modes",
+                ),
+            );
+        }
+    }
+
     match &input.data {
         syn::Data::Struct(data) => {
             validate_fields_no_ffi_type_attr(&data.fields, &mut errors);
@@ -190,6 +248,10 @@ pub(crate) fn derive_repr_c(input: &syn::DeriveInput) -> syn::Result<TokenStream
                     let err_msg = "`view` is only supported on types";
                     push_error(&mut errors, syn::Error::new(variant.span(), err_msg));
                 }
+                if variant_repr_c_attrs.is_identity {
+                    let err_msg = "`identity` is only supported on types";
+                    push_error(&mut errors, syn::Error::new(variant.span(), err_msg));
+                }
                 variant_attrs.push(VariantReprCAttrs {
                     is_valid: variant_repr_c_attrs.is_valid,
                 });
@@ -209,9 +271,10 @@ pub(crate) fn derive_repr_c(input: &syn::DeriveInput) -> syn::Result<TokenStream
     let tokens = match &input.data {
         syn::Data::Struct(_) => {
             let item = derive_item(repr_attr, repr_alignment, input, &repr_c_attrs, &[]);
-            let wide = (!repr_c_attrs.is_view && !repr_c_attrs.is_wide_data)
-                .then(|| wide::expand(input, repr_attr))
-                .transpose()?;
+            let wide =
+                (!repr_c_attrs.is_identity && !repr_c_attrs.is_view && !repr_c_attrs.is_wide_data)
+                    .then(|| wide::expand(input, repr_attr))
+                    .transpose()?;
             quote! { #item #wide }
         }
         syn::Data::Enum(data) if data.variants.is_empty() => {
@@ -387,10 +450,18 @@ fn assert_no_drop(generics: &syn::Generics, ident: &syn::Ident) -> TokenStream {
 
             impl #impl_generics AssertNoDrop for #ident #ty_generics #where_clause {
                 fn assert_no_drop() {
-                    const {
-                        assert!(co3::impls!(Self: !Drop),
-                        "Types with custom Drop are not yet supported");
+                    trait CustomDropIsNotSupported<A> {
+                        fn some_item() {}
                     }
+
+                    impl<T: ?Sized> CustomDropIsNotSupported<()> for T {}
+
+                    #[expect(dead_code)]
+                    struct DropDetected;
+
+                    impl<T: ?Sized + core::ops::Drop> CustomDropIsNotSupported<DropDetected> for T {}
+
+                    let _ = <#ident #ty_generics as CustomDropIsNotSupported<_>>::some_item;
                 }
             }
         };

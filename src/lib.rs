@@ -1,33 +1,37 @@
-//! Structures and macros related to FFI and generation of FFI bindings. Any type that implements
-//! [`ExternC`] can be used in the FFI bindings generated with [`ffi!`]. It is advisable
-//! to implement [`RustSpec`](rust_spec::RustSpec) and benefit from automatic
-//! implementation of [`ExternC`].
+//! Rust-native declarations for importing and exporting C ABI interfaces.
+//!
+//! [`ffi!`] is the main entry point. It generates ABI-facing wrappers and conversion glue for
+//! statics, functions, impl blocks, and opaque types. Each block can either export declarations
+//! from Rust with `#![unsafe(export("ABI"))]` or import them from a foreign library with
+//! `#![unsafe(extern("ABI"))]`.
+//!
+//! Rust types used in those declarations are mapped to C-compatible representations through
+//! [`ExternC`]. In normal use, derive [`ReprC`] to generate the representation and conversions.
+//!
+//! For the complete syntax, safety contract, and conversion behavior, see the [`ffi!`] documentation.
+//!
+//! # Example
 //!
 //! ```rust
-//! # mod ffi {
-//! # use co3::ffi;
+//! use co3::{ReprC, ffi};
 //!
-//! #[cfg(not(feature = "ffi-extern"))]
-//! struct Local(u8);
-//!
-//! #[cfg(not(feature = "ffi-extern"))]
-//! fn take_local_ref(a: &Local) {
-//!     unimplemented!()
-//! }
+//! #[derive(Clone, Copy, ReprC)]
+//! struct Step(u32);
 //!
 //! ffi! {
-//!     #![cfg_attr(not(feature = "ffi-extern"), unsafe(export("C")))]
-//!     #![cfg_attr(feature = "ffi-extern", unsafe(extern("C")))]
+//!     #![unsafe(extern("C"))]
 //!
-//!     #![symbol_prefix = "provider"]
+//!     type Counter;
 //!
-//!     type Local;
+//!     impl Counter {
+//!         #[symbol_name = "exported_by_int_inc"]
+//!         fn increment_by_int(&mut self, by: u32);
 //!
-//!     fn take_local_ref(a: &Local);
+//!         #[symbol_name = "exported_custom_inc"]
+//!         fn increment_custom(&mut self, by: Step);
+//!     }
 //! }
-//! # }
 //! ```
-#![cfg_attr(feature = "allocator-api", feature(allocator_api))]
 #![no_std]
 
 #[cfg(feature = "alloc")]
@@ -40,6 +44,7 @@ use alloc::{boxed::Box, vec::Vec};
 #[cfg(feature = "derive")]
 pub use co3_derive::*;
 use disjoint_impls::disjoint_impls;
+pub use impls::impls;
 #[doc(hidden)]
 pub use rust_spec;
 use rust_spec::{
@@ -50,9 +55,6 @@ use rust_spec::{
 };
 #[cfg(feature = "alloc")]
 use rust_spec::{Stable, Unstable, size::MetadataKind};
-// TODO: I don't like having to reexport macros from other crates
-#[doc(hidden)]
-pub use impls::impls;
 
 #[cfg(feature = "alloc")]
 use crate::boxed::{CBox, CBoxedSlice};
@@ -106,7 +108,7 @@ pub trait Error {
 ///
 /// # Safety
 ///
-/// Type implementing the trait must have a guaranteed C ABI.
+/// Type implementing the trait must have a guaranteed C ABI and no trap representations.
 pub unsafe trait ReprC {}
 
 /// `ReprC` type that is allowed as a C function argument.
@@ -307,14 +309,14 @@ impl<'d, R: Decode<'d>> Decode<'d> for Option<R> where Self: DecodeOwned<'d> {}
 impl<R: Encode, E: Encode> Encode for Result<R, E> where Self: EncodeOwned {}
 impl<'d, R: Decode<'d>, E: Decode<'d>> Decode<'d> for Result<R, E> where Self: DecodeOwned<'d> {}
 
-/// Perform the conversion from `T` into [`T::CType`] using external storage.
+/// Perform the conversion from `T` into [`ExternC::CType`] using external storage.
 ///
 /// Prefer using [`encode`] whenever possible
 pub fn soft_encode<T: Encode>(item: T, store: &mut T::Store) -> T::CType {
     item.soft_encode(store)
 }
 
-/// Perform the conversion from `T` into [`T::CType`].
+/// Perform the conversion from `T` into [`ExternC::CType`].
 pub fn encode<T: Encode<Store: EmptyStore>>(item: T) -> T::CType {
     stored::encode_owned(item)
 }

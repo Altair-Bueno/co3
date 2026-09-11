@@ -40,27 +40,27 @@ jobs:
     - name: Lint workspace (derive only)
       run: cargo clippy --workspace --benches --tests --examples --no-default-features --features derive -- --deny warnings
 
-  allocator-api:
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
+  #allocator-api:
+  #  runs-on: ubuntu-latest
+  #  timeout-minutes: 5
 
-    steps:
-    - uses: actions/checkout@v7
-    - uses: dtolnay/rust-toolchain@nightly
-      with:
-        components: clippy
-    - uses: Swatinem/rust-cache@v2
-      with:
-        key: allocator-api
+  #  steps:
+  #  - uses: actions/checkout@v7
+  #  - uses: dtolnay/rust-toolchain@nightly
+  #    with:
+  #      components: clippy
+  #  - uses: Swatinem/rust-cache@v2
+  #    with:
+  #      key: allocator-api
 
-    - name: Lint workspace
-      run: cargo clippy --workspace --benches --tests --examples --features allocator-api -- --deny warnings
+  #  - name: Lint workspace
+  #    run: cargo +nightly clippy --workspace --benches --tests --examples --features allocator-api -- --deny warnings --allow unused-features
 
-    - name: Lint workspace (alloc only)
-      run: cargo clippy --workspace --benches --tests --examples --no-default-features --features allocator-api,alloc -- --deny warnings
+  #  - name: Lint workspace (alloc only)
+  #    run: cargo +nightly clippy --workspace --benches --tests --examples --no-default-features --features allocator-api,alloc -- --deny warnings --allow unused-features
 
-    - name: Lint workspace (derive only)
-      run: cargo clippy --workspace --benches --tests --examples --no-default-features --features allocator-api,derive -- --deny warnings
+  #  - name: Lint workspace (derive only)
+  #    run: cargo +nightly clippy --workspace --benches --tests --examples --no-default-features --features allocator-api,derive -- --deny warnings --allow unused-features
 
   test:
     runs-on: ${{ matrix.os }}

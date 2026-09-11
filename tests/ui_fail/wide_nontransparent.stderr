@@ -1,0 +1,75 @@
+error[E0425]: cannot find type `NonTransparentDstData` in this scope
+  --> tests/ui_fail/wide_nontransparent.rs:18:12
+   |
+ 8 | struct NonTransparentDst(Bytes);
+   | -------------------------------- similarly named struct `NonTransparentDst` defined here
+...
+18 |     let _: NonTransparentDstData;
+   |            ^^^^^^^^^^^^^^^^^^^^^
+   |
+help: a struct with a similar name exists
+   |
+18 -     let _: NonTransparentDstData;
+18 +     let _: NonTransparentDst;
+   |
+
+error[E0425]: cannot find type `GenericNonTransparentDstData` in this scope
+  --> tests/ui_fail/wide_nontransparent.rs:20:12
+   |
+12 | struct GenericNonTransparentDst<T: ?Sized>(T);
+   | ---------------------------------------------- similarly named struct `GenericNonTransparentDst` defined here
+...
+20 |     let _: GenericNonTransparentDstData<[u8]>;
+   |            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+help: a struct with a similar name exists
+   |
+20 -     let _: GenericNonTransparentDstData<[u8]>;
+20 +     let _: GenericNonTransparentDst<[u8]>;
+   |
+
+error[E0277]: the trait bound `NonTransparentDst: Wide` is not satisfied
+  --> tests/ui_fail/wide_nontransparent.rs:17:20
+   |
+17 |     require_wide::<NonTransparentDst>();
+   |                    ^^^^^^^^^^^^^^^^^ unsatisfied trait bound
+   |
+help: the trait `Wide` is not implemented for `NonTransparentDst`
+  --> tests/ui_fail/wide_nontransparent.rs:8:1
+   |
+ 8 | struct NonTransparentDst(Bytes);
+   | ^^^^^^^^^^^^^^^^^^^^^^^^
+   = help: the following other types implement trait `Wide`:
+             Cell<R>
+             ManuallyDrop<R>
+             UnsafeCell<R>
+             [R]
+             str
+note: required by a bound in `require_wide`
+  --> tests/ui_fail/wide_nontransparent.rs:14:20
+   |
+14 | fn require_wide<T: Wide + ?Sized>() {}
+   |                    ^^^^ required by this bound in `require_wide`
+
+error[E0277]: the trait bound `GenericNonTransparentDst<[u8]>: Wide` is not satisfied
+  --> tests/ui_fail/wide_nontransparent.rs:19:20
+   |
+19 |     require_wide::<GenericNonTransparentDst<[u8]>>();
+   |                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ unsatisfied trait bound
+   |
+help: the trait `Wide` is not implemented for `GenericNonTransparentDst<[u8]>`
+  --> tests/ui_fail/wide_nontransparent.rs:12:1
+   |
+12 | struct GenericNonTransparentDst<T: ?Sized>(T);
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   = help: the following other types implement trait `Wide`:
+             Cell<R>
+             ManuallyDrop<R>
+             UnsafeCell<R>
+             [R]
+             str
+note: required by a bound in `require_wide`
+  --> tests/ui_fail/wide_nontransparent.rs:14:20
+   |
+14 | fn require_wide<T: Wide + ?Sized>() {}
+   |                    ^^^^ required by this bound in `require_wide`

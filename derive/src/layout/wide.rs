@@ -32,73 +32,40 @@ pub(crate) fn expand(
     let name = &input.ident;
     let field_ty = &field.ty;
 
-    let is_transparent_single =
-        data.fields.len() == 1 && matches!(repr, Some(ReprKind::Transparent));
+    let is_single = data.fields.len() == 1;
+    let is_transparent_single = is_single && matches!(repr, Some(ReprKind::Transparent));
+    let generates_wide = !is_single || is_transparent_single;
     let data_ty = if is_transparent_single {
         quote!(<#field_ty as co3::wide::Wide>::Data)
     } else {
         gen_data_ty(input)
     };
-    let size_assertion = gen_size_assertion(repr, &data.fields, &input.generics, name);
     let methods = gen_dst_methods(is_transparent_single, field_ty, field_ref, field_member);
     let alloc_methods = gen_alloc_methods();
 
     let wide_predicate = wide_predicate(field_ty, &input.generics);
-    let data_def = (!is_transparent_single).then(|| gen_data_def(input, &data.fields));
+    let data_def =
+        (!is_transparent_single && generates_wide).then(|| gen_data_def(input, &data.fields));
+    let wide_impl = generates_wide.then(|| {
+        quote! {
+            impl #impl_generics co3::wide::Wide for #name #ty_generics
+            where
+                #wide_predicate,
+                #predicates
+            {
+                type Data = #data_ty;
+                type Metadata = <#field_ty as co3::wide::Wide>::Metadata;
+
+                #methods
+                #alloc_methods
+            }
+        }
+    });
 
     Ok(quote! {
-        #size_assertion
         #data_def
-
-        impl #impl_generics co3::wide::Wide for #name #ty_generics
-        where
-            #wide_predicate,
-            #predicates
-        {
-            type Data = #data_ty;
-            type Metadata = <#field_ty as co3::wide::Wide>::Metadata;
-
-            #methods
-            #alloc_methods
-        }
+        #wide_impl
     })
-}
-
-fn gen_size_assertion(
-    repr: Option<&ReprKind>,
-    fields: &syn::Fields,
-    generics: &syn::Generics,
-    name: &syn::Ident,
-) -> TokenStream {
-    let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
-
-    if fields.len() != 1 || matches!(repr, Some(ReprKind::Transparent)) {
-        return quote! {};
-    }
-
-    quote! {
-        const _: () = {
-            #[expect(dead_code)]
-            trait AssertTransparentSize {
-                fn assert_slice_like();
-            }
-
-            impl #impl_generics AssertTransparentSize for #name #ty_generics #where_clause {
-                fn assert_slice_like() {
-                    const {
-                        assert!(co3::impls!(Self: !co3::rust_spec::RustSpec<
-                            Size = co3::rust_spec::size::MetaSized<co3::rust_spec::size::SliceLike>>),
-                            "single-field DST structs require #[repr(transparent)]"
-                        );
-                        assert!(co3::impls!(Self: !co3::rust_spec::RustSpec<
-                            Size = co3::rust_spec::size::MetaSized<co3::rust_spec::size::DynTraitLike>>),
-                            "single-field DST structs require #[repr(transparent)]"
-                        );
-                    }
-                }
-            }
-        };
-    }
 }
 
 pub(super) fn last_field(fields: &syn::Fields) -> Option<(&syn::Field, TokenStream, TokenStream)> {

@@ -73,74 +73,49 @@ pub fn gen_struct_niche_ir(
     let extern_c_bounds = gen_extern_c_bounds_for_ctype::<true>(generics, &types);
     let (fields_tuple, c_fields_tuple, accessors) = build_extern_c_type_tuple(&types);
 
-    let (niche_value, inferred_niche_bounds, custom_niche_assertion) = if let Some(niche_value) =
-        niche_value
-    {
-        (
-            quote! { #niche_value },
-            quote! {},
-            quote! {
-                const _: () = {
-                    #[expect(dead_code)]
-                    trait AssertNoInferredNiche {
-                        fn assert_no_inferred_niche();
-                    }
+    let (niche_value, inferred_niche_bounds, custom_niche_bounds) =
+        if let Some(niche_value) = niche_value {
+            let custom_niche_bounds = quote! {
+                #struct_name #ty_generics: co3::rust_spec::RustSpec<
+                    Niche = co3::rust_spec::niche::WithNiche<co3::rust_spec::Unstable>
+                >,
+                #fields_tuple: co3::rust_spec::RustSpec<
+                    Niche = co3::rust_spec::niche::WithoutNiche
+                >,
+            };
 
-                    impl #impl_generics AssertNoInferredNiche for #struct_name #ty_generics where
-                        #predicates
-                    {
-                        fn assert_no_inferred_niche() {
-                            const {
-                                assert!(
-                                    co3::impls!(#struct_name #ty_generics: co3::rust_spec::RustSpec<
-                                        Niche = co3::rust_spec::niche::WithNiche<co3::rust_spec::Unstable>
-                                    >),
-                                    "custom NICHE_VALUE requires RustSpec<Niche = WithNiche<Unstable>>",
-                                );
-                                assert!(
-                                    co3::impls!(#fields_tuple: co3::rust_spec::RustSpec<
-                                        Niche = co3::rust_spec::niche::WithoutNiche
-                                    >),
-                                    "custom NICHE_VALUE cannot override an inferred niche",
-                                );
-                            }
-                        }
-                    }
-                };
-            },
-        )
-    } else {
-        let niche_field_values = accessors.iter().map(|accessor| {
-            quote! { <#fields_tuple as co3::niche::Niche>::NICHE_VALUE.#accessor }
-        });
-        let niche_value = match fields {
-            syn::Fields::Named(_) | syn::Fields::Unit => {
-                let field_names = fields.iter().map(|f| &f.ident);
-                quote! { #ctype_name { #(#field_names: #niche_field_values),* } }
-            }
-            syn::Fields::Unnamed(_) => {
-                quote! { #ctype_name(#(#niche_field_values),*) }
-            }
+            (quote! { #niche_value }, quote! {}, custom_niche_bounds)
+        } else {
+            let niche_field_values = accessors.iter().map(|accessor| {
+                quote! { <#fields_tuple as co3::niche::Niche>::NICHE_VALUE.#accessor }
+            });
+            let niche_value = match fields {
+                syn::Fields::Named(_) | syn::Fields::Unit => {
+                    let field_names = fields.iter().map(|f| &f.ident);
+                    quote! { #ctype_name { #(#field_names: #niche_field_values),* } }
+                }
+                syn::Fields::Unnamed(_) => {
+                    quote! { #ctype_name(#(#niche_field_values),*) }
+                }
+            };
+            (
+                niche_value,
+                quote! { #for_dummy #fields_tuple: co3::niche::Niche<CType = #c_fields_tuple>, },
+                quote! {},
+            )
         };
-        (
-            niche_value,
-            quote! { #for_dummy #fields_tuple: co3::niche::Niche<CType = #c_fields_tuple>, },
-            quote! {},
-        )
-    };
 
     quote! {
         impl #impl_generics co3::niche::Niche for #struct_name #ty_generics where
             #for_dummy #ctype_name #ty_generics: Copy,
             #last_field_sized
             #inferred_niche_bounds
+            #custom_niche_bounds
             #(#extern_c_bounds,)*
             #predicates
         {
             const NICHE_VALUE: Self::CType = #niche_value;
         }
-
-        #custom_niche_assertion
     }
 }
 

@@ -11,8 +11,8 @@
 //! optimized to use niche value of the **first element with a niche** to represent [`None`] value.
 //! Values of all the other tuple elements of the niche are zeroed (NOT a stable guarantee yet)
 //!
-//! When none of the tuple elements have a niche value [`Option<(A, B, ...)>`] is represented as a
-//! [`ReprCOption<ReprCTupleN<A, B, ...>>`]
+//! When none of the tuple elements have a niche value, `Option<(A, B, ...)>` is represented as a
+//! `ReprCOption<ReprCTupleN<A, B, ...>>`.
 //!
 //! # Example
 //!

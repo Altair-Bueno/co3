@@ -115,23 +115,4 @@ impl Drop for ReprRustStructWithDrop {
     fn drop(&mut self) {}
 }
 
-// FIXME: Should fail
-//#[derive(RustSpec, ReprC)]
-//#[repr(transparent)]
-//enum GenericEnumWithDrop<C> {
-//    A(core::marker::PhantomData<C>)
-//}
-//
-//impl<C> Drop for GenericEnumWithDrop<C> {
-//    fn drop(&mut self) {}
-//}
-//
-//#[derive(RustSpec, ReprC)]
-//#[repr(transparent)]
-//struct GenericStructWithDrop<C>(core::marker::PhantomData<C>);
-//
-//impl<C> Drop for GenericStructWithDrop<C> {
-//    fn drop(&mut self) {}
-//}
-
 fn main() {}

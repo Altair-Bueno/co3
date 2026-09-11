@@ -216,6 +216,10 @@ fn gen_ctype_wide_impl(
         return quote! {};
     }
 
+    if source_fields.len() == 1 && !is_transparent {
+        return quote! {};
+    }
+
     let Some((field, field_ref, field_member)) = last_field(&ctype.fields) else {
         return quote! {};
     };
@@ -649,7 +653,7 @@ fn gen_robust_impls<const ADD_COPY: bool>(
     let predicates = where_clause.as_ref().map(|w| &w.predicates);
 
     let copy_bounds = gen_copy_bounds::<ADD_COPY>(generics, fields);
-    let codec_impls = gen_identity_codec_impls::<ADD_COPY>(ident, generics, fields);
+    let codec_impls = gen_identity_codec_impls::<ADD_COPY>(ident, generics, fields, true);
 
     let for_dummy = (generics.type_params().count() == 0).then_some(quote! { for<'_dummy> });
 
@@ -800,6 +804,7 @@ fn gen_identity_codec_impls<const ADD_COPY: bool>(
     ident: &syn::Ident,
     generics: &syn::Generics,
     fields: &[&syn::Type],
+    require_copy: bool,
 ) -> TokenStream {
     let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
     let predicates = where_clause.as_ref().map(|w| &w.predicates);
@@ -807,7 +812,12 @@ fn gen_identity_codec_impls<const ADD_COPY: bool>(
     decode_generics.params.insert(0, parse_quote!('d));
     let (decode_impl_generics, _, _) = decode_generics.split_for_impl();
 
-    let copy_bounds = gen_copy_bounds::<ADD_COPY>(generics, fields);
+    let copy_bounds = if require_copy {
+        gen_copy_bounds::<ADD_COPY>(generics, fields)
+    } else {
+        Vec::new()
+    };
+    let sized_bound = (!require_copy).then(|| quote!(for<'_dummy> Self: Sized,));
 
     quote! {
         impl #impl_generics co3::ExternC for #ident #ty_generics
@@ -818,6 +828,7 @@ fn gen_identity_codec_impls<const ADD_COPY: bool>(
         }
         unsafe impl #impl_generics co3::stored::EncodeOwned for #ident #ty_generics
         where
+            #sized_bound
             #(#copy_bounds,)*
             #predicates
         {
@@ -833,6 +844,7 @@ fn gen_identity_codec_impls<const ADD_COPY: bool>(
         }
         unsafe impl #decode_impl_generics co3::stored::DecodeOwned<'d> for #ident #ty_generics
         where
+            #sized_bound
             #(#copy_bounds,)*
             #predicates
         {
@@ -846,14 +858,51 @@ fn gen_identity_codec_impls<const ADD_COPY: bool>(
 
         impl #impl_generics co3::Encode for #ident #ty_generics
         where
+            #sized_bound
             #(#copy_bounds,)*
             #predicates
         {}
         impl #impl_generics co3::Decode<'_> for #ident #ty_generics
         where
+            #sized_bound
             #(#copy_bounds,)*
             #predicates
         {}
+    }
+}
+
+pub(super) fn gen_identity_repr_c_impls(
+    ident: &syn::Ident,
+    generics: &syn::Generics,
+    fields: &[&syn::Type],
+) -> TokenStream {
+    let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
+    let predicates = where_clause.as_ref().map(|clause| &clause.predicates);
+    let codec_impls = gen_identity_codec_impls::<false>(ident, generics, fields, false);
+
+    quote! {
+        unsafe impl #impl_generics co3::ReprC for #ident #ty_generics #where_clause {}
+
+        unsafe impl #impl_generics co3::CFnArg for #ident #ty_generics
+        where
+            for<'_dummy> Self: Copy + co3::rust_spec::RustSpec<
+                Size = co3::rust_spec::size::Sized<
+                    co3::rust_spec::Gt<co3::rust_spec::Zero>
+                >
+            >,
+            #predicates
+        {}
+
+        unsafe impl #impl_generics co3::transmute::CheckedTransmute for #ident #ty_generics
+        #where_clause
+        {
+            #[inline(always)]
+            unsafe fn is_valid(_: &Self::CType) -> bool {
+                true
+            }
+        }
+
+        #codec_impls
     }
 }
 
@@ -890,7 +939,10 @@ fn gen_borrow_cast_impl<const ADD_COPY: bool>(
     }
 }
 
-fn gen_identity_borrow_cast_impl(ident: &syn::Ident, generics: &syn::Generics) -> TokenStream {
+pub(super) fn gen_identity_borrow_cast_impl(
+    ident: &syn::Ident,
+    generics: &syn::Generics,
+) -> TokenStream {
     let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
 
     quote! {
