@@ -7,7 +7,7 @@ use rust_spec::RustSpec;
 use crate::{
     CFnArg, Decode, Encode, ExternC, ReprC,
     borrow::{Borrow, BorrowCast, BorrowCastMut, FromBorrow},
-    slice::{CSlice, CSliceMut, UnpackAs},
+    slice::{CSlice, CSliceMut, Unpack2},
     stored::{DecodeOwned, EncodeOwned},
     transmute::CheckedTransmute,
 };
@@ -296,12 +296,16 @@ unsafe impl<C: ReprC> BorrowCastMut for CBoxedSlice<C> {
     type AsMut = CSliceMut<C>;
 }
 
-impl<R: ?Sized, C: ReprC> UnpackAs<CBox<C>, usize> for Box<R>
+impl<R: ?Sized, C: ReprC, K: ReprC, U: ReprC> Unpack2<K, U> for Box<R>
 where
     Self: ExternC<CType = CBoxedSlice<C>>,
+    CBox<C>: Into<K>,
+    usize: TryInto<U>,
 {
+    type Error = <usize as TryInto<U>>::Error;
+
     #[inline(always)]
-    fn into_parts(value: Self::CType) -> (CBox<C>, usize) {
-        (CBox { data: value.data }, value.len)
+    fn unpack(value: Self::CType) -> Result<(K, U), Self::Error> {
+        Ok((CBox { data: value.data }.into(), value.len.try_into()?))
     }
 }

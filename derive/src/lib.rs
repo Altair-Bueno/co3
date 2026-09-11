@@ -595,11 +595,11 @@ pub fn handle_derive(item: syn::DeriveInput) -> Result<TokenStream> {
 /// }
 /// ```
 ///
-/// # Unpack-as operator
+/// # Unpack operator
 ///
 /// Rust slices are lowered into [`CSlice`](https://docs.rs/co3/latest/co3/slice/struct.CSlice.html)/[`CSliceMut`](https://docs.rs/co3/latest/co3/slice/struct.CSliceMut.html)
 /// which are C-ABI containers holding a data pointer and a length. However, it is common for FFI APIs to instead accept those components as separate function arguments.
-/// Mark an argument with `#[unpack_as(T1, T2)]`/`#[try_unpack_as(T1, T2)]` to import its two ABI parts:
+/// Mark an argument with `#[unpack(T1, T2)]` to fallibly import its two ABI parts:
 ///
 /// ```rust
 /// # use co3::ffi;
@@ -608,18 +608,18 @@ pub fn handle_derive(item: syn::DeriveInput) -> Result<TokenStream> {
 ///     #![unsafe(extern("system"))]
 ///
 ///     // - imported as `sum(*const u32, usize)`
-///     fn sum(#[try_unpack_as(_, usize)] values: &[u32]) -> u32;
+///     fn sum(#[unpack(_, usize)] values: &[u32]) -> u32;
 /// }
 /// ```
 ///
-/// **This pattern is not limited to slices**; it applies to every type implementing the [`UnpackAs`](https://docs.rs/co3/latest/co3/slice/trait.UnpackAs.html) or [`TryUnpackAs`](https://docs.rs/co3/latest/co3/slice/trait.TryUnpackAs.html) trait.
+/// **This pattern is not limited to slices**; it applies to every type implementing the [`Unpack2`](https://docs.rs/co3/latest/co3/slice/trait.Unpack2.html) trait.
 /// A single syntactically visible `Option` around an inferable shape is inferred like its inner type,
 /// provided generated checks prove that the path denotes [`core::option::Option`] and that the
 /// inner type and its `Option` have exactly the same [`ExternC::CType`]. For example,
 /// `Option<&[T]>` is inferred like `&[T]`.
 ///
-/// An unpack-as part may use `Logical => Abi` to retain a logical type while selecting the
-/// [`UnpackAs`](https://docs.rs/co3/latest/co3/slice/trait.UnpackAs.html) implementation, then erase
+/// An unpack part may use `Logical => Abi` to retain a logical type while selecting the
+/// [`Unpack2`](https://docs.rs/co3/latest/co3/slice/trait.Unpack2.html) implementation, then erase
 /// it to an ABI-equivalent type in the raw declaration:
 ///
 /// ```ignore
@@ -631,7 +631,7 @@ pub fn handle_derive(item: syn::DeriveInput) -> Result<TokenStream> {
 ///     #![unsafe(extern("C"))]
 ///
 ///     fn set_attr(
-///         #[unpack_as(*mut core::ffi::c_void, AttrLength<Definition, i32> => i32)]
+///         #[unpack(*mut core::ffi::c_void, AttrLength<Definition, i32> => i32)]
 ///         move value: Value,
 ///     );
 /// }

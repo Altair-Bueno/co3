@@ -470,12 +470,20 @@ fn is_cfg_attr(attr: &syn::Attribute) -> bool {
     attr.path().is_ident("cfg") || attr.path().is_ident("cfg_attr")
 }
 
+fn is_doc_attr(attr: &syn::Attribute) -> bool {
+    attr.path().is_ident("doc")
+}
+
 fn validate_export_fn_attrs(attrs: &[syn::Attribute]) -> Result<()> {
     for attr in attrs {
         if attr.path().is_ident("erased") {
             continue;
         }
-        if is_symbol_name_attr(attr) || is_by_val_attr(attr) || is_cfg_attr(attr) {
+        if is_symbol_name_attr(attr)
+            || is_by_val_attr(attr)
+            || is_cfg_attr(attr)
+            || is_doc_attr(attr)
+        {
             continue;
         }
 
@@ -529,7 +537,7 @@ fn is_direct_declared_type(ty: &syn::Type, declared_types: &BTreeSet<syn::Ident>
 
 fn validate_extern_static(item: &Co3Static) -> Result<()> {
     for attr in &item.attrs {
-        if !is_symbol_name_attr(attr) && !is_cfg_attr(attr) {
+        if !is_symbol_name_attr(attr) && !is_cfg_attr(attr) && !is_doc_attr(attr) {
             return Err(unsupported_attr(attr));
         }
     }
@@ -584,7 +592,7 @@ fn validate_extern_impl(impl_: &crate::Co3Impl) -> Result<()> {
 
 pub(crate) fn validate_export_attrs(attrs: &[syn::Attribute]) -> Result<()> {
     for attr in attrs {
-        if !attr.path().is_ident("feature") && !is_cfg_attr(attr) {
+        if !attr.path().is_ident("feature") && !is_cfg_attr(attr) && !is_doc_attr(attr) {
             return Err(unsupported_attr(attr));
         }
     }
@@ -623,7 +631,7 @@ fn validate_impls(
 
 fn validate_export_static(item: &Co3Static) -> Result<()> {
     for attr in &item.attrs {
-        if !is_symbol_name_attr(attr) && !is_cfg_attr(attr) {
+        if !is_symbol_name_attr(attr) && !is_cfg_attr(attr) && !is_doc_attr(attr) {
             return Err(unsupported_attr(attr));
         }
     }
@@ -643,7 +651,11 @@ fn validate_export_fn(item: &crate::Co3Fn) -> Result<()> {
 
 fn validate_export_type(item: &crate::ForeignItemType) -> Result<()> {
     for attr in &item.ty.attrs {
-        if !attr.path().is_ident("id") && !attr.path().is_ident("erased") && !is_cfg_attr(attr) {
+        if !attr.path().is_ident("id")
+            && !attr.path().is_ident("erased")
+            && !is_cfg_attr(attr)
+            && !is_doc_attr(attr)
+        {
             return Err(unsupported_attr(attr));
         }
     }
@@ -852,7 +864,7 @@ fn validate_shared_impl(impl_: &crate::Co3Impl, validate_unpacks: bool) -> Resul
         push_error(&mut errors, err);
     }
     for attr in &impl_.attrs {
-        if !attr.path().is_ident("erased") && !is_cfg_attr(attr) {
+        if !attr.path().is_ident("erased") && !is_cfg_attr(attr) && !is_doc_attr(attr) {
             push_error(&mut errors, unsupported_attr(attr));
         }
     }
@@ -965,6 +977,9 @@ fn validate_unpack(sig: &syn::Signature, outer: Option<&syn::Generics>) -> Resul
         let Some(attr) = input.attrs.iter().find(|attr| is_unpack_attr(attr)) else {
             continue;
         };
+        if crate::ffi_fn::validate_single_unpack(&input.attrs)? {
+            continue;
+        }
         let (part1, part2) = unpack_types(&input.attrs)?.expect("unpack attribute was found");
         if detector.type_mentions_param(&input.ty)
             && (matches!(part1, syn::Type::Infer(_)) || matches!(part2, syn::Type::Infer(_)))
@@ -1849,7 +1864,7 @@ mod tests {
     fn accepts_dispatch_param_projection_in_unpack_argument() {
         let param: syn::TypeParam = syn::parse_quote!(T = u8);
         let sig: syn::Signature = syn::parse_quote!(
-            fn dispatch(#[unpack_as(u32, u32)] value: <T as Trait>::Assoc)
+            fn dispatch(#[unpack(u32, u32)] value: <T as Trait>::Assoc)
         );
 
         validate_dispatch_param_positions([&param].into_iter(), &sig).unwrap();
@@ -1861,7 +1876,7 @@ mod tests {
         let sig: syn::Signature = syn::parse_quote!(
             fn dispatch(
                 tag: <dyn A>::ID,
-                #[unpack_as(*const core::ffi::c_void, usize)] value: A::Value,
+                #[unpack(*const core::ffi::c_void, usize)] value: A::Value,
             )
         );
 

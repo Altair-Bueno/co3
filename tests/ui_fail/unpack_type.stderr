@@ -1,124 +1,106 @@
-error: #[unpack_as] is only supported in extern declarations
+error: #[unpack] is only supported in extern declarations
  --> tests/ui_fail/unpack_type.rs:6:23
   |
-6 |     fn missing_unpack(#[unpack_as(_, _)] value: u32);
-  |                       ^^^^^^^^^^^^^^^^^^
+6 |     fn missing_unpack(#[unpack(_, _)] value: u32);
+  |                       ^^^^^^^^^^^^^^^
 
-error: #[try_unpack_as] is only supported in extern declarations
+error: #[unpack] is only supported in extern declarations
  --> tests/ui_fail/unpack_type.rs:7:27
   |
-7 |     fn missing_unpack_try(#[try_unpack_as(_, _)] value: u32);
-  |                           ^^^^^^^^^^^^^^^^^^^^^^
+7 |     fn missing_unpack_try(#[unpack(_, _)] value: u32);
+  |                           ^^^^^^^^^^^^^^^
 
-error: #[unpack_as] is only supported in extern declarations
+error: #[unpack] is only supported in extern declarations
  --> tests/ui_fail/unpack_type.rs:8:30
   |
-8 |     fn missing_second_unpack(#[unpack_as(u8, _)] value: u32);
-  |                              ^^^^^^^^^^^^^^^^^^^
+8 |     fn missing_second_unpack(#[unpack(u8, _)] value: u32);
+  |                              ^^^^^^^^^^^^^^^^
 
-error: #[try_unpack_as] is only supported in extern declarations
+error: #[unpack] is only supported in extern declarations
  --> tests/ui_fail/unpack_type.rs:9:34
   |
-9 |     fn missing_second_unpack_try(#[try_unpack_as(u8, _)] value: u32);
-  |                                  ^^^^^^^^^^^^^^^^^^^^^^^
+9 |     fn missing_second_unpack_try(#[unpack(u8, _)] value: u32);
+  |                                  ^^^^^^^^^^^^^^^^
 
 error: the first `_` unpack argument is only supported for two-element tuples, references to `Wide` types, and `Box`es of `Wide` types
-  --> tests/ui_fail/unpack_type.rs:15:49
+  --> tests/ui_fail/unpack_type.rs:15:46
    |
-15 |     fn missing_unpack(#[unpack_as(_, _)] value: u32);
-   |                                                 ^^^
+15 |     fn missing_unpack(#[unpack(_, _)] value: u32);
+   |                                              ^^^
 
 error: the first `_` unpack argument is only supported for two-element tuples, references to `Wide` types, and `Box`es of `Wide` types
-  --> tests/ui_fail/unpack_type.rs:16:57
+  --> tests/ui_fail/unpack_type.rs:16:50
    |
-16 |     fn missing_unpack_try(#[try_unpack_as(_, _)] value: u32);
-   |                                                         ^^^
+16 |     fn missing_unpack_try(#[unpack(_, _)] value: u32);
+   |                                                  ^^^
 
-error: #[unpack_as] expects exactly two parts
+error: #[unpack] expects exactly two parts
   --> tests/ui_fail/unpack_type.rs:22:22
    |
-22 |     fn missing_types(#[unpack_as] value: ReprCTuple2<u8, u8>);
-   |                      ^^^^^^^^^^^^
+22 |     fn missing_types(#[unpack] value: ReprCTuple2<u8, u8>);
+   |                      ^^^^^^^^^
 
-error: #[try_unpack_as] expects exactly two parts
+error: #[unpack] expects exactly two parts
   --> tests/ui_fail/unpack_type.rs:23:26
    |
-23 |     fn missing_types_try(#[try_unpack_as] value: ReprCTuple2<u8, u8>);
-   |                          ^^^^^^^^^^^^^^^^
+23 |     fn missing_types_try(#[unpack] value: ReprCTuple2<u8, u8>);
+   |                          ^^^^^^^^^
 
 error: the ABI type after `=>` cannot be `_`
-  --> tests/ui_fail/unpack_type.rs:24:46
+  --> tests/ui_fail/unpack_type.rs:24:43
    |
-24 |     fn missing_erased_type(#[unpack_as(u8 => _, u8)] value: ReprCTuple2<u8, u8>);
-   |                                              ^
+24 |     fn missing_erased_type(#[unpack(u8 => _, u8)] value: ReprCTuple2<u8, u8>);
+   |                                           ^
 
 error: the first `_` unpack argument is only supported for two-element tuples, references to `Wide` types, and `Box`es of `Wide` types
-  --> tests/ui_fail/unpack_type.rs:25:55
+  --> tests/ui_fail/unpack_type.rs:25:52
    |
-25 |     fn nested_option(#[unpack_as(_, _)] value: Option<Option<&[u8]>>);
-   |                                                       ^^^^^^^^^^^^^
+25 |     fn nested_option(#[unpack(_, _)] value: Option<Option<&[u8]>>);
+   |                                                    ^^^^^^^^^^^^^
 
-error: runtime-dispatched #[unpack_as] arguments cannot use `_` placeholders
+error: runtime-dispatched #[unpack] arguments cannot use `_` placeholders
   --> tests/ui_fail/unpack_type.rs:38:34
    |
-38 |     fn missing_unpack<dyn(u8) T>(#[unpack_as(_, _)] value: &[T])
-   |                                  ^^^^^^^^^^^^^^^^^^
+38 |     fn missing_unpack<dyn(u8) T>(#[unpack(_, _)] value: &[T])
+   |                                  ^^^^^^^^^^^^^^^
 
-error: runtime-dispatched #[try_unpack_as] arguments cannot use `_` placeholders
+error: runtime-dispatched #[unpack] arguments cannot use `_` placeholders
   --> tests/ui_fail/unpack_type.rs:42:38
    |
-42 |     fn missing_unpack_try<dyn(u8) T>(#[try_unpack_as(_, _)] value: &[T])
-   |                                      ^^^^^^^^^^^^^^^^^^^^^^
+42 |     fn missing_unpack_try<dyn(u8) T>(#[unpack(_, _)] value: &[T])
+   |                                      ^^^^^^^^^^^^^^^
 
-error: runtime-dispatched #[unpack_as] arguments cannot use `_` placeholders
+error: runtime-dispatched #[unpack] arguments cannot use `_` placeholders
   --> tests/ui_fail/unpack_type.rs:46:53
    |
-46 |     fn missing_payload_unpack<dyn(u8) T = (u8, u8)>(#[unpack_as(_, _)] value: T)
-   |                                                     ^^^^^^^^^^^^^^^^^^
+46 |     fn missing_payload_unpack<dyn(u8) T = (u8, u8)>(#[unpack(_, _)] value: T)
+   |                                                     ^^^^^^^^^^^^^^^
 
-error: runtime-dispatched #[try_unpack_as] arguments cannot use `_` placeholders
+error: runtime-dispatched #[unpack] arguments cannot use `_` placeholders
   --> tests/ui_fail/unpack_type.rs:50:57
    |
-50 |     fn missing_payload_unpack_try<dyn(u8) T = (u8, u8)>(#[try_unpack_as(_, _)] value: T)
-   |                                                         ^^^^^^^^^^^^^^^^^^^^^^
+50 |     fn missing_payload_unpack_try<dyn(u8) T = (u8, u8)>(#[unpack(_, _)] value: T)
+   |                                                         ^^^^^^^^^^^^^^^
 
-error[E0277]: the trait bound `ReprCTuple2<u8, u8>: UnpackAs<u32, CBoxedSlice<u8>>` is not satisfied
+error[E0277]: the trait bound `ReprCTuple2<u8, u8>: Unpack2<u32, CBoxedSlice<u8>>` is not satisfied
   --> tests/ui_fail/unpack_type.rs:28:1
    |
 28 | / ffi! {
 29 | |     #![unsafe(extern("C"))]
 30 | |
-31 | |     fn missing_into(#[unpack_as(u32, String)] value: ReprCTuple2<u8, u8>);
-32 | |     fn missing_into_try(#[try_unpack_as(u32, String)] value: ReprCTuple2<u8, u8>);
+31 | |     fn missing_into(#[unpack(u32, String)] value: ReprCTuple2<u8, u8>);
+32 | |     fn missing_into_try(#[unpack(u32, String)] value: ReprCTuple2<u8, u8>);
 33 | | }
-   | |_^ the trait `UnpackAs<u32, CBoxedSlice<u8>>` is not implemented for `ReprCTuple2<u8, u8>`
+   | |_^ the trait `Unpack2<u32, CBoxedSlice<u8>>` is not implemented for `ReprCTuple2<u8, u8>`
    |
-   = help: the following other types implement trait `UnpackAs<Part1, Part2>`:
-             `&'a R` implements `UnpackAs<*const C, usize>`
-             `&'a R` implements `UnpackAs<*mut C, usize>`
-             `&'a mut R` implements `UnpackAs<*mut C, usize>`
-             `(A, B)` implements `UnpackAs<Part1, Part2>`
-             `Box<R>` implements `UnpackAs<CBox<C>, usize>`
-             `Option<T>` implements `UnpackAs<Part1, Part2>`
-   = note: this error originates in the macro `ffi` (in Nightly builds, run with -Z macro-backtrace for more info)
-
-error[E0277]: the trait bound `ReprCTuple2<u8, u8>: UnpackAs<u32, CBoxedSlice<u8>>` is not satisfied
-  --> tests/ui_fail/unpack_type.rs:28:1
-   |
-28 | / ffi! {
-29 | |     #![unsafe(extern("C"))]
-30 | |
-31 | |     fn missing_into(#[unpack_as(u32, String)] value: ReprCTuple2<u8, u8>);
-32 | |     fn missing_into_try(#[try_unpack_as(u32, String)] value: ReprCTuple2<u8, u8>);
-33 | | }
-   | |_^ the trait `UnpackAs<u32, CBoxedSlice<u8>>` is not implemented for `ReprCTuple2<u8, u8>`
-   |
-   = help: the following other types implement trait `UnpackAs<Part1, Part2>`:
-             `&'a R` implements `UnpackAs<*const C, usize>`
-             `&'a R` implements `UnpackAs<*mut C, usize>`
-             `&'a mut R` implements `UnpackAs<*mut C, usize>`
-             `(A, B)` implements `UnpackAs<Part1, Part2>`
-             `Box<R>` implements `UnpackAs<CBox<C>, usize>`
-             `Option<T>` implements `UnpackAs<Part1, Part2>`
-   = note: required for `ReprCTuple2<u8, u8>` to implement `TryUnpackAs<u32, CBoxedSlice<u8>>`
+   = help: the following other types implement trait `Unpack2<Part1, Part2>`:
+             `&R` implements `Unpack2<*const C, U>`
+             `&R` implements `Unpack2<*mut C, U>`
+             `&mut R` implements `Unpack2<*mut C, U>`
+             `(A, B)` implements `Unpack2<Part1, Part2>`
+             `Box<R>` implements `Unpack2<K, U>`
+             `Cell<T>` implements `Unpack2<Part1, Part2>`
+             `ManuallyDrop<T>` implements `Unpack2<Part1, Part2>`
+             `Option<T>` implements `Unpack2<Part1, Part2>`
+             `UnsafeCell<T>` implements `Unpack2<Part1, Part2>`
    = note: this error originates in the macro `ffi` (in Nightly builds, run with -Z macro-backtrace for more info)

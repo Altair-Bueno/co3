@@ -427,15 +427,17 @@ impl SymbolNameBuilder {
 
 impl Visit<'_> for SymbolNameBuilder {
     fn visit_path(&mut self, path: &syn::Path) {
-        let Some(seg) = path.segments.last() else {
+        if path.segments.is_empty() {
             self.push_atom("Self");
             return;
-        };
+        }
 
-        let ident = seg.ident.to_string();
-        let atom = self.generic_params.get(&ident).cloned().unwrap_or(ident);
-        self.push_atom(&atom);
-        self.visit_path_arguments(&seg.arguments);
+        for seg in &path.segments {
+            let ident = seg.ident.to_string();
+            let atom = self.generic_params.get(&ident).cloned().unwrap_or(ident);
+            self.push_atom(&atom);
+            self.visit_path_arguments(&seg.arguments);
+        }
     }
 
     fn visit_path_arguments(&mut self, arguments: &syn::PathArguments) {
@@ -525,5 +527,30 @@ fn sanitize_symbol_component(input: &str) -> String {
         String::from("ty")
     } else {
         out.to_string()
+    }
+}
+
+#[cfg(test)]
+mod symbol_name_tests {
+    use super::*;
+    use syn::parse_quote;
+
+    #[test]
+    fn path_symbol_name_preserves_namespace_segments() {
+        let generics = syn::Generics::default();
+
+        assert_eq!(path_symbol_name(&parse_quote!(a::Ops), &generics), "a_Ops");
+        assert_eq!(path_symbol_name(&parse_quote!(b::Ops), &generics), "b_Ops");
+    }
+
+    #[test]
+    fn type_symbol_name_preserves_namespace_segments_and_arguments() {
+        let generics: syn::Generics = parse_quote!(<T>);
+        let ty: Type = parse_quote!(outer::Value<inner::Wrapper<T>>);
+
+        assert_eq!(
+            type_symbol_name(&ty, &generics),
+            "outer_Value_inner_Wrapper_T0"
+        );
     }
 }

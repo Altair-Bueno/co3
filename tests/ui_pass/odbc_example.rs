@@ -1,7 +1,7 @@
 #![expect(non_camel_case_types, non_snake_case)]
 use std::{ffi::c_void, marker::PhantomData};
 
-use co3::{Handle, ReprC, ffi, slice::UnpackAs};
+use co3::{Handle, ReprC, ffi, slice::Unpack2};
 use rust_spec::RustSpec;
 
 pub trait OdbcVersion {}
@@ -100,13 +100,16 @@ co3::ffi! {
     }
 
     impl<V: OdbcVersion> SQLHENV<V> {
+        /// Returns an environment attribute through the generated public wrapper.
+        ///
+        /// This placement intentionally precedes `symbol_name`.
         #[symbol_name = "SQLGetEnvAttr"]
         pub fn get_attr<dyn(i32) A: EnvAttr>(
             &self,
             attribute: <dyn A>::ID,
-            #[unpack_as(u32, i32)]
+            #[unpack(u32, i32)]
             move value1: <A as EnvAttr>::Value,
-            #[unpack_as(u32, i32)]
+            #[unpack(u32, i32)]
             value2: <A as EnvAttr>::Value,
             string_length: &mut i32,
         )
@@ -167,15 +170,17 @@ impl EnvAttr for SQL_ATTR_CP_MATCH {
     type Value = ConnectionPooling;
 }
 
-impl UnpackAs<u32, i32> for CpMatch {
-    fn into_parts(value: Self::CType) -> (u32, i32) {
-        (value.0, 0)
+impl Unpack2<u32, i32> for CpMatch {
+    type Error = core::convert::Infallible;
+    fn unpack(value: Self::CType) -> Result<(u32, i32), Self::Error> {
+        Ok((value.0, 0))
     }
 }
 
-impl UnpackAs<u32, i32> for ConnectionPooling {
-    fn into_parts(value: Self::CType) -> (u32, i32) {
-        (value.0, 0)
+impl Unpack2<u32, i32> for ConnectionPooling {
+    type Error = core::convert::Infallible;
+    fn unpack(value: Self::CType) -> Result<(u32, i32), Self::Error> {
+        Ok((value.0, 0))
     }
 }
 

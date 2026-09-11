@@ -406,6 +406,8 @@ fn repr_type_name(repr: &syn::Type) -> Option<&str> {
             "i32" => "i32",
             "u64" => "u64",
             "i64" => "i64",
+            "usize" => "usize",
+            "isize" => "isize",
             _ => "",
         })
         .filter(|s| !s.is_empty())

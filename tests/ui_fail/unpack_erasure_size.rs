@@ -1,4 +1,4 @@
-use co3::{ReprC, ffi, slice::UnpackAs};
+use co3::{ExternC, ReprC, encode, ffi, slice::Unpack2};
 use rust_spec::RustSpec;
 
 #[derive(RustSpec, ReprC)]
@@ -9,9 +9,10 @@ struct Logical(u16);
 #[repr(transparent)]
 struct Value(u16);
 
-impl UnpackAs<u8, CLogical> for Value {
-    fn into_parts(value: Self::CType) -> (u8, CLogical) {
-        (0, CLogical(value.0))
+impl Unpack2<u8, <Logical as ExternC>::CType> for Value {
+    type Error = core::convert::Infallible;
+    fn unpack(value: Self::CType) -> Result<(u8, <Logical as ExternC>::CType), Self::Error> {
+        Ok((0, encode(Logical(value.0))))
     }
 }
 
@@ -19,7 +20,7 @@ ffi! {
     #![unsafe(extern("C"))]
 
     fn size_mismatch(
-        #[unpack_as(u8, Logical => u32)]
+        #[unpack(u8, Logical => u32)]
         move value: Value,
     );
 }

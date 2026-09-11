@@ -8,56 +8,74 @@ use crate::{
     transmute::CheckedTransmute,
 };
 
-/// Unpacks a C-compatible representation as two ABI arguments.
-///
-/// This is used by `#[unpack_as(T1, T2)]` in [`crate::ffi!`] declarations.
-pub trait UnpackAs<Part1, Part2>: ExternC<CType: Sized>
+/// Fallibly converts a C-compatible representation into one ABI argument.
+pub trait Unpack<Part>: ExternC<CType: Sized>
 where
-    Part1: ReprC,
-    Part2: ReprC,
+    Part: ReprC,
 {
-    /// Splits the C representation into its constituents.
-    fn into_parts(value: Self::CType) -> (Part1, Part2);
+    /// Error returned when the ABI argument cannot be produced.
+    type Error;
+
+    /// Tries to convert the C representation into the ABI argument.
+    fn unpack(value: Self::CType) -> Result<Part, Self::Error>;
 }
 
-/// Fallibly unpacks a C-compatible representation as two ABI arguments.
-pub trait TryUnpackAs<Part1, Part2>: ExternC<CType: Sized>
+impl<T, Part: ReprC + TryFrom<Self::CType>> Unpack<Part> for T
 where
-    Part1: ReprC,
-    Part2: ReprC,
+    Self: ExternC<CType: Sized>,
 {
+    type Error = <Part as TryFrom<Self::CType>>::Error;
+
+    #[inline(always)]
+    fn unpack(value: Self::CType) -> Result<Part, Self::Error> {
+        Part::try_from(value)
+    }
+}
+
+/// Unpacks a C-compatible representation as two ABI arguments.
+///
+/// This is used by `#[unpack(T1, T2)]` in [`crate::ffi!`] declarations.
+/// Fallibly unpacks a C-compatible representation as two ABI arguments.
+pub trait Unpack2<Part1: ReprC, Part2: ReprC>: ExternC<CType: Sized> {
     /// Error returned when either constituent cannot be produced.
     type Error;
 
     /// Tries to split the C representation into its constituents.
-    fn try_into_parts(value: Self::CType) -> Result<(Part1, Part2), Self::Error>;
+    fn unpack(value: Self::CType) -> Result<(Part1, Part2), Self::Error>;
 }
 
-impl<T, Part1, Part2> TryUnpackAs<Part1, Part2> for T
+impl<T: Unpack2<Part1, Part2>, Part1: ReprC, Part2: ReprC> Unpack2<Part1, Part2> for Option<T>
 where
-    T: UnpackAs<Part1, Part2>,
-    Part1: ReprC,
-    Part2: ReprC,
-{
-    type Error = core::convert::Infallible;
-
-    #[inline(always)]
-    fn try_into_parts(value: Self::CType) -> Result<(Part1, Part2), Self::Error> {
-        Ok(T::into_parts(value))
-    }
-}
-
-impl<T, Part1, Part2> UnpackAs<Part1, Part2> for Option<T>
-where
-    T: UnpackAs<Part1, Part2>,
     Self: ExternC<CType = T::CType>,
-    Part1: ReprC,
-    Part2: ReprC,
 {
+    type Error = T::Error;
+
     #[inline(always)]
-    fn into_parts(value: Self::CType) -> (Part1, Part2) {
-        T::into_parts(value)
+    fn unpack(value: Self::CType) -> Result<(Part1, Part2), Self::Error> {
+        T::unpack(value)
     }
+}
+
+macro_rules! impl_unpack2_for_transparent_wrapper {
+    ($($wrapper:ty),+ $(,)?) => {$(
+        impl<T: ?Sized, Part1: ReprC, Part2: ReprC> Unpack2<Part1, Part2> for $wrapper
+        where
+            T: Unpack2<Part1, Part2>,
+        {
+            type Error = T::Error;
+
+            #[inline(always)]
+            fn unpack(value: Self::CType) -> Result<(Part1, Part2), Self::Error> {
+                T::unpack(value)
+            }
+        }
+    )+};
+}
+
+impl_unpack2_for_transparent_wrapper! {
+    core::cell::UnsafeCell<T>,
+    core::cell::Cell<T>,
+    core::mem::ManuallyDrop<T>,
 }
 
 /// Immutable slice `&[C]` with a defined C ABI layout. Consists of a data pointer and a length.
@@ -286,33 +304,42 @@ macro_rules! impl_slice_carrier {
 impl_slice_carrier! { CSlice }
 impl_slice_carrier! { CSliceMut }
 
-impl<'a, R: ?Sized, C: ReprC> UnpackAs<*const C, usize> for &'a R
+impl<R: ?Sized, C: ReprC, U: ReprC> Unpack2<*const C, U> for &R
 where
     Self: ExternC<CType = CSlice<C>>,
+    usize: TryInto<U>,
 {
+    type Error = <usize as TryInto<U>>::Error;
+
     #[inline(always)]
-    fn into_parts(value: Self::CType) -> (*const C, usize) {
-        (value.data, value.len)
+    fn unpack(value: Self::CType) -> Result<(*const C, U), Self::Error> {
+        Ok((value.data, value.len.try_into()?))
     }
 }
 
-impl<'a, R: ?Sized, C: ReprC> UnpackAs<*mut C, usize> for &'a R
+impl<R: ?Sized, C: ReprC, U: ReprC> Unpack2<*mut C, U> for &R
 where
     Self: ExternC<CType = CSliceMut<C>>,
+    usize: TryInto<U>,
 {
+    type Error = <usize as TryInto<U>>::Error;
+
     #[inline(always)]
-    fn into_parts(value: Self::CType) -> (*mut C, usize) {
-        (value.data, value.len)
+    fn unpack(value: Self::CType) -> Result<(*mut C, U), Self::Error> {
+        Ok((value.data, value.len.try_into()?))
     }
 }
 
-impl<'a, R: ?Sized, C: ReprC> UnpackAs<*mut C, usize> for &'a mut R
+impl<R: ?Sized, C: ReprC, U: ReprC> Unpack2<*mut C, U> for &mut R
 where
     Self: ExternC<CType = CSliceMut<C>>,
+    usize: TryInto<U>,
 {
+    type Error = <usize as TryInto<U>>::Error;
+
     #[inline(always)]
-    fn into_parts(value: Self::CType) -> (*mut C, usize) {
-        (value.data, value.len)
+    fn unpack(value: Self::CType) -> Result<(*mut C, U), Self::Error> {
+        Ok((value.data, value.len.try_into()?))
     }
 }
 

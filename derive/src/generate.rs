@@ -84,7 +84,11 @@ fn split_dyn_methods(mut impl_: Co3Impl) -> (Co3Impl, Vec<Co3Impl>) {
     (impl_, dispatched)
 }
 
-fn move_method_only_impl_params(impl_: &mut ItemImpl, method: &mut ImplItemFn) {
+fn move_method_only_impl_params(
+    impl_: &mut ItemImpl,
+    method: &mut ImplItemFn,
+    retained_impl_params: &BTreeSet<syn::Ident>,
+) {
     let appears_in_impl_identity = |ident: &syn::Ident| {
         let detector = ParamUseDetector::new([ident]);
         detector.type_mentions_param(&impl_.self_ty)
@@ -98,10 +102,16 @@ fn move_method_only_impl_params(impl_: &mut ItemImpl, method: &mut ImplItemFn) {
         .params
         .iter()
         .filter_map(|param| match param {
-            syn::GenericParam::Type(param) if !appears_in_impl_identity(&param.ident) => {
+            syn::GenericParam::Type(param)
+                if !appears_in_impl_identity(&param.ident)
+                    && !retained_impl_params.contains(&param.ident) =>
+            {
                 Some(param.ident.clone())
             }
-            syn::GenericParam::Const(param) if !appears_in_impl_identity(&param.ident) => {
+            syn::GenericParam::Const(param)
+                if !appears_in_impl_identity(&param.ident)
+                    && !retained_impl_params.contains(&param.ident) =>
+            {
                 Some(param.ident.clone())
             }
             _ => None,
@@ -636,17 +646,38 @@ fn prepare_dispatch_wrapper_sig(
     for input in &sig.inputs {
         let FnArg::Typed(input) = input else { continue };
         let (attrs, ty) = (&input.attrs[..], &*input.ty);
+        if let Some(target_ty) =
+            ffi_fn::single_unpack_part(attrs, ty).expect("validated one-part unpack attribute")
+        {
+            let target_part = quote!(<#target_ty as #co3::ExternC>::CType);
+            let unpack_trait = quote!(#co3::slice::Unpack<#target_part>);
+            let unpack_bound =
+                if ffi_fn::ownership_mode_for_arg(attrs, ty) == OwnershipMode::ByValue {
+                    syn::parse_quote!(#ty: #unpack_trait)
+                } else {
+                    syn::parse_quote!(
+                        for<'__co3_unpack> <#ty as #co3::borrow::Borrow>::Borrowed<'__co3_unpack>:
+                            #unpack_trait
+                    )
+                };
+            where_clause.predicates.push(unpack_bound);
+            where_clause
+                .predicates
+                .push(syn::parse_quote!(#target_ty: #co3::ExternC));
+            where_clause
+                .predicates
+                .push(syn::parse_quote!(#target_part: #co3::CFnArg));
+        }
         let parameterized_unpack =
             ffi_fn::is_unpack_arg(attrs) && parameter_detector.type_mentions_param(ty);
         if parameterized_unpack {
             let (part1, part2) = ffi_fn::unpack_types(attrs)
-                .expect("validated #[unpack_as] attribute")
+                .expect("validated #[unpack] attribute")
                 .expect("unpack attribute was found");
             let (source_part1, source_part2) =
-                ffi_fn::unpack_logical_parts(attrs, ty).expect("validated #[unpack_as] attribute");
+                ffi_fn::unpack_logical_parts(attrs, ty).expect("validated #[unpack] attribute");
             let (abi_part1, abi_part2) =
-                ffi_fn::unpack_abi_parts(attrs, ty).expect("validated #[unpack_as] attribute");
-            let try_unpack_as = ffi_fn::is_try_unpack_as_arg(attrs);
+                ffi_fn::unpack_abi_parts(attrs, ty).expect("validated #[unpack] attribute");
             if matches!(part1, syn::Type::Infer(_)) {
                 where_clause.predicates.push(syn::parse_quote!(
                     #source_part1: #co3::CFnArg
@@ -671,20 +702,16 @@ fn prepare_dispatch_wrapper_sig(
                     <#part2 as #co3::ExternC>::CType: #co3::CFnArg
                 ));
             }
-            let unpack_trait = if try_unpack_as {
-                quote!(#co3::slice::TryUnpackAs)
-            } else {
-                quote!(#co3::slice::UnpackAs)
-            };
+            let unpack_trait = quote!(#co3::slice::Unpack2<#source_part1, #source_part2>);
             let unpack_bound =
                 if ffi_fn::ownership_mode_for_arg(attrs, ty) == OwnershipMode::ByValue {
                     syn::parse_quote!(
-                        #ty: #unpack_trait<#source_part1, #source_part2>
+                        #ty: #unpack_trait
                     )
                 } else {
                     syn::parse_quote!(
                         for<'__co3_unpack> <#ty as #co3::borrow::Borrow>::Borrowed<'__co3_unpack>:
-                            #unpack_trait<#source_part1, #source_part2>
+                            #unpack_trait
                     )
                 };
             where_clause.predicates.push(unpack_bound);
@@ -1491,7 +1518,46 @@ pub(crate) fn expand_extern_decls(
         let syn::ImplItem::Fn(mut method) = dispatch.items.pop().unwrap() else {
             unreachable!()
         };
-        move_method_only_impl_params(&mut dispatch.item, &mut method);
+
+        // A bare type parameter is not a nominal type, so Rust rejects an
+        // inherent `impl<H> H`. Remember when the wrapper must be materialized
+        // for the receiver's closed dispatch selections instead. Auxiliary
+        // parameters used by those selections remain on the impl because the
+        // concrete receiver type still depends on them.
+        let materialized_receiver = (dispatch.trait_.is_none())
+            .then(|| match dispatch.self_ty.as_ref() {
+                syn::Type::Path(path) if path.qself.is_none() => path.path.get_ident(),
+                _ => None,
+            })
+            .flatten()
+            .filter(|receiver| {
+                args.contains_param(receiver)
+                    && dispatch.generics.type_params().any(|param| {
+                        param.ident == **receiver && param.attrs.iter().any(is_type_erased)
+                    })
+            })
+            .cloned();
+        let retained_impl_params = materialized_receiver
+            .iter()
+            .flat_map(|receiver| {
+                dispatch.generics.params.iter().filter_map(|param| {
+                    let ident = match param {
+                        syn::GenericParam::Type(param) => &param.ident,
+                        syn::GenericParam::Const(param) => &param.ident,
+                        syn::GenericParam::Lifetime(_) => return None,
+                    };
+                    let detector = ParamUseDetector::new([ident]);
+                    args.groups()
+                        .filter(|(params, _)| params.contains(receiver))
+                        .flat_map(|(_, targets)| targets)
+                        .flat_map(|target| &target.args)
+                        .any(|arg| detector.generic_arg_mentions_param(arg))
+                        .then(|| ident.clone())
+                })
+            })
+            .collect::<BTreeSet<_>>();
+        move_method_only_impl_params(&mut dispatch.item, &mut method, &retained_impl_params);
+        let materialize_bare_receiver = materialized_receiver.is_some();
         if declared_self {
             materialize_dyn_self_receiver(&mut dispatch.item);
         }
@@ -1579,6 +1645,35 @@ pub(crate) fn expand_extern_decls(
             gen_dispatch_import_wrapper_body(&parts, self_binding.unwrap_or_default());
 
         let module = gen_dispatch_import_module(&module_name, &parts, TokenStream::new());
+
+        if materialize_bare_receiver {
+            let wrapper: ItemImpl = syn::parse2(quote! {
+                #(#impl_attrs)*
+                #[allow(unused_braces)]
+                #defaultness #unsafety impl #impl_generics #trait_ #self_ty #where_clause {
+                    #(#wrapper_attrs)*
+                    #vis #wrapper_sig {
+                        #wrapper_body
+                    }
+                }
+            })
+            .expect("generated dispatch wrapper must be a valid impl");
+            let wrappers = monomorphize_static_impl_bindings(
+                Co3Impl {
+                    item: wrapper,
+                    dispatch_args: args,
+                    method_dispatch_args: Default::default(),
+                },
+                symbol_fragments,
+            )
+            .into_iter()
+            .map(|wrapper| wrapper.item);
+
+            return quote! {
+                #module
+                #(#wrappers)*
+            };
+        }
 
         quote! {
             #module

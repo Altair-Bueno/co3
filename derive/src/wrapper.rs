@@ -25,8 +25,7 @@ pub(crate) fn strip_internal_arg_attrs(signature: &mut syn::Signature) {
             node.attrs.retain(|attr| {
                 !is_by_val_attr(attr)
                     && !attr.path().is_ident("soft")
-                    && !attr.path().is_ident("unpack_as")
-                    && !attr.path().is_ident("try_unpack_as")
+                    && !attr.path().is_ident("unpack")
             });
         }
 
@@ -34,8 +33,7 @@ pub(crate) fn strip_internal_arg_attrs(signature: &mut syn::Signature) {
             node.attrs.retain(|attr| {
                 !is_by_val_attr(attr)
                     && !attr.path().is_ident("soft")
-                    && !attr.path().is_ident("unpack_as")
-                    && !attr.path().is_ident("try_unpack_as")
+                    && !attr.path().is_ident("unpack")
             });
         }
     }
@@ -293,6 +291,7 @@ pub(crate) fn gen_wrapper_body_with_callee<const DISPATCHED: bool>(
     };
 
     let input_convert = gen_input_conversion_stmts(&sig.inputs);
+    let single_unpack_inputs = gen_single_unpack_input_stmts(failure_mode, &sig.inputs);
     let unpack_inputs = gen_unpack_input_stmts(failure_mode, &sig.inputs);
     let declared_receiver_erase = if !DISPATCHED
         && erase_declared_receiver
@@ -315,6 +314,7 @@ pub(crate) fn gen_wrapper_body_with_callee<const DISPATCHED: bool>(
             #return_borrow_check
 
             #input_convert
+            #single_unpack_inputs
             #(#declared_receiver_erase)*
             let __co3_out = {
                 #(#handle_erase_stmts)*
@@ -338,6 +338,7 @@ pub(crate) fn gen_wrapper_body_with_callee<const DISPATCHED: bool>(
 
     quote! {
         #input_convert
+        #single_unpack_inputs
         #(#declared_receiver_erase)*
 
         {
@@ -348,6 +349,38 @@ pub(crate) fn gen_wrapper_body_with_callee<const DISPATCHED: bool>(
 
         #sync_check
     }
+}
+
+fn gen_single_unpack_input_stmts(
+    failure_mode: FailureMode,
+    inputs: &Punctuated<FnArg, syn::Token![,]>,
+) -> TokenStream {
+    let stmts = inputs.iter().filter_map(|input| {
+        let FnArg::Typed(syn::PatType { attrs, pat, ty, .. }) = input else {
+            return None;
+        };
+        if !ffi_fn::is_single_unpack_arg(attrs) {
+            return None;
+        }
+        let arg_name = item_fn_input_ident(pat);
+        let unpack_ty = match ownership_mode_for_arg(attrs, ty) {
+            OwnershipMode::ByValue => quote!(#ty),
+            OwnershipMode::Borrow => quote!(<#ty as co3::borrow::Borrow>::Borrowed<'_>),
+        };
+        let target_ty = ffi_fn::single_unpack_part(attrs, ty)
+            .expect("validated one-part unpack attribute")
+            .expect("one-part unpack attribute was found");
+        let part_ty = quote!(<#target_ty as co3::ExternC>::CType);
+        let conversion = quote! {
+            <#unpack_ty as co3::slice::Unpack<#part_ty>>::unpack(#arg_name)
+        };
+        let conversion = match failure_mode {
+            FailureMode::Panic => quote! { #conversion.unwrap_or_else(|_| panic!("co3 generated FFI unpack conversion failure")) },
+            FailureMode::Error => quote! { #conversion.map_err(|_| co3::Error::trap_value())? },
+        };
+        Some(quote!(let #arg_name = #conversion;))
+    });
+    quote!(#(#stmts)*)
 }
 
 fn gen_wrapper_sync_check(
@@ -464,8 +497,8 @@ fn gen_input_conversion_stmts(inputs: &Punctuated<FnArg, syn::Token![,]>) -> Tok
             }
         };
 
-        if let Some(inner_ty) = ffi_fn::inferred_unpack_option_inner(attrs, ty)
-            .expect("validated #[unpack_as] attribute")
+        if let Some(inner_ty) =
+            ffi_fn::inferred_unpack_option_inner(attrs, ty).expect("validated #[unpack] attribute")
         {
             stmts.extend(quote! {
                 let #arg_name: core::option::Option<#inner_ty> = #arg_name;
@@ -515,10 +548,10 @@ fn gen_unpack_input_stmts(
         let arg_name = item_fn_input_ident(pat);
         let (data_name, metadata_name) = unpack_arg_names(arg_name);
         let (target1_ty, target2_ty) = ffi_fn::unpack_logical_parts(attrs, ty)
-            .expect("validated #[unpack_as] attribute")
+            .expect("validated #[unpack] attribute")
             ;
         let inferred_option_ty = ffi_fn::inferred_unpack_option_inner(attrs, ty)
-            .expect("validated #[unpack_as] attribute")
+            .expect("validated #[unpack] attribute")
             .map(|inner_ty| quote!(core::option::Option<#inner_ty>));
         let unpack_ty = match (ownership_mode_for_arg(attrs, ty), inferred_option_ty) {
             (OwnershipMode::ByValue, Some(option_ty)) => option_ty,
@@ -531,12 +564,12 @@ fn gen_unpack_input_stmts(
             }
         };
         let (abi1_ty, abi2_ty) =
-            ffi_fn::unpack_abi_parts(attrs, ty).expect("validated #[unpack_as] attribute");
+            ffi_fn::unpack_abi_parts(attrs, ty).expect("validated #[unpack] attribute");
         let (part1, part2) =
-            ffi_fn::unpack_parts(attrs).expect("validated #[unpack_as] attribute").unwrap();
-        if ffi_fn::is_try_unpack_as_arg(attrs) {
+            ffi_fn::unpack_parts(attrs).expect("validated #[unpack] attribute").unwrap();
+        {
             let conversion = quote! {
-                <#unpack_ty as co3::slice::TryUnpackAs<#target1_ty, #target2_ty>>::try_into_parts(#arg_name)
+                <#unpack_ty as co3::slice::Unpack2<#target1_ty, #target2_ty>>::unpack(#arg_name)
             };
             let conversion = match failure_mode {
                 FailureMode::Panic => quote! { #conversion.unwrap_or_else(|_| panic!("co3 generated FFI unpack conversion failure")) },
@@ -556,25 +589,6 @@ fn gen_unpack_input_stmts(
             );
             Some(quote! {
                 let (#data_name, #metadata_name) = #conversion;
-                #erase1
-                #erase2
-            })
-        } else {
-            let erase1 = gen_unpack_erase_stmt(
-                &data_name,
-                &target1_ty,
-                &abi1_ty,
-                part1.abi.is_some(),
-            );
-            let erase2 = gen_unpack_erase_stmt(
-                &metadata_name,
-                &target2_ty,
-                &abi2_ty,
-                part2.abi.is_some(),
-            );
-            Some(quote! {
-                let (#data_name, #metadata_name) =
-                    <#unpack_ty as co3::slice::UnpackAs<#target1_ty, #target2_ty>>::into_parts(#arg_name);
                 #erase1
                 #erase2
             })

@@ -1,4 +1,4 @@
-use co3::{Handle, ReprC, ffi, slice::UnpackAs, tuple::ReprCTuple2};
+use co3::{Handle, ReprC, ffi, slice::Unpack2, tuple::ReprCTuple2};
 use rust_spec::RustSpec;
 
 #[derive(RustSpec, ReprC, Handle)]
@@ -11,9 +11,10 @@ struct Value(u16);
 #[repr(transparent)]
 struct Pair(ReprCTuple2<u8, u8>);
 
-impl UnpackAs<u16, u16> for Pair {
-    fn into_parts(value: Self::CType) -> (u16, u16) {
-        (value.0.0.into(), value.0.1.into())
+impl Unpack2<u16, u16> for Pair {
+    type Error = core::convert::Infallible;
+    fn unpack(value: Self::CType) -> Result<(u16, u16), Self::Error> {
+        Ok((value.0.0.into(), value.0.1.into()))
     }
 }
 
@@ -34,7 +35,7 @@ ffi! {
         use<T> @ <Value>;
 
     #[symbol_name = "unpack_wins"]
-    fn unpack_wins<dyn(u8) T = (u16, u16)>(#[unpack_as(u16, u16)] move value: T)
+    fn unpack_wins<dyn(u8) T = (u16, u16)>(#[unpack(u16, u16)] move value: T)
     where
         use<T> @ <Pair>;
 }

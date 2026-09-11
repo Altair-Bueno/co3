@@ -4,11 +4,11 @@ error[E0271]: type mismatch resolving `<Option<(u8, u8)> as ExternC>::CType == R
 3 | / ffi! {
 4 | |     #![unsafe(extern("C"))]
 5 | |
-6 | |     fn tagged_option(#[unpack_as(_, _)] value: Option<(u8, u8)>);
+6 | |     fn tagged_option(#[unpack(_, _)] value: Option<(u8, u8)>);
 7 | | }
   | |_^ expected `ReprCTuple2<u8, u8>`, found `ReprCOption<ReprCTuple2<u8, u8>>`
   |
   = note: expected struct `ReprCTuple2<u8, u8>`
              found struct `ReprCOption<ReprCTuple2<u8, u8>>`
-  = note: required for `Option<(u8, u8)>` to implement `UnpackAs<u8, u8>`
+  = note: required for `Option<(u8, u8)>` to implement `Unpack2<u8, u8>`
   = note: this error originates in the macro `ffi` (in Nightly builds, run with -Z macro-backtrace for more info)

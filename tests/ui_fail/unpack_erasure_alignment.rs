@@ -1,4 +1,4 @@
-use co3::{ReprC, ffi, slice::UnpackAs};
+use co3::{ReprC, ffi, slice::Unpack2};
 use rust_spec::RustSpec;
 
 #[derive(RustSpec, ReprC)]
@@ -9,9 +9,10 @@ struct Abi(u32, u32);
 #[repr(C)]
 struct Value(u64);
 
-impl UnpackAs<u8, u64> for Value {
-    fn into_parts(value: Self::CType) -> (u8, u64) {
-        (0, value.0)
+impl Unpack2<u8, u64> for Value {
+    type Error = core::convert::Infallible;
+    fn unpack(value: Self::CType) -> Result<(u8, u64), Self::Error> {
+        Ok((0, value.0))
     }
 }
 
@@ -19,7 +20,7 @@ ffi! {
     #![unsafe(extern("C"))]
 
     fn alignment_mismatch(
-        #[unpack_as(u8, u64 => Abi)]
+        #[unpack(u8, u64 => Abi)]
         move value: Value,
     );
 }

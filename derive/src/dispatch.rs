@@ -499,7 +499,10 @@ pub(crate) fn gen_dispatch_erased_layout_checks(
                 syn::FnArg::Typed(syn::PatType { attrs, ty, .. }) => (&attrs[..], &**ty),
             };
 
-            if handle_id(ty).is_some() || is_unpack_arg(attrs) {
+            if handle_id(ty).is_some()
+                || is_unpack_arg(attrs)
+                || crate::ffi_fn::is_single_unpack_arg(attrs)
+            {
                 continue;
             }
 
@@ -606,7 +609,7 @@ impl VisitMut for StaticLifetimeNormalizer {
 fn input_abi_tys(attrs: &[syn::Attribute], ty: &syn::Type) -> Vec<syn::Type> {
     if is_unpack_arg(attrs) {
         let (part1, part2) =
-            crate::ffi_fn::unpack_abi_parts(attrs, ty).expect("validated #[unpack_as] attribute");
+            crate::ffi_fn::unpack_abi_parts(attrs, ty).expect("validated #[unpack] attribute");
         return vec![part1, part2];
     }
 
@@ -834,7 +837,11 @@ pub(crate) fn erase_dispatch_signature(
                 }
             }
             syn::FnArg::Typed(syn::PatType { attrs, pat, ty, .. }) => {
-                if !is_unpack_arg(attrs) {
+                if let Some(target_ty) = crate::ffi_fn::single_unpack_part(attrs, ty)
+                    .expect("validated one-part unpack attribute")
+                {
+                    **ty = target_ty;
+                } else if !is_unpack_arg(attrs) {
                     **ty = erased_params.replace((**ty).clone());
                 }
 
@@ -1035,7 +1042,7 @@ fn gen_handle_retype_stmts(
             ),
         };
 
-        if is_unpack_arg(attrs) {
+        if is_unpack_arg(attrs) || crate::ffi_fn::is_single_unpack_arg(attrs) {
             continue;
         }
 

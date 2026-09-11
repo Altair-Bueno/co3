@@ -89,6 +89,10 @@ impl Parse for ReprToken {
                     ReprToken::Kind(ReprKind::Primitive(syn::parse_quote!(usize))),
                     after_token,
                 )),
+                "isize" => Ok((
+                    ReprToken::Kind(ReprKind::Primitive(syn::parse_quote!(isize))),
+                    after_token,
+                )),
                 "packed" => Ok((ReprToken::Align(Alignment::Packed), after_token)),
                 "align"
                     if let Some((inside_of_group, _group_span, after_group)) =

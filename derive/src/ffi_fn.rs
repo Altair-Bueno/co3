@@ -204,25 +204,24 @@ pub(crate) fn item_fn_input_ident(input: &syn::Pat) -> &Ident {
 }
 
 pub(crate) fn is_unpack_attr(attr: &syn::Attribute) -> bool {
-    attr.path().is_ident("unpack_as") || attr.path().is_ident("try_unpack_as")
+    attr.path().is_ident("unpack")
 }
 
-pub(crate) fn unpack_attr_name(attr: &syn::Attribute) -> &'static str {
-    if attr.path().is_ident("try_unpack_as") {
-        "#[try_unpack_as]"
-    } else {
-        "#[unpack_as]"
-    }
+pub(crate) fn unpack_attr_name(_attr: &syn::Attribute) -> &'static str {
+    "#[unpack]"
 }
 
 pub(crate) fn is_unpack_arg(attrs: &[syn::Attribute]) -> bool {
-    attrs.iter().any(is_unpack_attr)
-}
-
-pub(crate) fn is_try_unpack_as_arg(attrs: &[syn::Attribute]) -> bool {
-    attrs
-        .iter()
-        .any(|attr| attr.path().is_ident("try_unpack_as"))
+    attrs.iter().any(|attr| {
+        if !is_unpack_attr(attr) {
+            return false;
+        }
+        let Meta::List(_) = &attr.meta else {
+            return true;
+        };
+        attr.parse_args_with(Punctuated::<UnpackPart, Comma>::parse_terminated)
+            .is_ok_and(|parts| parts.len() != 1)
+    })
 }
 
 #[derive(Clone)]
@@ -268,6 +267,51 @@ pub(crate) fn unpack_parts(
         return Err(syn::Error::new_spanned(attr, syntax_err()));
     }
     Ok(Some((parts[0].clone(), parts[1].clone())))
+}
+
+pub(crate) fn validate_single_unpack(attrs: &[syn::Attribute]) -> syn::Result<bool> {
+    let Some(attr) = attrs.iter().find(|attr| is_unpack_attr(attr)) else {
+        return Ok(false);
+    };
+    let Meta::List(_) = &attr.meta else {
+        return Ok(false);
+    };
+    let parts = attr.parse_args_with(Punctuated::<UnpackPart, Comma>::parse_terminated)?;
+    if parts.len() != 1 {
+        return Ok(false);
+    }
+    let part = &parts[0];
+    if part.abi.is_some() {
+        return Err(syn::Error::new_spanned(
+            attr,
+            format!(
+                "the one-part {} form does not support ABI erasure",
+                unpack_attr_name(attr)
+            ),
+        ));
+    }
+    Ok(true)
+}
+
+pub(crate) fn single_unpack_part(
+    attrs: &[syn::Attribute],
+    arg_ty: &Type,
+) -> syn::Result<Option<Type>> {
+    if !validate_single_unpack(attrs)? {
+        return Ok(None);
+    }
+    let attr = attrs.iter().find(|attr| is_unpack_attr(attr)).unwrap();
+    let parts = attr.parse_args_with(Punctuated::<UnpackPart, Comma>::parse_terminated)?;
+    let part = &parts[0];
+    Ok(Some(if matches!(part.logical, Type::Infer(_)) {
+        arg_ty.clone()
+    } else {
+        part.logical.clone()
+    }))
+}
+
+pub(crate) fn is_single_unpack_arg(attrs: &[syn::Attribute]) -> bool {
+    validate_single_unpack(attrs).unwrap_or(false)
 }
 
 pub(crate) fn unpack_types(attrs: &[syn::Attribute]) -> syn::Result<Option<(Type, Type)>> {
@@ -371,6 +415,9 @@ pub(crate) fn inferred_unpack_option_inner<'a>(
     attrs: &[syn::Attribute],
     arg_ty: &'a Type,
 ) -> syn::Result<Option<&'a Type>> {
+    if validate_single_unpack(attrs)? {
+        return Ok(None);
+    }
     let Some((part1, part2)) = unpack_parts(attrs)? else {
         return Ok(None);
     };
@@ -787,7 +834,7 @@ fn lower_signature_input(generics: &mut syn::Generics, input: syn::FnArg) -> Vec
         let arg_name = item_fn_input_ident(&pat);
         let (data_name, metadata_name) = unpack_arg_names(arg_name);
         let (source_part1_ty, source_part2_ty) =
-            unpack_abi_parts(&attrs, &arg_ty).expect("validated #[unpack_as] attribute");
+            unpack_abi_parts(&attrs, &arg_ty).expect("validated #[unpack] attribute");
         let (part1_ty, part2_ty) = (source_part1_ty, source_part2_ty);
 
         generics
