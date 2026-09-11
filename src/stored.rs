@@ -467,9 +467,10 @@ disjoint_impls! {
         }
     }
 
-    unsafe impl<R: EncodeOwned<CType: Copy>> EncodeOwned for Option<R>
+    unsafe impl<R: EncodeOwned> EncodeOwned for Option<R>
     where
         R: RustSpec<Niche = WithoutNiche>,
+        <Self as ExternC>::CType: Copy,
     {
         type Store = R::Store;
 
@@ -480,7 +481,9 @@ disjoint_impls! {
             self.map(|v| v.soft_encode(store)).into()
         }
     }
-    unsafe impl<R: EncodeOwned<CType: Copy> + Niche, N: NicheStabilityKind> EncodeOwned for Option<R>
+    // NOTE: PartialEq is only required for decoding, Here it is only used by `debug_assert!`
+    unsafe impl<R: EncodeOwned + Niche<CType: PartialEq>, N: NicheStabilityKind> EncodeOwned
+        for Option<R>
     where
         R: RustSpec<Niche = WithNiche<N>>,
     {
@@ -491,7 +494,14 @@ disjoint_impls! {
             Self: 'itm,
         {
             if let Some(value) = self {
-                return value.soft_encode(store);
+                let encoded = value.soft_encode(store);
+
+                debug_assert!(
+                    encoded != R::NICHE_VALUE,
+                    "encoding produced the reserved NICHE_VALUE"
+                );
+
+                return encoded;
             }
 
             R::NICHE_VALUE
@@ -513,7 +523,7 @@ disjoint_impls! {
             encode_result(self, store)
         }
     }
-    unsafe impl<R: EncodeOwned<CType: Copy> + Niche, E: EncodeOwned<CType: Copy>, N: NicheStabilityKind>
+    unsafe impl<R: EncodeOwned + Niche, E: EncodeOwned<CType: Copy>, N: NicheStabilityKind>
         EncodeOwned for Result<R, E>
     where
         R: RustSpec<Size = RustSpecSized<rust_spec::Gt<Zero>>, Niche = WithNiche<N>>,
@@ -543,7 +553,7 @@ disjoint_impls! {
             encode_result(self, store)
         }
     }
-    unsafe impl<R: EncodeOwned<CType: Copy> + Niche, E, N: NicheStabilityKind> EncodeOwned
+    unsafe impl<R: EncodeOwned + Niche, E, N: NicheStabilityKind> EncodeOwned
         for Result<R, E>
     where
         R: RustSpec<Size = RustSpecSized<rust_spec::Gt<Zero>>, Niche = WithNiche<N>>,
@@ -561,7 +571,7 @@ disjoint_impls! {
             }
         }
     }
-    unsafe impl<R, E: EncodeOwned<CType: Copy> + Niche, N: NicheStabilityKind> EncodeOwned
+    unsafe impl<R, E: EncodeOwned + Niche, N: NicheStabilityKind> EncodeOwned
         for Result<R, E>
     where
         R: RustSpec<Size = RustSpecSized<Zero>, Alignment = One>,
@@ -1059,11 +1069,10 @@ disjoint_impls! {
             }
         }
     }
-    unsafe impl<'d, R: DecodeOwned<'d> + Niche<CType: PartialEq>, N: NicheStabilityKind> DecodeOwned<'d>
-        for Option<R>
+    unsafe impl<'d, R: DecodeOwned<'d> + Niche<CType: PartialEq>, N: NicheStabilityKind>
+        DecodeOwned<'d> for Option<R>
     where
         R: RustSpec<Niche = WithNiche<N>>,
-        <Self as ExternC>::CType: Copy,
     {
         type Store = <R as DecodeOwned<'d>>::Store;
 
@@ -1094,7 +1103,7 @@ disjoint_impls! {
             unsafe { decode_result(source, store) }
         }
     }
-    unsafe impl<'d, R: DecodeOwned<'d, CType: Copy> + Niche, E: DecodeOwned<'d, CType: Copy>, N: NicheStabilityKind>
+    unsafe impl<'d, R: DecodeOwned<'d> + Niche, E: DecodeOwned<'d, CType: Copy>, N: NicheStabilityKind>
         DecodeOwned<'d> for Result<R, E>
     where
         R: RustSpec<Size = RustSpecSized<rust_spec::Gt<Zero>>, Niche = WithNiche<N>>,
@@ -1106,7 +1115,7 @@ disjoint_impls! {
             unsafe { decode_result(source, store) }
         }
     }
-    unsafe impl<'d, R: DecodeOwned<'d, CType: Copy>, E: DecodeOwned<'d, CType: Copy> + Niche, N: NicheStabilityKind>
+    unsafe impl<'d, R: DecodeOwned<'d, CType: Copy>, E: DecodeOwned<'d> + Niche, N: NicheStabilityKind>
         DecodeOwned<'d> for Result<R, E>
     where
         R: RustSpec<Size = RustSpecSized<Zero>, Alignment = rust_spec::Gt<One>>,

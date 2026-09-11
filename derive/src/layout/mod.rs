@@ -57,18 +57,18 @@ fn parse_repr_c_attrs(attrs: &[Attribute]) -> syn::Result<ReprCAttrs> {
                 return Ok(());
             }
 
-            if meta.path.is_ident("NICHE_VALUE") {
-                let value: syn::Expr = meta.value()?.parse()?;
-                if repr_c.niche_value.replace(value).is_some() {
-                    return Err(meta.error("Duplicate `NICHE_VALUE` within attribute"));
-                }
-                return Ok(());
-            }
-
             if meta.path.is_ident("is_valid") {
                 let value: syn::ExprClosure = meta.value()?.parse()?;
                 if repr_c.is_valid.replace(value).is_some() {
                     return Err(meta.error("Duplicate `is_valid` within attribute"));
+                }
+                return Ok(());
+            }
+
+            if meta.path.is_ident("NICHE_VALUE") {
+                let value: syn::Expr = meta.value()?.parse()?;
+                if repr_c.niche_value.replace(value).is_some() {
+                    return Err(meta.error("Duplicate `NICHE_VALUE` within attribute"));
                 }
                 return Ok(());
             }

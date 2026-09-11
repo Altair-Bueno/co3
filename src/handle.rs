@@ -4,7 +4,6 @@ use crate::Encode;
 
 /// Groups handles that use the same tag type.
 pub trait HandleFamily {
-    // TODO: Should Copy be required?
     type Kind: Encode + Copy;
 }
 

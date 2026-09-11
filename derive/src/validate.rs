@@ -376,10 +376,18 @@ impl Visit<'_> for SymbolUseDetector<'_> {
 }
 
 fn validate_symbol_name_attrs(attrs: &[Attribute]) -> Result<()> {
+    let mut seen = false;
     for attr in attrs {
         if !attr.path().is_ident("symbol_name") {
             continue;
         }
+        if seen {
+            return Err(Error::new_spanned(
+                attr,
+                "duplicate `#[symbol_name]` attribute",
+            ));
+        }
+        seen = true;
         let syn::Meta::NameValue(name_value) = &attr.meta else {
             let err_msg = "expected `#[symbol_name = \"...\"]`";
             return Err(Error::new_spanned(attr, err_msg));
@@ -974,6 +982,15 @@ fn validate_unpack(sig: &syn::Signature, outer: Option<&syn::Generics>) -> Resul
         let syn::FnArg::Typed(input) = input else {
             continue;
         };
+        let mut unpack_attrs = input.attrs.iter().filter(|attr| is_unpack_attr(attr));
+        if let Some(first) = unpack_attrs.next()
+            && let Some(duplicate) = unpack_attrs.next()
+        {
+            return Err(Error::new_spanned(
+                duplicate,
+                format!("duplicate {} attribute", unpack_attr_name(first)),
+            ));
+        }
         let Some(attr) = input.attrs.iter().find(|attr| is_unpack_attr(attr)) else {
             continue;
         };

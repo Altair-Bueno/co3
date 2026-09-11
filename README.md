@@ -84,19 +84,19 @@ ffi! {
 It is common in FFI for several concrete types to share one C representation.
 
 ```rust
-use co3::{ffi, handle::Handle, rust_spec::RustSpec, ReprC};
+use co3::{ffi, rust_spec::RustSpec, Handle, ReprC};
 
 trait Calibrate {
     fn calibrate(&mut self, by: u16);
 }
 
-#[derive(RustSpec, ReprC)]
-#[reprC(id(u8))]
+#[derive(RustSpec, Handle, ReprC)]
+#[handle(unsafe(id(u8 = 1)))]
 #[repr(transparent)]
 struct Celsius(u16);
 
-#[derive(RustSpec, ReprC)]
-#[reprC(id(u8))]
+#[derive(RustSpec, Handle, ReprC)]
+#[handle(unsafe(id(u8 = 2)))]
 #[repr(transparent)]
 struct Fahrenheit(u16);
 
@@ -110,14 +110,6 @@ impl Calibrate for Fahrenheit {
     fn calibrate(&mut self, by: u16) {
         self.0 += by;
     }
-}
-
-unsafe impl Handle for Celsius {
-    const ID: u8 = 1;
-}
-
-unsafe impl Handle for Fahrenheit {
-    const ID: u8 = 2;
 }
 
 ffi! {

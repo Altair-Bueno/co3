@@ -1,43 +1,161 @@
 error: `is_valid` is only supported on structs or enum variants
-  --> tests/ui_fail/custom_validation.rs:22:5
+  --> tests/ui_fail/custom_validation.rs:23:5
    |
-22 |     #[reprC(is_valid = |a| *a != 0)]
+23 |     #[reprC(is_valid = |a| *a != 0)]
    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 error: `NICHE_VALUE` is only supported on structs
-  --> tests/ui_fail/custom_validation.rs:28:10
+  --> tests/ui_fail/custom_validation.rs:29:10
    |
-28 | pub enum CustomEnum1 {
+29 | pub enum CustomEnum1 {
    |          ^^^^^^^^^^^
 
 error: `is_valid` is only supported on structs or enum variants
-  --> tests/ui_fail/custom_validation.rs:35:10
+  --> tests/ui_fail/custom_validation.rs:36:10
    |
-35 | pub enum CustomEnum2 {
+36 | pub enum CustomEnum2 {
    |          ^^^^^^^^^^^
 
 error: Unions are not supported
-  --> tests/ui_fail/custom_validation.rs:41:1
+  --> tests/ui_fail/custom_validation.rs:42:1
    |
-41 | / #[reprC(is_valid = |a| *a != 0)]
-42 | | pub union CustomUnion1 {
-43 | |     a: u32,
-44 | | }
+42 | / #[reprC(is_valid = |a| *a != 0)]
+43 | | pub union CustomUnion1 {
+44 | |     a: u32,
+45 | | }
    | |_^
 
 error: Unions are not supported
-  --> tests/ui_fail/custom_validation.rs:47:1
+  --> tests/ui_fail/custom_validation.rs:48:1
    |
-47 | / #[reprC(is_valid = |a| *a != 0)]
-48 | | pub union CustomUnion2 {
-49 | |     a: u32,
-50 | | }
+48 | / #[reprC(is_valid = |a| *a != 0)]
+49 | | pub union CustomUnion2 {
+50 | |     a: u32,
+51 | | }
    | |_^
 
-error[E0277]: the trait bound `[u8]: Copy` is not satisfied
-  --> tests/ui_fail/custom_validation.rs:66:21
+error[E0277]: the trait bound `T: co3::ExternC` is not satisfied
+  --> tests/ui_fail/custom_validation.rs:53:10
    |
-66 |     require_niche::<UnsizedSlice<u8>>();
+53 | #[derive(ReprC)]
+   |          ^^^^^ the trait `co3::ExternC` is not implemented for `T`
+   |
+note: required for `ParametrizedView<'_dšč, T>` to implement `co3::ExternC`
+  --> tests/ui_fail/custom_validation.rs:53:10
+   |
+53 | #[derive(ReprC)]
+   |          ^^^^^ type parameter would need to implement `co3::ExternC`
+   = help: consider manually implementing `co3::ExternC` to avoid undesired bounds
+   = note: this error originates in the derive macro `co3::ReprC` which comes from the expansion of the derive macro `ReprC` (in Nightly builds, run with -Z macro-backtrace for more info)
+help: consider further restricting type parameter `T` with trait `ExternC`
+   |
+55 | pub struct Parametrized<T: ?Sized + co3::ExternC>(T);
+   |                                   ++++++++++++++
+
+error[E0277]: the trait bound `T: co3::ExternC` is not satisfied
+  --> tests/ui_fail/custom_validation.rs:53:10
+   |
+53 | #[derive(ReprC)]
+   |          ^^^^^ the trait `co3::ExternC` is not implemented for `T`
+   |
+note: required for `ParametrizedView<'_dšč, T>` to implement `co3::ExternC`
+  --> tests/ui_fail/custom_validation.rs:53:10
+   |
+53 | #[derive(ReprC)]
+   |          ^^^^^ type parameter would need to implement `co3::ExternC`
+   = help: consider manually implementing `co3::ExternC` to avoid undesired bounds
+note: the requirement `ParametrizedView<'_dšč, T>: co3::ExternC` appears on the `impl`'s associated constant `NICHE_VALUE` but not on the corresponding trait's associated constant
+  --> src/niche.rs
+   |
+   |     pub trait Niche: ExternC<CType: Copy> + Sized {
+   |               ----- in this trait
+   |         const NICHE_VALUE: Self::CType;
+   |               ^^^^^^^^^^^ this trait's associated constant doesn't have the requirement `ParametrizedView<'_dšč, T>: co3::ExternC`
+   = note: this error originates in the derive macro `co3::ReprC` which comes from the expansion of the derive macro `ReprC` (in Nightly builds, run with -Z macro-backtrace for more info)
+help: consider further restricting type parameter `T` with trait `ExternC`
+   |
+55 | pub struct Parametrized<T: ?Sized + co3::ExternC>(T);
+   |                                   ++++++++++++++
+
+error[E0277]: the trait bound `T: co3::ExternC` is not satisfied
+  --> tests/ui_fail/custom_validation.rs:57:10
+   |
+57 | #[derive(ReprC)]
+   |          ^^^^^ the trait `co3::ExternC` is not implemented for `T`
+   |
+   = note: required for `[T]` to implement `co3::ExternC`
+   = note: 1 redundant requirement hidden
+   = note: required for `UnsizedSliceView<'_dšč, T>` to implement `co3::ExternC`
+   = note: this error originates in the derive macro `co3::ReprC` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error[E0277]: the trait bound `T: co3::ExternC` is not satisfied
+  --> tests/ui_fail/custom_validation.rs:57:10
+   |
+57 | #[derive(ReprC)]
+   |          ^^^^^ the trait `co3::ExternC` is not implemented for `T`
+   |
+   = note: required for `[T]` to implement `co3::ExternC`
+   = note: 1 redundant requirement hidden
+   = note: required for `UnsizedSliceView<'_dšč, T>` to implement `co3::ExternC`
+note: the requirement `UnsizedSliceView<'_dšč, T>: co3::ExternC` appears on the `impl`'s associated constant `NICHE_VALUE` but not on the corresponding trait's associated constant
+  --> src/niche.rs
+   |
+   |     pub trait Niche: ExternC<CType: Copy> + Sized {
+   |               ----- in this trait
+   |         const NICHE_VALUE: Self::CType;
+   |               ^^^^^^^^^^^ this trait's associated constant doesn't have the requirement `UnsizedSliceView<'_dšč, T>: co3::ExternC`
+   = note: this error originates in the derive macro `co3::ReprC` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error[E0277]: the trait bound `[T]: Copy` is not satisfied
+  --> tests/ui_fail/custom_validation.rs:57:10
+   |
+57 | #[derive(ReprC)]
+   |          ^^^^^ the trait `Copy` is not implemented for `[T]`
+   |
+help: the trait `Copy` is implemented for `[T; N]`
+  --> $RUST/core/src/array/mod.rs
+   |
+   | impl<T: Copy, const N: usize> Copy for [T; N] {}
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+note: required for `CUnsizedSliceConstView<T>` to implement `Copy`
+  --> tests/ui_fail/custom_validation.rs:57:10
+   |
+57 | #[derive(ReprC)]
+   |          ^^^^^ type parameter would need to implement `Copy`
+note: required by a bound in `Niche`
+  --> src/niche.rs
+   |
+   |     pub trait Niche: ExternC<CType: Copy> + Sized {
+   |                                     ^^^^ required by this bound in `Niche`
+   = note: this error originates in the derive macro `co3::ReprC` which comes from the expansion of the derive macro `ReprC` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error[E0277]: the trait bound `[_]: Copy` is not satisfied
+  --> tests/ui_fail/custom_validation.rs:57:10
+   |
+57 | #[derive(ReprC)]
+   |          ^^^^^ the trait `Copy` is not implemented for `[_]`
+   |
+help: the trait `Copy` is implemented for `[T; N]`
+  --> $RUST/core/src/array/mod.rs
+   |
+   | impl<T: Copy, const N: usize> Copy for [T; N] {}
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+note: required for `CUnsizedSliceConstView<T>` to implement `Copy`
+  --> tests/ui_fail/custom_validation.rs:57:10
+   |
+57 | #[derive(ReprC)]
+   |          ^^^^^ type parameter would need to implement `Copy`
+note: required by a bound in `borrow_cast`
+  --> src/borrow.rs
+   |
+   | pub const fn borrow_cast<C: BorrowCast<AsConst: Copy> + Copy>(source: C) -> C::AsConst {
+   |                                                 ^^^^ required by this bound in `borrow_cast`
+   = note: this error originates in the derive macro `co3::ReprC` which comes from the expansion of the derive macro `ReprC` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error[E0277]: the trait bound `[u8]: Copy` is not satisfied
+  --> tests/ui_fail/custom_validation.rs:63:21
+   |
+63 |     require_niche::<UnsizedSlice<u8>>();
    |                     ^^^^^^^^^^^^^^^^ the trait `Copy` is not implemented for `[u8]`
    |
 help: the trait `Copy` is implemented for `[T; N]`
@@ -46,70 +164,16 @@ help: the trait `Copy` is implemented for `[T; N]`
    | impl<T: Copy, const N: usize> Copy for [T; N] {}
    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 note: required for `UnsizedSlice<u8>` to implement `Niche`
-  --> tests/ui_fail/custom_validation.rs:58:12
+  --> tests/ui_fail/custom_validation.rs:59:12
    |
-56 | #[derive(ReprC)]
+57 | #[derive(ReprC)]
    |          ----- type parameter would need to implement `Niche`
-57 | #[reprC(NICHE_VALUE = unsafe { core::mem::zeroed() })]
-58 | pub struct UnsizedSlice<T>([T]);
+58 | #[reprC(NICHE_VALUE = unsafe { core::mem::zeroed() })]
+59 | pub struct UnsizedSlice<T>([T]);
    |            ^^^^^^^^^^^^^^^
    = help: consider manually implementing `Niche` to avoid undesired bounds
 note: required by a bound in `require_niche`
-  --> tests/ui_fail/custom_validation.rs:65:25
+  --> tests/ui_fail/custom_validation.rs:62:25
    |
-65 |     fn require_niche<T: co3::niche::Niche>() {}
+62 |     fn require_niche<T: co3::niche::Niche>() {}
    |                         ^^^^^^^^^^^^^^^^^ required by this bound in `require_niche`
-
-error[E0277]: the trait bound `[u8]: Copy` is not satisfied
-  --> tests/ui_fail/custom_validation.rs:67:21
-   |
-67 |     require_niche::<UnsizedStr>();
-   |                     ^^^^^^^^^^ the trait `Copy` is not implemented for `[u8]`
-   |
-help: the trait `Copy` is implemented for `[T; N]`
-  --> $RUST/core/src/array/mod.rs
-   |
-   | impl<T: Copy, const N: usize> Copy for [T; N] {}
-   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-note: required for `CUnsizedStr` to implement `Copy`
-  --> tests/ui_fail/custom_validation.rs:60:10
-   |
-60 | #[derive(ReprC)]
-   |          ^^^^^ type parameter would need to implement `Copy`
-note: required for `UnsizedStr` to implement `Niche`
-  --> tests/ui_fail/custom_validation.rs:62:12
-   |
-60 | #[derive(ReprC)]
-   |          ----- type parameter would need to implement `Niche`
-61 | #[reprC(NICHE_VALUE = unsafe { core::mem::zeroed() })]
-62 | pub struct UnsizedStr(str);
-   |            ^^^^^^^^^^
-   = help: consider manually implementing `Niche` to avoid undesired bounds
-note: required by a bound in `require_niche`
-  --> tests/ui_fail/custom_validation.rs:65:25
-   |
-65 |     fn require_niche<T: co3::niche::Niche>() {}
-   |                         ^^^^^^^^^^^^^^^^^ required by this bound in `require_niche`
-   = note: this error originates in the derive macro `ReprC` (in Nightly builds, run with -Z macro-backtrace for more info)
-
-error[E0277]: the size for values of type `str` cannot be known at compilation time
-  --> tests/ui_fail/custom_validation.rs:67:21
-   |
-67 |     require_niche::<UnsizedStr>();
-   |                     ^^^^^^^^^^ doesn't have a size known at compile-time
-   |
-   = help: within `UnsizedStr`, the trait `std::marker::Sized` is not implemented for `str`
-note: required because it appears within the type `UnsizedStr`
-  --> tests/ui_fail/custom_validation.rs:62:12
-   |
-62 | pub struct UnsizedStr(str);
-   |            ^^^^^^^^^^
-note: required by an implicit `Sized` bound in `require_niche`
-  --> tests/ui_fail/custom_validation.rs:65:22
-   |
-65 |     fn require_niche<T: co3::niche::Niche>() {}
-   |                      ^ required by the implicit `Sized` requirement on this type parameter in `require_niche`
-help: consider relaxing the implicit `Sized` restriction
-   |
-65 |     fn require_niche<T: co3::niche::Niche + ?Sized>() {}
-   |                                           ++++++++

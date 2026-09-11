@@ -4,11 +4,43 @@ use quote::quote;
 use crate::{
     layout::{
         attr::ReprKind,
+        borrow::gen_view_owner_name,
         ctype::{gen_ctype_name, gen_extern_c_bounds_for_ctype},
-        enum_tag_type, is_exhaustive_enum, is_transparent_enum_repr, is_type_parametrized,
+        enum_tag_type, generic_param_idents, is_exhaustive_enum, is_transparent_enum_repr,
+        is_type_parametrized,
     },
     utils::build_extern_c_type_tuple,
 };
+
+pub fn gen_view_niche_ir(view_name: &syn::Ident, generics: &syn::Generics) -> TokenStream {
+    let (impl_generics, view_ty_generics, where_clause) = generics.split_for_impl();
+    let predicates = where_clause
+        .as_ref()
+        .map(|where_clause| &where_clause.predicates);
+    let has_view_lifetime = matches!(
+        generics.params.first(),
+        Some(syn::GenericParam::Lifetime(param)) if param.lifetime.ident == "_dšč"
+    );
+    let owner_name = gen_view_owner_name(view_name);
+    let owner_generics =
+        generic_param_idents(generics.params.iter().skip(has_view_lifetime as usize))
+            .collect::<Vec<_>>();
+    let owner_ty = quote! { #owner_name <#(#owner_generics),*> };
+
+    quote! {
+        impl #impl_generics co3::niche::Niche for #view_name #view_ty_generics where
+            #owner_ty: co3::niche::Niche,
+            <#owner_ty as co3::ExternC>::CType: co3::borrow::BorrowCast<
+                AsConst = <Self as co3::ExternC>::CType
+            >,
+            #predicates
+        {
+            const NICHE_VALUE: Self::CType = co3::borrow::borrow_cast(
+                <#owner_ty as co3::niche::Niche>::NICHE_VALUE
+            );
+        }
+    }
+}
 
 pub fn gen_struct_niche_ir(
     struct_name: &syn::Ident,
@@ -39,11 +71,45 @@ pub fn gen_struct_niche_ir(
     });
     let types = fields.iter().map(|f| &f.ty).collect::<Vec<_>>();
     let extern_c_bounds = gen_extern_c_bounds_for_ctype::<true>(generics, &types);
+    let (fields_tuple, c_fields_tuple, accessors) = build_extern_c_type_tuple(&types);
 
-    let (niche_value, inferred_niche_bounds) = if let Some(niche_value) = niche_value {
-        (quote! { #niche_value }, quote! {})
+    let (niche_value, inferred_niche_bounds, custom_niche_assertion) = if let Some(niche_value) =
+        niche_value
+    {
+        (
+            quote! { #niche_value },
+            quote! {},
+            quote! {
+                const _: () = {
+                    #[expect(dead_code)]
+                    trait AssertNoInferredNiche {
+                        fn assert_no_inferred_niche();
+                    }
+
+                    impl #impl_generics AssertNoInferredNiche for #struct_name #ty_generics where
+                        #predicates
+                    {
+                        fn assert_no_inferred_niche() {
+                            const {
+                                assert!(
+                                    co3::impls!(#struct_name #ty_generics: co3::rust_spec::RustSpec<
+                                        Niche = co3::rust_spec::niche::WithNiche<co3::rust_spec::Unstable>
+                                    >),
+                                    "custom NICHE_VALUE requires RustSpec<Niche = WithNiche<Unstable>>",
+                                );
+                                assert!(
+                                    co3::impls!(#fields_tuple: co3::rust_spec::RustSpec<
+                                        Niche = co3::rust_spec::niche::WithoutNiche
+                                    >),
+                                    "custom NICHE_VALUE cannot override an inferred niche",
+                                );
+                            }
+                        }
+                    }
+                };
+            },
+        )
     } else {
-        let (fields_tuple, c_fields_tuple, accessors) = build_extern_c_type_tuple(&types);
         let niche_field_values = accessors.iter().map(|accessor| {
             quote! { <#fields_tuple as co3::niche::Niche>::NICHE_VALUE.#accessor }
         });
@@ -59,6 +125,7 @@ pub fn gen_struct_niche_ir(
         (
             niche_value,
             quote! { #for_dummy #fields_tuple: co3::niche::Niche<CType = #c_fields_tuple>, },
+            quote! {},
         )
     };
 
@@ -72,6 +139,8 @@ pub fn gen_struct_niche_ir(
         {
             const NICHE_VALUE: Self::CType = #niche_value;
         }
+
+        #custom_niche_assertion
     }
 }
 

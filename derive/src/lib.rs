@@ -599,7 +599,7 @@ pub fn handle_derive(item: syn::DeriveInput) -> Result<TokenStream> {
 ///
 /// Rust slices are lowered into [`CSlice`](https://docs.rs/co3/latest/co3/slice/struct.CSlice.html)/[`CSliceMut`](https://docs.rs/co3/latest/co3/slice/struct.CSliceMut.html)
 /// which are C-ABI containers holding a data pointer and a length. However, it is common for FFI APIs to instead accept those components as separate function arguments.
-/// Mark an argument with `#[unpack(T1, T2)]` to fallibly import its two ABI parts:
+/// Mark an argument with `#[unpack(T1, T2)]` to import its two ABI parts:
 ///
 /// ```rust
 /// # use co3::ffi;
@@ -613,33 +613,6 @@ pub fn handle_derive(item: syn::DeriveInput) -> Result<TokenStream> {
 /// ```
 ///
 /// **This pattern is not limited to slices**; it applies to every type implementing the [`Unpack2`](https://docs.rs/co3/latest/co3/slice/trait.Unpack2.html) trait.
-/// A single syntactically visible `Option` around an inferable shape is inferred like its inner type,
-/// provided generated checks prove that the path denotes [`core::option::Option`] and that the
-/// inner type and its `Option` have exactly the same [`ExternC::CType`]. For example,
-/// `Option<&[T]>` is inferred like `&[T]`.
-///
-/// An unpack part may use `Logical => Abi` to retain a logical type while selecting the
-/// [`Unpack2`](https://docs.rs/co3/latest/co3/slice/trait.Unpack2.html) implementation, then erase
-/// it to an ABI-equivalent type in the raw declaration:
-///
-/// ```ignore
-/// # use co3::ffi;
-/// # struct Definition;
-/// # struct AttrLength<D, L>(D, L);
-/// # struct Value;
-/// ffi! {
-///     #![unsafe(extern("C"))]
-///
-///     fn set_attr(
-///         #[unpack(*mut core::ffi::c_void, AttrLength<Definition, i32> => i32)]
-///         move value: Value,
-///     );
-/// }
-/// ```
-///
-/// `T` is shorthand for `T => T`. The user must guarantee that the C representations of the
-/// logical and ABI types use the same calling convention; generated code checks their size and
-/// alignment but those properties alone cannot prove ABI equivalence.
 ///
 /// # Failure modes
 ///

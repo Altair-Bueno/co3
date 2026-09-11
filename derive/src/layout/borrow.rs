@@ -30,9 +30,20 @@ pub(super) fn gen_item_view(
     rewrite_view_generics(&mut view_def);
     rewrite_view_fields(&mut view_def.data);
 
+    let inherited_niche = attrs.niche_value.as_ref().map(|_| {
+        let owner_name = &input.ident;
+        let (_, owner_ty_generics, _) = input.generics.split_for_impl();
+        quote! {
+            #[reprC(NICHE_VALUE = co3::borrow::borrow_cast(
+                <#owner_name #owner_ty_generics as co3::niche::Niche>::NICHE_VALUE
+            ))]
+        }
+    });
+
     quote! {
         #[derive(co3::rust_spec::RustSpec, co3::ReprC)]
         #[reprC(view)]
+        #inherited_niche
         #[doc(hidden)]
         #view_def
     }

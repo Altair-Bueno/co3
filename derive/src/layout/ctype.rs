@@ -1,6 +1,6 @@
 use std::collections::HashSet;
 
-use proc_macro2::TokenStream;
+use proc_macro2::{Literal, TokenStream};
 use quote::{format_ident, quote};
 use syn::{parse_quote, visit::Visit};
 
@@ -44,7 +44,7 @@ pub(super) fn gen_fieldless_enum_ctype(
     };
     // Keep the normal non-ZST CFnArg size guard. In particular, a one-variant
     // fieldless enum is represented by `CEnum(())` and must not become a CFnArg.
-    let impls = gen_struct_ctype_impls::<false>(&ctype, true);
+    let impls = gen_struct_ctype_impls::<false, true>(&ctype, true);
 
     quote! { #ctype #impls }
 }
@@ -107,10 +107,53 @@ fn derive_data_enum_ctype(
     variants: &syn::punctuated::Punctuated<syn::Variant, syn::Token![,]>,
 ) -> TokenStream {
     let union_name = gen_ctype_name(name);
-    let (union_def, variant_structs) =
-        gen_data_enum_union(Some(tag_type), vis, &union_name, name, generics, variants);
+    let (union_def, variant_structs) = gen_data_enum_union(
+        Some(tag_type.clone()),
+        vis,
+        &union_name,
+        name,
+        generics,
+        variants,
+    );
     let union_impls = gen_union_ctype_impls(&union_def);
-    quote! { #(#variant_structs)* #union_def #union_impls }
+    let partial_eq_impl = gen_tagged_union_partial_eq(&union_def, &tag_type, variants);
+    quote! { #(#variant_structs)* #union_def #union_impls #partial_eq_impl }
+}
+
+fn gen_tagged_union_partial_eq(
+    union: &syn::ItemUnion,
+    tag_type: &syn::Type,
+    variants: &syn::punctuated::Punctuated<syn::Variant, syn::Token![,]>,
+) -> TokenStream {
+    let name = &union.ident;
+    let (impl_generics, ty_generics, where_clause) = union.generics.split_for_impl();
+    let predicates = where_clause.as_ref().map(|clause| &clause.predicates);
+    let bounds = union.fields.named.iter().map(|field| {
+        let ty = &field.ty;
+        quote!(#ty: core::cmp::PartialEq)
+    });
+    let arms = variants.iter().enumerate().map(|(index, variant)| {
+        let tag = Literal::usize_unsuffixed(index);
+        let member = &variant.ident;
+        quote!(#tag => unsafe { self.#member == other.#member })
+    });
+
+    quote! {
+        impl #impl_generics core::cmp::PartialEq for #name #ty_generics
+        where
+            #(#bounds,)*
+            #predicates
+        {
+            fn eq(&self, other: &Self) -> bool {
+                let self_tag = unsafe { *core::ptr::from_ref(self).cast::<#tag_type>() };
+                let other_tag = unsafe { *core::ptr::from_ref(other).cast::<#tag_type>() };
+                self_tag == other_tag && match self_tag as usize {
+                    #(#arms,)*
+                    _ => true,
+                }
+            }
+        }
+    }
 }
 
 fn derive_ctype_struct<const ADD_COPY: bool>(
@@ -123,7 +166,7 @@ fn derive_ctype_struct<const ADD_COPY: bool>(
     generate_wide: bool,
 ) -> TokenStream {
     let ctype_def = gen_ctype_struct_item::<ADD_COPY>(repr, vis, name, generics, fields);
-    let ctype_impls = gen_struct_ctype_impls::<ADD_COPY>(&ctype_def, generate_views_and_spec);
+    let ctype_impls = gen_struct_ctype_impls::<ADD_COPY, true>(&ctype_def, generate_views_and_spec);
     let wide_impl = generate_wide.then(|| gen_ctype_wide_impl(repr, &ctype_def, fields, generics));
 
     quote! {
@@ -249,7 +292,8 @@ fn derive_repr_c_data_enum_ctype(
         }
     };
 
-    let ctype_impls = gen_struct_ctype_impls::<true>(&ctype_def, true);
+    let ctype_impls = gen_struct_ctype_impls::<true, false>(&ctype_def, true);
+    let partial_eq_impl = gen_tagged_payload_partial_eq(&ctype_def, &payload_def, variants);
 
     quote! {
         #(#variant_structs)*
@@ -259,6 +303,41 @@ fn derive_repr_c_data_enum_ctype(
 
         #ctype_def
         #ctype_impls
+        #partial_eq_impl
+    }
+}
+
+fn gen_tagged_payload_partial_eq(
+    ctype: &syn::ItemStruct,
+    payload: &syn::ItemUnion,
+    variants: &syn::punctuated::Punctuated<syn::Variant, syn::Token![,]>,
+) -> TokenStream {
+    let name = &ctype.ident;
+    let (impl_generics, ty_generics, where_clause) = ctype.generics.split_for_impl();
+    let predicates = where_clause.as_ref().map(|clause| &clause.predicates);
+    let bounds = payload.fields.named.iter().map(|field| {
+        let ty = &field.ty;
+        quote!(#ty: core::cmp::PartialEq)
+    });
+    let arms = variants.iter().enumerate().map(|(index, variant)| {
+        let tag = Literal::usize_unsuffixed(index);
+        let member = &variant.ident;
+        quote!(#tag => unsafe { self.payload.#member == other.payload.#member })
+    });
+
+    quote! {
+        impl #impl_generics core::cmp::PartialEq for #name #ty_generics
+        where
+            #(#bounds,)*
+            #predicates
+        {
+            fn eq(&self, other: &Self) -> bool {
+                self.tag == other.tag && match self.tag as usize {
+                    #(#arms,)*
+                    _ => true,
+                }
+            }
+        }
     }
 }
 
@@ -379,7 +458,7 @@ fn gen_variant_struct(
     }
 
     let ctype = gen_ctype_struct_item::<true>(repr, vis, &name, generics, &fields);
-    let ctype_impls = gen_struct_ctype_impls::<true>(&ctype, true);
+    let ctype_impls = gen_struct_ctype_impls::<true, true>(&ctype, true);
     quote! { #ctype #ctype_impls }
 }
 
@@ -435,7 +514,7 @@ fn gen_union_extern_c_bounds(
         })
 }
 
-fn gen_struct_ctype_impls<const ADD_COPY: bool>(
+fn gen_struct_ctype_impls<const ADD_COPY: bool, const GEN_PARTIAL_EQ: bool>(
     ctype: &syn::ItemStruct,
     generate_views_and_spec: bool,
 ) -> TokenStream {
@@ -444,6 +523,7 @@ fn gen_struct_ctype_impls<const ADD_COPY: bool>(
     let generate_views = generate_views_and_spec && !all_phantom_data;
 
     let copy_impls = gen_copy_impls::<ADD_COPY>(&ctype.ident, &ctype.generics, &fields);
+    let partial_eq_impl = GEN_PARTIAL_EQ.then(|| gen_struct_partial_eq(ctype));
     let default_impl = gen_default_impl::<ADD_COPY>(&ctype.ident, &ctype.generics, &fields);
     let robust_impls = gen_robust_impls::<ADD_COPY>(&ctype.ident, &ctype.generics, &fields);
     let type_spec_impl =
@@ -462,6 +542,7 @@ fn gen_struct_ctype_impls<const ADD_COPY: bool>(
 
     quote! {
         #copy_impls
+        #partial_eq_impl
         #default_impl
         #robust_impls
         #type_spec_impl
@@ -470,6 +551,36 @@ fn gen_struct_ctype_impls<const ADD_COPY: bool>(
         #mut_view
 
         #borrow_cast_impl
+    }
+}
+
+fn gen_struct_partial_eq(ctype: &syn::ItemStruct) -> TokenStream {
+    let name = &ctype.ident;
+    let (impl_generics, ty_generics, where_clause) = ctype.generics.split_for_impl();
+    let predicates = where_clause.as_ref().map(|clause| &clause.predicates);
+    let bounds = ctype.fields.iter().flat_map(|field| {
+        let ty = &field.ty;
+        if is_type_parametrized(ty, &ctype.generics) {
+            vec![parse_quote!(#ty: core::cmp::PartialEq)]
+        } else {
+            gen_hrtb_projection_bounds(ty, &ctype.generics, quote!(core::cmp::PartialEq))
+        }
+    });
+    let comparisons = ctype
+        .fields
+        .members()
+        .map(|member| quote!(self.#member == other.#member));
+
+    quote! {
+        impl #impl_generics core::cmp::PartialEq for #name #ty_generics
+        where
+            #(#bounds,)*
+            #predicates
+        {
+            fn eq(&self, other: &Self) -> bool {
+                true #(&& #comparisons)*
+            }
+        }
     }
 }
 

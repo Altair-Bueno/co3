@@ -1,0 +1,27 @@
+error[E0080]: evaluation panicked: custom NICHE_VALUE cannot override an inferred niche
+ --> tests/ui_fail/custom_niche_override.rs:6:20
+  |
+6 | #[derive(RustSpec, ReprC)]
+  |                    ^^^^^ evaluation of `<OverridesInferredNiche as _::AssertNoInferredNiche>::assert_no_inferred_niche::{constant#0}` failed here
+
+note: erroneous constant encountered
+ --> tests/ui_fail/custom_niche_override.rs:6:20
+  |
+6 | #[derive(RustSpec, ReprC)]
+  |                    ^^^^^
+  |
+  = note: this note originates in the derive macro `ReprC` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error[E0080]: evaluation panicked: custom NICHE_VALUE requires RustSpec<Niche = WithNiche<Unstable>>
+  --> tests/ui_fail/custom_niche_override.rs:12:10
+   |
+12 | #[derive(ReprC)]
+   |          ^^^^^ evaluation of `<CustomNicheRequiresUnstable as _::AssertNoInferredNiche>::assert_no_inferred_niche::{constant#0}` failed here
+
+note: erroneous constant encountered
+  --> tests/ui_fail/custom_niche_override.rs:12:10
+   |
+12 | #[derive(ReprC)]
+   |          ^^^^^
+   |
+   = note: this note originates in the derive macro `ReprC` (in Nightly builds, run with -Z macro-backtrace for more info)

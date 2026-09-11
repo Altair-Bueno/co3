@@ -38,6 +38,7 @@ pub struct TransparentStruct {
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug, RustSpec, ReprC)]
+#[rust_spec(with_custom_niche)]
 #[reprC(
     NICHE_VALUE = [0; 4],
     unsafe(is_valid = |target: &Self::Target|
@@ -318,5 +319,3 @@ fn transparent_method_borrow_mut() {
         );
     }
 }
-
-

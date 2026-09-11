@@ -3,6 +3,7 @@ use rust_spec::RustSpec;
 
 #[derive(RustSpec, ReprC)]
 #[reprC(is_valid = |a| *a != 42)]
+#[rust_spec(with_custom_niche)]
 #[reprC(NICHE_VALUE = Self::CType {
     field: 42
 })]
@@ -56,10 +57,6 @@ pub struct Parametrized<T: ?Sized>(T);
 #[derive(ReprC)]
 #[reprC(NICHE_VALUE = unsafe { core::mem::zeroed() })]
 pub struct UnsizedSlice<T>([T]);
-
-#[derive(ReprC)]
-#[reprC(NICHE_VALUE = unsafe { core::mem::zeroed() })]
-pub struct UnsizedStr(str);
 
 fn unsized_niches_cannot_be_used() {
     fn require_niche<T: co3::niche::Niche>() {}

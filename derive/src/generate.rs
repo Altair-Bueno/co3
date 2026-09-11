@@ -2058,7 +2058,6 @@ fn expand_dispatch_drop_import(
             Some(quote! {
                 let #pat: #id_ty = {
                     // FIXME: https://github.com/mversic/co3/issues/93
-                    // Should it be required that HandleFamily::Kind: Copy
                     let __co3_handle_id = <#handle_ty as co3::handle::Handle>::ID;
                     unsafe { core::mem::transmute_copy(&__co3_handle_id) }
                 };
@@ -2411,6 +2410,11 @@ fn gen_owned_extern_type_impls(
 
         impl #impl_generics co3::ExternC for #owned_ident #ty_generics #where_clause {
             type CType = #owned_repr_c_name #ty_generics;
+        }
+        impl #impl_generics core::cmp::PartialEq for #owned_repr_c_name #ty_generics #where_clause {
+            fn eq(&self, other: &Self) -> bool {
+                self.0 == other.0
+            }
         }
         impl #impl_generics co3::niche::Niche for #owned_ident #ty_generics #where_clause {
             const NICHE_VALUE: Self::CType = #owned_repr_c_name(core::ptr::null_mut());

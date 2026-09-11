@@ -16,7 +16,7 @@ use crate::layout::{
     },
     enum_tag_type, generic_param_idents, infer_repr, is_exhaustive_enum, is_phantom_data,
     is_transparent_enum_repr, is_type_parametrized,
-    niche::{gen_enum_niche_ir, gen_struct_niche_ir},
+    niche::{gen_enum_niche_ir, gen_struct_niche_ir, gen_view_niche_ir},
     primitive_tag_type,
 };
 
@@ -42,7 +42,14 @@ pub(super) fn derive_item(
 
     let borrow_impls = (!is_view && !is_wide_data).then(|| gen_item_borrow_impls(input));
     let codec_impls = gen_item_codec_impls(repr, input, attrs, variant_attrs);
-    let niche_impls = (!is_view).then(|| gen_item_niche_impls(repr, input, attrs));
+    let niche_impls = if is_view {
+        attrs
+            .niche_value
+            .is_some()
+            .then(|| gen_view_niche_ir(&input.ident, &input.generics))
+    } else {
+        Some(gen_item_niche_impls(repr, input, attrs))
+    };
     let interior_mut_impl = gen_item_interior_mut_impl(repr, input);
 
     let repr_c_impls = repr

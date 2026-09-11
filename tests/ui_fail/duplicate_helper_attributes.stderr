@@ -1,0 +1,11 @@
+error: duplicate `#[symbol_name]` attribute
+ --> tests/ui_fail/duplicate_helper_attributes.rs:7:5
+  |
+7 |     #[symbol_name = "second"]
+  |     ^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error: duplicate #[unpack] attribute
+  --> tests/ui_fail/duplicate_helper_attributes.rs:17:9
+   |
+17 |         #[unpack(u8, u8)]
+   |         ^^^^^^^^^^^^^^^^^
