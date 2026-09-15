@@ -1,0 +1,17 @@
+error: a return value cannot borrow from a `#[soft]` argument
+ --> tests/ui_fail/soft_return_borrow.rs:6:44
+  |
+6 |     fn direct(#[soft] value: &mut bool) -> &bool;
+  |                                            ^^^^^
+
+error: a return value cannot borrow from a `#[soft]` argument
+  --> tests/ui_fail/soft_return_borrow.rs:11:10
+   |
+11 |     ) -> &'short bool;
+   |          ^^^^^^^^^^^^
+
+error: a return value cannot borrow from a `#[soft]` argument
+  --> tests/ui_fail/soft_return_borrow.rs:16:10
+   |
+16 |     ) -> &'a bool;
+   |          ^^^^^^^^

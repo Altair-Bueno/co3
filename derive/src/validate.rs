@@ -11,7 +11,7 @@ use crate::{
     symbol_name_value,
     utils::{
         has_non_lifetime_generics, has_runtime_dispatch, is_drop_impl, is_payload_erased,
-        is_type_erased, push_error,
+        is_type_erased, push_error, soft_for_arg,
     },
 };
 
@@ -894,6 +894,9 @@ fn validate_shared_fn(item: &crate::Co3Fn, validate_unpacks: bool) -> Result<()>
     if let Err(err) = validate_signature_shape(&item.sig) {
         push_error(&mut errors, err);
     }
+    if let Err(err) = validate_soft_return_borrows(&item.sig) {
+        push_error(&mut errors, err);
+    }
     if !item.dispatch_args.is_empty() || has_payload_dispatch(&item.sig.generics) {
         let params = item
             .sig
@@ -940,6 +943,9 @@ fn validate_shared_impl(impl_: &crate::Co3Impl, validate_unpacks: bool) -> Resul
         if let Err(err) = validate_signature_shape(sig) {
             push_error(&mut errors, err);
         }
+        if let Err(err) = validate_soft_return_borrows(sig) {
+            push_error(&mut errors, err);
+        }
         if impl_dispatch
             || method_dispatch.is_some_and(|args| !args.is_empty())
             || has_payload_dispatch(&sig.generics)
@@ -964,6 +970,113 @@ fn validate_shared_impl(impl_: &crate::Co3Impl, validate_unpacks: bool) -> Resul
         push_error(&mut errors, err);
     }
     errors.map_or(Ok(()), Err)
+}
+
+fn validate_soft_return_borrows(sig: &syn::Signature) -> Result<()> {
+    #[derive(Default)]
+    struct LifetimeCollector {
+        lifetimes: BTreeSet<String>,
+    }
+
+    impl Visit<'_> for LifetimeCollector {
+        fn visit_lifetime(&mut self, lifetime: &syn::Lifetime) {
+            self.lifetimes.insert(lifetime.ident.to_string());
+        }
+
+        fn visit_type_fn_ptr(&mut self, _: &syn::TypeFnPtr) {
+            // Lifetimes introduced by a bare function pointer are scoped to that pointer.
+        }
+    }
+
+    fn collect_lifetimes(ty: &syn::Type) -> BTreeSet<String> {
+        let mut collector = LifetimeCollector::default();
+        collector.visit_type(ty);
+        collector.lifetimes
+    }
+
+    let mut sig = sig.clone();
+    crate::ffi_fn::explicitize_signature_lifetimes(&mut sig);
+
+    let soft_lifetimes = sig
+        .inputs
+        .iter()
+        .filter_map(|input| match input {
+            syn::FnArg::Receiver(receiver) if soft_for_arg(&receiver.attrs) => {
+                Some(crate::utils::receiver_ty(receiver))
+            }
+            syn::FnArg::Typed(arg) if soft_for_arg(&arg.attrs) => Some((*arg.ty).clone()),
+            _ => None,
+        })
+        .flat_map(|ty| collect_lifetimes(&ty))
+        .collect::<BTreeSet<_>>();
+    if soft_lifetimes.is_empty() {
+        return Ok(());
+    }
+
+    let syn::ReturnType::Type(_, output) = &sig.output else {
+        return Ok(());
+    };
+    let output_lifetimes = collect_lifetimes(output);
+    if output_lifetimes.is_empty() {
+        return Ok(());
+    }
+
+    // An edge `'long -> 'short` means a value borrowed for `'long` can be shortened to
+    // `'short`. Include both lifetime-parameter bounds and explicit where predicates.
+    let mut outlives = BTreeMap::<String, BTreeSet<String>>::new();
+    for param in sig.generics.lifetimes() {
+        let source = param.lifetime.ident.to_string();
+        outlives
+            .entry(source)
+            .or_default()
+            .extend(param.bounds.iter().map(|bound| bound.ident.to_string()));
+    }
+    if let Some(where_clause) = &sig.generics.where_clause {
+        for predicate in &where_clause.predicates {
+            let syn::WherePredicate::Lifetime(predicate) = predicate else {
+                continue;
+            };
+            let source = predicate.lifetime.ident.to_string();
+            outlives
+                .entry(source)
+                .or_default()
+                .extend(predicate.bounds.iter().map(|bound| bound.ident.to_string()));
+        }
+    }
+
+    let can_shorten_to = |source: &str, target: &str| {
+        if source == "static" || source == target {
+            return true;
+        }
+        let mut pending = vec![source];
+        let mut visited = BTreeSet::new();
+        while let Some(current) = pending.pop() {
+            if !visited.insert(current) {
+                continue;
+            }
+            let Some(bounds) = outlives.get(current) else {
+                continue;
+            };
+            if bounds.contains(target) {
+                return true;
+            }
+            pending.extend(bounds.iter().map(String::as_str));
+        }
+        false
+    };
+
+    if soft_lifetimes.iter().any(|source| {
+        output_lifetimes
+            .iter()
+            .any(|target| can_shorten_to(source, target))
+    }) {
+        return Err(Error::new_spanned(
+            output,
+            "a return value cannot borrow from a `#[soft]` argument",
+        ));
+    }
+
+    Ok(())
 }
 
 fn validate_method_generic_declarations(items: &[crate::ForeignItem]) -> Result<()> {
