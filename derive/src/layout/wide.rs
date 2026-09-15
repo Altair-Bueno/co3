@@ -340,19 +340,23 @@ pub(super) fn gen_alloc_methods() -> TokenStream {
 
     quote! {
         #[inline(always)]
-        fn into_non_null(self: Box<Self>) -> core::ptr::NonNull<Self::Data> {
-            unsafe { core::ptr::NonNull::new_unchecked(Box::into_raw(self) as *mut Self::Data) }
+        fn into_non_null(self: co3::boxed::Box<Self>) -> core::ptr::NonNull<Self::Data> {
+            unsafe {
+                core::ptr::NonNull::new_unchecked(
+                    co3::boxed::Box::into_raw(self) as *mut Self::Data
+                )
+            }
         }
 
         #[inline(always)]
         unsafe fn from_non_null(
             data: core::ptr::NonNull<Self::Data>,
             metadata: Self::Metadata,
-        ) -> Box<Self> {
+        ) -> co3::boxed::Box<Self> {
             let ptr = unsafe {
                 <Self as co3::wide::Wide>::from_raw_parts_mut(data.as_ptr(), metadata)
             } as *mut Self;
-            unsafe { Box::from_raw(ptr) }
+            unsafe { co3::boxed::Box::from_raw(ptr) }
         }
     }
 }

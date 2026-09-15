@@ -109,6 +109,7 @@ Tagged dispatch exposes one ABI function for multiple concrete Rust instantiatio
 
 ### 3.4 Tag IDs
 
+- Static parameters, whether selected by a `where use<...>` predicate or not, **MUST NOT** inject a tag ID.
 - Every runtime tag-dispatched parameter **MUST** inject exactly one tag ID as an ABI function argument.
 - By default, tag-dispatched parameters synthesize tag IDs at the function's start, in declaration order.
 - In import declarations, a tag ID argument **MAY** be written explicitly in any position as `<dyn T>::ID`.
@@ -126,5 +127,5 @@ Every non-lifetime generic parameter **MUST** be constrained by a direct concret
 Symbol interpolation generates a unique function symbol for each combination of concrete parameter selections:
 
 - Only a function-level static generic parameter constrained in a `use` predicate group **CAN** be interpolated.
-- Every function-level static generic parameter constrained in a `use` predicate group **MUST** be interpolated.
-- If given, function symbol name **MUST** include every constrained static parameter identifier exactly once.
+- Every static generic parameter **MUST** be interpolated unless used exclusively within a runtime-dispatched type.
+- If given, function symbol name **MUST** interpolate every eligible static generic parameter exactly once.

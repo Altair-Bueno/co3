@@ -76,8 +76,7 @@ note: the implementor must specify the same requirement
 121 | |     #![unsafe(extern("C"))]
 122 | |
 123 | |     #![symbol_prefix = "kita"]
-124 | |
-125 | |     #[unsafe(id(u32))]
-126 | |     type Extern2<T>;
-    | |________________^
+...   |
+135 | | }
+    | |_^
     = note: this error originates in the macro `ffi` (in Nightly builds, run with -Z macro-backtrace for more info)

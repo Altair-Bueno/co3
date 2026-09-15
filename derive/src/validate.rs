@@ -208,6 +208,20 @@ pub(crate) fn fn_symbol_binding_params(
         [(&item.sig.generics, false)],
         [&item.dispatch_args],
         declared_types,
+        false,
+        |uses| visit_signature_positions(uses, &item.sig),
+    )
+}
+
+pub(crate) fn fn_static_binding_params(
+    item: &crate::Co3Fn,
+    declared_types: &BTreeSet<syn::Ident>,
+) -> Vec<syn::Ident> {
+    symbol_binding_params(
+        [(&item.sig.generics, false)],
+        [&item.dispatch_args],
+        declared_types,
+        true,
         |uses| visit_signature_positions(uses, &item.sig),
     )
 }
@@ -226,6 +240,29 @@ pub(crate) fn impl_method_symbol_binding_params(
         [(&impl_.generics, true), (&method.sig.generics, false)],
         [&impl_.dispatch_args, &dispatch],
         declared_types,
+        false,
+        |uses| {
+            visit_signature_positions(uses, &method.sig);
+            uses.visit_type(&impl_.self_ty);
+        },
+    )
+}
+
+pub(crate) fn impl_method_static_binding_params(
+    impl_: &crate::Co3Impl,
+    method: &syn::ImplItemFn,
+    declared_types: &BTreeSet<syn::Ident>,
+) -> Vec<syn::Ident> {
+    let dispatch = impl_
+        .method_dispatch_args
+        .get(&method.sig.ident)
+        .cloned()
+        .unwrap_or_default();
+    symbol_binding_params(
+        [(&impl_.generics, true), (&method.sig.generics, false)],
+        [&impl_.dispatch_args, &dispatch],
+        declared_types,
+        true,
         |uses| {
             visit_signature_positions(uses, &method.sig);
             uses.visit_type(&impl_.self_ty);
@@ -237,6 +274,7 @@ fn symbol_binding_params<'a>(
     generic_scopes: impl IntoIterator<Item = (&'a syn::Generics, bool)>,
     dispatch_scopes: impl IntoIterator<Item = &'a crate::DispatchGroups> + Clone,
     declared_types: &BTreeSet<syn::Ident>,
+    include_direct_erased: bool,
     visit_positions: impl Fn(&mut SymbolUseDetector<'_>),
 ) -> Vec<syn::Ident> {
     let generic_scopes = generic_scopes.into_iter().collect::<Vec<_>>();
@@ -281,7 +319,10 @@ fn symbol_binding_params<'a>(
                 };
                 visit_positions(&mut uses);
                 uses.visit_dispatch_targets(&generic_scopes, &dispatch_scopes);
-                (uses.exposed || (!*outer && !uses.seen)).then(|| ident.clone())
+                (uses.exposed
+                    || (include_direct_erased && direct_selection_is_erased)
+                    || (!*outer && !uses.seen))
+                    .then(|| ident.clone())
             })
         })
         .collect()

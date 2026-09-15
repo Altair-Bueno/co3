@@ -180,6 +180,34 @@ pub(crate) fn gen_definition_body(
     }}
 }
 
+pub(crate) fn gen_drop_definition_body(
+    sig: &syn::Signature,
+    failure_mode: FailureMode,
+) -> TokenStream {
+    debug_assert!(sig.inputs.iter().any(|input| matches!(
+        input,
+        syn::FnArg::Typed(arg) if item_fn_input_ident(&arg.pat) == "__co3_self"
+    )));
+
+    let decode_error = gen_decode_error(failure_mode);
+    let output = match failure_mode {
+        FailureMode::Panic => quote! { Ok::<_, ()>(co3::encode(())) },
+        FailureMode::Error => quote! { Ok(co3::encode(())) },
+    };
+
+    quote! {{
+        if __co3_self.is_null() {
+            #decode_error
+        }
+
+        unsafe {
+            core::mem::drop(co3::boxed::Box::from_raw(__co3_self));
+        }
+
+        #output
+    }}
+}
+
 pub(crate) fn gen_return_borrow_check(return_ty: &syn::Type, fn_by_val: bool) -> TokenStream {
     if fn_by_val {
         return quote! {};
@@ -673,7 +701,7 @@ pub fn gen_impl_definition(
         normalize_fn_signature(&mut item.sig, Some(self_ty));
 
         let fn_name = &item.sig.ident;
-        let callee = impl_method_callee(self_ty, trait_, fn_name, drop_impl);
+        let callee = impl_method_callee(self_ty, trait_, fn_name);
 
         merge_impl_generics_for_raw_decl(
             impl_.generics.clone(),
@@ -687,7 +715,11 @@ pub fn gen_impl_definition(
         let signature_drift_check =
             // NOTE: `Drop::drop` has a fixed signature enforced by `validate_drop_impl`
             (!drop_impl).then(|| gen_fn_signature_drift_check(item.sig.clone(), check_callee));
-        let body = gen_definition_body(item.sig, quote!(#callee), fn_by_val, failure_mode);
+        let body = if drop_impl {
+            gen_drop_definition_body(&item.sig, failure_mode)
+        } else {
+            gen_definition_body(item.sig, quote!(#callee), fn_by_val, failure_mode)
+        };
 
         let ffi_fn_body = quote! {{
             #signature_drift_check
@@ -715,15 +747,8 @@ pub(crate) fn impl_method_callee(
     self_ty: &Type,
     trait_: Option<&Path>,
     fn_name: &syn::Ident,
-    drop_impl: bool,
 ) -> syn::Expr {
-    if drop_impl {
-        parse_quote!(|__co3_self: &mut #self_ty| unsafe {
-            core::ptr::drop_in_place(__co3_self as *mut _)
-        })
-    } else {
-        qualified_method_callee(self_ty, trait_, fn_name)
-    }
+    qualified_method_callee(self_ty, trait_, fn_name)
 }
 
 pub(crate) fn merge_impl_generics_for_raw_decl(

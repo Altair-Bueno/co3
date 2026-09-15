@@ -7,7 +7,13 @@ use core::cell::{Cell, UnsafeCell};
 /// Calling [`Self::get`] does not grant permission to dereference the returned
 /// pointer. Callers must still uphold Rust's aliasing and any type-specific
 /// borrowing rules.
-pub trait InteriorMut {
+///
+/// # Safety
+///
+/// [`Self::get`] must return a properly aligned pointer to the storage within
+/// `self` that may legally be mutated through a shared reference. The pointer
+/// must remain valid for the lifetime of `self`.
+pub unsafe trait InteriorMut {
     /// The value accessible through this interior-mutable container.
     type Target: ?Sized;
 
@@ -15,7 +21,7 @@ pub trait InteriorMut {
     fn get(&self) -> *mut Self::Target;
 }
 
-impl<T: ?Sized> InteriorMut for UnsafeCell<T> {
+unsafe impl<T: ?Sized> InteriorMut for UnsafeCell<T> {
     type Target = T;
 
     #[inline]
@@ -24,7 +30,7 @@ impl<T: ?Sized> InteriorMut for UnsafeCell<T> {
     }
 }
 
-impl<T: ?Sized> InteriorMut for Cell<T> {
+unsafe impl<T: ?Sized> InteriorMut for Cell<T> {
     type Target = T;
 
     #[inline]
@@ -33,7 +39,7 @@ impl<T: ?Sized> InteriorMut for Cell<T> {
     }
 }
 
-impl<R: InteriorMut + ?Sized> InteriorMut for &R {
+unsafe impl<R: InteriorMut + ?Sized> InteriorMut for &R {
     type Target = R::Target;
 
     #[inline]
@@ -42,7 +48,7 @@ impl<R: InteriorMut + ?Sized> InteriorMut for &R {
     }
 }
 
-impl<R: InteriorMut + ?Sized> InteriorMut for &mut R {
+unsafe impl<R: InteriorMut + ?Sized> InteriorMut for &mut R {
     type Target = R::Target;
 
     #[inline]
@@ -52,7 +58,7 @@ impl<R: InteriorMut + ?Sized> InteriorMut for &mut R {
 }
 
 #[cfg(feature = "alloc")]
-impl<R: InteriorMut + ?Sized> InteriorMut for alloc::boxed::Box<R> {
+unsafe impl<R: InteriorMut + ?Sized> InteriorMut for alloc::boxed::Box<R> {
     type Target = R::Target;
 
     #[inline]
@@ -64,7 +70,6 @@ impl<R: InteriorMut + ?Sized> InteriorMut for alloc::boxed::Box<R> {
 #[cfg(test)]
 #[cfg(all(feature = "alloc", feature = "derive"))]
 mod tests {
-    use alloc::boxed::Box;
     use core::cell::UnsafeCell;
 
     use static_assertions::{assert_impl_all, assert_not_impl_any};

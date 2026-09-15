@@ -80,6 +80,40 @@ jobs:
     - name: Run Tests
       run: cargo test --workspace
 
+  miri:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+    - uses: actions/checkout@v7
+    - uses: dtolnay/rust-toolchain@nightly
+      with:
+        components: miri
+    - uses: Swatinem/rust-cache@v2
+      with:
+        key: miri
+
+    - name: Prepare Miri
+      run: cargo miri setup
+
+    - name: Run Miri with leak checking
+      run: |
+        cargo miri test --all-features --lib -- \
+          --skip tests::encode_stored_mut_box_allows_pointer_replacement
+        cargo miri test --all-features --test export
+
+    # Stable opaque types are zero-sized placeholders. Tree Borrows preserves the provenance of
+    # their provider allocations when references cross the FFI boundary; Stacked Borrows does not.
+    - name: Run ABI integration tests under Tree Borrows
+      env:
+        MIRIFLAGS: -Zmiri-tree-borrows
+      run: cargo miri test --all-features --test abi
+
+    - name: Run known leak case with leak checking disabled
+      env:
+        MIRIFLAGS: -Zmiri-ignore-leaks
+      run: cargo miri test --all-features --lib tests::encode_stored_mut_box_allows_pointer_replacement -- --exact
+
   wasm-test:
     runs-on: ubuntu-latest
     timeout-minutes: 10

@@ -1,5 +1,5 @@
 //! Owning C-ABI carrier types.
-use alloc::boxed::Box;
+pub use alloc::boxed::Box;
 use core::ptr::NonNull;
 
 use rust_spec::RustSpec;

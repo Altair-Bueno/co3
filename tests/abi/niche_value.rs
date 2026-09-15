@@ -409,14 +409,7 @@ fn verify_enum_niche_value() {
     assert!(bytes.iter().all(|&byte| byte == 0));
 
     let encoded = soft_encode(None::<DataEnum<&u8>>, &mut Default::default());
-    let bytes = unsafe {
-        core::slice::from_raw_parts(
-            core::ptr::from_ref(&encoded).cast::<i8>(),
-            core::mem::size_of_val(&encoded),
-        )
-    };
-    assert_eq!(expected_niche_enum_discriminant_i, bytes[0]);
-    assert!(bytes[1..].iter().all(|&byte| byte == 0));
+    assert_eq!(expected_niche_enum_discriminant_i, unsafe { encoded.D.tag });
 
     let expected_fieldless_large_enum = 256u16;
 

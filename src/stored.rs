@@ -956,6 +956,7 @@ disjoint_impls! {
             let ctype_slice = unsafe { R::CType::from_raw_parts(source.data(), source.len()) };
 
             if unsafe { !R::is_valid(ctype_slice) } {
+                drop(unsafe { source.into_rust() });
                 return None;
             }
 

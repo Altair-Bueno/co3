@@ -197,6 +197,41 @@ pub(crate) fn gen_impl_wrapper_body<const DISPATCHED: bool>(
         .any(|input| matches!(input, FnArg::Receiver(_)))
         .then(|| quote! { let __co3_self = self; });
 
+    gen_impl_wrapper_body_with_self_binding::<DISPATCHED>(
+        failure_mode,
+        item,
+        self_ty,
+        generics,
+        erase_declared_receiver,
+        self_binding,
+    )
+}
+
+pub(crate) fn gen_owned_drop_wrapper_body<const DISPATCHED: bool>(
+    failure_mode: FailureMode,
+    item: &syn::ImplItemFn,
+    self_ty: &syn::Type,
+    generics: &syn::Generics,
+    erase_declared_receiver: bool,
+) -> TokenStream {
+    gen_impl_wrapper_body_with_self_binding::<DISPATCHED>(
+        failure_mode,
+        item,
+        self_ty,
+        generics,
+        erase_declared_receiver,
+        Some(quote! { let __co3_self = self.0; }),
+    )
+}
+
+fn gen_impl_wrapper_body_with_self_binding<const DISPATCHED: bool>(
+    failure_mode: FailureMode,
+    item: &syn::ImplItemFn,
+    self_ty: &syn::Type,
+    generics: &syn::Generics,
+    erase_declared_receiver: bool,
+    self_binding: Option<TokenStream>,
+) -> TokenStream {
     let id_assignments = item.sig.inputs.iter().filter_map(|input| {
         let FnArg::Typed(syn::PatType { pat, ty, .. }) = input else {
             return None;

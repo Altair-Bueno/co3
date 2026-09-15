@@ -276,7 +276,7 @@ fn gen_interior_mut_impl(
     let for_dummy = (!is_type_parametrized(field_ty, generics)).then_some(quote! { for<'_dummy> });
 
     quote! {
-        impl #impl_generics co3::cell::InteriorMut for #name #ty_generics
+        unsafe impl #impl_generics co3::cell::InteriorMut for #name #ty_generics
         where
             #for_dummy #field_ty: co3::cell::InteriorMut,
             #predicates

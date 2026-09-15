@@ -215,8 +215,95 @@ impl DispatchGroups {
         Self { groups }
     }
 
-    fn static_bindings(&self, generics: &syn::Generics) -> Vec<(Self, Self)> {
-        fn is_static_param(generics: &syn::Generics, ident: &syn::Ident) -> bool {
+    fn bindings_for(&self, root: &syn::Ident) -> Self {
+        let all_params = self
+            .groups()
+            .flat_map(|(params, _)| params.iter().cloned())
+            .collect::<BTreeSet<_>>();
+        let mut selected = BTreeSet::from([root.clone()]);
+
+        loop {
+            let mut next = selected.clone();
+            for (params, targets) in self.groups() {
+                let selected_indices = params
+                    .iter()
+                    .enumerate()
+                    .filter_map(|(index, param)| selected.contains(param).then_some(index))
+                    .collect::<Vec<_>>();
+                if selected_indices.is_empty() {
+                    continue;
+                }
+                for candidate in &all_params {
+                    let detector = crate::utils::ParamUseDetector::new([candidate]);
+                    if targets.iter().any(|target| {
+                        selected_indices.iter().any(|index| {
+                            target
+                                .args
+                                .get(*index)
+                                .is_some_and(|arg| detector.generic_arg_mentions_param(arg))
+                        })
+                    }) {
+                        next.insert(candidate.clone());
+                    }
+                }
+            }
+            if next == selected {
+                break;
+            }
+            selected = next;
+        }
+
+        let mut bindings = Self::default();
+        for (params, targets) in self.groups() {
+            let indices = params
+                .iter()
+                .enumerate()
+                .filter_map(|(index, param)| selected.contains(param).then_some(index))
+                .collect::<Vec<_>>();
+            if indices.is_empty() {
+                continue;
+            }
+            let projected_params = indices
+                .iter()
+                .map(|index| params[*index].clone())
+                .collect::<Vec<_>>();
+            let projected_targets = targets
+                .iter()
+                .map(|target| {
+                    let mut target = target.clone();
+                    target.args = target
+                        .args
+                        .into_iter()
+                        .enumerate()
+                        .filter_map(|(index, arg)| indices.contains(&index).then_some(arg))
+                        .collect();
+                    target
+                })
+                .fold(Vec::new(), |mut unique, target| {
+                    if !unique.contains(&target) {
+                        unique.push(target);
+                    }
+                    unique
+                });
+            bindings.groups.insert(projected_params, projected_targets);
+        }
+        bindings
+    }
+
+    fn static_bindings(
+        &self,
+        generics: &syn::Generics,
+        static_binding_params: &BTreeSet<syn::Ident>,
+    ) -> Vec<(Self, Self)> {
+        fn is_static_param(
+            generics: &syn::Generics,
+            static_binding_params: &BTreeSet<syn::Ident>,
+            ident: &syn::Ident,
+        ) -> bool {
+            if !static_binding_params.contains(ident) {
+                return false;
+            }
+
             generics.params.iter().any(|param| match param {
                 syn::GenericParam::Type(param) => {
                     param.ident == *ident && !param.attrs.iter().any(crate::utils::is_type_erased)
@@ -246,7 +333,9 @@ impl DispatchGroups {
             let static_indices = params
                 .iter()
                 .enumerate()
-                .filter_map(|(idx, param)| is_static_param(generics, param).then_some(idx))
+                .filter_map(|(idx, param)| {
+                    is_static_param(generics, static_binding_params, param).then_some(idx)
+                })
                 .collect::<Vec<_>>();
             let dynamic_indices = (0..params.len())
                 .filter(|idx| !static_indices.contains(idx))
@@ -349,7 +438,7 @@ pub fn tag_derive(item: syn::DeriveInput) -> Result<TokenStream> {
 ///
 /// `ffi!` generates ABI-facing wrappers and conversions for statics, free functions, inherent and
 /// trait methods, and extern/opaque types. Value representations are checked for traps, including
-/// pointed-to values. **Ownership transfer is opt-in**.
+/// pointees. **Ownership transfer is opt-in**.
 ///
 /// **Except for statics, export declarations are completely interchangeable for imports**
 ///
@@ -610,9 +699,10 @@ pub fn tag_derive(item: syn::DeriveInput) -> Result<TokenStream> {
 /// # Soft references
 ///
 /// `#[soft]` opts a function argument into conversion through temporary backing storage. This enables
-/// references to non-robust values (e.g. `&mut bool`) or values that cannot be represented in place
-/// (e.g. `&(u32, u32)`). The caveat is that the referent is converted into a temporary C-compatible
-/// representation instead of reusing its original address. **Pointer identity is not preserved.**
+/// mutable references to non-robust values (e.g. `&mut bool`) or values that cannot be represented
+/// in place (e.g. `&(u32, u32)`). The caveat is that the referent is converted into a temporary
+/// C-compatible representation instead of reusing its original address.
+/// **Pointer identity is not preserved.**
 ///
 /// Changes made through mutable references are synchronized back to the original value after the
 /// call. A synchronization failure follows the configured failure mode.

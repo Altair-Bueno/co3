@@ -14,11 +14,11 @@ disjoint_impls! {
     /// # Safety
     ///
     /// - `Self` and `Self::CType` must be mutually transmutable (this includes [`Drop`] semantics)
-    /// - `Self::is_valid` must not return false positives, i.e. return `true` for trap representations
+    /// - `Self::is_valid` must not return false negatives, i.e. return `true` for trap representations
     pub unsafe trait CheckedTransmute: ExternC {
         /// Called when transmuting an [`ExternC::CType`] back into [`Self`] to check for trap representations.
         ///
-        /// This function must never return false positives, i.e. return `true` for a trap representation.
+        /// This function must never return false negatives, i.e. return `true` for a trap representation.
         ///
         /// # Safety
         ///

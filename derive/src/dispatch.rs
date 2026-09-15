@@ -10,10 +10,11 @@ use syn::{
 use crate::{
     Co3Fn, Co3Impl, DispatchGroups,
     ffi_fn::{
-        self, emit_extern_definition, gen_definition_body, gen_failure_panic,
-        gen_fn_signature_drift_check, gen_input_decode_stmts, gen_store_sync_stmts, gen_sync_check,
-        gen_sync_error, gen_unknown_tag_error, is_unpack_arg, item_fn_input_arg_type,
-        item_fn_output_type, merge_generics, normalize_fn_signature, strip_dispatch_params,
+        self, emit_extern_definition, gen_definition_body, gen_drop_definition_body,
+        gen_failure_panic, gen_fn_signature_drift_check, gen_input_decode_stmts,
+        gen_store_sync_stmts, gen_sync_check, gen_sync_error, gen_unknown_tag_error, is_unpack_arg,
+        item_fn_input_arg_type, item_fn_output_type, merge_generics, normalize_fn_signature,
+        strip_dispatch_params,
     },
     parse::FailureMode,
     utils::{
@@ -89,6 +90,7 @@ pub(crate) fn gen_dispatch_fn_export(
         item.sig,
         &item.attrs,
         &callee,
+        false,
     );
 
     quote! {
@@ -317,7 +319,7 @@ pub(crate) fn gen_dispatch_export(
         normalize_fn_signature(&mut item.sig, Some(self_ty));
 
         let trait_ = impl_.trait_.as_ref().map(|(path, _)| path);
-        let callee = ffi_fn::impl_method_callee(self_ty, trait_, &item.sig.ident, drop_impl);
+        let callee = ffi_fn::impl_method_callee(self_ty, trait_, &item.sig.ident);
 
         let definition = synthesize_dispatch_export_fn(
             abi,
@@ -329,6 +331,7 @@ pub(crate) fn gen_dispatch_export(
             item.sig,
             &item.attrs,
             &callee,
+            drop_impl,
         );
 
         quote! { #definition }
@@ -353,6 +356,7 @@ fn synthesize_dispatch_export_fn(
     mut sig: syn::Signature,
     attrs: &[syn::Attribute],
     callee: &syn::Expr,
+    drop_impl: bool,
 ) -> TokenStream {
     let layout_checks = gen_dispatch_erased_layout_checks(generics, &sig, dispatch_args);
 
@@ -390,6 +394,7 @@ fn synthesize_dispatch_export_fn(
         callee,
         dispatch_args,
         failure_mode,
+        drop_impl,
     );
 
     let decode_selector_stmts = gen_input_decode_stmts(&selector_inputs, failure_mode);
@@ -681,6 +686,7 @@ fn synthesize_dispatch_arms(
     callee: &syn::Expr,
     args: &DispatchGroups,
     failure_mode: FailureMode,
+    drop_impl: bool,
 ) -> Vec<TokenStream> {
     let derase_tag_stmts = gen_tag_retype_stmts(RetypeDirection::Derase, generics, receiver, sig);
 
@@ -720,8 +726,13 @@ fn synthesize_dispatch_arms(
         let mut check_callee = instantiate_dispatch_callee(callee, callee_type_params, selections);
 
         monomorphizer.visit_expr_mut(&mut check_callee);
-        let signature_check = gen_fn_signature_drift_check(arm_sig.clone(), check_callee.clone());
-        let arm_body = gen_definition_body(arm_sig, quote!(#check_callee), fn_by_val, failure_mode);
+        let signature_check = (!drop_impl)
+            .then(|| gen_fn_signature_drift_check(arm_sig.clone(), check_callee.clone()));
+        let arm_body = if drop_impl {
+            gen_drop_definition_body(&arm_sig, failure_mode)
+        } else {
+            gen_definition_body(arm_sig, quote!(#check_callee), fn_by_val, failure_mode)
+        };
         let mut arm_body: syn::Block = if let ReturnType::Type(_, output_ty) = &retype_sig.output {
             let mut concrete_ty = item_fn_output_type(output_ty);
             monomorphizer.visit_type_mut(&mut concrete_ty);

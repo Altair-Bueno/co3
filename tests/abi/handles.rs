@@ -4,6 +4,10 @@ trait Custom {
     fn inc(&mut self, by: u8);
 }
 
+trait CustomDynSelf {
+    fn set(&mut self, value: u8);
+}
+
 unsafe impl co3::tag::Tagged for Opaque<bool, u8> {
     const ID: u8 = 1;
 }
@@ -22,7 +26,7 @@ ffi! {
 
     impl<T, U> Drop for dyn Opaque<T, U>
     where
-        use<T, U> @ <bool, u8>,
+        use<T, U> @ (<bool, u8> | <u8, bool>),
     {
         #[symbol_name = "handles_drop"]
         fn drop(&mut self);
@@ -66,19 +70,52 @@ ffi! {
         #[symbol_name = "handles_inc"]
         fn inc(t_id: <dyn T>::ID, &mut self, by: u8);
     }
+
+    impl<T, U> CustomDynSelf for dyn Opaque<T, U>
+    where
+        use<T, U> @ (<bool, u8> | <u8, bool>),
+    {
+        #[symbol_name = "handles_set"]
+        fn set(&mut self, value: u8);
+    }
 }
 
 mod provider {
     use core::marker::PhantomData;
+    use std::sync::{
+        Mutex, MutexGuard,
+        atomic::{AtomicUsize, Ordering},
+    };
 
     use co3::ffi;
 
     use super::*;
 
+    static DROP_COUNT: AtomicUsize = AtomicUsize::new(0);
+    static DROP_TEST_LOCK: Mutex<()> = Mutex::new(());
+
+    pub(super) fn lock_drop_test() -> MutexGuard<'static, ()> {
+        DROP_TEST_LOCK.lock().unwrap()
+    }
+
     #[derive(Debug, Clone, Default, PartialEq, Eq)]
     struct Opaque<T, U> {
         value: u8,
         marker: PhantomData<(T, U)>,
+    }
+
+    impl<T, U> Drop for Opaque<T, U> {
+        fn drop(&mut self) {
+            DROP_COUNT.fetch_add(1, Ordering::Relaxed);
+        }
+    }
+
+    pub(super) fn reset_drop_count() {
+        DROP_COUNT.store(0, Ordering::Relaxed);
+    }
+
+    pub(super) fn drop_count() -> usize {
+        DROP_COUNT.load(Ordering::Relaxed)
     }
 
     unsafe impl co3::tag::Tagged for Opaque<bool, u8> {
@@ -103,6 +140,12 @@ mod provider {
         }
     }
 
+    impl<T, U> CustomDynSelf for Opaque<T, U> {
+        fn set(&mut self, value: u8) {
+            self.value = value;
+        }
+    }
+
     ffi! {
         #![unsafe(export("C"))]
 
@@ -111,7 +154,7 @@ mod provider {
 
         impl<T, U> Drop for dyn Opaque<T, U>
         where
-            use<T, U> @ (<bool, u8>),
+            use<T, U> @ (<bool, u8> | <u8, bool>),
         {
             #[symbol_name = "handles_drop"]
             fn drop(&mut self);
@@ -155,21 +198,43 @@ mod provider {
             #[symbol_name = "handles_inc"]
             fn inc(&mut self, by: u8);
         }
+
+        impl<T, U> CustomDynSelf for dyn Opaque<T, U>
+        where
+            use<T, U> @ (<bool, u8> | <u8, bool>),
+        {
+            #[symbol_name = "handles_set"]
+            fn set(&mut self, value: u8);
+        }
     }
 }
 
 #[test]
 fn erased_handle_dispatch() {
+    let _lock = provider::lock_drop_test();
+    provider::reset_drop_count();
+    {
+        let mut handle: OwnedOpaque<bool, u8> = Default::default();
+        let cloned = Clone::clone(&handle);
+        assert!(PartialEq::eq(&*handle, &*cloned));
+
+        let other: OwnedOpaque<u8, bool> = Default::default();
+        assert!(PartialEq::<Opaque<u8, bool>>::eq(&*handle, &*other));
+
+        Custom::inc(&mut *handle, 2);
+        assert!(!PartialEq::<Opaque<u8, bool>>::eq(&*handle, &*other));
+        assert!(!PartialEq::eq(&*handle, &*cloned));
+    }
+    assert_eq!(provider::drop_count(), 3);
+}
+
+#[test]
+fn static_parameters_behind_dyn_self_do_not_bind_symbols() {
+    let _lock = provider::lock_drop_test();
     let mut handle: OwnedOpaque<bool, u8> = Default::default();
-    let cloned = Clone::clone(&handle);
-    assert!(PartialEq::eq(&*handle, &*cloned));
-
     let other: OwnedOpaque<u8, bool> = Default::default();
-    assert!(PartialEq::<Opaque<u8, bool>>::eq(&*handle, &*other));
 
-    Custom::inc(&mut *handle, 2);
+    CustomDynSelf::set(&mut *handle, 7);
+
     assert!(!PartialEq::<Opaque<u8, bool>>::eq(&*handle, &*other));
-    assert!(!PartialEq::eq(&*handle, &*cloned));
-
-    core::mem::forget(other);
 }
