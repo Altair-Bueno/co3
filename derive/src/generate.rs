@@ -1137,6 +1137,7 @@ pub(crate) fn expand_export_decls(
             ty,
             id,
             id_value,
+            covariant_lifetimes: _,
             self_impls,
             drop,
         }) => {
@@ -1903,6 +1904,7 @@ pub(crate) fn expand_extern_decls(
             ty,
             id,
             id_value,
+            covariant_lifetimes,
             self_impls,
             drop,
         }) => {
@@ -1915,8 +1917,11 @@ pub(crate) fn expand_extern_decls(
                 &abi,
                 features,
                 attrs,
-                id.as_deref(),
-                id_value.as_deref(),
+                OpaqueTypeAttrs {
+                    id: id.as_deref(),
+                    id_value: id_value.as_deref(),
+                    covariant_lifetimes: &covariant_lifetimes,
+                },
                 drop.as_ref()
                     .is_some_and(|item| trait_object_single_trait_bound(&item.self_ty).is_some()),
                 ty,
@@ -2384,15 +2389,25 @@ fn gen_drop_impl_check(item: &syn::ForeignItemType, impl_: &ItemImpl) -> TokenSt
     }}
 }
 
+struct OpaqueTypeAttrs<'a> {
+    id: Option<&'a syn::Type>,
+    id_value: Option<&'a syn::Expr>,
+    covariant_lifetimes: &'a [syn::Lifetime],
+}
+
 fn wrap_extern_type_decl(
     abi: &syn::Abi,
     features: MacroFeatures,
     attrs: &[syn::Attribute],
-    id: Option<&syn::Type>,
-    id_value: Option<&syn::Expr>,
+    type_attrs: OpaqueTypeAttrs<'_>,
     has_dyn_self_drop: bool,
     mut type_: syn::ForeignItemType,
 ) -> TokenStream {
+    let OpaqueTypeAttrs {
+        id,
+        id_value,
+        covariant_lifetimes,
+    } = type_attrs;
     // A `dyn Self` drop dispatches through the opaque type's `Tagged` implementation.
     // implementation, so generic opaque types need the bound on their
     // declaration. Other drops, including the generated Owned wrapper drop,
@@ -2434,10 +2449,18 @@ fn wrap_extern_type_decl(
     let phantom_data_fields = generics.params.iter().filter_map(|param| match param {
         Lifetime(param) => {
             let lifetime = &param.lifetime;
+            let pointer = if covariant_lifetimes
+                .iter()
+                .any(|covariant| covariant.ident == lifetime.ident)
+            {
+                quote! { *const &#lifetime () }
+            } else {
+                quote! { *mut &#lifetime () }
+            };
             Some(quote! {
                 (
                     core::marker::PhantomData<&#lifetime ()>,
-                    core::marker::PhantomData<*const &#lifetime ()>,
+                    core::marker::PhantomData<#pointer>,
                 )
             })
         }

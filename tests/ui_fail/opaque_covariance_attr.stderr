@@ -1,0 +1,17 @@
+error: covariant lifetime is not declared on this opaque type
+ --> tests/ui_fail/opaque_covariance_attr.rs:6:24
+  |
+6 |     #[unsafe(covariant('missing))]
+  |                        ^^^^^^^^
+
+error: duplicate covariant lifetime
+  --> tests/ui_fail/opaque_covariance_attr.rs:13:28
+   |
+13 |     #[unsafe(covariant('a, 'a))]
+   |                            ^^
+
+error: expected `#[unsafe(covariant('a, ...))]`
+  --> tests/ui_fail/opaque_covariance_attr.rs:20:5
+   |
+20 |     #[unsafe(covariant(T))]
+   |     ^^^^^^^^^^^^^^^^^^^^^^^

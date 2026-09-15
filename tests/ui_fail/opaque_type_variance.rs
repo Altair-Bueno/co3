@@ -19,4 +19,11 @@ fn shorten<'short>(slot: &'short Slot<&'static u8>, _: &'short u8) -> &'short Sl
     slot
 }
 
+fn shorten_lifetime<'short>(
+    value: &'short Borrowed<'static>,
+    _: &'short u8,
+) -> &'short Borrowed<'short> {
+    value
+}
+
 fn main() {}

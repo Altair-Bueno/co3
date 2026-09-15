@@ -102,8 +102,10 @@ jobs:
           --skip tests::encode_stored_mut_box_allows_pointer_replacement
         cargo miri test --all-features --test export
 
-    # Stable opaque types are zero-sized placeholders. Tree Borrows preserves the provenance of
-    # their provider allocations when references cross the FFI boundary; Stacked Borrows does not.
+    # Stable opaque types use ZST stand-ins. These tests form Rust references to those stand-ins
+    # before passing their pointers back to the provider. Stacked Borrows rejects the resulting
+    # zero-byte-to-full-allocation access; Tree Borrows, which has no subobject provenance, accepts
+    # it. Rust's final aliasing rules for this pattern are not yet settled.
     - name: Run ABI integration tests under Tree Borrows
       env:
         MIRIFLAGS: -Zmiri-tree-borrows

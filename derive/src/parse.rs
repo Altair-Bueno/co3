@@ -21,7 +21,8 @@ use crate::{
 const FN_BODIES_NOT_ALLOWED_MSG: &str = "fn bodies are not allowed in declarations";
 const ITEM_NOT_SUPPORTED_MSG: &str = "item not supported";
 const EXPECTED_FEATURE_NAME_MSG: &str = "Expected feature name in `#![feature(...)]`";
-const EXPECTED_TAG_ID_ATTR_MSG: &str = "expected `#[unsafe(id(repr))]`";
+const EXPECTED_UNSAFE_TYPE_ATTR_MSG: &str =
+    "expected `#[unsafe(id(repr))]` or `#[unsafe(covariant('a, ...))]`";
 
 pub(crate) struct ParsedInput {
     pub(crate) kind: DeclKind,
@@ -118,11 +119,13 @@ impl ParsedItem {
     pub(crate) fn normalize(self) -> Result<ForeignItem> {
         match self {
             Self::Type(mut ty) => {
-                let (id, id_value) = parse_tag_id_attr(&mut ty.attrs)?;
+                let (id, id_value, covariant_lifetimes) =
+                    parse_opaque_type_attrs(&mut ty.attrs, &ty.generics)?;
                 Ok(ForeignItem::Type(crate::ForeignItemType {
                     ty,
                     id: id.map(Box::new),
                     id_value: id_value.map(Box::new),
+                    covariant_lifetimes,
                     drop: None,
                     self_impls: Vec::new(),
                 }))
@@ -877,36 +880,80 @@ fn parse_dispatch_group(
     errors.map_or(Ok(group), Err)
 }
 
-pub(crate) fn parse_tag_id_attr(
+pub(crate) fn parse_opaque_type_attrs(
     attrs: &mut Vec<syn::Attribute>,
-) -> Result<(Option<syn::Type>, Option<syn::Expr>)> {
+    generics: &syn::Generics,
+) -> Result<(Option<syn::Type>, Option<syn::Expr>, Vec<syn::Lifetime>)> {
     let mut kept = Vec::with_capacity(attrs.len());
 
     let mut id_ty = None;
     let mut id_value = None;
+    let mut covariant_lifetimes = Vec::new();
     for attr in attrs.drain(..) {
-        if !attr.path().is_ident("id") && !attr.path().is_ident("unsafe") {
+        if !attr.path().is_ident("id")
+            && !attr.path().is_ident("covariant")
+            && !attr.path().is_ident("unsafe")
+        {
             kept.push(attr);
             continue;
         }
 
         let syn::Meta::List(list) = &attr.meta else {
-            return Err(syn::Error::new_spanned(attr, EXPECTED_TAG_ID_ATTR_MSG));
+            return Err(syn::Error::new_spanned(attr, EXPECTED_UNSAFE_TYPE_ATTR_MSG));
         };
 
         let list = if list.path.is_ident("unsafe") {
             let nested = syn::parse2::<syn::Meta>(list.tokens.clone())
-                .map_err(|_| syn::Error::new_spanned(&attr, EXPECTED_TAG_ID_ATTR_MSG))?;
+                .map_err(|_| syn::Error::new_spanned(&attr, EXPECTED_UNSAFE_TYPE_ATTR_MSG))?;
             let syn::Meta::List(nested) = nested else {
-                return Err(syn::Error::new_spanned(attr, EXPECTED_TAG_ID_ATTR_MSG));
+                return Err(syn::Error::new_spanned(attr, EXPECTED_UNSAFE_TYPE_ATTR_MSG));
             };
-            if !nested.path.is_ident("id") {
-                return Err(syn::Error::new_spanned(attr, EXPECTED_TAG_ID_ATTR_MSG));
-            }
             nested
         } else {
-            return Err(syn::Error::new_spanned(attr, EXPECTED_TAG_ID_ATTR_MSG));
+            return Err(syn::Error::new_spanned(attr, EXPECTED_UNSAFE_TYPE_ATTR_MSG));
         };
+
+        if list.path.is_ident("covariant") {
+            let lifetimes = list
+                .parse_args_with(
+                    syn::punctuated::Punctuated::<syn::Lifetime, syn::Token![,]>::parse_terminated,
+                )
+                .map_err(|_| {
+                    syn::Error::new_spanned(&attr, "expected `#[unsafe(covariant('a, ...))]`")
+                })?;
+            if lifetimes.is_empty() {
+                return Err(syn::Error::new_spanned(
+                    attr,
+                    "covariant lifetime list must not be empty",
+                ));
+            }
+            for lifetime in lifetimes {
+                if !generics
+                    .lifetimes()
+                    .any(|param| param.lifetime.ident == lifetime.ident)
+                {
+                    return Err(syn::Error::new_spanned(
+                        lifetime,
+                        "covariant lifetime is not declared on this opaque type",
+                    ));
+                }
+                if covariant_lifetimes
+                    .iter()
+                    .any(|existing: &syn::Lifetime| existing.ident == lifetime.ident)
+                {
+                    return Err(syn::Error::new_spanned(
+                        lifetime,
+                        "duplicate covariant lifetime",
+                    ));
+                }
+                covariant_lifetimes.push(lifetime);
+            }
+            continue;
+        }
+
+        if !list.path.is_ident("id") {
+            return Err(syn::Error::new_spanned(attr, EXPECTED_UNSAFE_TYPE_ATTR_MSG));
+        }
 
         let (ty, value) = list
             .parse_args_with(|input: syn::parse::ParseStream<'_>| {
@@ -919,7 +966,7 @@ pub(crate) fn parse_tag_id_attr(
                 };
                 Ok::<_, syn::Error>((ty, value))
             })
-            .map_err(|_| syn::Error::new_spanned(&attr, EXPECTED_TAG_ID_ATTR_MSG))?;
+            .map_err(|_| syn::Error::new_spanned(&attr, EXPECTED_UNSAFE_TYPE_ATTR_MSG))?;
 
         if id_ty.replace(ty).is_some() {
             return Err(syn::Error::new_spanned(
@@ -931,7 +978,7 @@ pub(crate) fn parse_tag_id_attr(
     }
 
     *attrs = kept;
-    Ok((id_ty, id_value))
+    Ok((id_ty, id_value, covariant_lifetimes))
 }
 
 fn normalize_extern_attr_tokens(tokens: TokenStream) -> TokenStream {

@@ -76,6 +76,7 @@ struct ForeignItemType {
     ty: syn::ForeignItemType,
     id: Option<Box<syn::Type>>,
     id_value: Option<Box<Expr>>,
+    covariant_lifetimes: Vec<syn::Lifetime>,
     drop: Option<Co3Impl>,
 
     self_impls: Vec<Co3Impl>,
@@ -517,6 +518,25 @@ pub fn tag_derive(item: syn::DeriveInput) -> Result<TokenStream> {
 ///     fn increment(value: &mut CounterHandle);
 /// }
 /// ```
+///
+/// # Opaque type variance
+///
+/// Lifetime and type parameters of declared opaque types are invariant by default. A lifetime
+/// parameter can explicitly be declared covariant with `#[unsafe(covariant(...))]`:
+///
+/// ```rust,ignore
+/// use co3::ffi;
+///
+/// ffi! {
+///     #![unsafe(extern("C"))]
+///
+///     #[unsafe(covariant('parent))]
+///     type Child<'parent, T>;
+/// }
+/// ```
+///
+/// The attribute is unsafe because it asserts that the provider's real type is covariant over every
+/// listed lifetime. Type parameters cannot be listed and remain invariant.
 ///
 /// # Naming convention
 ///
