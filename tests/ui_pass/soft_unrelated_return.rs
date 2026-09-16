@@ -3,8 +3,8 @@ use co3::ffi;
 ffi! {
     #![unsafe(extern("C"))]
 
-    fn unrelated<'soft, 'output>(
-        #[soft] value: &'soft mut bool,
+    fn unrelated<'output>(
+        #[soft] value: &mut bool,
         output: &'output bool,
     ) -> &'output bool;
 }

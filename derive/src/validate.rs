@@ -894,7 +894,7 @@ fn validate_shared_fn(item: &crate::Co3Fn, validate_unpacks: bool) -> Result<()>
     if let Err(err) = validate_signature_shape(&item.sig) {
         push_error(&mut errors, err);
     }
-    if let Err(err) = validate_soft_return_borrows(&item.sig) {
+    if let Err(err) = validate_soft_lifetimes(&item.sig) {
         push_error(&mut errors, err);
     }
     if !item.dispatch_args.is_empty() || has_payload_dispatch(&item.sig.generics) {
@@ -943,7 +943,7 @@ fn validate_shared_impl(impl_: &crate::Co3Impl, validate_unpacks: bool) -> Resul
         if let Err(err) = validate_signature_shape(sig) {
             push_error(&mut errors, err);
         }
-        if let Err(err) = validate_soft_return_borrows(sig) {
+        if let Err(err) = validate_soft_lifetimes(sig) {
             push_error(&mut errors, err);
         }
         if impl_dispatch
@@ -972,26 +972,52 @@ fn validate_shared_impl(impl_: &crate::Co3Impl, validate_unpacks: bool) -> Resul
     errors.map_or(Ok(()), Err)
 }
 
-fn validate_soft_return_borrows(sig: &syn::Signature) -> Result<()> {
+fn validate_soft_lifetimes(sig: &syn::Signature) -> Result<()> {
     #[derive(Default)]
     struct LifetimeCollector {
-        lifetimes: BTreeSet<String>,
+        lifetimes: Vec<syn::Lifetime>,
     }
 
     impl Visit<'_> for LifetimeCollector {
         fn visit_lifetime(&mut self, lifetime: &syn::Lifetime) {
-            self.lifetimes.insert(lifetime.ident.to_string());
-        }
-
-        fn visit_type_fn_ptr(&mut self, _: &syn::TypeFnPtr) {
-            // Lifetimes introduced by a bare function pointer are scoped to that pointer.
+            self.lifetimes.push(lifetime.clone());
         }
     }
 
-    fn collect_lifetimes(ty: &syn::Type) -> BTreeSet<String> {
+    fn input_type(input: &syn::FnArg) -> syn::Type {
+        match input {
+            syn::FnArg::Receiver(receiver) => crate::utils::receiver_ty(receiver),
+            syn::FnArg::Typed(arg) => (*arg.ty).clone(),
+        }
+    }
+
+    fn collect_lifetimes(ty: &syn::Type) -> Vec<syn::Lifetime> {
         let mut collector = LifetimeCollector::default();
         collector.visit_type(ty);
         collector.lifetimes
+    }
+
+    let mut explicit_lifetime_errors = None;
+    for input in &sig.inputs {
+        let attrs = match input {
+            syn::FnArg::Receiver(receiver) => &receiver.attrs,
+            syn::FnArg::Typed(arg) => &arg.attrs,
+        };
+        if !soft_for_arg(attrs) {
+            continue;
+        }
+
+        let ty = input_type(input);
+        for lifetime in collect_lifetimes(&ty) {
+            let message = "explicit lifetimes are not allowed in a `#[soft]` argument";
+            push_error(
+                &mut explicit_lifetime_errors,
+                Error::new_spanned(lifetime, message),
+            );
+        }
+    }
+    if let Some(errors) = explicit_lifetime_errors {
+        return Err(errors);
     }
 
     let mut sig = sig.clone();
@@ -1000,83 +1026,124 @@ fn validate_soft_return_borrows(sig: &syn::Signature) -> Result<()> {
     let soft_lifetimes = sig
         .inputs
         .iter()
-        .filter_map(|input| match input {
-            syn::FnArg::Receiver(receiver) if soft_for_arg(&receiver.attrs) => {
-                Some(crate::utils::receiver_ty(receiver))
-            }
-            syn::FnArg::Typed(arg) if soft_for_arg(&arg.attrs) => Some((*arg.ty).clone()),
-            _ => None,
+        .filter_map(|input| {
+            let attrs = match input {
+                syn::FnArg::Receiver(receiver) => &receiver.attrs,
+                syn::FnArg::Typed(arg) => &arg.attrs,
+            };
+            soft_for_arg(attrs).then(|| input_type(input))
         })
         .flat_map(|ty| collect_lifetimes(&ty))
+        .map(|lifetime| lifetime.ident.to_string())
         .collect::<BTreeSet<_>>();
-    if soft_lifetimes.is_empty() {
-        return Ok(());
-    }
 
-    let syn::ReturnType::Type(_, output) = &sig.output else {
-        return Ok(());
-    };
-    let output_lifetimes = collect_lifetimes(output);
-    if output_lifetimes.is_empty() {
-        return Ok(());
-    }
-
-    // An edge `'long -> 'short` means a value borrowed for `'long` can be shortened to
-    // `'short`. Include both lifetime-parameter bounds and explicit where predicates.
-    let mut outlives = BTreeMap::<String, BTreeSet<String>>::new();
-    for param in sig.generics.lifetimes() {
-        let source = param.lifetime.ident.to_string();
-        outlives
-            .entry(source)
-            .or_default()
-            .extend(param.bounds.iter().map(|bound| bound.ident.to_string()));
-    }
-    if let Some(where_clause) = &sig.generics.where_clause {
-        for predicate in &where_clause.predicates {
-            let syn::WherePredicate::Lifetime(predicate) = predicate else {
-                continue;
-            };
-            let source = predicate.lifetime.ident.to_string();
-            outlives
-                .entry(source)
-                .or_default()
-                .extend(predicate.bounds.iter().map(|bound| bound.ident.to_string()));
+    let mut errors = None;
+    for input in &sig.inputs {
+        let attrs = match input {
+            syn::FnArg::Receiver(receiver) => &receiver.attrs,
+            syn::FnArg::Typed(arg) => &arg.attrs,
+        };
+        if soft_for_arg(attrs) {
+            continue;
         }
-    }
 
-    let can_shorten_to = |source: &str, target: &str| {
-        if source == "static" || source == target {
-            return true;
-        }
-        let mut pending = vec![source];
-        let mut visited = BTreeSet::new();
-        while let Some(current) = pending.pop() {
-            if !visited.insert(current) {
-                continue;
-            }
-            let Some(bounds) = outlives.get(current) else {
-                continue;
-            };
-            if bounds.contains(target) {
-                return true;
-            }
-            pending.extend(bounds.iter().map(String::as_str));
-        }
-        false
-    };
-
-    if soft_lifetimes.iter().any(|source| {
-        output_lifetimes
+        let ty = input_type(input);
+        if collect_lifetimes(&ty)
             .iter()
-            .any(|target| can_shorten_to(source, target))
-    }) {
-        return Err(Error::new_spanned(
-            output,
-            "a return value cannot borrow from a `#[soft]` argument",
-        ));
+            .any(|lifetime| soft_lifetimes.contains(&lifetime.ident.to_string()))
+        {
+            push_error(
+                &mut errors,
+                Error::new_spanned(
+                    ty,
+                    "the lifetime of a `#[soft]` argument cannot be connected to another argument",
+                ),
+            );
+        }
     }
 
-    Ok(())
+    if let syn::ReturnType::Type(_, output) = &sig.output
+        && collect_lifetimes(output)
+            .iter()
+            .any(|lifetime| soft_lifetimes.contains(&lifetime.ident.to_string()))
+    {
+        push_error(
+            &mut errors,
+            Error::new_spanned(
+                output,
+                "a return value cannot borrow from a `#[soft]` argument",
+            ),
+        );
+    }
+
+    #[derive(Default)]
+    struct LifetimeConnectionCollector {
+        connections: BTreeMap<String, BTreeSet<String>>,
+        parents: Vec<String>,
+    }
+
+    impl LifetimeConnectionCollector {
+        fn connect_to_parents(&mut self, lifetime: &syn::Lifetime) {
+            let lifetime = lifetime.ident.to_string();
+            for parent in &self.parents {
+                self.connections
+                    .entry(lifetime.clone())
+                    .or_default()
+                    .insert(parent.clone());
+                self.connections
+                    .entry(parent.clone())
+                    .or_default()
+                    .insert(lifetime.clone());
+            }
+        }
+    }
+
+    impl Visit<'_> for LifetimeConnectionCollector {
+        fn visit_type_reference(&mut self, reference: &syn::TypeReference) {
+            let Some(lifetime) = &reference.lifetime else {
+                self.visit_type(&reference.elem);
+                return;
+            };
+
+            self.connect_to_parents(lifetime);
+            self.parents.push(lifetime.ident.to_string());
+            self.visit_type(&reference.elem);
+            self.parents.pop();
+        }
+
+        fn visit_lifetime(&mut self, lifetime: &syn::Lifetime) {
+            self.connect_to_parents(lifetime);
+        }
+    }
+
+    let mut lifetime_connection_collector = LifetimeConnectionCollector::default();
+    for input in &sig.inputs {
+        let attrs = match input {
+            syn::FnArg::Receiver(receiver) => &receiver.attrs,
+            syn::FnArg::Typed(arg) => &arg.attrs,
+        };
+        if soft_for_arg(attrs) {
+            lifetime_connection_collector.visit_type(&input_type(input));
+        }
+    }
+
+    let connected_soft_lifetime = soft_lifetimes.iter().any(|soft_lifetime| {
+        lifetime_connection_collector
+            .connections
+            .get(soft_lifetime)
+            .is_some_and(|connected| connected.iter().any(|lifetime| lifetime != soft_lifetime))
+    });
+    if connected_soft_lifetime {
+        push_error(
+            &mut errors,
+            Error::new_spanned(
+                &sig.inputs,
+                "the lifetime of a `#[soft]` argument cannot be connected to another lifetime",
+            ),
+        );
+    }
+
+    errors.map_or(Ok(()), Err)
 }
 
 fn validate_method_generic_declarations(items: &[crate::ForeignItem]) -> Result<()> {
@@ -2103,6 +2170,60 @@ mod tests {
         let sig: syn::Signature = syn::parse_quote!(fn dispatch(value: u8));
 
         validate_signature_shape(&sig).unwrap();
+    }
+
+    #[test]
+    fn rejects_explicit_lifetimes_in_soft_arguments() {
+        for sig in [
+            syn::parse_quote!(fn soft<'a>(#[soft] value: &'a mut bool)),
+            syn::parse_quote!(fn soft(#[soft] value: &'static mut bool)),
+            syn::parse_quote!(fn soft(#[soft] value: &'_ mut bool)),
+            syn::parse_quote!(fn soft<'a>(#[soft] value: Container<'a>)),
+        ] {
+            let err = validate_soft_lifetimes(&sig).unwrap_err();
+            assert!(
+                err.to_string()
+                    .contains("explicit lifetimes are not allowed in a `#[soft]` argument")
+            );
+        }
+    }
+
+    #[test]
+    fn rejects_implicitly_connected_soft_lifetime() {
+        let sig: syn::Signature = syn::parse_quote!(fn soft(#[soft] value: &mut bool) -> &bool);
+
+        let err = validate_soft_lifetimes(&sig).unwrap_err();
+        assert!(
+            err.to_string()
+                .contains("a return value cannot borrow from a `#[soft]` argument")
+        );
+    }
+
+    #[test]
+    fn rejects_nested_elided_soft_lifetimes() {
+        let sig: syn::Signature = syn::parse_quote!(fn soft(#[soft] value: &&bool));
+
+        let err = validate_soft_lifetimes(&sig).unwrap_err();
+        assert!(
+            err.to_string()
+                .contains("the lifetime of a `#[soft]` argument cannot be connected")
+        );
+    }
+
+    #[test]
+    fn accepts_independent_elided_soft_lifetimes() {
+        let sig: syn::Signature = syn::parse_quote!(fn soft(#[soft] value: (&bool, &bool)));
+
+        validate_soft_lifetimes(&sig).unwrap();
+    }
+
+    #[test]
+    fn accepts_isolated_soft_lifetime() {
+        let sig: syn::Signature = syn::parse_quote!(
+            fn soft<'output>(#[soft] value: &mut bool, output: &'output bool) -> &'output bool
+        );
+
+        validate_soft_lifetimes(&sig).unwrap();
     }
 
     #[test]

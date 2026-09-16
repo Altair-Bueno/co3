@@ -54,6 +54,7 @@ Any conversion written manually against traits of this crate **DOES NOT** consti
 `ffi!` is a fn-like macro that enables writing export/extern declarations of types, statics, methods and impl blocks.
 It must always start with a declaration of direction and ABI (e.g. `#![unsafe(export("system"))]`/`#![unsafe(extern("system"))]`).
 
+- `cfg_attr` is fully supported in all attribute positions inside the `ffi` macro.
 - `#![unsafe(export("ABI"))]` creates export declarations with the given ABI. The declared items must exist and be resolvable.
 - `#![unsafe(extern("ABI"))]` creates import declarations with the given ABI. The macro is said to contain extern declarations.
 - `#![feature(extern_types)]` opts into the corresponding unstable macro codegen path; no other feature names are supported.
@@ -69,8 +70,7 @@ It must always start with a declaration of direction and ABI (e.g. `#![unsafe(ex
 - `#[unsafe(id(TagTy = val))]` on a type declaration defines the tag tag that identifies the item when it is tag-dispatched.
 - `where use<T, ...> @ (<Type1> | ...)` opts into a kind of polymorphic dispatch where concrete types are known at compile time but erased at runtime.
 - `#[unpack(_, _)]` on an imported function argument unpacks the compound type into two funcion arguments (facilitates useing `&[T]` in legacy APIs).
-- `cfg_attr` is fully supported in all attribute positions inside the `ffi` macro.
-- Although not declared `unsafe`, using `ffi` macro always carries a risk of UB.
+- Using the `ffi` macro always carries a risk of UB as it relies on the correct user-provided argument types and lifetimes in the ABI.
 
 ### 2.2. `#[derive(ReprC)]`
 

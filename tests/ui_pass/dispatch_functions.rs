@@ -172,7 +172,7 @@ ffi! {
         use<T> @ (<First> | <Second>),
         use<U> @ (<First> | <Second>);
 
-    pub fn soft_dispatch<'a, dyn(u8) T = u8>(#[soft] value: &'a (T, T)) -> u8
+    pub fn soft_dispatch<dyn(u8) T = u8>(#[soft] value: &(T, T)) -> u8
     where
         (T, T): ByteValue,
         use<T> @ (<First> | <Second>);
