@@ -73,6 +73,8 @@ jobs:
     steps:
     - uses: actions/checkout@v7
     - uses: dtolnay/rust-toolchain@stable
+      with:
+        components: rust-src
     - uses: Swatinem/rust-cache@v2
       with:
         key: test-${{ matrix.os }}
@@ -133,4 +135,5 @@ jobs:
           echo "$HOME/.wasmtime/bin" >> $GITHUB_PATH
 
       - name: Run Tests (WASIp1)
-        run: cargo test --workspace --target wasm32-wasip1
+        # `trybuild` invokes Cargo for each fixture, which WASI cannot support.
+        run: cargo test --workspace --target wasm32-wasip1 --lib --test abi --test export --test import
