@@ -3,7 +3,7 @@ use co3::ffi;
 ffi! {
     #![unsafe(extern("C"))]
 
-    #[unsafe(id(u8 = 1))]
+    #[tag(u8, unsafe(1))]
     type Resource<T>;
 
     impl<T> Drop for Resource<T> {

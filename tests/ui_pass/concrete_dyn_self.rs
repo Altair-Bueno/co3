@@ -24,7 +24,7 @@ mod export {
     ffi! {
         #![unsafe(export("C"))]
 
-        #[unsafe(id(u8 = 1))]
+        #[tag(u8, unsafe(1))]
         type Concrete;
 
         impl Value for dyn Concrete {
@@ -45,17 +45,17 @@ mod import {
     ffi! {
         #![unsafe(extern("C"))]
 
-        #[unsafe(id(u8 = 1))]
+        #[tag(u8, unsafe(1))]
         type Concrete;
 
         impl Value for dyn Concrete {
             #[symbol_name = "concrete_dyn_self_value"]
-            fn value(tag_id: <dyn Self>::ID, &self) -> u8;
+            fn value(tag_id: <dyn Self>::TAG, &self) -> u8;
         }
 
         impl dyn Concrete {
             #[symbol_name = "concrete_dyn_self_own_value"]
-            fn own_value(tag_id: <dyn Concrete>::ID, &mut self) -> u8;
+            fn own_value(tag_id: <dyn Concrete>::TAG, &mut self) -> u8;
         }
     }
 }

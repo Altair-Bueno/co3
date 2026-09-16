@@ -39,7 +39,7 @@ ffi! {
     where
         use<T> @ <u32>,
     {
-        fn kita(self, self_id: <dyn T>::ID) -> u32;
+        fn kita(self, self_id: <dyn T>::TAG) -> u32;
     }
 }
 
@@ -119,7 +119,7 @@ ffi! {
     where
         use<T> @ <'a, u32>,
     {
-        fn drop(&mut self, self_id: <dyn Self>::ID);
+        fn drop(&mut self, self_id: <dyn Self>::TAG);
     }
 }
 
@@ -176,10 +176,10 @@ ffi! {
         use<T> @ <u32>,
     {
         #[symbol_name = "kita"]
-        fn kita(self, self_id: <dyn Self>::ID) -> <dyn T>::ID;
+        fn kita(self, self_id: <dyn Self>::TAG) -> <dyn T>::TAG;
     }
 
-    fn kita(self, self_id: <dyn Self>::ID) -> <dyn T>::ID;
+    fn kita(self, self_id: <dyn Self>::TAG) -> <dyn T>::TAG;
 }
 
 ffi! {
@@ -190,7 +190,7 @@ ffi! {
         use<T> @ <u32>,
     {
         #[symbol_name = "kita"]
-        fn kita(self, self_id: (<dyn Self>::ID,)) -> u32;
+        fn kita(self, self_id: (<dyn Self>::TAG,)) -> u32;
     }
 }
 
@@ -198,7 +198,7 @@ ffi! {
     #![unsafe(extern("C"))]
     #![symbol_prefix = "kita"]
 
-    #[unsafe(id(u32 = 1))]
+    #[tag(u32, unsafe(1))]
     type Externed1;
 
     impl<dyn(u32) T> RefKita for T
@@ -206,14 +206,14 @@ ffi! {
         use<T> @ (<Externed1> | <Externed1>),
     {
         #[symbol_name = "kita"]
-        fn kita(self_id: <dyn T>::ID, &self) -> u32;
+        fn kita(self_id: <dyn T>::TAG, &self) -> u32;
     }
 }
 
 ffi! {
     #![unsafe(export("C"))]
 
-    #[unsafe(id(u8 = 1))]
+    #[tag(u8, unsafe(1))]
     type Exported;
 
     impl Trait for dyn Exported + Send {
@@ -224,7 +224,7 @@ ffi! {
 ffi! {
     #![unsafe(extern("C"))]
 
-    #[unsafe(id(u8 = 1))]
+    #[tag(u8, unsafe(1))]
     type Imported;
 
     impl Trait for dyn Imported + Send {

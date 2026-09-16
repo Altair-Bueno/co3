@@ -227,7 +227,7 @@ ffi! {
 ffi! {
     #![unsafe(export("C"))]
 
-    #[unsafe(id(u8))]
+    #[tag(u8)]
     type Unconstrained<T>;
 
     impl<T> Drop for dyn Unconstrained<T>

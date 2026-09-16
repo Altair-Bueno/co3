@@ -117,7 +117,7 @@ ffi! {
 ffi! {
     #![unsafe(export("C"))]
 
-    #[unsafe(id(u8))]
+    #[tag(u8)]
     type ImplGeneric<T>;
 
     impl<T> Drop for dyn ImplGeneric<T>
@@ -137,7 +137,7 @@ ffi! {
 ffi! {
     #![unsafe(extern("C"))]
 
-    #[unsafe(id(u8))]
+    #[tag(u8)]
     type ImplGeneric<T>;
 
     impl<T> Drop for dyn ImplGeneric<T>

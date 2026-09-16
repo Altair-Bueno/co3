@@ -14,7 +14,7 @@ impl Version for Version1 {
 trait Attribute {}
 
 #[derive(Clone, Copy, RustSpec, ReprC, Tag)]
-#[tag(unsafe(id(u8 = 1)))]
+#[tag(u8, unsafe(1))]
 #[repr(transparent)]
 struct Attr(u8);
 
@@ -23,7 +23,7 @@ impl Attribute for Attr {}
 ffi! {
     #![unsafe(extern("C"))]
 
-    #[unsafe(id(u8 = 2))]
+    #[tag(u8, unsafe(2))]
     type Statement<'stmt, V: Version>;
 
     impl<V: Version> Drop for dyn Statement<'_, V> {

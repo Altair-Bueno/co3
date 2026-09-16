@@ -74,7 +74,7 @@ ffi! {
         fn position(&self) -> Vec2;
     }
 
-    // Exported as `geometry_distance`
+    // Exported as `geometry__distance`
     fn distance(from: Vec2, to: Vec2) -> f32;
 }
 ```
@@ -97,12 +97,12 @@ trait Calibrate {
 }
 
 #[derive(RustSpec, Tag, ReprC)]
-#[tag(unsafe(id(u8 = 1)))]
+#[tag(u8, unsafe(1))]
 #[repr(transparent)]
 struct Celsius(u16);
 
 #[derive(RustSpec, Tag, ReprC)]
-#[tag(unsafe(id(u8 = 2)))]
+#[tag(u8, unsafe(2))]
 #[repr(transparent)]
 struct Fahrenheit(u16);
 

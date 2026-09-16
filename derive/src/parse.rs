@@ -16,14 +16,12 @@ use syn::{
 use crate::{
     Co3Static, DeclKind, DispatchGroups, ForeignItem,
     utils::{ParamUseDetector, push_error},
+    validate::unsupported_attr,
 };
 
 const FN_BODIES_NOT_ALLOWED_MSG: &str = "fn bodies are not allowed in declarations";
 const ITEM_NOT_SUPPORTED_MSG: &str = "item not supported";
 const EXPECTED_FEATURE_NAME_MSG: &str = "Expected feature name in `#![feature(...)]`";
-const EXPECTED_UNSAFE_TYPE_ATTR_MSG: &str =
-    "expected `#[unsafe(id(repr))]` or `#[unsafe(covariant('a, ...))]`";
-
 pub(crate) struct ParsedInput {
     pub(crate) kind: DeclKind,
     pub(crate) abi: syn::Abi,
@@ -886,31 +884,37 @@ pub(crate) fn parse_opaque_type_attrs(
 ) -> Result<(Option<syn::Type>, Option<syn::Expr>, Vec<syn::Lifetime>)> {
     let mut kept = Vec::with_capacity(attrs.len());
 
-    let mut id_ty = None;
-    let mut id_value = None;
+    let mut tag_ty = None;
+    let mut tag_value = None;
     let mut covariant_lifetimes = Vec::new();
     for attr in attrs.drain(..) {
-        if !attr.path().is_ident("id")
-            && !attr.path().is_ident("covariant")
-            && !attr.path().is_ident("unsafe")
-        {
+        if attr.path().is_ident("tag") {
+            let (ty, value) = attr.parse_args_with(crate::tag::parse_tag_args)?;
+            if tag_ty.replace(ty).is_some() {
+                return Err(syn::Error::new_spanned(attr, "duplicate `#[tag(...)]`"));
+            }
+            tag_value = value;
+            continue;
+        }
+
+        if !attr.path().is_ident("covariant") && !attr.path().is_ident("unsafe") {
             kept.push(attr);
             continue;
         }
 
         let syn::Meta::List(list) = &attr.meta else {
-            return Err(syn::Error::new_spanned(attr, EXPECTED_UNSAFE_TYPE_ATTR_MSG));
+            return Err(unsupported_attr(&attr));
         };
 
         let list = if list.path.is_ident("unsafe") {
             let nested = syn::parse2::<syn::Meta>(list.tokens.clone())
-                .map_err(|_| syn::Error::new_spanned(&attr, EXPECTED_UNSAFE_TYPE_ATTR_MSG))?;
+                .map_err(|_| unsupported_attr(&attr))?;
             let syn::Meta::List(nested) = nested else {
-                return Err(syn::Error::new_spanned(attr, EXPECTED_UNSAFE_TYPE_ATTR_MSG));
+                return Err(unsupported_attr(&attr));
             };
             nested
         } else {
-            return Err(syn::Error::new_spanned(attr, EXPECTED_UNSAFE_TYPE_ATTR_MSG));
+            return Err(unsupported_attr(&attr));
         };
 
         if list.path.is_ident("covariant") {
@@ -951,34 +955,11 @@ pub(crate) fn parse_opaque_type_attrs(
             continue;
         }
 
-        if !list.path.is_ident("id") {
-            return Err(syn::Error::new_spanned(attr, EXPECTED_UNSAFE_TYPE_ATTR_MSG));
-        }
-
-        let (ty, value) = list
-            .parse_args_with(|input: syn::parse::ParseStream<'_>| {
-                let ty = input.parse::<syn::Type>()?;
-                let value = if input.peek(syn::Token![=]) {
-                    input.parse::<syn::Token![=]>()?;
-                    Some(input.parse::<syn::Expr>()?)
-                } else {
-                    None
-                };
-                Ok::<_, syn::Error>((ty, value))
-            })
-            .map_err(|_| syn::Error::new_spanned(&attr, EXPECTED_UNSAFE_TYPE_ATTR_MSG))?;
-
-        if id_ty.replace(ty).is_some() {
-            return Err(syn::Error::new_spanned(
-                attr,
-                "duplicate `#[unsafe(id(...))]`",
-            ));
-        }
-        id_value = value;
+        return Err(unsupported_attr(&attr));
     }
 
     *attrs = kept;
-    Ok((id_ty, id_value, covariant_lifetimes))
+    Ok((tag_ty, tag_value, covariant_lifetimes))
 }
 
 fn normalize_extern_attr_tokens(tokens: TokenStream) -> TokenStream {
@@ -1555,11 +1536,11 @@ fn normalize_self_tag_ids(impl_: &mut ItemImpl) {
             syn::visit_mut::visit_type_mut(self, node);
 
             let self_ty = &self.self_ty;
-            if *node == parse_quote! { <dyn Self>::ID } {
+            if *node == parse_quote! { <dyn Self>::TAG } {
                 *node = if matches!(self_ty, Type::TraitObject(_)) {
-                    parse_quote_spanned!(node.span()=> <#self_ty>::ID)
+                    parse_quote_spanned!(node.span()=> <#self_ty>::TAG)
                 } else {
-                    parse_quote_spanned!(node.span()=> <dyn #self_ty>::ID)
+                    parse_quote_spanned!(node.span()=> <dyn #self_ty>::TAG)
                 };
             }
         }
@@ -1767,7 +1748,7 @@ mod tests {
 
     #[test]
     fn restores_receiver_after_id_arg() {
-        let impl_ = "impl<dyn(u8) T> Trait<T> for Value { fn name(self_id: <dyn Self>::ID, &mut self, value: &T); }";
+        let impl_ = "impl<dyn(u8) T> Trait<T> for Value { fn name(self_id: <dyn Self>::TAG, &mut self, value: &T); }";
         let item = Parser::parse_str(parse_impl_item, impl_).unwrap();
 
         let syn::ImplItem::Fn(method) = &item.items[0] else {
@@ -1785,7 +1766,7 @@ mod tests {
 
     #[test]
     fn normalizes_dyn_self_tag_id() {
-        let impl_ = "impl<dyn(u32) U> Trait<T> for U { fn name(self_id: <dyn Self>::ID); }";
+        let impl_ = "impl<dyn(u32) U> Trait<T> for U { fn name(self_id: <dyn Self>::TAG); }";
         let item = Parser::parse_str(parse_impl_item, impl_).unwrap();
 
         let syn::ImplItem::Fn(method) = &item.items[0] else {
@@ -1795,7 +1776,7 @@ mod tests {
             panic!("expected typed arg");
         };
 
-        assert_eq!(**ty, parse_quote! { <dyn U>::ID });
+        assert_eq!(**ty, parse_quote! { <dyn U>::TAG });
     }
 
     #[test]

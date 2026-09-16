@@ -58,7 +58,7 @@ note: the implementor must specify the same requirement
 104 | / ffi! {
 105 | |     #![unsafe(export("C"))]
 106 | |
-107 | |     #[unsafe(id(u32))]
+107 | |     #[tag(u32)]
 108 | |     type Export1<T>;
     | |________________^
     = note: this error originates in the macro `ffi` (in Nightly builds, run with -Z macro-backtrace for more info)

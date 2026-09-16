@@ -14,10 +14,10 @@ trait Version {}
 ffi! {
     #![unsafe(extern("C"))]
 
-    #[unsafe(id(TagKind = 1))]
+    #[tag(TagKind, unsafe(1))]
     type Parent<V: Version>;
 
-    #[unsafe(id(TagKind = 2))]
+    #[tag(TagKind, unsafe(2))]
     type Child<V: Version>;
 
     impl<V: Version> Drop for dyn Parent<V> {

@@ -24,17 +24,17 @@ impl<T> Mixed<T> for Resource<T> {
 }
 
 unsafe impl co3::tag::Tagged for Resource<u8> {
-    const ID: u8 = 1;
+    const TAG: u8 = 1;
 }
 
 unsafe impl co3::tag::Tagged for Resource<u16> {
-    const ID: u8 = 2;
+    const TAG: u8 = 2;
 }
 
 ffi! {
     #![unsafe(export("C"))]
 
-    #[unsafe(id(u8))]
+    #[tag(u8)]
     type Resource<T>;
 
     impl<T> Drop for dyn Resource<T>

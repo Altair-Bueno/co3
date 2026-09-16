@@ -14,13 +14,13 @@ impl RefKita for Exported2<u32> {
 }
 
 unsafe impl<T> Tagged for Exported2<T> {
-    const ID: Self::Kind = 0;
+    const TAG: Self::Kind = 0;
 }
 
 ffi! {
     #![unsafe(export("C"))]
 
-    #[unsafe(id(u8))]
+    #[tag(u8)]
     type Exported2<T>;
 
     impl<T> Drop for dyn Exported2<T>
@@ -42,7 +42,7 @@ ffi! {
 ffi! {
     #![unsafe(extern("C"))]
 
-    #[unsafe(id(u64 = 1))]
+    #[tag(u64, unsafe(1))]
     type Externed2<T>;
 
     impl<T> Drop for dyn Externed2<T>
@@ -50,7 +50,7 @@ ffi! {
         use<T> @ <u32>,
     {
         #[symbol_name = "drop"]
-        fn drop(&mut self, self_id: <dyn Externed2<T>>::ID);
+        fn drop(&mut self, self_id: <dyn Externed2<T>>::TAG);
     }
 
     impl<dyn(u64) T: Unimplemented> RefKita for T
@@ -59,7 +59,7 @@ ffi! {
         use<T> @ <Externed2<u32>>,
     {
         #[symbol_name = "kita"]
-        fn kita(&self, self_id: <dyn Self>::ID) -> u32;
+        fn kita(&self, self_id: <dyn Self>::TAG) -> u32;
     }
 }
 

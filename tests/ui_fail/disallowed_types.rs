@@ -6,19 +6,19 @@ trait Dispatch {
 }
 
 #[derive(RustSpec, Tag, ReprC)]
-#[tag(unsafe(id(usize = 1)))]
+#[tag(usize, unsafe(1))]
 struct Handle(usize);
 
 #[derive(RustSpec, Tag, ReprC)]
-#[tag(unsafe(id(usize = 2)))]
+#[tag(usize, unsafe(2))]
 struct Handle2(u64);
 
 #[derive(RustSpec, Tag, ReprC)]
-#[tag(unsafe(id(usize = 3)))]
+#[tag(usize, unsafe(3))]
 struct Array([u8; 2]);
 
 #[derive(RustSpec, Tag, ReprC)]
-#[tag(unsafe(id(usize = 4)))]
+#[tag(usize, unsafe(4))]
 struct Array2([u8; 8]);
 
 #[derive(RustSpec)]
@@ -196,7 +196,7 @@ ffi! {
     where
         use<T> @ <Array>,
     {
-        fn me(id: <dyn T>::ID, self);
+        fn me(id: <dyn T>::TAG, self);
     }
 }
 
@@ -209,7 +209,7 @@ ffi! {
     where
         use<T> @ <Array2>,
     {
-        fn me(id: <dyn T>::ID, self);
+        fn me(id: <dyn T>::TAG, self);
     }
 }
 

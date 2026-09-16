@@ -2,12 +2,12 @@ use co3::{Tag, ReprC, ffi, slice::Unpack2, tuple::ReprCTuple2};
 use rust_spec::RustSpec;
 
 #[derive(RustSpec, ReprC, Tag)]
-#[tag(unsafe(id(u8 = 1)))]
+#[tag(u8, unsafe(1))]
 #[repr(transparent)]
 struct Value(u16);
 
 #[derive(RustSpec, ReprC, Tag)]
-#[tag(unsafe(id(u8 = 2)))]
+#[tag(u8, unsafe(2))]
 #[repr(transparent)]
 struct Pair(ReprCTuple2<u8, u8>);
 

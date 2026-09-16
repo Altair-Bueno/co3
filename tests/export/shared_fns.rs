@@ -61,7 +61,7 @@ fn export_shared_fns() {
             let mut cloned = MaybeUninit::<*mut FfiStruct1>::new(core::ptr::null_mut());
 
             __co3_export::clone(
-                FfiStruct1::ID.encode(&mut ()),
+                FfiStruct1::TAG.encode(&mut ()),
                 ffi_struct1.cast(),
                 cloned.as_mut_ptr().cast(),
             );
@@ -76,7 +76,7 @@ fn export_shared_fns() {
         let cloned_ptr = (&cloned).encode(&mut ());
 
         __co3_export::eq(
-            FfiStruct1::ID.encode(&mut ()),
+            FfiStruct1::TAG.encode(&mut ()),
             ffi_struct1.cast(),
             cloned_ptr.cast(),
             is_equal.as_mut_ptr(),
@@ -86,7 +86,7 @@ fn export_shared_fns() {
 
         let mut ordering = MaybeUninit::new(1);
         __co3_export::ord(
-            FfiStruct1::ID.encode(&mut ()),
+            FfiStruct1::TAG.encode(&mut ()),
             ffi_struct1.cast(),
             cloned_ptr.cast(),
             ordering.as_mut_ptr(),
@@ -94,10 +94,10 @@ fn export_shared_fns() {
         let ordering: Ordering = Decode::decode(ordering.assume_init()).unwrap();
         assert_eq!(ordering, Ordering::Equal);
 
-            __co3_export::drop(FfiStruct1::ID.encode(&mut ()), ffi_struct1.cast())
+            __co3_export::drop(FfiStruct1::TAG.encode(&mut ()), ffi_struct1.cast())
         ;;
             __co3_export::drop(
-                FfiStruct1::ID.encode(&mut ()),
+                FfiStruct1::TAG.encode(&mut ()),
                 cloned.encode(&mut ()).cast()
             )
         ;;

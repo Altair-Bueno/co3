@@ -4,7 +4,7 @@ use rust_spec::RustSpec;
 use co3::{Tag, ReprC, ffi};
 
 #[derive(RustSpec, ReprC, Tag)]
-#[tag(unsafe(id(u8)))]
+#[tag(u8)]
 #[repr(transparent)]
 struct Unsized<T: ?Sized>(T);
 
@@ -13,7 +13,7 @@ struct Unsized<T: ?Sized>(T);
 struct Wrapper<T: ?Sized>(Box<T>);
 
 unsafe impl co3::tag::Tagged for Unsized<str> {
-    const ID: u8 = 0;
+    const TAG: u8 = 0;
 }
 
 impl From<Box<Unsized<str>>> for Unsized<String> {
@@ -78,7 +78,7 @@ ffi! {
     where
         use<T> @ <Unsized<str>>,
     {
-        fn take(self, tag_id: <dyn T>::ID) -> usize;
+        fn take(self, tag_id: <dyn T>::TAG) -> usize;
     }
 }
 

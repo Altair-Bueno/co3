@@ -49,9 +49,9 @@ ffi! {
 
     #![symbol_prefix = "kita"]
 
-    #[unsafe(id(u32 = 1))]
+    #[tag(u32, unsafe(1))]
     type Opaque1;
-    #[unsafe(id(u8 = 2))]
+    #[tag(u8, unsafe(2))]
     type Opaque2;
 
     impl ToOwned for Opaque1 {
@@ -72,8 +72,8 @@ ffi! {
     {
         type MySelf = <T as ToOwned>::Owned;
 
-        move fn kita(self_id: <dyn Self>::ID, self: &Self) -> Vec<<Self as Kita>::MySelf>;
-        fn kita2(a: &u32, self_id: <dyn T>::ID);
+        move fn kita(self_id: <dyn Self>::TAG, self: &Self) -> Vec<<Self as Kita>::MySelf>;
+        fn kita2(a: &u32, self_id: <dyn T>::TAG);
     }
 }
 

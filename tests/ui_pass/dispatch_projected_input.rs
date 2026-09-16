@@ -7,7 +7,7 @@ trait Field {
 }
 
 #[derive(Tag)]
-#[tag(unsafe(id(u16 = 1)))]
+#[tag(u16, unsafe(1))]
 enum NumericField {}
 
 impl Field for NumericField {
@@ -17,20 +17,20 @@ impl Field for NumericField {
 ffi! {
     #![unsafe(extern("C"))]
 
-    #[unsafe(id(u16 = 1))]
+    #[tag(u16, unsafe(1))]
     type Statement;
 
     impl Statement {
         fn get_field<dyn(u16) A: Field>(
             &self,
-            field: <dyn A>::ID,
+            field: <dyn A>::TAG,
             #[unpack(*mut core::ffi::c_void)]
             output: Option<&mut MaybeUninit<<A as Field>::Buffer>>,
         );
 
         fn try_get_field<dyn(u16) A: Field>(
             &self,
-            field: <dyn A>::ID,
+            field: <dyn A>::TAG,
             #[unpack(*mut core::ffi::c_void)]
             output: Option<&mut MaybeUninit<<A as Field>::Buffer>>,
         );

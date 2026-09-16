@@ -10,7 +10,7 @@ struct Value<T: ToOwned + ?Sized>(T::Owned);
 struct TransparentCTuple1<T: ?Sized>(T);
 
 #[derive(Debug, Clone, Copy, RustSpec, Tag, ReprC)]
-#[tag(unsafe(id(u8 = 1)))]
+#[tag(u8, unsafe(1))]
 #[repr(C)]
 struct Opaque(u8);
 
@@ -29,7 +29,7 @@ ffi! {
     where
         use<T> @ <Opaque>,
     {
-        move fn new(t_id: <dyn T>::ID) -> Self;
+        move fn new(t_id: <dyn T>::TAG) -> Self;
     }
 
     impl<dyn(u8) T: ToOwned = u8> Value<T>
@@ -38,7 +38,7 @@ ffi! {
     {
         #[symbol_name = "ping"]
         pub fn ping2(
-            t_id: <dyn T>::ID,
+            t_id: <dyn T>::TAG,
             move self,
             #[soft] inc: &TransparentCTuple1<Opaque>,
         ) -> u8;
@@ -91,7 +91,7 @@ mod provider {
 
         #![symbol_prefix = "kita"]
 
-        #[unsafe(id(u8 = 1))]
+        #[tag(u8, unsafe(1))]
         type Opaque;
 
         impl Default for Box<Opaque> {

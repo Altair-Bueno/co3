@@ -9,19 +9,19 @@ trait CustomDynSelf {
 }
 
 unsafe impl co3::tag::Tagged for Opaque<bool, u8> {
-    const ID: u8 = 1;
+    const TAG: u8 = 1;
 }
 unsafe impl co3::tag::Tagged for Opaque<bool, u32> {
-    const ID: u8 = 2;
+    const TAG: u8 = 2;
 }
 unsafe impl co3::tag::Tagged for Opaque<u8, bool> {
-    const ID: u8 = 3;
+    const TAG: u8 = 3;
 }
 
 ffi! {
     #![unsafe(extern("C"))]
 
-    #[unsafe(id(u8))]
+    #[tag(u8)]
     type Opaque<T, U>;
 
     impl<T, U> Drop for dyn Opaque<T, U>
@@ -52,7 +52,7 @@ ffi! {
         use<T> @ (<Opaque<bool, u8>> | <Opaque<u8, bool>>),
     {
         #[symbol_name = "handles_eq"]
-        fn eq(t_id: <dyn T>::ID, &self, other: &Self) -> bool;
+        fn eq(t_id: <dyn T>::TAG, &self, other: &Self) -> bool;
     }
 
     impl<dyn(u8) T, dyn(u8) U> PartialEq<U> for T
@@ -60,7 +60,7 @@ ffi! {
         use<T, U> @ <Opaque<bool, u8>, Opaque<u8, bool>>,
     {
         #[symbol_name = "handles_cross_eq"]
-        fn eq(t_id: <dyn T>::ID, u_id: <dyn U>::ID, &self, other: &U) -> bool;
+        fn eq(t_id: <dyn T>::TAG, u_id: <dyn U>::TAG, &self, other: &U) -> bool;
     }
 
     impl<dyn(u8) T> Custom for T
@@ -68,7 +68,7 @@ ffi! {
         use<T> @ (<Opaque<bool, u8>> | <Opaque<u8, bool>>),
     {
         #[symbol_name = "handles_inc"]
-        fn inc(t_id: <dyn T>::ID, &mut self, by: u8);
+        fn inc(t_id: <dyn T>::TAG, &mut self, by: u8);
     }
 
     impl<T, U> CustomDynSelf for dyn Opaque<T, U>
@@ -119,13 +119,13 @@ mod provider {
     }
 
     unsafe impl co3::tag::Tagged for Opaque<bool, u8> {
-        const ID: u8 = 1;
+        const TAG: u8 = 1;
     }
     unsafe impl co3::tag::Tagged for Opaque<bool, u32> {
-        const ID: u8 = 2;
+        const TAG: u8 = 2;
     }
     unsafe impl co3::tag::Tagged for Opaque<u8, bool> {
-        const ID: u8 = 3;
+        const TAG: u8 = 3;
     }
 
     impl PartialEq<Opaque<u8, bool>> for Opaque<bool, u8> {
@@ -149,7 +149,7 @@ mod provider {
     ffi! {
         #![unsafe(export("C"))]
 
-        #[unsafe(id(u8))]
+        #[tag(u8)]
         type Opaque<T, U>;
 
         impl<T, U> Drop for dyn Opaque<T, U>

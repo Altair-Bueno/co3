@@ -16,7 +16,7 @@ pub enum Payload {}
 impl OdbcVersion for Payload {}
 
 #[derive(Debug, RustSpec, Tag, ReprC)]
-#[tag(unsafe(id(SQLSMALLINT)))]
+#[tag(SQLSMALLINT)]
 #[repr(transparent)]
 pub struct MyType<V: OdbcVersion = Payload> {
     pub(crate) handle: *mut c_void,
@@ -34,7 +34,7 @@ impl OdbcVersion for SQL_OV_ODBC4 {}
 ffi! {
     #![unsafe(extern("system"))]
 
-    #[unsafe(id(SQLSMALLINT = 8))]
+    #[tag(SQLSMALLINT, unsafe(8))]
     type Opaque<V: OdbcVersion = SQL_OV_ODBC3_80>;
 
     impl<V: OdbcVersion> Drop for dyn Opaque<V>
@@ -63,10 +63,10 @@ impl<V: OdbcVersion> Allocate for SQLHDESC<u32, V> {
 co3::ffi! {
     #![unsafe(extern("system"))]
 
-    #[unsafe(id(SQLSMALLINT = 8))]
+    #[tag(SQLSMALLINT, unsafe(8))]
     type SQLHENV<V: OdbcVersion = SQL_OV_ODBC3_80>;
 
-    #[unsafe(id(SQLSMALLINT = 9))]
+    #[tag(SQLSMALLINT, unsafe(9))]
     type SQLHDESC<DT, V: OdbcVersion = SQL_OV_ODBC3_80>;
 
     impl<V: OdbcVersion, dyn(SQLSMALLINT) T> Drop for T
@@ -106,7 +106,7 @@ co3::ffi! {
         #[symbol_name = "SQLGetEnvAttr"]
         pub fn get_attr<dyn(i32) A: EnvAttr>(
             &self,
-            attribute: <dyn A>::ID,
+            attribute: <dyn A>::TAG,
             #[unpack(u32, i32)]
             move value1: <A as EnvAttr>::Value,
             #[unpack(u32, i32)]
@@ -131,7 +131,7 @@ impl SQLHENV2 {
 co3::ffi! {
     #![unsafe(export("system"))]
 
-    #[unsafe(id(u32 = 7))]
+    #[tag(u32, unsafe(7))]
     type SQLHENV2;
 
     impl<dyn(u32) T> Drop for T
@@ -156,11 +156,11 @@ pub trait EnvAttr {
 }
 
 #[derive(Clone, Tag)]
-#[tag(unsafe(id(i32 = 80)))]
+#[tag(i32, unsafe(80))]
 enum SQL_ATTR_ODBC_VERSION {}
 
 #[derive(Clone, Tag)]
-#[tag(unsafe(id(i32 = 81)))]
+#[tag(i32, unsafe(81))]
 enum SQL_ATTR_CP_MATCH {}
 impl EnvAttr for SQL_ATTR_ODBC_VERSION {
     type Value = CpMatch;

@@ -242,7 +242,7 @@ fn gen_impl_wrapper_body_with_self_binding<const DISPATCHED: bool>(
             TagId::DynSelf => quote!(#self_ty),
         };
 
-        Some(quote! { let #pat = <#tag_ty as co3::tag::Tagged>::ID; })
+        Some(quote! { let #pat = <#tag_ty as co3::tag::Tagged>::TAG; })
     });
     let wrapper_body = gen_wrapper_body::<DISPATCHED>(
         failure_mode,

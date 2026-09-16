@@ -78,17 +78,17 @@ error: fn bodies are not allowed in declarations
 96 |     fn kita1(a: u32) {}
    |                      ^
 
-error: `<dyn Type>::ID` arg must target declared `dyn Type`
+error: `<dyn Type>::TAG` arg must target declared `dyn Type`
    --> tests/ui_fail/import_restrictions.rs:102:48
     |
-102 |     fn invalid_tag_target<dyn(u8) T = u8>(tag: <dyn u32>::ID)
-    |                                                ^^^^^^^^^^^^^
+102 |     fn invalid_tag_target<dyn(u8) T = u8>(tag: <dyn u32>::TAG)
+    |                                                ^^^^^^^^^^^^^^
 
-error: duplicate `<dyn Type>::ID`
-   --> tests/ui_fail/import_restrictions.rs:110:66
+error: duplicate `<dyn Type>::TAG`
+   --> tests/ui_fail/import_restrictions.rs:110:67
     |
-110 |     fn duplicate_tag<dyn(u8) T = u8>(first: <dyn T>::ID, second: <dyn T>::ID)
-    |                                                                  ^^^^^^^^^^^
+110 |     fn duplicate_tag<dyn(u8) T = u8>(first: <dyn T>::TAG, second: <dyn T>::TAG)
+    |                                                                   ^^^^^^^^^^^^
 
 error: patterns aren't allowed in function declarations
    --> tests/ui_fail/import_restrictions.rs:118:14

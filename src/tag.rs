@@ -11,9 +11,9 @@ pub trait TagFamily {
 ///
 /// # Safety
 ///
-/// If two types in the same tag family use the same ID, dispatch may reinterpret a value as the
+/// If two types in the same tag family use the same tag, dispatch may reinterpret a value as the
 /// wrong type.
 pub unsafe trait Tagged: TagFamily {
-    /// Unique identifier of the type within its tag family.
-    const ID: Self::Kind;
+    /// Unique tag of the type within its tag family.
+    const TAG: Self::Kind;
 }

@@ -17,22 +17,22 @@ trait Version {}
 ffi! {
     #![unsafe(extern("C"))]
 
-    #[unsafe(id(TagKind = 1))]
+    #[tag(TagKind, unsafe(1))]
     type Parent;
 
-    #[unsafe(id(TagKind = 2))]
+    #[tag(TagKind, unsafe(2))]
     type Child<'parent>;
 
-    #[unsafe(id(TagKind = 3))]
+    #[tag(TagKind, unsafe(3))]
     type GenericParent<V: Version>;
 
-    #[unsafe(id(TagKind = 4))]
+    #[tag(TagKind, unsafe(4))]
     type GenericChild<'parent, V: Version>;
 
-    #[unsafe(id(TagKind = 5))]
+    #[tag(TagKind, unsafe(5))]
     type GenericOther<'parent, 'data, V: Version>;
 
-    #[unsafe(id(TagKind = 6))]
+    #[tag(TagKind, unsafe(6))]
     type GenericRoot<V: Version>;
 
     impl Drop for dyn Parent {

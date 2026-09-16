@@ -2,7 +2,7 @@ use co3::{Tag, ReprC, ffi};
 use rust_spec::RustSpec;
 
 #[derive(RustSpec, Tag, ReprC)]
-#[tag(unsafe(id(u8 = 1)))]
+#[tag(u8, unsafe(1))]
 #[repr(transparent)]
 struct Attribute(u32);
 
@@ -31,7 +31,7 @@ ffi! {
 
     #[symbol_name = "dispatch_opaque_tail_head"]
     fn imported_prefix_head<'a, dyn(u8) T: ?Sized>(
-        tag_id: <dyn T>::ID,
+        tag_id: <dyn T>::TAG,
         prefix: &'a Prefix<T>,
     ) -> u32
     where

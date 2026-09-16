@@ -7,7 +7,7 @@ struct Export1<T>(T);
 impl<T> Kita for Export1<T> {}
 
 unsafe impl Tagged for Export1<u32> {
-    const ID: Self::Kind = 0;
+    const TAG: Self::Kind = 0;
 }
 
 ffi! {
@@ -43,10 +43,10 @@ ffi! {
 ffi! {
     #![unsafe(export("C"))]
 
-    #[unsafe(id(u8))]
+    #[tag(u8)]
     type First;
 
-    #[unsafe(id(u8))]
+    #[tag(u8)]
     type Second;
 
     impl<T> Drop for T
@@ -67,10 +67,10 @@ ffi! {
 ffi! {
     #![unsafe(extern("C"))]
 
-    #[unsafe(id(u8))]
+    #[tag(u8)]
     type First;
 
-    #[unsafe(id(u8))]
+    #[tag(u8)]
     type Second;
 
     impl<T> Drop for T
@@ -104,7 +104,7 @@ ffi! {
 ffi! {
     #![unsafe(export("C"))]
 
-    #[unsafe(id(u32))]
+    #[tag(u32)]
     type Export1<T>;
 
     // TODO: These Drop impls could be allowed
@@ -122,7 +122,7 @@ ffi! {
 
     #![symbol_prefix = "kita"]
 
-    #[unsafe(id(u32))]
+    #[tag(u32)]
     type Extern2<T>;
 
     impl<T> Drop for dyn Extern2<T>
@@ -130,7 +130,7 @@ ffi! {
         Self: Kita,
         use<T> @ (<u32>),
     {
-        fn drop(&mut self, self_id: <dyn Self>::ID);
+        fn drop(&mut self, self_id: <dyn Self>::TAG);
     }
 }
 

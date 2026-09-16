@@ -1,11 +1,11 @@
 use co3::{Tag, ffi};
 
 #[derive(Tag)]
-#[tag(unsafe(id(u8 = 1)))]
+#[tag(u8, unsafe(1))]
 enum First {}
 
 #[derive(Tag)]
-#[tag(unsafe(id(u8 = 2)))]
+#[tag(u8, unsafe(2))]
 enum Unlisted {}
 
 ffi! {

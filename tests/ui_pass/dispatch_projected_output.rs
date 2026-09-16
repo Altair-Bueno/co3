@@ -9,10 +9,10 @@ trait Projected {
 ffi! {
     #![unsafe(extern("C"))]
 
-    #[unsafe(id(u8 = 1))]
+    #[tag(u8, unsafe(1))]
     type First;
 
-    #[unsafe(id(u8 = 2))]
+    #[tag(u8, unsafe(2))]
     type Second;
 
     impl ToOwned for First {

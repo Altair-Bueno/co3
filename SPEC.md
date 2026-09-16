@@ -41,7 +41,7 @@ Each mode makes explicit tradeoffs and is selected through compile-time configur
 3. **Tagged dispatch (opt-in, on impl blocks, free functions, and inherent methods)**
 - Enables tagged generic dispatch where type's C-compatible representation is erased into a shared type and reinterpreted back via the tag value.
 - Dispatched generics are defined by `<dyn({TagTy}) T = {ErasedTy}>` where `ErasedTy::CType` constrains size and alignment of erased types.
-- A `use<T, ...> @ (<Param1> | ...)` where predicate declares the concrete types dispatched that have a tag value (use `#[id(Type = Val)]`).
+- A `use<T, ...> @ (<Param1> | ...)` where predicate declares the concrete types dispatched that have a tag value (use `#[tag(Type, unsafe(Val))]`).
 
 ## 2. Public API
 
@@ -67,7 +67,7 @@ It must always start with a declaration of direction and ABI (e.g. `#![unsafe(ex
 - `#![symbol_fragments(Ty = "frag", ...)]` declares symbol interpolation values for types used to concretize parameters.
 - `#![failure = "panic" | "error"]` controls whether internal failures panic(default) or are returned.
 - `type Type;` declares an opaque type (it's representation is unknown). This type should not be dereferenced.
-- `#[unsafe(id(TagTy = val))]` on a type declaration defines the tag tag that identifies the item when it is tag-dispatched.
+- `#[tag(TagTy)]` on a type declaration defines its tag type; `#[tag(TagTy, unsafe(val))]` also assigns its tag value.
 - `where use<T, ...> @ (<Type1> | ...)` opts into a kind of polymorphic dispatch where concrete types are known at compile time but erased at runtime.
 - `#[unpack(_, _)]` on an imported function argument unpacks the compound type into two funcion arguments (facilitates useing `&[T]` in legacy APIs).
 - Using the `ffi` macro always carries a risk of UB as it relies on the correct user-provided argument types and lifetimes in the ABI.
@@ -85,11 +85,11 @@ A C-compatible companion type is a type with a defined C ABI and no trap represe
 
 ## 3. Tagged Dispatch
 
-Tagged dispatch exposes one ABI function for multiple concrete Rust instantiations. At runtime, tag IDs select the concrete instantiation to invoke.
+Tagged dispatch exposes one ABI function for multiple concrete Rust instantiations. At runtime, tags select the concrete instantiation to invoke.
 
 ### 3.1. Runtime-dispatched parameters
 
-- `dyn(TagTy) T` declares a runtime tag-dispatched type parameter with a tag ID of type `TagTy`.
+- `dyn(TagTy) T` declares a runtime tag-dispatched type parameter with a tag of type `TagTy`.
 - `dyn(TagTy) T = ErasedTy` additionally declares the shared ABI representation `T` is erased to.
 - A tag-dispatched parameter without an erased representation must always occur behind an indirection.
 
@@ -98,21 +98,22 @@ Tagged dispatch exposes one ABI function for multiple concrete Rust instantiatio
 `impl [Trait for] dyn Self` dispatches an extern/opaque type:
 
 - It is supported only for types declared inside the `ffi!` block scope.
-- The type declaration **MUST** provide `#[unsafe(id(TagTy = Value))]`.
+- The type declaration **MUST** provide `#[tag(TagTy, unsafe(Value))]`.
 - `dyn Self` tag-dispatched type must always occur behind an indirection.
 
 ### 3.3. `#[derive(Tag)]`
 `#[derive(Tag)]` derives an implementation of `TagFamily` and, if a value is given, an implementation of the `Tagged` trait.
 
-- `#[tag(unsafe(id(TagType = value)))]` defines the tag that identifies the item when it is tag-dispatched.
-- Reusing an ID value for different handles can cause an invalid type reinterpretation and is therefore `unsafe`.
+- `#[tag(TagType, unsafe(value))]` defines the tag that identifies the item when it is tag-dispatched.
+- `#[tag(TagType)]` defines the tag type without assigning a tag value; `Tagged` trait is implemented by hand.
+- Reusing a tag value for different types can cause an invalid type reinterpretation and is therefore `unsafe`.
 
-### 3.4 Tag IDs
+### 3.4 Tags
 
-- Static parameters, whether selected by a `where use<...>` predicate or not, **MUST NOT** inject a tag ID.
-- Every runtime tag-dispatched parameter **MUST** inject exactly one tag ID as an ABI function argument.
-- By default, tag-dispatched parameters synthesize tag IDs at the function's start, in declaration order.
-- In import declarations, a tag ID argument **MAY** be written explicitly in any position as `<dyn T>::ID`.
+- Static parameters, whether selected by a `where use<...>` predicate or not, **MUST NOT** inject a tag.
+- Every runtime tag-dispatched parameter **MUST** inject exactly one tag as an ABI function argument.
+- By default, tag-dispatched parameters synthesize tags at the function's start, in declaration order.
+- In import declarations, a tag argument **MAY** be written explicitly in any position as `<dyn T>::TAG`.
 - An explicit tag **MUST** refer to a declared runtime tag-dispatched parameter or the active `dyn Self`.
 
 ## 4. Parameter constraining

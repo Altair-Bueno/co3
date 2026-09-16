@@ -16,7 +16,7 @@ note: required by an implicit `Sized` bound in `__Co3AssertSized`
  9 | / ffi! {
 10 | |     #![unsafe(export("C"))]
 11 | |
-12 | |     #[unsafe(id(u8))]
+12 | |     #[tag(u8)]
 ...  |
 21 | | }
    | |_^ required by the implicit `Sized` requirement on this type parameter in `__Co3AssertSized`
@@ -46,7 +46,7 @@ error[E0277]: the size for values of type `[T]` cannot be known at compilation t
  9 | / ffi! {
 10 | |     #![unsafe(export("C"))]
 11 | |
-12 | |     #[unsafe(id(u8))]
+12 | |     #[tag(u8)]
 ...  |
 21 | | }
    | |_^ doesn't have a size known at compile-time
@@ -96,7 +96,7 @@ help: the trait `EncodeOwned` is not implemented for `OpaqueSlice<T>`
  9 | / ffi! {
 10 | |     #![unsafe(export("C"))]
 11 | |
-12 | |     #[unsafe(id(u8))]
+12 | |     #[tag(u8)]
 13 | |     type OpaqueSlice<T>;
    | |_______________________^
 note: required because it appears within the type `OpaqueSlice<T>`
@@ -126,7 +126,7 @@ help: the trait `DecodeOwned<'_>` is not implemented for `OpaqueSlice<T>`
  9 | / ffi! {
 10 | |     #![unsafe(export("C"))]
 11 | |
-12 | |     #[unsafe(id(u8))]
+12 | |     #[tag(u8)]
 13 | |     type OpaqueSlice<T>;
    | |_______________________^
 note: required because it appears within the type `OpaqueSlice<T>`
@@ -148,7 +148,7 @@ error[E0277]: the size for values of type `[T]` cannot be known at compilation t
  9 | / ffi! {
 10 | |     #![unsafe(export("C"))]
 11 | |
-12 | |     #[unsafe(id(u8))]
+12 | |     #[tag(u8)]
 ...  |
 21 | | }
    | |_^ doesn't have a size known at compile-time
@@ -168,7 +168,7 @@ error[E0277]: the size for values of type `[T]` cannot be known at compilation t
  9 | / ffi! {
 10 | |     #![unsafe(export("C"))]
 11 | |
-12 | |     #[unsafe(id(u8))]
+12 | |     #[tag(u8)]
 ...  |
 21 | | }
    | |_^ doesn't have a size known at compile-time

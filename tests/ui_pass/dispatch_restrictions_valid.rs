@@ -22,7 +22,7 @@ ffi! {
     #![unsafe(export("C"))]
     #![symbol_prefix = "dispatch_char_export"]
 
-    #[unsafe(id(char = 0 as char))]
+    #[tag(char, unsafe(0 as char))]
     type Exported0;
 
     impl<dyn(char) T> RefKita for T
@@ -37,7 +37,7 @@ ffi! {
     #![unsafe(extern("C"))]
     #![symbol_prefix = "kita"]
 
-    #[unsafe(id(char = 1 as char))]
+    #[tag(char, unsafe(1 as char))]
     type Externed0;
 
     impl<dyn(char) T> RefKita for T
@@ -45,7 +45,7 @@ ffi! {
         use<T> @ <Externed0>,
     {
         #[symbol_name = "kita"]
-        fn kita(&self, self_id: <dyn Self>::ID) -> u32;
+        fn kita(&self, self_id: <dyn Self>::TAG) -> u32;
     }
 }
 
@@ -53,7 +53,7 @@ ffi! {
     #![unsafe(export("C"))]
     #![symbol_prefix = "dispatch_u32_export"]
 
-    #[unsafe(id(u32 = 0))]
+    #[tag(u32, unsafe(0))]
     type Exported1;
 
     impl<dyn(u32) T> RefKita for T

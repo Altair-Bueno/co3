@@ -15,7 +15,7 @@ trait Dispatch {
 struct CustomAttribute(u32);
 
 #[derive(RustSpec, Tag, ReprC)]
-#[tag(unsafe(id(u8)))]
+#[tag(u8)]
 #[repr(transparent)]
 struct CustomAttributeRef<'a>(&'a u32);
 
@@ -25,7 +25,7 @@ impl TagFamily for &CustomAttribute {
 }
 
 unsafe impl Tagged for &CustomAttribute {
-    const ID: u8 = 1;
+    const TAG: u8 = 1;
 }
 
 mod provider {
@@ -63,7 +63,7 @@ ffi! {
         use<T> @ <&CustomAttribute>,
     {
         #[symbol_name = "len"]
-        fn len(tag_id: <dyn T>::ID, values: &[u32], attr: &T) -> usize;
+        fn len(tag_id: <dyn T>::TAG, values: &[u32], attr: &T) -> usize;
     }
 }
 

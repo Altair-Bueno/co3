@@ -13,11 +13,11 @@ trait ByteValue {
 struct EnvAttr(usize);
 
 #[derive(Clone, RustSpec, Tag, ReprC)]
-#[tag(unsafe(id(u16 = 1)))]
+#[tag(u16, unsafe(1))]
 struct Custom1(usize);
 
 #[derive(RustSpec, ReprC, Tag)]
-#[tag(unsafe(id(u16 = 2)))]
+#[tag(u16, unsafe(2))]
 #[repr(transparent)]
 struct Custom2<'a>(&'a u8);
 
@@ -30,11 +30,11 @@ mod provider {
     use super::*;
 
     #[derive(RustSpec, Tag, ReprC)]
-    #[tag(unsafe(id(u16 = 1)))]
+    #[tag(u16, unsafe(1))]
     struct Custom1(usize);
 
     #[derive(RustSpec, Tag, ReprC)]
-    #[tag(unsafe(id(u16 = 2)))]
+    #[tag(u16, unsafe(2))]
     #[repr(transparent)]
     struct Custom2<'a>(&'a u8);
 

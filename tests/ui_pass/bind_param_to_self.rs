@@ -13,7 +13,7 @@ impl UsedExport {
 ffi! {
     #![unsafe(export("C"))]
 
-    #[unsafe(id(u8 = 8))]
+    #[tag(u8, unsafe(8))]
     type UsedExport;
 
     impl<dyn(u8) U, V> Kita<U, V> for UsedExport
@@ -33,7 +33,7 @@ ffi! {
 ffi! {
     #![unsafe(extern("C"))]
 
-    #[unsafe(id(u8 = 8))]
+    #[tag(u8, unsafe(8))]
     type UsedExtern;
 
     impl<dyn(u8) U, V> Kita<U, V> for UsedExtern

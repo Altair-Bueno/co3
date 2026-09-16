@@ -91,7 +91,7 @@ fn validate_export_type_ids(items: &[crate::ForeignItem]) -> Result<()> {
         if has_non_lifetime_generics(&item.ty.generics)
             && let Some(value) = &item.id_value
         {
-            let message = "parameterized exported types must not specify an ID value";
+            let message = "parameterized exported types must not specify a tag value";
             push_error(&mut errors, Error::new_spanned(value, message));
         }
     }
@@ -511,7 +511,7 @@ fn is_type_param_path(ty: &syn::TypePath, type_params: &BTreeSet<&syn::Ident>) -
             .is_some_and(|ident| type_params.contains(ident))
 }
 
-fn unsupported_attr(attr: &syn::Attribute) -> Error {
+pub(crate) fn unsupported_attr(attr: &syn::Attribute) -> Error {
     Error::new_spanned(attr, "Attribute not supported in this position")
 }
 
@@ -700,7 +700,7 @@ fn validate_export_fn(item: &crate::Co3Fn) -> Result<()> {
 
 fn validate_export_type(item: &crate::ForeignItemType) -> Result<()> {
     for attr in &item.ty.attrs {
-        if !attr.path().is_ident("id")
+        if !attr.path().is_ident("tag")
             && !attr.path().is_ident("erased")
             && !is_cfg_attr(attr)
             && !is_doc_attr(attr)
@@ -872,7 +872,7 @@ fn validate_packed_dyn_self_decls(items: &[crate::ForeignItem]) -> Result<()> {
             .chain(item.drop.iter())
             .find(|impl_| crate::trait_object_single_trait_bound(&impl_.self_ty).is_some());
         if let Some(impl_) = dyn_self_impl {
-            let err_msg = "`dyn Self` requires the declared type to provide `#[unsafe(id(...))]`";
+            let err_msg = "`dyn Self` requires the declared type to provide `#[tag(...)]`";
             push_error(&mut errors, Error::new_spanned(&impl_.self_ty, err_msg));
         }
     }
@@ -1816,7 +1816,7 @@ impl Visit<'_> for LifetimeUseDetector<'_> {
 }
 
 fn reject_explicit_dispatch_ids(sig: &syn::Signature) -> Result<()> {
-    let err_msg = "explicit `<dyn Type>::ID` is only supported in extern declarations";
+    let err_msg = "explicit `<dyn Type>::TAG` is only supported in extern declarations";
 
     let mut errors = None;
     for input in &sig.inputs {
@@ -1862,13 +1862,13 @@ fn validate_extern_dispatch_sig<'a>(
         };
 
         if !is_dyn_param {
-            let err_msg = "`<dyn Type>::ID` arg must target declared `dyn Type`";
+            let err_msg = "`<dyn Type>::TAG` arg must target declared `dyn Type`";
             push_error(&mut errors, Error::new_spanned(&arg.ty, err_msg));
             continue;
         }
 
         if !tag_ids.insert(tag_id) {
-            let err_msg = "duplicate `<dyn Type>::ID`";
+            let err_msg = "duplicate `<dyn Type>::TAG`";
             push_error(&mut errors, Error::new_spanned(&arg.ty, err_msg));
         }
     }
@@ -1967,7 +1967,7 @@ fn validate_drop_impl(impl_: &syn::ItemImpl) -> Result<()> {
                 was_receiver = true;
             }
             _ => {
-                let err_msg = "`Drop::drop` supports only `&mut self` and optionally a tag ID";
+                let err_msg = "`Drop::drop` supports only `&mut self` and optionally a tag";
                 return Err(Error::new_spanned(&method.sig.inputs, err_msg));
             }
         }
@@ -2001,7 +2001,7 @@ fn validate_signature_shape(sig: &syn::Signature) -> Result<()> {
 
     if let syn::ReturnType::Type(_, output) = &sig.output {
         if tag_id(output).is_some() {
-            let err_msg = "`<dyn Type>::ID` is not allowed in return position";
+            let err_msg = "`<dyn Type>::TAG` is not allowed in return position";
             return Err(Error::new_spanned(output, err_msg));
         }
 
@@ -2035,7 +2035,7 @@ fn validate_tag_id_pos(ty: &Type) -> Result<()> {
     impl Visit<'_> for NestedTagIdVisitor {
         fn visit_type(&mut self, node: &Type) {
             if self.depth != 0 && tag_id(node).is_some() {
-                let err_msg = "`<dyn Type>::ID` is only allowed as a top-level function argument";
+                let err_msg = "`<dyn Type>::TAG` is only allowed as a top-level function argument";
                 push_error(&mut self.errors, Error::new_spanned(node, err_msg));
                 return;
             }
@@ -2113,7 +2113,7 @@ mod tests {
         let generics: syn::Generics = syn::parse_quote!(<#[erased(u8)] A>);
         let sig: syn::Signature = syn::parse_quote!(
             fn dispatch(
-                tag: <dyn A>::ID,
+                tag: <dyn A>::TAG,
                 #[unpack(*const core::ffi::c_void, usize)] value: A::Value,
             )
         );
@@ -2130,23 +2130,23 @@ mod tests {
 
     #[test]
     fn rejects_nested_tag_id_in_free_function() {
-        let sig: syn::Signature = syn::parse_quote!(fn dispatch(value: (<dyn T>::ID,)));
+        let sig: syn::Signature = syn::parse_quote!(fn dispatch(value: (<dyn T>::TAG,)));
 
         let err = validate_signature_shape(&sig).unwrap_err();
         assert!(
             err.to_string()
-                .contains("`<dyn Type>::ID` is only allowed as a top-level function argument")
+                .contains("`<dyn Type>::TAG` is only allowed as a top-level function argument")
         );
     }
 
     #[test]
     fn rejects_tag_id_return_in_free_function() {
-        let sig: syn::Signature = syn::parse_quote!(fn dispatch() -> <dyn T>::ID);
+        let sig: syn::Signature = syn::parse_quote!(fn dispatch() -> <dyn T>::TAG);
 
         let err = validate_signature_shape(&sig).unwrap_err();
         assert!(
             err.to_string()
-                .contains("`<dyn Type>::ID` is not allowed in return position")
+                .contains("`<dyn Type>::TAG` is not allowed in return position")
         );
     }
 
@@ -2231,7 +2231,7 @@ mod tests {
         for item in [
             syn::parse_quote!(impl Drop for Value { fn drop() {} }),
             syn::parse_quote!(impl Drop for Value {
-                fn drop(id: <dyn T>::ID) {}
+                fn drop(id: <dyn T>::TAG) {}
             }),
         ] {
             let err = validate_drop_impl(&item).unwrap_err();

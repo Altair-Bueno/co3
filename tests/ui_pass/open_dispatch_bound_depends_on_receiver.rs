@@ -5,7 +5,7 @@ trait Field<H>: co3::tag::Tagged<Kind = u8> {}
 ffi! {
     #![unsafe(extern("C"))]
 
-    #[unsafe(id(u8 = 1))]
+    #[tag(u8, unsafe(1))]
     type Resource<V>;
 
     impl<V> Drop for Resource<V> {
@@ -16,12 +16,12 @@ ffi! {
     where
         use<H> @ <Resource<V>>,
     {
-        fn get<dyn(u8) F: Field<H>>(field: <dyn F>::ID);
+        fn get<dyn(u8) F: Field<H>>(field: <dyn F>::TAG);
     }
 }
 
 #[derive(Tag)]
-#[tag(unsafe(id(u8 = 2)))]
+#[tag(u8, unsafe(2))]
 enum CustomField {}
 
 impl<V> Field<Resource<V>> for CustomField {}

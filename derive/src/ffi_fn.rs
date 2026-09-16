@@ -1405,7 +1405,7 @@ mod tests {
     #[test]
     fn selects_implicit_by_value_argument_types_during_generation() {
         let by_value: &[Type] = &[
-            parse_quote!(<dyn Trait>::ID),
+            parse_quote!(<dyn Trait>::TAG),
             parse_quote!(&u8),
             parse_quote!(&mut str),
             parse_quote!(*const u8),
@@ -1414,7 +1414,7 @@ mod tests {
             parse_quote!(core::primitive::char),
             parse_quote!(Option<&u8>),
             parse_quote!(Option<Option<&u8>>),
-            parse_quote!((<dyn Trait>::ID, Option<&u8>, (u32, fn()))),
+            parse_quote!((<dyn Trait>::TAG, Option<&u8>, (u32, fn()))),
             parse_quote!((&u8)),
         ];
 

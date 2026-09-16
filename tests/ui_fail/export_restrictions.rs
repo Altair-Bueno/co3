@@ -113,7 +113,7 @@ ffi! {
 ffi! {
     #![unsafe(export("C"))]
 
-    #[unsafe(id(u32))]
+    #[tag(u32)]
     type OpaqueType<T>;
 
     impl<T> Drop for dyn OpaqueType<T>
@@ -134,7 +134,7 @@ ffi! {
 ffi! {
     #![unsafe(export("C"))]
 
-    #[unsafe(id(u32))]
+    #[tag(u32)]
     type OpaqueType<T>;
 
     impl<T> Drop for dyn OpaqueType<T>
@@ -168,7 +168,7 @@ ffi! {
 ffi! {
     #![unsafe(export("C"))]
 
-    #[unsafe(id(u32))]
+    #[tag(u32)]
     type OpaqueType<T>
     where
         use<T> @ <>;
@@ -177,7 +177,7 @@ ffi! {
     where
         use<T> @ <u32>,
     {
-        fn drop(self_id: <dyn Self>::ID, &mut self);
+        fn drop(self_id: <dyn Self>::TAG, &mut self);
     }
 }
 
@@ -192,7 +192,7 @@ ffi! {
 ffi! {
     #![unsafe(export("C"))]
 
-    #[unsafe(id(u32 = 0))]
+    #[tag(u32, unsafe(0))]
     type Opaque<T>;
 
     impl<T> Drop for dyn Opaque<T>

@@ -2,13 +2,13 @@ use co3::{Tag, ffi};
 
 struct Version;
 #[derive(Tag)]
-#[tag(unsafe(id(u8 = 2)))]
+#[tag(u8, unsafe(2))]
 struct Attribute;
 
 ffi! {
     #![unsafe(extern("C"))]
 
-    #[unsafe(id(u8 = 1))]
+    #[tag(u8, unsafe(1))]
     type Environment<V>;
 
     impl<V> Drop for dyn Environment<V>

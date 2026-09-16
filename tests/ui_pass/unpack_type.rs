@@ -20,7 +20,7 @@ trait TargetType {
 struct Counter(usize);
 
 #[derive(RustSpec, ReprC, co3::Tag)]
-#[tag(unsafe(id(u8 = 1)))]
+#[tag(u8, unsafe(1))]
 #[repr(transparent)]
 struct ByteTarget(u8);
 
@@ -160,7 +160,7 @@ ffi! {
 ffi! {
     #![unsafe(extern("C"))]
 
-    #[unsafe(id(i16 = 1))]
+    #[tag(i16, unsafe(1))]
     type Statement;
 
     impl Statement {

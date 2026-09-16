@@ -6,12 +6,12 @@ trait ByteValue {
 }
 
 #[derive(Clone, RustSpec, ReprC, Tag)]
-#[tag(unsafe(id(u8 = 1)))]
+#[tag(u8, unsafe(1))]
 #[repr(transparent)]
 struct First(u8);
 
 #[derive(Clone, RustSpec, Tag, ReprC)]
-#[tag(unsafe(id(u8 = 2)))]
+#[tag(u8, unsafe(2))]
 #[repr(transparent)]
 struct Second(u8);
 

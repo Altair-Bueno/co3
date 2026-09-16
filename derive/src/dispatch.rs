@@ -475,7 +475,7 @@ pub(crate) fn gen_tag_id_type_checks(
             if auxiliary_detector.generic_arg_mentions_param(&ty) {
                 return;
             }
-            checks.push(quote!(let _: #repr = <#ty as co3::tag::Tagged>::ID;));
+            checks.push(quote!(let _: #repr = <#ty as co3::tag::Tagged>::TAG;));
         });
     }
     quote!(#(#checks)*)
@@ -651,7 +651,7 @@ pub(crate) fn synthesize_dispatch_tag_ids(
                 qself: Some(syn::QSelf { ty, .. }),
                 path,
                 ..
-            }) if path.is_ident("ID") && ty.as_ref() == self_id
+            }) if path.is_ident("TAG") && ty.as_ref() == self_id
         )
     });
 
@@ -660,7 +660,7 @@ pub(crate) fn synthesize_dispatch_tag_ids(
         && !has_explicit_self_id
         && !explicit_ids.contains(&TagId::DynSelf)
     {
-        synthesized.push(parse_quote!(__co3_self_id: <dyn Self>::ID));
+        synthesized.push(parse_quote!(__co3_self_id: <dyn Self>::TAG));
     }
 
     for ident in erased_params {
@@ -669,7 +669,7 @@ pub(crate) fn synthesize_dispatch_tag_ids(
         }
 
         let pat = format_ident!("{ident}_id");
-        synthesized.push(parse_quote!(#pat: <dyn #ident>::ID));
+        synthesized.push(parse_quote!(#pat: <dyn #ident>::TAG));
     }
 
     synthesized.extend(core::mem::take(inputs));
@@ -711,7 +711,7 @@ fn synthesize_dispatch_arms(
                     TagId::DynType(ident) => quote!(#ident),
                 };
 
-                parse_quote! { <#tag_ty as co3::tag::Tagged>::ID }
+                parse_quote! { <#tag_ty as co3::tag::Tagged>::TAG }
             })
             .collect::<Vec<syn::Expr>>();
 
@@ -1111,7 +1111,7 @@ pub(crate) fn tag_id(ty: &syn::Type) -> Option<TagId<'_>> {
     }
 
     let first_seg = path.segments.first()?;
-    if first_seg.ident != "ID" || !first_seg.arguments.is_none() {
+    if first_seg.ident != "TAG" || !first_seg.arguments.is_none() {
         return None;
     }
 

@@ -1,10 +1,10 @@
-error: `dyn Self` requires the declared type to provide `#[unsafe(id(...))]`
+error: `dyn Self` requires the declared type to provide `#[tag(...)]`
  --> tests/ui_fail/dyn_self_requires_id.rs:8:10
   |
 8 |     impl dyn MethodType {
   |          ^^^^^^^^^^^^^^
 
-error: `dyn Self` requires the declared type to provide `#[unsafe(id(...))]`
+error: `dyn Self` requires the declared type to provide `#[tag(...)]`
   --> tests/ui_fail/dyn_self_requires_id.rs:18:19
    |
 18 |     impl Drop for dyn DropType {

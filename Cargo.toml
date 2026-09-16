@@ -35,9 +35,9 @@ allocator-api = ["alloc"]
 default = ["alloc", "derive"]
 
 [dependencies]
-co3-derive = { path = "derive", optional = true }
+co3-derive = { version = "0.1.0", path = "derive", optional = true }
 
-rust-spec = { path = "../rust-spec", default-features = false, features = ["derive"] }
+rust-spec = { version = "0.1.0", default-features = false, features = ["derive"] }
 disjoint_impls = "1.4.0"
 impls = "1.0.3"
 

@@ -2,7 +2,7 @@ use co3::{Tag, ReprC, ffi};
 use rust_spec::RustSpec;
 
 #[derive(RustSpec, ReprC, Tag)]
-#[tag(unsafe(id(u8 = 1)))]
+#[tag(u8, unsafe(1))]
 #[repr(transparent)]
 struct Value(u8);
 

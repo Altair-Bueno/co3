@@ -10,7 +10,7 @@ trait ExportDispatchTrait {
 struct ExportImpl;
 
 #[derive(RustSpec, Tag, ReprC)]
-#[tag(unsafe(id(u8 = 0)))]
+#[tag(u8, unsafe(0))]
 #[repr(transparent)]
 struct DriftHandle(u32);
 

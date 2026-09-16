@@ -16,7 +16,7 @@ trait ByteValue {
 struct EnvAttr(usize);
 
 #[derive(Clone, RustSpec, Tag, ReprC)]
-#[tag(unsafe(id(u16 = 1)))]
+#[tag(u16, unsafe(1))]
 struct Custom(usize);
 
 impl Attr for Custom {}
@@ -85,7 +85,7 @@ ffi! {
     #![symbol_prefix = "cfg_attr"]
 
     #[cfg(all())]
-    #[cfg_attr(all(), unsafe(id(u8)))]
+    #[cfg_attr(all(), tag(u8))]
     type ExportOpaque;
 }
 
@@ -97,7 +97,7 @@ mod imported {
 
         #![symbol_prefix = "cfg_attr"]
 
-        #[cfg_attr(all(), unsafe(id(u8)))]
+        #[cfg_attr(all(), tag(u8))]
         type Opaque;
     }
 }
@@ -106,7 +106,7 @@ mod provider {
     use super::*;
 
     #[derive(Clone, RustSpec, ReprC, Tag)]
-    #[tag(unsafe(id(u16 = 1)))]
+    #[tag(u16, unsafe(1))]
     pub(super) struct Custom(usize);
 
     impl Attr for Custom {}
@@ -144,7 +144,7 @@ ffi! {
         use<T> @ <Custom>,
     {
         #[cfg(all())]
-        fn into_byte(tag_id: <dyn T>::ID, self) -> u8;
+        fn into_byte(tag_id: <dyn T>::TAG, self) -> u8;
     }
 }
 

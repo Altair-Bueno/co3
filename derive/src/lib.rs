@@ -427,8 +427,8 @@ pub fn repr_c_derive(item: syn::DeriveInput) -> Result<TokenStream> {
 
 /// Derives the tagged-dispatch traits for a Rust type.
 ///
-/// `#[tag(unsafe(id(Type)))]` defines the tag type, and adding
-/// `= value` also defines the type's tag value.
+/// - `#[tag(Type, unsafe(value))]` defines both the tag type and value of the derived type.
+/// - `#[tag(Type)]` defines only the tag type; `Tagged` trait is then implemented by hand.
 #[manyhow]
 #[proc_macro_derive(Tag, attributes(tag))]
 pub fn tag_derive(item: syn::DeriveInput) -> Result<TokenStream> {
@@ -612,7 +612,7 @@ pub fn tag_derive(item: syn::DeriveInput) -> Result<TokenStream> {
 /// This synthesizes 2 function imports: `convert_A` and `convert_W`. Primitive types have stable
 /// built-in fragments, while const arguments are converted directly into valid symbol fragments.
 ///
-/// **Runtime-dispatched `dyn(...)` parameters use tag IDs instead and are not interpolated.**
+/// **Runtime-dispatched `dyn(...)` parameters use tags instead and are not interpolated.**
 ///
 /// # Tagged dispatch
 ///
@@ -637,7 +637,7 @@ pub fn tag_derive(item: syn::DeriveInput) -> Result<TokenStream> {
 /// use co3::tag::Tagged;
 ///
 /// #[derive(RustSpec, Tag, ReprC)]
-/// #[tag(unsafe(id(u8 = 1)))]
+/// #[tag(u8, unsafe(1))]
 /// struct LocalCounter(u16);
 ///
 /// trait Counter {
@@ -649,17 +649,17 @@ pub fn tag_derive(item: syn::DeriveInput) -> Result<TokenStream> {
 /// }
 ///
 /// unsafe impl Tagged for CounterHandle<i16> {
-///     const ID: u8 = 3;
+///     const TAG: u8 = 3;
 /// }
 ///
 /// unsafe impl Tagged for CounterHandle<u16> {
-///     const ID: u8 = 4;
+///     const TAG: u8 = 4;
 /// }
 ///
 /// ffi! {
 ///     #![unsafe(extern("C"))]
 ///
-///     #[unsafe(id(u8))]
+///     #[tag(u8)]
 ///     type CounterHandle<T>;
 ///
 ///     // Declare `T` as tag dispatched
@@ -669,7 +669,7 @@ pub fn tag_derive(item: syn::DeriveInput) -> Result<TokenStream> {
 ///         use<T> @ (<LocalCounter> | <CounterHandle<i16>> | <CounterHandle<u16>>)
 ///     {
 ///         // Make the tag-carrying argument position explicit.
-///         fn increment(t_id: <dyn T>::ID, &mut self, by: u8);
+///         fn increment(t_tag: <dyn T>::TAG, &mut self, by: u8);
 ///     }
 ///
 ///     // Dispatch the extern type itself
@@ -677,7 +677,7 @@ pub fn tag_derive(item: syn::DeriveInput) -> Result<TokenStream> {
 ///     where
 ///         use<T> @ (<i16> | <u16>)
 ///     {
-///         fn reset(self_id: <dyn Self>::ID, &mut self);
+///         fn reset(self_tag: <dyn Self>::TAG, &mut self);
 ///     }
 /// }
 /// ```
@@ -886,7 +886,7 @@ fn normalize_dyn_self_tag_ids(impl_: &mut ItemImpl) {
             let receiver_bound =
                 trait_object_single_trait_bound(self.receiver).map(|bound| &bound.path);
             if ty.path.segments.len() == 1
-                && ty.path.segments[0].ident == "ID"
+                && ty.path.segments[0].ident == "TAG"
                 && ty.path.segments[0].arguments.is_none()
                 && ty.qself.as_ref().is_some_and(|qself| {
                     qself.ty.as_ref() == self.receiver
@@ -1501,12 +1501,12 @@ mod dyn_self_tag_id_tests {
     fn leaves_dyn_type_id_for_concrete_impl_self() {
         let mut item: ItemImpl = parse_quote! {
             impl<T> Trait for T {
-                fn kita(id: <dyn T>::ID) {}
+                fn kita(tag: <dyn T>::TAG) {}
             }
         };
 
         normalize_dyn_self_tag_ids(&mut item);
-        let expected = parse_quote!(<dyn T>::ID);
+        let expected = parse_quote!(<dyn T>::TAG);
         assert_eq!(id_type(&item), &expected);
     }
 
@@ -1514,12 +1514,12 @@ mod dyn_self_tag_id_tests {
     fn rewrites_dyn_type_id_for_dyn_self_impl() {
         let mut item: ItemImpl = parse_quote! {
             impl<T> Trait for dyn T {
-                fn kita(id: <dyn T>::ID) {}
+                fn kita(tag: <dyn T>::TAG) {}
             }
         };
 
         normalize_dyn_self_tag_ids(&mut item);
-        let expected = parse_quote!(<dyn Self>::ID);
+        let expected = parse_quote!(<dyn Self>::TAG);
         assert_eq!(id_type(&item), &expected);
     }
 }

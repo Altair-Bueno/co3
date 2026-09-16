@@ -8,9 +8,9 @@ ffi! {
 
     #![symbol_prefix = "this_crate"]
 
-    #[unsafe(id(u32 = 1))]
+    #[tag(u32, unsafe(1))]
     type Opaque1;
-    #[unsafe(id(u8 = 2))]
+    #[tag(u8, unsafe(2))]
     #[derive(PartialEq)]
     type Opaque2;
 
@@ -81,9 +81,9 @@ mod provider {
 
         #![symbol_prefix = "this_crate"]
 
-        #[unsafe(id(u32 = 1))]
+        #[tag(u32, unsafe(1))]
         type Opaque1;
-        #[unsafe(id(u8 = 2))]
+        #[tag(u8, unsafe(2))]
         type Opaque2;
 
         impl Default for Box<Opaque1> {
@@ -125,5 +125,5 @@ fn main() {
     let mut value1 = OwnedOpaque1::default();
     let value2 = OwnedOpaque2::default();
 
-    let _ = kita1(Opaque2::ID, Opaque1::ID, &mut value1, &value2);
+    let _ = kita1(Opaque2::TAG, Opaque1::TAG, &mut value1, &value2);
 }

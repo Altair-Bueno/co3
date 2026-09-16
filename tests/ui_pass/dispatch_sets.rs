@@ -1,19 +1,19 @@
 use co3::{Tag, ffi};
 
 #[derive(Tag)]
-#[tag(unsafe(id(u8 = 1)))]
+#[tag(u8, unsafe(1))]
 enum First {}
 
 #[derive(Tag)]
-#[tag(unsafe(id(u8 = 2)))]
+#[tag(u8, unsafe(2))]
 enum Open {}
 
 ffi! {
     #![unsafe(extern("C"))]
 
-    pub fn fully_open<dyn(u8) T>(tag: <dyn T>::ID);
+    pub fn fully_open<dyn(u8) T>(tag: <dyn T>::TAG);
 
-    pub fn mixed<dyn(u8) T, dyn(u8) U>(open_id: <dyn U>::ID)
+    pub fn mixed<dyn(u8) T, dyn(u8) U>(open_id: <dyn U>::TAG)
     where
         use<T> @ <First>;
 }

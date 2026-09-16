@@ -3,7 +3,7 @@ use co3::{Tag, ffi};
 struct Wrapper<T>(T);
 
 #[derive(Tag)]
-#[tag(unsafe(id(u8 = 1)))]
+#[tag(u8, unsafe(1))]
 struct Value;
 
 ffi! {

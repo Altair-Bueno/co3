@@ -10,7 +10,7 @@ trait Prop {
 enum OdbcDefined {}
 
 #[derive(Tag)]
-#[tag(unsafe(id(u8 = 1)))]
+#[tag(u8, unsafe(1))]
 enum Attribute {}
 
 impl Prop for Attribute {
@@ -77,7 +77,7 @@ ffi! {
 
     #[symbol_name = "projected"]
     fn projected<dyn(u8) A: Prop>(
-        move attribute: <dyn A>::ID,
+        move attribute: <dyn A>::TAG,
         #[unpack(u32, AttrLength<<A as Prop>::DefinedBy> => u16)]
         move value: Parts<<A as Prop>::DefinedBy>,
     )
@@ -86,7 +86,7 @@ ffi! {
 
     #[symbol_name = "projected_try"]
     fn projected_try<dyn(u8) A: Prop>(
-        move attribute: <dyn A>::ID,
+        move attribute: <dyn A>::TAG,
         #[unpack(u32, AttrLength<<A as Prop>::DefinedBy> => u16)]
         move value: Parts<<A as Prop>::DefinedBy>,
     )

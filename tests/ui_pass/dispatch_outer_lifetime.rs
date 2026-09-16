@@ -2,14 +2,14 @@ use co3::{Tag, ReprC, ffi};
 use rust_spec::RustSpec;
 
 #[derive(Tag, ReprC, RustSpec)]
-#[tag(unsafe(id(u8 = 1)))]
+#[tag(u8, unsafe(1))]
 #[repr(transparent)]
 struct Target(u8);
 
 ffi! {
     #![unsafe(extern("C"))]
 
-    #[unsafe(id(u8 = 2))]
+    #[tag(u8, unsafe(2))]
     type Host<'buf>;
 
     impl<'buf> Host<'buf> {

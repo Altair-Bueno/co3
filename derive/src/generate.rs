@@ -696,7 +696,7 @@ fn prepare_dispatch_wrapper_sig(
             .type_params()
             .find(|param| param.ident == *ident)
             .and_then(erased_id_repr)
-            .expect("dispatch type has an ID representation");
+            .expect("dispatch type has a tag representation");
         where_clause.predicates.push(syn::parse_quote!(
             #ident: #co3::tag::Tagged
         ));
@@ -859,11 +859,11 @@ fn dispatch_id_assignments(sig: &syn::Signature, self_ty: Option<&syn::Type>) ->
             };
             match crate::dispatch::tag_id(ty)? {
                 crate::dispatch::TagId::DynType(ident) => {
-                    Some(quote! { let #pat = <#ident as co3::tag::Tagged>::ID; })
+                    Some(quote! { let #pat = <#ident as co3::tag::Tagged>::TAG; })
                 }
                 crate::dispatch::TagId::DynSelf => {
                     let self_ty = self_ty?;
-                    Some(quote! { let #pat = <#self_ty as co3::tag::Tagged>::ID; })
+                    Some(quote! { let #pat = <#self_ty as co3::tag::Tagged>::TAG; })
                 }
             }
         })
@@ -2024,7 +2024,7 @@ fn gen_tag_impl(ident: &syn::Ident, generics: &syn::Generics, value: &syn::Expr)
 
     quote! {
         unsafe impl #impl_generics co3::tag::Tagged for #ident #ty_generics #where_clause {
-            const ID: Self::Kind = #value;
+            const TAG: Self::Kind = #value;
         }
     }
 }
@@ -2202,7 +2202,7 @@ fn expand_dispatch_drop_import(
             Some(quote! {
                 let #pat: #id_ty = {
                     // FIXME: https://github.com/mversic/co3/issues/93
-                    let __co3_tag_id = <#tag_ty as co3::tag::Tagged>::ID;
+                    let __co3_tag_id = <#tag_ty as co3::tag::Tagged>::TAG;
                     unsafe { core::mem::transmute_copy(&__co3_tag_id) }
                 };
             })

@@ -1,0 +1,17 @@
+error: expected `unsafe`
+ --> tests/ui_fail/tag_attribute.rs:6:15
+  |
+6 |     #[tag(u8, 1)]
+  |               ^
+
+error: Attribute not supported in this position
+  --> tests/ui_fail/tag_attribute.rs:13:5
+   |
+13 |     #[unsafe(tag(u8))]
+   |     ^^^^^^^^^^^^^^^^^^
+
+error: duplicate `#[tag(...)]`
+  --> tests/ui_fail/tag_attribute.rs:21:5
+   |
+21 |     #[tag(u8)]
+   |     ^^^^^^^^^^
