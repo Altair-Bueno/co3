@@ -1,6 +1,6 @@
 //! Anonymous sum types used by generated glue.
 
-use crate::Store;
+use crate::{Store, stored::EmptyStore};
 
 macro_rules! impl_either {
     (($( $ty:ident : $variant:ident ),+) -> $either:ident) => {
@@ -17,6 +17,12 @@ macro_rules! impl_either {
                 }
             }
         }
+
+        // SAFETY: the sum holds exactly one of its type parameters and adds no
+        // state of its own, so it carries conversion state only if one of them
+        // does. This mirrors `Result`, which is a two-variant sum, and the
+        // tuples, which are products.
+        unsafe impl<$($ty: EmptyStore),+> EmptyStore for $either<$($ty),+> {}
     };
 }
 
