@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-09-17
+
+### Fixed
+
+- Forward EmptyStore through EitherN
+
+## [0.1.0] - 2026-09-16
+
 ### Added
 
 - Initial `co3` and `co3-derive` crates for exporting and importing C ABI functions with `ffi!` and deriving C-compatible representations with `ReprC`.

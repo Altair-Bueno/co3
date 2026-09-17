@@ -1293,8 +1293,8 @@ pub(crate) unsafe fn decode_owned<'d, T: DecodeOwned<'d, Store: EmptyStore + 'd>
     }
 
     let mut store = T::Store::default();
-    // SAFETY: `decode_owned` is only available for zero-sized stores, so extending
-    // the borrow of the local store does not extend the lifetime of any backing data.
+    // SAFETY: When `T::Store` implements `EmptyStore`, `T::soft_decode` must not return
+    // references into the store, so extending this borrow cannot make local backing data escape.
     let store = unsafe { extend_store_lifetime(&mut store) };
     unsafe { T::soft_decode(source, store) }
 }
