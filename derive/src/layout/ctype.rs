@@ -53,9 +53,21 @@ pub(super) fn gen_fieldless_enum_ctype(
     };
     // Keep the normal non-ZST CFnArg size guard. In particular, a one-variant
     // fieldless enum is represented by `CEnum(())` and must not become a CFnArg.
-    let impls = gen_struct_ctype_impls::<false, true>(&ctype, true, alignment);
+    let impls = gen_struct_ctype_impls::<false, true>(&ctype, false, alignment);
+    let fields = ctype
+        .fields
+        .iter()
+        .map(|field| &field.ty)
+        .collect::<Vec<_>>();
+    let type_spec_impl = gen_type_spec(&ctype.ident, &ctype.generics, &fields, alignment);
+    let borrow_cast_impl = gen_identity_borrow_cast_impl(&ctype.ident, &ctype.generics);
 
-    quote! { #ctype #impls }
+    quote! {
+        #ctype
+        #impls
+        #type_spec_impl
+        #borrow_cast_impl
+    }
 }
 
 pub(super) fn gen_item_ctype(

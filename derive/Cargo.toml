@@ -16,10 +16,10 @@ proc-macro = true
 alloc = []
 
 [dependencies]
-syn = { version = "3.0.4", features = ["full", "extra-traits", "visit", "visit-mut"] }
+syn = { version = "3.0.6", features = ["full", "extra-traits", "visit", "visit-mut"] }
 proc-macro-crate = "3.5.0"
 proc-macro2 = "1.0.107"
-manyhow = "0.13.0"
+manyhow = "0.14.0"
 quote = "1.0.47"
 
 [dev-dependencies]
