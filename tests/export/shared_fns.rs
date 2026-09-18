@@ -1,105 +1,81 @@
-use std::{cmp::Ordering, mem::MaybeUninit};
+use std::{cmp::Ordering, ffi::c_void};
 
-use co3::{Decode, DecodeWithStore, EncodeWithStore, ExternC, (), ReprC, def_fns, export};
-use rust_spec::RustSpec;
+use co3::{boxed::CBoxedSlice, ffi};
 
-co3::handles! {FfiStruct1, FfiStruct2}
-
-def_fns! {
-    Drop: {FfiStruct1, FfiStruct2},
-    Clone: {FfiStruct1, FfiStruct2},
-    Eq: {FfiStruct1, FfiStruct2},
-    Ord: {FfiStruct1, FfiStruct2}
-}
-
-/// Struct without a repr attribute is [`co3::Cloned`] by default
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, RustSpec, ReprC)]
-pub struct FfiStruct1 {
-    name: String,
-}
-
-/// Struct with a repr attribute can be forced to become opaque with `#[reprC(opaque)]`
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, RustSpec, ReprC)]
-#[reprC(opaque)]
-#[repr(C)]
-pub struct FfiStruct2 {
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub struct FfiStruct {
     name: String,
 }
 
 ffi! {
     #![unsafe(export("C"))]
+    #![symbol_prefix = "export_shared"]
 
-    impl FfiStruct1 {
-        move fn new(name: String) -> Self;
+    type FfiStruct;
+
+    impl FfiStruct {
+        move fn new(move name: String) -> Box<Self>;
+        move fn clone_box(&self) -> Box<Self>;
+        fn equals(&self, other: &Self) -> bool;
+        fn compare(&self, other: &Self) -> Ordering;
+    }
+
+    impl Drop for FfiStruct {
+        fn drop(&mut self);
     }
 }
 
-impl FfiStruct1 {
-    pub fn new(name: String) -> Self {
-        Self { name }
+impl FfiStruct {
+    fn new(name: String) -> Box<Self> {
+        Box::new(Self { name })
     }
+
+    fn clone_box(&self) -> Box<Self> {
+        Box::new(self.clone())
+    }
+
+    fn equals(&self, other: &Self) -> bool {
+        self == other
+    }
+
+    fn compare(&self, other: &Self) -> Ordering {
+        self.cmp(other)
+    }
+}
+
+unsafe extern "C" {
+    #[link_name = "export_shared__FfiStruct__new"]
+    fn new_raw(name: CBoxedSlice<u8>) -> *mut c_void;
+
+    #[link_name = "export_shared__FfiStruct__clone_box"]
+    fn clone_raw(value: *const c_void) -> *mut c_void;
+
+    #[link_name = "export_shared__FfiStruct__equals"]
+    fn equals_raw(value: *const c_void, other: *const c_void) -> u8;
+
+    #[link_name = "export_shared__FfiStruct__compare"]
+    fn compare_raw(value: *const c_void, other: *const c_void) -> i8;
+
+    #[link_name = "export_shared__Drop__FfiStruct__drop"]
+    fn drop_raw(value: *mut c_void);
 }
 
 #[test]
-fn export_shared_fns() {
-    use co3::tag::Tagged as _;
+fn opaque_helpers_cross_exported_abi() {
+    let value = unsafe { new_raw(co3::encode(String::from("X"))) };
+    assert!(!value.is_null());
 
-    let name = String::from("X");
+    let cloned = unsafe { clone_raw(value) };
+    assert!(!cloned.is_null());
 
-    let ffi_struct1 = unsafe {
-        let mut ffi_struct = MaybeUninit::new(core::ptr::null_mut());
-        let mut store = Default::default();
-        FfiStruct1__new(name.clone().encode(&mut store), ffi_struct.as_mut_ptr());
-        let ffi_struct = ffi_struct.assume_init();
-        assert!(!ffi_struct.is_null());
-        assert_eq!(FfiStruct1 { name }, *ffi_struct);
-        ffi_struct
-    };
+    let equal = unsafe { equals_raw(value, cloned) };
+    assert_eq!(Some(true), unsafe { co3::decode(equal) });
+
+    let ordering = unsafe { compare_raw(value, cloned) };
+    assert_eq!(Some(Ordering::Equal), unsafe { co3::decode(ordering) });
 
     unsafe {
-        let cloned = {
-            let mut cloned = MaybeUninit::<*mut FfiStruct1>::new(core::ptr::null_mut());
-
-            __co3_export::clone(
-                FfiStruct1::TAG.encode(&mut ()),
-                ffi_struct1.cast(),
-                cloned.as_mut_ptr().cast(),
-            );
-
-            let cloned = DecodeWithStore::decode(cloned.assume_init(), &mut ()).unwrap();
-            assert_eq!(*ffi_struct1, cloned);
-
-            cloned
-        };
-
-        let mut is_equal = MaybeUninit::new(1);
-        let cloned_ptr = (&cloned).encode(&mut ());
-
-        __co3_export::eq(
-            FfiStruct1::TAG.encode(&mut ()),
-            ffi_struct1.cast(),
-            cloned_ptr.cast(),
-            is_equal.as_mut_ptr(),
-        );
-        let is_equal: bool = Decode::decode(is_equal.assume_init()).unwrap();
-        assert!(is_equal);
-
-        let mut ordering = MaybeUninit::new(1);
-        __co3_export::ord(
-            FfiStruct1::TAG.encode(&mut ()),
-            ffi_struct1.cast(),
-            cloned_ptr.cast(),
-            ordering.as_mut_ptr(),
-        );
-        let ordering: Ordering = Decode::decode(ordering.assume_init()).unwrap();
-        assert_eq!(ordering, Ordering::Equal);
-
-            __co3_export::drop(FfiStruct1::TAG.encode(&mut ()), ffi_struct1.cast())
-        ;;
-            __co3_export::drop(
-                FfiStruct1::TAG.encode(&mut ()),
-                cloned.encode(&mut ()).cast()
-            )
-        ;;
+        drop_raw(value);
+        drop_raw(cloned);
     }
 }

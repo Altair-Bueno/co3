@@ -1,285 +1,135 @@
-use std::collections::BTreeMap;
+use co3::ffi;
 
-use co3::external::{ExternRef, External};
+ffi! {
+    #![unsafe(extern("C"))]
+    #![symbol_prefix = "import_opaque"]
 
-#[extern_type]
-#[derive(Clone, PartialEq, Eq)]
-// NOTE: struct's body is replaced by co3!
-pub struct Value;
+    pub type Value;
+    pub type OpaqueStruct;
 
-#[extern_type]
-#[derive(Clone, PartialEq, Eq)]
-// NOTE: struct's body is replaced by co3!
-pub struct OpaqueStruct;
+    impl Drop for Value {
+        fn drop(&mut self);
+    }
 
-#[ffi]
-impl Value {
-    pub fn new(input: String) -> Self {
-        unreachable!("replaced by ffi")
+    impl Drop for OpaqueStruct {
+        fn drop(&mut self);
+    }
+
+    impl Value {
+        move fn new(move input: String) -> OwnedValue;
+        fn len(&self) -> usize;
+    }
+
+    impl Clone for OwnedValue {
+        #[symbol_name = "import_opaque_value_clone"]
+        move fn clone(&self) -> Self;
+    }
+
+    impl OpaqueStruct {
+        move fn new(name: u8) -> OwnedOpaqueStruct;
+        fn name(&self) -> u8;
+        fn identity(&self) -> &Self;
+        fn value_len(&self, value: &Value) -> usize;
     }
 }
 
-#[ffi]
-impl OpaqueStruct {
-    pub fn new(name: u8) -> Box<Self> {
-        unreachable!("replaced by ffi")
-    }
-
-    #[must_use]
-    pub fn with_params(self, params: impl IntoIterator<Item = (u8, Value)>) -> OpaqueStruct {
-        unreachable!("replaced by ffi")
-    }
-
-    pub fn get_param(&self, name: &u8) -> Option<ExternRef<'_, Value>> {
-        unreachable!("replaced by ffi")
-    }
-
-    pub fn params(&self) -> impl ExactSizeIterator<Item = ExternRef<'_, Value>> {
-        unreachable!("replaced by ffi")
-    }
-
-    pub fn fallible_int_output(flag: bool) -> Result<u8, &'static str> {
-        unreachable!("replaced by ffi")
-    }
-}
-
-#[ffi]
-pub fn freestanding_returns_opaque_item(input: ExternRef<OpaqueStruct>) -> ExternRef<OpaqueStruct> {
-    unreachable!("replaced by ffi")
-}
-
-#[ffi]
-pub fn freestanding_returns_opaque_double_ref<'a, 'b>(
-    input: &'b ExternRef<'a, OpaqueStruct>,
-) -> &'b ExternRef<'a, OpaqueStruct>
-where
-    'a: 'b,
-{
-    unreachable!("replaced by ffi")
-}
-
-#[ffi]
-pub fn some_fn(input: &[OpaqueStruct]) {
-    unreachable!("replaced by ffi")
-}
-
-fn make_new_opaque(name: u8, params: BTreeMap<u8, Value>) -> OpaqueStruct {
-    let opaque = OpaqueStruct::new(name);
-    opaque.with_params(params.into_iter().collect())
-}
-
-#[test]
-fn constructor() {
-    let name = 42_u8;
-
-    let opaque = OpaqueStruct::new(name);
-    let mut expected_result = ffi::ExternOpaqueStruct {
-        name: Some(name),
-        tokens: vec![],
-        params: Default::default(),
-    };
-    let opaque: &mut ffi::ExternOpaqueStruct = unsafe { core::mem::transmute(opaque) };
-    assert_eq!(&mut expected_result, opaque);
-}
-
-#[test]
-fn return_option_ref() {
-    let name = 42_u8;
-
-    let value: Value = Value::new("Dummy param value".to_owned());
-    let mut params = BTreeMap::default();
-    params.insert(name, value.clone());
-
-    let opaque = make_new_opaque(name, params);
-
-    let param: Option<ExternRef<Value>> = opaque.get_param(&name);
-    compare_opaque_eq::<_, ffi::ExternValue>(&value, &param.expect("Defined"));
-}
-
-#[test]
-fn take_and_return_opaque_ref() {
-    let name = 42u8;
-    let value: Value = Value::new("Dummy param value".to_owned());
-    let mut params = BTreeMap::default();
-    params.insert(name, value);
-
-    let opaque: OpaqueStruct = make_new_opaque(name, params);
-
-    let opaque_ref: ExternRef<OpaqueStruct> = freestanding_returns_opaque_item(opaque.as_ref());
-    compare_opaque_eq::<_, ffi::ExternOpaqueStruct>(&opaque.as_ref(), &opaque_ref);
-}
-
-#[test]
-fn take_and_return_opaque_double_ref() {
-    let name = 42u8;
-    let value: Value = Value::new("Dummy param value".to_owned());
-    let mut params = BTreeMap::default();
-    params.insert(name, value);
-
-    let opaque: OpaqueStruct = make_new_opaque(name, params);
-    let opaque_ref: ExternRef<_> = opaque.as_ref();
-    let opaque_double_ref: &ExternRef<_> = freestanding_returns_opaque_double_ref(&opaque_ref);
-    compare_opaque_eq::<_, ffi::ExternOpaqueStruct>(&opaque, opaque_double_ref);
-}
-
-#[test]
-fn fallible_output() {
-    assert_eq!(Ok(42), OpaqueStruct::fallible_int_output(true));
-    // TODO:
-    //assert!(OpaqueStruct::fallible_int_output(false).is_err());
-}
-
-fn compare_opaque_eq<T, U: PartialEq + core::fmt::Debug>(opaque1: &T, opaque2: &T) {
-    unsafe {
-        let opaque1: &*const U = &*(core::ptr::from_ref(opaque1)).cast::<*const U>();
-        let opaque2: &*const U = &*(core::ptr::from_ref(opaque2)).cast::<*const U>();
-
-        assert_eq!(**opaque1, **opaque2)
-    }
-}
-
-mod ffi {
-    use std::{alloc, collections::BTreeMap};
-
-    use co3::{
-        DecodeWithStore, EncodeWithStore, ExternC,
-        out_ptr::{OutPtr, OutPtrWrite},
-        slice::RawSliceMut,
-    };
-
-    co3::handles! {ExternOpaqueStruct, ExternValue}
-
-    co3::def_fns! {
-        Drop: { ExternValue, ExternOpaqueStruct },
-        Clone: { ExternValue },
-        Eq: { ExternValue, ExternOpaqueStruct },
-    }
-
-    co3::def_fns! { dealloc }
-
-    co3::ffi! {
-        #![unsafe(export("C"))]
-        #![symbol_prefix = "import"]
-
-        type ExternValue;
-        type ExternOpaqueStruct;
-    }
+mod provider {
+    use co3::ffi;
 
     #[derive(Debug, Clone, PartialEq, Eq)]
-    pub struct ExternValue(pub String);
+    pub struct Value(String);
 
     #[derive(Debug, PartialEq, Eq)]
-    pub struct ExternOpaqueStruct {
-        pub name: Option<u8>,
-        pub tokens: Vec<ExternValue>,
-        pub params: BTreeMap<u8, ExternValue>,
+    pub struct OpaqueStruct {
+        name: u8,
     }
 
-    #[unsafe(export_name = "Value__new")]
-    unsafe extern "C" fn Value__new(input: RawSliceMut<u8>, output: *mut *mut ExternValue) {
-        unsafe {
-            let string = String::from_utf8(input.into_rust().expect("Defined").to_vec());
-            let opaque = Box::new(ExternValue(string.expect("Valid UTF8 string")));
+    impl Drop for Value {
+        fn drop(&mut self) {}
+    }
 
-            output.write(Box::into_raw(opaque));
+    impl Drop for OpaqueStruct {
+        fn drop(&mut self) {}
+    }
+
+    ffi! {
+        #![unsafe(export("C"))]
+        #![symbol_prefix = "import_opaque"]
+
+        type Value;
+        type OpaqueStruct;
+
+        impl Drop for Value {
+            fn drop(&mut self);
+        }
+
+        impl Drop for OpaqueStruct {
+            fn drop(&mut self);
+        }
+
+        impl Value {
+            move fn new(move input: String) -> Box<Self>;
+            fn len(&self) -> usize;
+        }
+
+        impl Clone for Box<Value> {
+            #[symbol_name = "import_opaque_value_clone"]
+            move fn clone(&self) -> Self;
+        }
+
+        impl OpaqueStruct {
+            move fn new(name: u8) -> Box<Self>;
+            fn name(&self) -> u8;
+            fn identity(&self) -> &Self;
+            fn value_len(&self, value: &Value) -> usize;
         }
     }
 
-    #[unsafe(export_name = "OpaqueStruct__new")]
-    unsafe extern "C" fn OpaqueStruct__new(
-        name: <u8 as co3::ExternC>::CType,
-        output: *mut *mut ExternOpaqueStruct,
-    ) {
-        unsafe {
-            let opaque = Box::new(ExternOpaqueStruct {
-                name: Some(DecodeWithStore::decode(name, &mut ()).expect("Valid num")),
-                tokens: vec![],
-                params: Default::default(),
-            });
+    impl Value {
+        fn new(input: String) -> Box<Self> {
+            Box::new(Self(input))
+        }
 
-            output.write(Box::into_raw(opaque));
+        fn len(&self) -> usize {
+            self.0.len()
         }
     }
 
-    #[unsafe(export_name = "OpaqueStruct__with_params")]
-    unsafe extern "C" fn OpaqueStruct__with_params(
-        handle: *mut ExternOpaqueStruct,
-        params: <Vec<(u8, ExternValue)> as co3::ExternC>::CType,
-        output: *mut *mut ExternOpaqueStruct,
-    ) {
-        unsafe {
-            let mut handle = *Box::from_raw(handle);
-            let mut store = Default::default();
+    impl OpaqueStruct {
+        fn new(name: u8) -> Box<Self> {
+            Box::new(Self { name })
+        }
 
-            let params = Vec::<(u8, ExternValue)>::decode(params, &mut store).expect("Valid");
+        fn name(&self) -> u8 {
+            self.name
+        }
 
-            handle.params = params.into_iter().collect();
-            output.write(Box::into_raw(Box::new(handle)));
+        fn identity(&self) -> &Self {
+            self
+        }
+
+        fn value_len(&self, value: &Value) -> usize {
+            value.0.len()
         }
     }
+}
 
-    #[unsafe(export_name = "OpaqueStruct__get_param")]
-    unsafe extern "C" fn OpaqueStruct__get_param(
-        handle: *const ExternOpaqueStruct,
-        param_name: <&u8 as ExternC>::CType,
-        output: *mut *const ExternValue,
-    ) {
-        unsafe {
-            let handle = handle.as_ref().expect("Valid");
-            let param_name = param_name.as_ref().expect("Valid");
-            let value = handle.params.get(param_name);
-            OutPtrWrite::write_out(value, output);
-        }
-    }
+#[test]
+fn constructs_and_uses_imported_opaque_handles() {
+    let value = Value::new(String::from("opaque value"));
+    let cloned = value.clone();
+    assert_eq!(12, value.len());
+    assert_eq!(12, cloned.len());
 
-    #[unsafe(export_name = "OpaqueStruct__params")]
-    unsafe extern "C" fn OpaqueStruct__params(
-        handle: *const ExternOpaqueStruct,
-        output: *mut <Vec<&ExternValue> as OutPtr>::OutPtr,
-    ) {
-        unsafe {
-            let handle = handle.as_ref().expect("Valid");
-            let params: Vec<_> = handle.params.values().collect();
-            OutPtrWrite::write_out(params, output);
-        }
-    }
+    let opaque = OpaqueStruct::new(42);
+    assert_eq!(42, opaque.name());
+    assert_eq!(12, opaque.value_len(&value));
+}
 
-    #[unsafe(export_name = "OpaqueStruct__remove_param")]
-    unsafe extern "C" fn OpaqueStruct__remove_param(
-        handle: *mut ExternOpaqueStruct,
-        param_name: <&u8 as ExternC>::CType,
-        output: *mut *mut ExternValue,
-    ) {
-        unsafe {
-            let handle = handle.as_mut().expect("Valid");
-            let param_name = param_name.as_ref().expect("Valid");
+#[test]
+fn imported_opaque_borrow_preserves_identity() {
+    let opaque = OpaqueStruct::new(7);
+    let identity = opaque.identity();
 
-            let out: Option<ExternValue> = handle.params.remove(param_name);
-            output.write(out.encode(&mut ()));
-        }
-    }
-
-    #[unsafe(export_name = "OpaqueStruct__fallible_int_output")]
-    unsafe extern "C" fn OpaqueStruct__fallible_int_output(
-        input: <bool as ExternC>::CType,
-        output: *mut <u8 as OutPtr>::OutPtr,
-    ) {
-        if input == 0 {
-            return;
-        }
-
-        unsafe {
-            output.write(42);
-        }
-    }
-
-    #[unsafe(export_name = "__freestanding_returns_opaque_item")]
-    unsafe extern "C" fn __freestanding_returns_opaque_item(
-        input: *const ExternOpaqueStruct,
-        output: *mut *const ExternOpaqueStruct,
-    ) {
-        unsafe {
-            output.write(input);
-        }
-    }
+    assert!(core::ptr::eq::<OpaqueStruct>(&*opaque, identity));
 }

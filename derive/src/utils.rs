@@ -140,72 +140,79 @@ pub(crate) fn gen_store_name(arg_name: &syn::Ident) -> syn::Ident {
     format_ident!("__co3_{arg_name}_store")
 }
 
-fn calculate_tuple_depth(n: usize) -> usize {
-    if n == 0 {
-        return 1;
-    }
-    let mut depth = 1;
-    let mut capacity = MAX_TUPLE_ARITY;
-    while capacity < n {
-        depth += 1;
-        capacity *= MAX_TUPLE_ARITY;
-    }
-    depth
-}
-
+/// Builds an order-preserving tuple tree whose nodes fit the tuple impls
+/// available in `co3`. Partial groups use their exact arity, and singleton
+/// remainders above the leaf level are promoted instead of wrapped again.
 pub fn build_extern_c_type_tuple(types: &[&Type]) -> (TokenStream, TokenStream, Vec<TokenStream>) {
     if types.is_empty() {
         return (quote!(()), quote!(()), Vec::new());
     }
 
-    let depth = calculate_tuple_depth(types.len());
-    build_type_tuple_at_depth(types, depth)
+    let mut nodes = types
+        .chunks(MAX_TUPLE_ARITY)
+        .map(|chunk| {
+            let c_types = chunk.iter().map(|ty| quote!(<#ty as co3::ExternC>::CType));
+            let accessors = (0..chunk.len())
+                .map(|index| {
+                    let index = Literal::usize_unsuffixed(index);
+                    quote!(#index)
+                })
+                .collect();
+            let c_tuple_ident = format_ident!("ReprCTuple{}", chunk.len());
+
+            (
+                quote!((#(#chunk,)*)),
+                quote!(co3::tuple::#c_tuple_ident<#(#c_types),*>),
+                accessors,
+            )
+        })
+        .collect::<Vec<_>>();
+
+    // Repeatedly pack consecutive nodes into the largest supported tuple. A
+    // lone remainder is promoted unchanged, avoiding redundant unary tuple
+    // layers while preserving field order.
+    while nodes.len() > 1 {
+        let mut input = nodes.into_iter();
+        let mut next = Vec::new();
+
+        loop {
+            let chunk = input.by_ref().take(MAX_TUPLE_ARITY).collect::<Vec<_>>();
+            if chunk.is_empty() {
+                break;
+            }
+            next.push(pack_tuple_nodes(chunk));
+        }
+
+        nodes = next;
+    }
+
+    nodes.pop().expect("non-empty input produces a tuple")
 }
 
-fn build_type_tuple_at_depth(
-    types: &[&Type],
-    depth: usize,
+fn pack_tuple_nodes(
+    mut nodes: Vec<(TokenStream, TokenStream, Vec<TokenStream>)>,
 ) -> (TokenStream, TokenStream, Vec<TokenStream>) {
-    if depth == 1 {
-        let c_types = types.iter().map(|ty| quote!(<#ty as co3::ExternC>::CType));
-        let accessors = (0..types.len())
-            .map(|i| {
-                let lit = Literal::usize_unsuffixed(i);
-                quote!(#lit)
-            })
-            .collect();
-
-        let c_tuple_ident = format_ident!("ReprCTuple{}", types.len());
-        return (
-            quote!((#(#types,)*)),
-            quote!(co3::tuple::#c_tuple_ident<#(#c_types),*>),
-            accessors,
-        );
+    if nodes.len() == 1 {
+        return nodes.pop().expect("singleton node");
     }
 
-    let chunk_size = MAX_TUPLE_ARITY.pow(depth as u32 - 1);
-    let mut sub_tuples = Vec::new();
-    let mut sub_c_tuples = Vec::new();
-    let mut all_accessors = Vec::new();
+    let tuple_elems = nodes.iter().map(|(tuple, _, _)| tuple);
+    let c_tuple_elems = nodes.iter().map(|(_, c_tuple, _)| c_tuple);
+    let tuple = quote!((#(#tuple_elems,)*));
+    let c_tuple_ident = format_ident!("ReprCTuple{}", nodes.len());
+    let c_tuple = quote!(co3::tuple::#c_tuple_ident<#(#c_tuple_elems),*>);
+    let accessors = nodes
+        .into_iter()
+        .enumerate()
+        .flat_map(|(index, (_, _, accessors))| {
+            let index = Literal::usize_unsuffixed(index);
+            accessors
+                .into_iter()
+                .map(move |accessor| quote!(#index.#accessor))
+        })
+        .collect();
 
-    for (chunk_idx, chunk) in types.chunks(chunk_size).enumerate() {
-        let (sub_tuple, sub_c_tuple, sub_accessors) = build_type_tuple_at_depth(chunk, depth - 1);
-        sub_tuples.push(sub_tuple);
-        sub_c_tuples.push(sub_c_tuple);
-
-        let chunk_idx_lit = Literal::usize_unsuffixed(chunk_idx);
-        for accessor in sub_accessors {
-            all_accessors.push(quote!(#chunk_idx_lit.#accessor));
-        }
-    }
-
-    let c_tuple_ident = format_ident!("ReprCTuple{}", sub_c_tuples.len());
-
-    (
-        quote!((#(#sub_tuples,)*)),
-        quote!(co3::tuple::#c_tuple_ident<#(#sub_c_tuples),*>),
-        all_accessors,
-    )
+    (tuple, c_tuple, accessors)
 }
 
 pub(crate) struct DispatchMonomorphizer<'a> {

@@ -223,6 +223,8 @@ pub fn gen_enum_niche_ir(
 mod tests {
     use crate::utils::build_extern_c_type_tuple;
 
+    const MAX_TUPLE_ARITY: usize = 12;
+
     fn make_types(count: usize) -> Vec<syn::Type> {
         (0..count)
             .map(|i| {
@@ -232,903 +234,252 @@ mod tests {
             .collect()
     }
 
-    #[test]
-    fn test_base_case_1_element() {
-        let types = make_types(1);
-        let refs: Vec<_> = types.iter().collect();
-        let (result, _, accessors) = build_extern_c_type_tuple(&refs);
+    #[derive(Debug)]
+    enum ExpectedNode {
+        Leaf(usize),
+        Tuple(Vec<ExpectedNode>),
+    }
 
-        let expected: syn::Type = syn::parse_quote! {
-            (T0,)
-        };
-        let expected_accessors: Vec<syn::Expr> = vec![syn::parse_quote!(value.0)];
-
-        assert_eq!(expected_accessors.len(), accessors.len());
-        for (accessor, expected_accessor) in accessors.iter().zip(expected_accessors) {
-            assert_eq!(expected_accessor, syn::parse_quote!(value.#accessor));
+    fn expected_tuple_layout(count: usize) -> ExpectedNode {
+        if count == 0 {
+            return ExpectedNode::Tuple(Vec::new());
         }
 
-        assert_eq!(expected, syn::parse_quote!(#result));
+        let mut leaves = (0..count).map(ExpectedNode::Leaf);
+        let mut nodes = Vec::new();
+        loop {
+            let chunk = leaves.by_ref().take(MAX_TUPLE_ARITY).collect::<Vec<_>>();
+            if chunk.is_empty() {
+                break;
+            }
+            nodes.push(ExpectedNode::Tuple(chunk));
+        }
+
+        while nodes.len() > 1 {
+            let mut input = nodes.into_iter();
+            let mut next = Vec::new();
+            loop {
+                let mut chunk = input.by_ref().take(MAX_TUPLE_ARITY).collect::<Vec<_>>();
+                if chunk.is_empty() {
+                    break;
+                }
+                if chunk.len() == 1 {
+                    next.push(chunk.pop().expect("singleton remainder"));
+                } else {
+                    next.push(ExpectedNode::Tuple(chunk));
+                }
+            }
+            nodes = next;
+        }
+
+        nodes.pop().expect("non-empty layout")
+    }
+
+    fn assert_tuple_layout(count: usize) {
+        let types = make_types(count);
+        let refs: Vec<_> = types.iter().collect();
+        let (rust_tuple, c_tuple, accessors) = build_extern_c_type_tuple(&refs);
+
+        eprintln!("{count} elements:");
+        eprintln!("  Rust tuple: {rust_tuple}");
+        eprintln!("  C tuple: {c_tuple}");
+        eprintln!(
+            "  Accessors: {}",
+            accessors
+                .iter()
+                .map(ToString::to_string)
+                .collect::<Vec<_>>()
+                .join(", ")
+        );
+
+        let rust_tuple: syn::Type =
+            syn::parse2(rust_tuple).expect("generated Rust tuple must be a type");
+        let c_tuple: syn::Type = syn::parse2(c_tuple).expect("generated C tuple must be a type");
+        let expected = expected_tuple_layout(count);
+
+        assert_rust_tuple_tree(&rust_tuple, &expected);
+        assert_c_tuple_tree(&c_tuple, &expected);
+
+        let mut expected_accessors = Vec::new();
+        collect_expected_accessors(&expected, &mut Vec::new(), &mut expected_accessors);
+        assert_eq!(expected_accessors.len(), accessors.len());
+        for (position, (accessor, (index, path))) in
+            accessors.iter().zip(expected_accessors).enumerate()
+        {
+            assert_eq!(position, index);
+            let mut expected = String::from("value");
+            for field in path {
+                expected.push_str(&format!(".{field}"));
+            }
+            let expected: syn::Expr = syn::parse_str(&expected).unwrap();
+
+            assert_eq!(expected, syn::parse_quote!(value.#accessor));
+        }
+    }
+
+    fn assert_rust_tuple_tree(ty: &syn::Type, expected: &ExpectedNode) {
+        match expected {
+            ExpectedNode::Leaf(index) => {
+                let syn::Type::Path(ty) = ty else {
+                    panic!("expected leaf T{index}, got {ty:?}");
+                };
+                let ident = &ty.path.segments.last().expect("type path").ident;
+                assert_eq!(format!("T{index}"), ident.to_string());
+            }
+            ExpectedNode::Tuple(children) => {
+                let syn::Type::Tuple(tuple) = ty else {
+                    panic!(
+                        "expected tuple with {} children, got {ty:?}",
+                        children.len()
+                    );
+                };
+                assert_eq!(children.len(), tuple.elems.len());
+                for (child, expected_child) in tuple.elems.iter().zip(children) {
+                    assert_rust_tuple_tree(child, expected_child);
+                }
+            }
+        }
+    }
+
+    fn assert_c_tuple_tree(ty: &syn::Type, expected: &ExpectedNode) {
+        match expected {
+            ExpectedNode::Leaf(index) => {
+                let syn::Type::Path(ty) = ty else {
+                    panic!("expected associated CType for T{index}, got {ty:?}");
+                };
+                let qself = ty.qself.as_ref().expect("CType must be qualified");
+                let syn::Type::Path(source) = qself.ty.as_ref() else {
+                    panic!("expected source type path, got {:?}", qself.ty);
+                };
+                let ident = &source.path.segments.last().expect("source type path").ident;
+                assert_eq!(format!("T{index}"), ident.to_string());
+                assert_eq!(
+                    ["co3", "ExternC", "CType"],
+                    ty.path
+                        .segments
+                        .iter()
+                        .map(|part| part.ident.to_string())
+                        .collect::<Vec<_>>()
+                        .as_slice()
+                );
+            }
+            ExpectedNode::Tuple(children) if children.is_empty() => {
+                let syn::Type::Tuple(tuple) = ty else {
+                    panic!("expected empty C tuple, got {ty:?}");
+                };
+                assert!(tuple.elems.is_empty());
+            }
+            ExpectedNode::Tuple(children) => {
+                let syn::Type::Path(ty) = ty else {
+                    panic!("expected ReprCTuple{} type, got {ty:?}", children.len());
+                };
+                assert!(ty.qself.is_none());
+                let segment = ty.path.segments.last().expect("ReprCTuple path");
+                let expected_name = format!("ReprCTuple{}", children.len());
+                assert_eq!(
+                    ["co3", "tuple", expected_name.as_str()],
+                    ty.path
+                        .segments
+                        .iter()
+                        .map(|part| part.ident.to_string())
+                        .collect::<Vec<_>>()
+                        .as_slice()
+                );
+
+                let syn::PathArguments::AngleBracketed(arguments) = &segment.arguments else {
+                    panic!("expected ReprCTuple type arguments");
+                };
+                assert_eq!(children.len(), arguments.args.len());
+                for (argument, expected_child) in arguments.args.iter().zip(children) {
+                    let syn::GenericArgument::Type(child) = argument else {
+                        panic!("expected ReprCTuple type argument, got {argument:?}");
+                    };
+                    assert_c_tuple_tree(child, expected_child);
+                }
+            }
+        }
+    }
+
+    fn collect_expected_accessors(
+        node: &ExpectedNode,
+        path: &mut Vec<usize>,
+        accessors: &mut Vec<(usize, Vec<usize>)>,
+    ) {
+        match node {
+            ExpectedNode::Leaf(index) => accessors.push((*index, path.clone())),
+            ExpectedNode::Tuple(children) => {
+                for (index, child) in children.iter().enumerate() {
+                    path.push(index);
+                    collect_expected_accessors(child, path, accessors);
+                    path.pop();
+                }
+            }
+        }
+    }
+
+    fn assert_accessor(count: usize, index: usize, expected: syn::Expr) {
+        let types = make_types(count);
+        let refs = types.iter().collect::<Vec<_>>();
+        let (_, _, accessors) = build_extern_c_type_tuple(&refs);
+        let accessor = &accessors[index];
+        assert_eq!(expected, syn::parse_quote!(value.#accessor));
+    }
+
+    #[test]
+    fn test_empty() {
+        assert_tuple_layout(0);
+    }
+
+    #[test]
+    fn test_base_case_1_element() {
+        assert_tuple_layout(1);
     }
 
     #[test]
     fn test_base_case_12_elements() {
-        let types = make_types(12);
-        let refs: Vec<_> = types.iter().collect();
-        let (result, _, accessors) = build_extern_c_type_tuple(&refs);
-
-        let expected: syn::Type = syn::parse_quote! {
-            (T0, T1, T2, T3, T4, T5, T6, T7, T8, T9, T10, T11,)
-        };
-
-        let expected_accessors: Vec<syn::Expr> = vec![
-            syn::parse_quote!(value.0),
-            syn::parse_quote!(value.1),
-            syn::parse_quote!(value.2),
-            syn::parse_quote!(value.3),
-            syn::parse_quote!(value.4),
-            syn::parse_quote!(value.5),
-            syn::parse_quote!(value.6),
-            syn::parse_quote!(value.7),
-            syn::parse_quote!(value.8),
-            syn::parse_quote!(value.9),
-            syn::parse_quote!(value.10),
-            syn::parse_quote!(value.11),
-        ];
-
-        assert_eq!(expected_accessors.len(), accessors.len());
-        for (accessor, expected_accessor) in accessors.iter().zip(expected_accessors) {
-            assert_eq!(expected_accessor, syn::parse_quote!(value.#accessor));
-        }
-
-        assert_eq!(expected, syn::parse_quote!(#result));
+        assert_tuple_layout(12);
     }
 
     #[test]
     fn test_13_elements() {
-        let types = make_types(13);
-        let refs: Vec<_> = types.iter().collect();
-        let (result, _, accessors) = build_extern_c_type_tuple(&refs);
-
-        let expected: syn::Type = syn::parse_quote! {
-            (
-                (T0, T1, T2, T3, T4, T5, T6, T7, T8, T9, T10, T11, ),
-                (T12, ),
-            )
-        };
-
-        let expected_accessors: Vec<syn::Expr> = vec![
-            syn::parse_quote!(value.0.0),
-            syn::parse_quote!(value.0.1),
-            syn::parse_quote!(value.0.2),
-            syn::parse_quote!(value.0.3),
-            syn::parse_quote!(value.0.4),
-            syn::parse_quote!(value.0.5),
-            syn::parse_quote!(value.0.6),
-            syn::parse_quote!(value.0.7),
-            syn::parse_quote!(value.0.8),
-            syn::parse_quote!(value.0.9),
-            syn::parse_quote!(value.0.10),
-            syn::parse_quote!(value.0.11),
-            syn::parse_quote!(value.1.0),
-        ];
-
-        assert_eq!(expected_accessors.len(), accessors.len());
-        for (accessor, expected_accessor) in accessors.iter().zip(expected_accessors) {
-            assert_eq!(expected_accessor, syn::parse_quote!(value.#accessor));
-        }
-
-        assert_eq!(expected, syn::parse_quote!(#result));
+        assert_tuple_layout(13);
     }
 
     #[test]
     fn test_24_elements() {
-        let types = make_types(24);
-        let refs: Vec<_> = types.iter().collect();
-        let (result, _, accessors) = build_extern_c_type_tuple(&refs);
-
-        let expected: syn::Type = syn::parse_quote! {
-            (
-                (T0, T1, T2, T3, T4, T5, T6, T7, T8, T9, T10, T11, ),
-                (T12, T13, T14, T15, T16, T17, T18, T19, T20, T21, T22, T23, ),
-            )
-        };
-
-        let expected_accessors: Vec<syn::Expr> = vec![
-            syn::parse_quote!(value.0.0),
-            syn::parse_quote!(value.0.1),
-            syn::parse_quote!(value.0.2),
-            syn::parse_quote!(value.0.3),
-            syn::parse_quote!(value.0.4),
-            syn::parse_quote!(value.0.5),
-            syn::parse_quote!(value.0.6),
-            syn::parse_quote!(value.0.7),
-            syn::parse_quote!(value.0.8),
-            syn::parse_quote!(value.0.9),
-            syn::parse_quote!(value.0.10),
-            syn::parse_quote!(value.0.11),
-            syn::parse_quote!(value.1.0),
-            syn::parse_quote!(value.1.1),
-            syn::parse_quote!(value.1.2),
-            syn::parse_quote!(value.1.3),
-            syn::parse_quote!(value.1.4),
-            syn::parse_quote!(value.1.5),
-            syn::parse_quote!(value.1.6),
-            syn::parse_quote!(value.1.7),
-            syn::parse_quote!(value.1.8),
-            syn::parse_quote!(value.1.9),
-            syn::parse_quote!(value.1.10),
-            syn::parse_quote!(value.1.11),
-        ];
-
-        assert_eq!(expected_accessors.len(), accessors.len());
-        for (accessor, expected_accessor) in accessors.iter().zip(expected_accessors) {
-            assert_eq!(expected_accessor, syn::parse_quote!(value.#accessor));
-        }
-
-        assert_eq!(expected, syn::parse_quote!(#result));
+        assert_tuple_layout(24);
     }
 
     #[test]
     fn test_25_elements() {
-        let types = make_types(25);
-        let refs: Vec<_> = types.iter().collect();
-        let (result, _, accessors) = build_extern_c_type_tuple(&refs);
-
-        let expected: syn::Type = syn::parse_quote! {
-            (
-                (T0, T1, T2, T3, T4, T5, T6, T7, T8, T9, T10, T11, ),
-                (T12, T13, T14, T15, T16, T17, T18, T19, T20, T21, T22, T23, ),
-                (T24,),
-            )
-        };
-
-        let expected_accessors: Vec<syn::Expr> = vec![
-            syn::parse_quote!(value.0.0),
-            syn::parse_quote!(value.0.1),
-            syn::parse_quote!(value.0.2),
-            syn::parse_quote!(value.0.3),
-            syn::parse_quote!(value.0.4),
-            syn::parse_quote!(value.0.5),
-            syn::parse_quote!(value.0.6),
-            syn::parse_quote!(value.0.7),
-            syn::parse_quote!(value.0.8),
-            syn::parse_quote!(value.0.9),
-            syn::parse_quote!(value.0.10),
-            syn::parse_quote!(value.0.11),
-            syn::parse_quote!(value.1.0),
-            syn::parse_quote!(value.1.1),
-            syn::parse_quote!(value.1.2),
-            syn::parse_quote!(value.1.3),
-            syn::parse_quote!(value.1.4),
-            syn::parse_quote!(value.1.5),
-            syn::parse_quote!(value.1.6),
-            syn::parse_quote!(value.1.7),
-            syn::parse_quote!(value.1.8),
-            syn::parse_quote!(value.1.9),
-            syn::parse_quote!(value.1.10),
-            syn::parse_quote!(value.1.11),
-            syn::parse_quote!(value.2.0),
-        ];
-
-        assert_eq!(expected_accessors.len(), accessors.len());
-        for (accessor, expected_accessor) in accessors.iter().zip(expected_accessors) {
-            assert_eq!(expected_accessor, syn::parse_quote!(value.#accessor));
-        }
-
-        assert_eq!(expected, syn::parse_quote!(#result));
+        assert_tuple_layout(25);
     }
 
     #[test]
     fn test_36_elements() {
-        let types = make_types(36);
-        let refs: Vec<_> = types.iter().collect();
-        let (result, _, accessors) = build_extern_c_type_tuple(&refs);
-
-        let expected: syn::Type = syn::parse_quote! {
-            (
-                (T0, T1, T2, T3, T4, T5, T6, T7, T8, T9, T10, T11, ),
-                (T12, T13, T14, T15, T16, T17, T18, T19, T20, T21, T22, T23, ),
-                (T24, T25, T26, T27, T28, T29, T30, T31, T32, T33, T34, T35, ),
-            )
-        };
-
-        let expected_accessors: Vec<syn::Expr> = vec![
-            syn::parse_quote!(value.0.0),
-            syn::parse_quote!(value.0.1),
-            syn::parse_quote!(value.0.2),
-            syn::parse_quote!(value.0.3),
-            syn::parse_quote!(value.0.4),
-            syn::parse_quote!(value.0.5),
-            syn::parse_quote!(value.0.6),
-            syn::parse_quote!(value.0.7),
-            syn::parse_quote!(value.0.8),
-            syn::parse_quote!(value.0.9),
-            syn::parse_quote!(value.0.10),
-            syn::parse_quote!(value.0.11),
-            syn::parse_quote!(value.1.0),
-            syn::parse_quote!(value.1.1),
-            syn::parse_quote!(value.1.2),
-            syn::parse_quote!(value.1.3),
-            syn::parse_quote!(value.1.4),
-            syn::parse_quote!(value.1.5),
-            syn::parse_quote!(value.1.6),
-            syn::parse_quote!(value.1.7),
-            syn::parse_quote!(value.1.8),
-            syn::parse_quote!(value.1.9),
-            syn::parse_quote!(value.1.10),
-            syn::parse_quote!(value.1.11),
-            syn::parse_quote!(value.2.0),
-            syn::parse_quote!(value.2.1),
-            syn::parse_quote!(value.2.2),
-            syn::parse_quote!(value.2.3),
-            syn::parse_quote!(value.2.4),
-            syn::parse_quote!(value.2.5),
-            syn::parse_quote!(value.2.6),
-            syn::parse_quote!(value.2.7),
-            syn::parse_quote!(value.2.8),
-            syn::parse_quote!(value.2.9),
-            syn::parse_quote!(value.2.10),
-            syn::parse_quote!(value.2.11),
-        ];
-
-        assert_eq!(expected_accessors.len(), accessors.len());
-        for (accessor, expected_accessor) in accessors.iter().zip(expected_accessors) {
-            assert_eq!(expected_accessor, syn::parse_quote!(value.#accessor));
-        }
-
-        assert_eq!(expected, syn::parse_quote!(#result));
+        assert_tuple_layout(36);
     }
 
     #[test]
     fn test_37_elements() {
-        let types = make_types(37);
-        let refs: Vec<_> = types.iter().collect();
-        let (result, _, accessors) = build_extern_c_type_tuple(&refs);
-
-        let expected: syn::Type = syn::parse_quote! {
-            (
-                (T0, T1, T2, T3, T4, T5, T6, T7, T8, T9, T10, T11, ),
-                (T12, T13, T14, T15, T16, T17, T18, T19, T20, T21, T22, T23, ),
-                (T24, T25, T26, T27, T28, T29, T30, T31, T32, T33, T34, T35, ),
-                (T36,),
-            )
-        };
-
-        let expected_accessors: Vec<syn::Expr> = vec![
-            syn::parse_quote!(value.0.0),
-            syn::parse_quote!(value.0.1),
-            syn::parse_quote!(value.0.2),
-            syn::parse_quote!(value.0.3),
-            syn::parse_quote!(value.0.4),
-            syn::parse_quote!(value.0.5),
-            syn::parse_quote!(value.0.6),
-            syn::parse_quote!(value.0.7),
-            syn::parse_quote!(value.0.8),
-            syn::parse_quote!(value.0.9),
-            syn::parse_quote!(value.0.10),
-            syn::parse_quote!(value.0.11),
-            syn::parse_quote!(value.1.0),
-            syn::parse_quote!(value.1.1),
-            syn::parse_quote!(value.1.2),
-            syn::parse_quote!(value.1.3),
-            syn::parse_quote!(value.1.4),
-            syn::parse_quote!(value.1.5),
-            syn::parse_quote!(value.1.6),
-            syn::parse_quote!(value.1.7),
-            syn::parse_quote!(value.1.8),
-            syn::parse_quote!(value.1.9),
-            syn::parse_quote!(value.1.10),
-            syn::parse_quote!(value.1.11),
-            syn::parse_quote!(value.2.0),
-            syn::parse_quote!(value.2.1),
-            syn::parse_quote!(value.2.2),
-            syn::parse_quote!(value.2.3),
-            syn::parse_quote!(value.2.4),
-            syn::parse_quote!(value.2.5),
-            syn::parse_quote!(value.2.6),
-            syn::parse_quote!(value.2.7),
-            syn::parse_quote!(value.2.8),
-            syn::parse_quote!(value.2.9),
-            syn::parse_quote!(value.2.10),
-            syn::parse_quote!(value.2.11),
-            syn::parse_quote!(value.3.0),
-        ];
-
-        assert_eq!(expected_accessors.len(), accessors.len());
-        for (accessor, expected_accessor) in accessors.iter().zip(expected_accessors) {
-            assert_eq!(expected_accessor, syn::parse_quote!(value.#accessor));
-        }
-
-        assert_eq!(expected, syn::parse_quote!(#result));
+        assert_tuple_layout(37);
     }
 
     #[test]
     fn test_144_elements() {
-        let types = make_types(144);
-        let refs: Vec<_> = types.iter().collect();
-        let (result, _, accessors) = build_extern_c_type_tuple(&refs);
-
-        let expected: syn::Type = syn::parse_quote! {
-            (
-                (T0, T1, T2, T3, T4, T5, T6, T7, T8, T9, T10, T11, ),
-                (T12, T13, T14, T15, T16, T17, T18, T19, T20, T21, T22, T23, ),
-                (T24, T25, T26, T27, T28, T29, T30, T31, T32, T33, T34, T35, ),
-                (T36, T37, T38, T39, T40, T41, T42, T43, T44, T45, T46, T47, ),
-                (T48, T49, T50, T51, T52, T53, T54, T55, T56, T57, T58, T59, ),
-                (T60, T61, T62, T63, T64, T65, T66, T67, T68, T69, T70, T71, ),
-                (T72, T73, T74, T75, T76, T77, T78, T79, T80, T81, T82, T83, ),
-                (T84, T85, T86, T87, T88, T89, T90, T91, T92, T93, T94, T95, ),
-                (T96, T97, T98, T99, T100, T101, T102, T103, T104, T105, T106, T107, ),
-                (T108, T109, T110, T111, T112, T113, T114, T115, T116, T117, T118, T119, ),
-                (T120, T121, T122, T123, T124, T125, T126, T127, T128, T129, T130, T131, ),
-                (T132, T133, T134, T135, T136, T137, T138, T139, T140, T141, T142, T143, ),
-            )
-        };
-
-        let expected_accessors: Vec<syn::Expr> = vec![
-            syn::parse_quote!(value.0.0),
-            syn::parse_quote!(value.0.1),
-            syn::parse_quote!(value.0.2),
-            syn::parse_quote!(value.0.3),
-            syn::parse_quote!(value.0.4),
-            syn::parse_quote!(value.0.5),
-            syn::parse_quote!(value.0.6),
-            syn::parse_quote!(value.0.7),
-            syn::parse_quote!(value.0.8),
-            syn::parse_quote!(value.0.9),
-            syn::parse_quote!(value.0.10),
-            syn::parse_quote!(value.0.11),
-            syn::parse_quote!(value.1.0),
-            syn::parse_quote!(value.1.1),
-            syn::parse_quote!(value.1.2),
-            syn::parse_quote!(value.1.3),
-            syn::parse_quote!(value.1.4),
-            syn::parse_quote!(value.1.5),
-            syn::parse_quote!(value.1.6),
-            syn::parse_quote!(value.1.7),
-            syn::parse_quote!(value.1.8),
-            syn::parse_quote!(value.1.9),
-            syn::parse_quote!(value.1.10),
-            syn::parse_quote!(value.1.11),
-            syn::parse_quote!(value.2.0),
-            syn::parse_quote!(value.2.1),
-            syn::parse_quote!(value.2.2),
-            syn::parse_quote!(value.2.3),
-            syn::parse_quote!(value.2.4),
-            syn::parse_quote!(value.2.5),
-            syn::parse_quote!(value.2.6),
-            syn::parse_quote!(value.2.7),
-            syn::parse_quote!(value.2.8),
-            syn::parse_quote!(value.2.9),
-            syn::parse_quote!(value.2.10),
-            syn::parse_quote!(value.2.11),
-            syn::parse_quote!(value.3.0),
-            syn::parse_quote!(value.3.1),
-            syn::parse_quote!(value.3.2),
-            syn::parse_quote!(value.3.3),
-            syn::parse_quote!(value.3.4),
-            syn::parse_quote!(value.3.5),
-            syn::parse_quote!(value.3.6),
-            syn::parse_quote!(value.3.7),
-            syn::parse_quote!(value.3.8),
-            syn::parse_quote!(value.3.9),
-            syn::parse_quote!(value.3.10),
-            syn::parse_quote!(value.3.11),
-            syn::parse_quote!(value.4.0),
-            syn::parse_quote!(value.4.1),
-            syn::parse_quote!(value.4.2),
-            syn::parse_quote!(value.4.3),
-            syn::parse_quote!(value.4.4),
-            syn::parse_quote!(value.4.5),
-            syn::parse_quote!(value.4.6),
-            syn::parse_quote!(value.4.7),
-            syn::parse_quote!(value.4.8),
-            syn::parse_quote!(value.4.9),
-            syn::parse_quote!(value.4.10),
-            syn::parse_quote!(value.4.11),
-            syn::parse_quote!(value.5.0),
-            syn::parse_quote!(value.5.1),
-            syn::parse_quote!(value.5.2),
-            syn::parse_quote!(value.5.3),
-            syn::parse_quote!(value.5.4),
-            syn::parse_quote!(value.5.5),
-            syn::parse_quote!(value.5.6),
-            syn::parse_quote!(value.5.7),
-            syn::parse_quote!(value.5.8),
-            syn::parse_quote!(value.5.9),
-            syn::parse_quote!(value.5.10),
-            syn::parse_quote!(value.5.11),
-            syn::parse_quote!(value.6.0),
-            syn::parse_quote!(value.6.1),
-            syn::parse_quote!(value.6.2),
-            syn::parse_quote!(value.6.3),
-            syn::parse_quote!(value.6.4),
-            syn::parse_quote!(value.6.5),
-            syn::parse_quote!(value.6.6),
-            syn::parse_quote!(value.6.7),
-            syn::parse_quote!(value.6.8),
-            syn::parse_quote!(value.6.9),
-            syn::parse_quote!(value.6.10),
-            syn::parse_quote!(value.6.11),
-            syn::parse_quote!(value.7.0),
-            syn::parse_quote!(value.7.1),
-            syn::parse_quote!(value.7.2),
-            syn::parse_quote!(value.7.3),
-            syn::parse_quote!(value.7.4),
-            syn::parse_quote!(value.7.5),
-            syn::parse_quote!(value.7.6),
-            syn::parse_quote!(value.7.7),
-            syn::parse_quote!(value.7.8),
-            syn::parse_quote!(value.7.9),
-            syn::parse_quote!(value.7.10),
-            syn::parse_quote!(value.7.11),
-            syn::parse_quote!(value.8.0),
-            syn::parse_quote!(value.8.1),
-            syn::parse_quote!(value.8.2),
-            syn::parse_quote!(value.8.3),
-            syn::parse_quote!(value.8.4),
-            syn::parse_quote!(value.8.5),
-            syn::parse_quote!(value.8.6),
-            syn::parse_quote!(value.8.7),
-            syn::parse_quote!(value.8.8),
-            syn::parse_quote!(value.8.9),
-            syn::parse_quote!(value.8.10),
-            syn::parse_quote!(value.8.11),
-            syn::parse_quote!(value.9.0),
-            syn::parse_quote!(value.9.1),
-            syn::parse_quote!(value.9.2),
-            syn::parse_quote!(value.9.3),
-            syn::parse_quote!(value.9.4),
-            syn::parse_quote!(value.9.5),
-            syn::parse_quote!(value.9.6),
-            syn::parse_quote!(value.9.7),
-            syn::parse_quote!(value.9.8),
-            syn::parse_quote!(value.9.9),
-            syn::parse_quote!(value.9.10),
-            syn::parse_quote!(value.9.11),
-            syn::parse_quote!(value.10.0),
-            syn::parse_quote!(value.10.1),
-            syn::parse_quote!(value.10.2),
-            syn::parse_quote!(value.10.3),
-            syn::parse_quote!(value.10.4),
-            syn::parse_quote!(value.10.5),
-            syn::parse_quote!(value.10.6),
-            syn::parse_quote!(value.10.7),
-            syn::parse_quote!(value.10.8),
-            syn::parse_quote!(value.10.9),
-            syn::parse_quote!(value.10.10),
-            syn::parse_quote!(value.10.11),
-            syn::parse_quote!(value.11.0),
-            syn::parse_quote!(value.11.1),
-            syn::parse_quote!(value.11.2),
-            syn::parse_quote!(value.11.3),
-            syn::parse_quote!(value.11.4),
-            syn::parse_quote!(value.11.5),
-            syn::parse_quote!(value.11.6),
-            syn::parse_quote!(value.11.7),
-            syn::parse_quote!(value.11.8),
-            syn::parse_quote!(value.11.9),
-            syn::parse_quote!(value.11.10),
-            syn::parse_quote!(value.11.11),
-        ];
-
-        assert_eq!(expected_accessors.len(), accessors.len());
-        for (accessor, expected_accessor) in accessors.iter().zip(expected_accessors) {
-            assert_eq!(expected_accessor, syn::parse_quote!(value.#accessor));
-        }
-
-        assert_eq!(expected, syn::parse_quote!(#result));
+        assert_tuple_layout(144);
     }
 
-    // FIXME:
-    //#[test]
-    //fn test_145_elements() {
-    //    let types = make_types(145);
-    //    let refs: Vec<_> = types.iter().collect();
-    //    let (result, _, accessors) = build_extern_c_type_tuple(&refs);
+    #[test]
+    fn test_145_elements() {
+        assert_tuple_layout(145);
+        assert_accessor(145, 144, syn::parse_quote!(value.1.0));
+    }
 
-    //    let expected: syn::Type = syn::parse_quote! {
-    //        (
-    //            (
-    //                (T0, T1, T2, T3, T4, T5, T6, T7, T8, T9, T10, T11, ),
-    //                (T12, T13, T14, T15, T16, T17, T18, T19, T20, T21, T22, T23, ),
-    //                (T24, T25, T26, T27, T28, T29, T30, T31, T32, T33, T34, T35, ),
-    //                (T36, T37, T38, T39, T40, T41, T42, T43, T44, T45, T46, T47, ),
-    //                (T48, T49, T50, T51, T52, T53, T54, T55, T56, T57, T58, T59, ),
-    //                (T60, T61, T62, T63, T64, T65, T66, T67, T68, T69, T70, T71, ),
-    //                (T72, T73, T74, T75, T76, T77, T78, T79, T80, T81, T82, T83, ),
-    //                (T84, T85, T86, T87, T88, T89, T90, T91, T92, T93, T94, T95, ),
-    //                (T96, T97, T98, T99, T100, T101, T102, T103, T104, T105, T106, T107, ),
-    //                (T108, T109, T110, T111, T112, T113, T114, T115, T116, T117, T118, T119, ),
-    //                (T120, T121, T122, T123, T124, T125, T126, T127, T128, T129, T130, T131, ),
-    //                (T132, T133, T134, T135, T136, T137, T138, T139, T140, T141, T142, T143, ),
-    //            ),
-    //            (
-    //                (T144, ),
-    //            )
-    //        )
-    //    };
-
-    //    let expected_accessors: Vec<syn::Expr> = vec![
-    //        syn::parse_quote!(value.0.0.0),
-    //        syn::parse_quote!(value.0.0.1),
-    //        syn::parse_quote!(value.0.0.2),
-    //        syn::parse_quote!(value.0.0.3),
-    //        syn::parse_quote!(value.0.0.4),
-    //        syn::parse_quote!(value.0.0.5),
-    //        syn::parse_quote!(value.0.0.6),
-    //        syn::parse_quote!(value.0.0.7),
-    //        syn::parse_quote!(value.0.0.8),
-    //        syn::parse_quote!(value.0.0.9),
-    //        syn::parse_quote!(value.0.0.10),
-    //        syn::parse_quote!(value.0.0.11),
-    //        syn::parse_quote!(value.0.1.0),
-    //        syn::parse_quote!(value.0.1.1),
-    //        syn::parse_quote!(value.0.1.2),
-    //        syn::parse_quote!(value.0.1.3),
-    //        syn::parse_quote!(value.0.1.4),
-    //        syn::parse_quote!(value.0.1.5),
-    //        syn::parse_quote!(value.0.1.6),
-    //        syn::parse_quote!(value.0.1.7),
-    //        syn::parse_quote!(value.0.1.8),
-    //        syn::parse_quote!(value.0.1.9),
-    //        syn::parse_quote!(value.0.1.10),
-    //        syn::parse_quote!(value.0.1.11),
-    //        syn::parse_quote!(value.0.2.0),
-    //        syn::parse_quote!(value.0.2.1),
-    //        syn::parse_quote!(value.0.2.2),
-    //        syn::parse_quote!(value.0.2.3),
-    //        syn::parse_quote!(value.0.2.4),
-    //        syn::parse_quote!(value.0.2.5),
-    //        syn::parse_quote!(value.0.2.6),
-    //        syn::parse_quote!(value.0.2.7),
-    //        syn::parse_quote!(value.0.2.8),
-    //        syn::parse_quote!(value.0.2.9),
-    //        syn::parse_quote!(value.0.2.10),
-    //        syn::parse_quote!(value.0.2.11),
-    //        syn::parse_quote!(value.0.3.0),
-    //        syn::parse_quote!(value.0.3.1),
-    //        syn::parse_quote!(value.0.3.2),
-    //        syn::parse_quote!(value.0.3.3),
-    //        syn::parse_quote!(value.0.3.4),
-    //        syn::parse_quote!(value.0.3.5),
-    //        syn::parse_quote!(value.0.3.6),
-    //        syn::parse_quote!(value.0.3.7),
-    //        syn::parse_quote!(value.0.3.8),
-    //        syn::parse_quote!(value.0.3.9),
-    //        syn::parse_quote!(value.0.3.10),
-    //        syn::parse_quote!(value.0.3.11),
-    //        syn::parse_quote!(value.0.4.0),
-    //        syn::parse_quote!(value.0.4.1),
-    //        syn::parse_quote!(value.0.4.2),
-    //        syn::parse_quote!(value.0.4.3),
-    //        syn::parse_quote!(value.0.4.4),
-    //        syn::parse_quote!(value.0.4.5),
-    //        syn::parse_quote!(value.0.4.6),
-    //        syn::parse_quote!(value.0.4.7),
-    //        syn::parse_quote!(value.0.4.8),
-    //        syn::parse_quote!(value.0.4.9),
-    //        syn::parse_quote!(value.0.4.10),
-    //        syn::parse_quote!(value.0.4.11),
-    //        syn::parse_quote!(value.0.5.0),
-    //        syn::parse_quote!(value.0.5.1),
-    //        syn::parse_quote!(value.0.5.2),
-    //        syn::parse_quote!(value.0.5.3),
-    //        syn::parse_quote!(value.0.5.4),
-    //        syn::parse_quote!(value.0.5.5),
-    //        syn::parse_quote!(value.0.5.6),
-    //        syn::parse_quote!(value.0.5.7),
-    //        syn::parse_quote!(value.0.5.8),
-    //        syn::parse_quote!(value.0.5.9),
-    //        syn::parse_quote!(value.0.5.10),
-    //        syn::parse_quote!(value.0.5.11),
-    //        syn::parse_quote!(value.0.6.0),
-    //        syn::parse_quote!(value.0.6.1),
-    //        syn::parse_quote!(value.0.6.2),
-    //        syn::parse_quote!(value.0.6.3),
-    //        syn::parse_quote!(value.0.6.4),
-    //        syn::parse_quote!(value.0.6.5),
-    //        syn::parse_quote!(value.0.6.6),
-    //        syn::parse_quote!(value.0.6.7),
-    //        syn::parse_quote!(value.0.6.8),
-    //        syn::parse_quote!(value.0.6.9),
-    //        syn::parse_quote!(value.0.6.10),
-    //        syn::parse_quote!(value.0.6.11),
-    //        syn::parse_quote!(value.0.7.0),
-    //        syn::parse_quote!(value.0.7.1),
-    //        syn::parse_quote!(value.0.7.2),
-    //        syn::parse_quote!(value.0.7.3),
-    //        syn::parse_quote!(value.0.7.4),
-    //        syn::parse_quote!(value.0.7.5),
-    //        syn::parse_quote!(value.0.7.6),
-    //        syn::parse_quote!(value.0.7.7),
-    //        syn::parse_quote!(value.0.7.8),
-    //        syn::parse_quote!(value.0.7.9),
-    //        syn::parse_quote!(value.0.7.10),
-    //        syn::parse_quote!(value.0.7.11),
-    //        syn::parse_quote!(value.0.8.0),
-    //        syn::parse_quote!(value.0.8.1),
-    //        syn::parse_quote!(value.0.8.2),
-    //        syn::parse_quote!(value.0.8.3),
-    //        syn::parse_quote!(value.0.8.4),
-    //        syn::parse_quote!(value.0.8.5),
-    //        syn::parse_quote!(value.0.8.6),
-    //        syn::parse_quote!(value.0.8.7),
-    //        syn::parse_quote!(value.0.8.8),
-    //        syn::parse_quote!(value.0.8.9),
-    //        syn::parse_quote!(value.0.8.10),
-    //        syn::parse_quote!(value.0.8.11),
-    //        syn::parse_quote!(value.0.9.0),
-    //        syn::parse_quote!(value.0.9.1),
-    //        syn::parse_quote!(value.0.9.2),
-    //        syn::parse_quote!(value.0.9.3),
-    //        syn::parse_quote!(value.0.9.4),
-    //        syn::parse_quote!(value.0.9.5),
-    //        syn::parse_quote!(value.0.9.6),
-    //        syn::parse_quote!(value.0.9.7),
-    //        syn::parse_quote!(value.0.9.8),
-    //        syn::parse_quote!(value.0.9.9),
-    //        syn::parse_quote!(value.0.9.10),
-    //        syn::parse_quote!(value.0.9.11),
-    //        syn::parse_quote!(value.0.10.0),
-    //        syn::parse_quote!(value.0.10.1),
-    //        syn::parse_quote!(value.0.10.2),
-    //        syn::parse_quote!(value.0.10.3),
-    //        syn::parse_quote!(value.0.10.4),
-    //        syn::parse_quote!(value.0.10.5),
-    //        syn::parse_quote!(value.0.10.6),
-    //        syn::parse_quote!(value.0.10.7),
-    //        syn::parse_quote!(value.0.10.8),
-    //        syn::parse_quote!(value.0.10.9),
-    //        syn::parse_quote!(value.0.10.10),
-    //        syn::parse_quote!(value.0.10.11),
-    //        syn::parse_quote!(value.0.11.0),
-    //        syn::parse_quote!(value.0.11.1),
-    //        syn::parse_quote!(value.0.11.2),
-    //        syn::parse_quote!(value.0.11.3),
-    //        syn::parse_quote!(value.0.11.4),
-    //        syn::parse_quote!(value.0.11.5),
-    //        syn::parse_quote!(value.0.11.6),
-    //        syn::parse_quote!(value.0.11.7),
-    //        syn::parse_quote!(value.0.11.8),
-    //        syn::parse_quote!(value.0.11.9),
-    //        syn::parse_quote!(value.0.11.10),
-    //        syn::parse_quote!(value.0.11.11),
-    //        syn::parse_quote!(value.1.0.0),
-    //    ];
-
-    //    assert_eq!(expected_accessors.len(), accessors.len());
-    //    for (accessor, expected_accessor) in accessors.iter().zip(expected_accessors) {
-    //        assert_eq!(expected_accessor, syn::parse_quote!(value.#accessor));
-    //    }
-
-    //    assert_eq!(expected, syn::parse_quote!(#result));
-    //}
-
-    //#[test]
-    //fn test_156_elements() {
-    //    let types = make_types(156);
-    //    let refs: Vec<_> = types.iter().collect();
-    //    let (result, _, accessors) = build_nested_tuple(&refs);
-
-    //    let expected: syn::Type = syn::parse_quote! {
-    //        (
-    //            (
-    //                (T0, T1, T2, T3, T4, T5, T6, ),
-    //                (T7, T8, T9, T10, T11, T12, ),
-    //            ),
-    //            (
-    //                (T13, T14, T15, T16, T17, T18, T19, ),
-    //                (T20, T21, T22, T23, T24, T25, ),
-    //            ),
-    //            (
-    //                (T26, T27, T28, T29, T30, T31, T32, ),
-    //                (T33, T34, T35, T36, T37, T38, ),
-    //            ),
-    //            (
-    //                (T39, T40, T41, T42, T43, T44, T45, ),
-    //                (T46, T47, T48, T49, T50, T51, ),
-    //            ),
-    //            (
-    //                (T52, T53, T54, T55, T56, T57, T58, ),
-    //                (T59, T60, T61, T62, T63, T64, ),
-    //            ),
-    //            (
-    //                (T65, T66, T67, T68, T69, T70, T71, ),
-    //                (T72, T73, T74, T75, T76, T77, ),
-    //            ),
-    //            (
-    //                (T78, T79, T80, T81, T82, T83, T84, ),
-    //                (T85, T86, T87, T88, T89, T90, ),
-    //            ),
-    //            (
-    //                (T91, T92, T93, T94, T95, T96, T97, ),
-    //                (T98, T99, T100, T101, T102, T103, ),
-    //            ),
-    //            (
-    //                (T104, T105, T106, T107, T108, T109, T110, ),
-    //                (T111, T112, T113, T114, T115, T116, ),
-    //            ),
-    //            (
-    //                (T117, T118, T119, T120, T121, T122, T123, ),
-    //                (T124, T125, T126, T127, T128, T129, ),
-    //            ),
-    //            (
-    //                (T130, T131, T132, T133, T134, T135, T136, ),
-    //                (T137, T138, T139, T140, T141, T142, ),
-    //            ),
-    //            (
-    //                (T143, T144, T145, T146, T147, T148, T149, ),
-    //                (T150, T151, T152, T153, T154, T155, ),
-    //            ),
-    //        )
-    //    };
-
-    //    let expected_accessors: Vec<syn::Expr> = vec![
-    //        syn::parse_quote!(value.0.0.0),
-    //        syn::parse_quote!(value.0.0.1),
-    //        syn::parse_quote!(value.0.0.2),
-    //        syn::parse_quote!(value.0.0.3),
-    //        syn::parse_quote!(value.0.0.4),
-    //        syn::parse_quote!(value.0.0.5),
-    //        syn::parse_quote!(value.0.0.6),
-    //        syn::parse_quote!(value.0.1.0),
-    //        syn::parse_quote!(value.0.1.1),
-    //        syn::parse_quote!(value.0.1.2),
-    //        syn::parse_quote!(value.0.1.3),
-    //        syn::parse_quote!(value.0.1.4),
-    //        syn::parse_quote!(value.0.1.5),
-    //        syn::parse_quote!(value.1.0.0),
-    //        syn::parse_quote!(value.1.0.1),
-    //        syn::parse_quote!(value.1.0.2),
-    //        syn::parse_quote!(value.1.0.3),
-    //        syn::parse_quote!(value.1.0.4),
-    //        syn::parse_quote!(value.1.0.5),
-    //        syn::parse_quote!(value.1.0.6),
-    //        syn::parse_quote!(value.1.1.0),
-    //        syn::parse_quote!(value.1.1.1),
-    //        syn::parse_quote!(value.1.1.2),
-    //        syn::parse_quote!(value.1.1.3),
-    //        syn::parse_quote!(value.1.1.4),
-    //        syn::parse_quote!(value.1.1.5),
-    //        syn::parse_quote!(value.2.0.0),
-    //        syn::parse_quote!(value.2.0.1),
-    //        syn::parse_quote!(value.2.0.2),
-    //        syn::parse_quote!(value.2.0.3),
-    //        syn::parse_quote!(value.2.0.4),
-    //        syn::parse_quote!(value.2.0.5),
-    //        syn::parse_quote!(value.2.0.6),
-    //        syn::parse_quote!(value.2.1.0),
-    //        syn::parse_quote!(value.2.1.1),
-    //        syn::parse_quote!(value.2.1.2),
-    //        syn::parse_quote!(value.2.1.3),
-    //        syn::parse_quote!(value.2.1.4),
-    //        syn::parse_quote!(value.2.1.5),
-    //        syn::parse_quote!(value.3.0.0),
-    //        syn::parse_quote!(value.3.0.1),
-    //        syn::parse_quote!(value.3.0.2),
-    //        syn::parse_quote!(value.3.0.3),
-    //        syn::parse_quote!(value.3.0.4),
-    //        syn::parse_quote!(value.3.0.5),
-    //        syn::parse_quote!(value.3.0.6),
-    //        syn::parse_quote!(value.3.1.0),
-    //        syn::parse_quote!(value.3.1.1),
-    //        syn::parse_quote!(value.3.1.2),
-    //        syn::parse_quote!(value.3.1.3),
-    //        syn::parse_quote!(value.3.1.4),
-    //        syn::parse_quote!(value.3.1.5),
-    //        syn::parse_quote!(value.4.0.0),
-    //        syn::parse_quote!(value.4.0.1),
-    //        syn::parse_quote!(value.4.0.2),
-    //        syn::parse_quote!(value.4.0.3),
-    //        syn::parse_quote!(value.4.0.4),
-    //        syn::parse_quote!(value.4.0.5),
-    //        syn::parse_quote!(value.4.0.6),
-    //        syn::parse_quote!(value.4.1.0),
-    //        syn::parse_quote!(value.4.1.1),
-    //        syn::parse_quote!(value.4.1.2),
-    //        syn::parse_quote!(value.4.1.3),
-    //        syn::parse_quote!(value.4.1.4),
-    //        syn::parse_quote!(value.4.1.5),
-    //        syn::parse_quote!(value.5.0.0),
-    //        syn::parse_quote!(value.5.0.1),
-    //        syn::parse_quote!(value.5.0.2),
-    //        syn::parse_quote!(value.5.0.3),
-    //        syn::parse_quote!(value.5.0.4),
-    //        syn::parse_quote!(value.5.0.5),
-    //        syn::parse_quote!(value.5.0.6),
-    //        syn::parse_quote!(value.5.1.0),
-    //        syn::parse_quote!(value.5.1.1),
-    //        syn::parse_quote!(value.5.1.2),
-    //        syn::parse_quote!(value.5.1.3),
-    //        syn::parse_quote!(value.5.1.4),
-    //        syn::parse_quote!(value.5.1.5),
-    //        syn::parse_quote!(value.6.0.0),
-    //        syn::parse_quote!(value.6.0.1),
-    //        syn::parse_quote!(value.6.0.2),
-    //        syn::parse_quote!(value.6.0.3),
-    //        syn::parse_quote!(value.6.0.4),
-    //        syn::parse_quote!(value.6.0.5),
-    //        syn::parse_quote!(value.6.0.6),
-    //        syn::parse_quote!(value.6.1.0),
-    //        syn::parse_quote!(value.6.1.1),
-    //        syn::parse_quote!(value.6.1.2),
-    //        syn::parse_quote!(value.6.1.3),
-    //        syn::parse_quote!(value.6.1.4),
-    //        syn::parse_quote!(value.6.1.5),
-    //        syn::parse_quote!(value.7.0.0),
-    //        syn::parse_quote!(value.7.0.1),
-    //        syn::parse_quote!(value.7.0.2),
-    //        syn::parse_quote!(value.7.0.3),
-    //        syn::parse_quote!(value.7.0.4),
-    //        syn::parse_quote!(value.7.0.5),
-    //        syn::parse_quote!(value.7.0.6),
-    //        syn::parse_quote!(value.7.1.0),
-    //        syn::parse_quote!(value.7.1.1),
-    //        syn::parse_quote!(value.7.1.2),
-    //        syn::parse_quote!(value.7.1.3),
-    //        syn::parse_quote!(value.7.1.4),
-    //        syn::parse_quote!(value.7.1.5),
-    //        syn::parse_quote!(value.8.0.0),
-    //        syn::parse_quote!(value.8.0.1),
-    //        syn::parse_quote!(value.8.0.2),
-    //        syn::parse_quote!(value.8.0.3),
-    //        syn::parse_quote!(value.8.0.4),
-    //        syn::parse_quote!(value.8.0.5),
-    //        syn::parse_quote!(value.8.0.6),
-    //        syn::parse_quote!(value.8.1.0),
-    //        syn::parse_quote!(value.8.1.1),
-    //        syn::parse_quote!(value.8.1.2),
-    //        syn::parse_quote!(value.8.1.3),
-    //        syn::parse_quote!(value.8.1.4),
-    //        syn::parse_quote!(value.8.1.5),
-    //        syn::parse_quote!(value.9.0.0),
-    //        syn::parse_quote!(value.9.0.1),
-    //        syn::parse_quote!(value.9.0.2),
-    //        syn::parse_quote!(value.9.0.3),
-    //        syn::parse_quote!(value.9.0.4),
-    //        syn::parse_quote!(value.9.0.5),
-    //        syn::parse_quote!(value.9.0.6),
-    //        syn::parse_quote!(value.9.1.0),
-    //        syn::parse_quote!(value.9.1.1),
-    //        syn::parse_quote!(value.9.1.2),
-    //        syn::parse_quote!(value.9.1.3),
-    //        syn::parse_quote!(value.9.1.4),
-    //        syn::parse_quote!(value.9.1.5),
-    //        syn::parse_quote!(value.10.0.0),
-    //        syn::parse_quote!(value.10.0.1),
-    //        syn::parse_quote!(value.10.0.2),
-    //        syn::parse_quote!(value.10.0.3),
-    //        syn::parse_quote!(value.10.0.4),
-    //        syn::parse_quote!(value.10.0.5),
-    //        syn::parse_quote!(value.10.0.6),
-    //        syn::parse_quote!(value.10.1.0),
-    //        syn::parse_quote!(value.10.1.1),
-    //        syn::parse_quote!(value.10.1.2),
-    //        syn::parse_quote!(value.10.1.3),
-    //        syn::parse_quote!(value.10.1.4),
-    //        syn::parse_quote!(value.10.1.5),
-    //        syn::parse_quote!(value.11.0.0),
-    //        syn::parse_quote!(value.11.0.1),
-    //        syn::parse_quote!(value.11.0.2),
-    //        syn::parse_quote!(value.11.0.3),
-    //        syn::parse_quote!(value.11.0.4),
-    //        syn::parse_quote!(value.11.0.5),
-    //        syn::parse_quote!(value.11.0.6),
-    //        syn::parse_quote!(value.11.1.0),
-    //        syn::parse_quote!(value.11.1.1),
-    //        syn::parse_quote!(value.11.1.2),
-    //        syn::parse_quote!(value.11.1.3),
-    //        syn::parse_quote!(value.11.1.4),
-    //        syn::parse_quote!(value.11.1.5),
-    //    ];
-
-    //    assert_eq!(expected_accessors.len(), accessors.len());
-    //    for (accessor, expected_accessor) in accessors.iter().zip(expected_accessors) {
-    //        assert_eq!(expected_accessor, syn::parse_quote!(value.#accessor));
-    //    }
-
-    //    assert_eq!(expected, syn::parse_quote!(#result));
-    //}
+    #[test]
+    fn test_156_elements() {
+        assert_tuple_layout(156);
+        assert_accessor(156, 144, syn::parse_quote!(value.1.0));
+        assert_accessor(156, 155, syn::parse_quote!(value.1.11));
+    }
 }

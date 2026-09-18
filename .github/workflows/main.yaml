@@ -80,6 +80,8 @@ jobs:
         key: test-${{ matrix.os }}
 
     - name: Run Tests
+      env:
+        RUSTFLAGS: -D warnings
       run: cargo test --workspace
 
   miri:

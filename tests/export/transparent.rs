@@ -1,34 +1,26 @@
-use std::{alloc, marker::PhantomData, mem::MaybeUninit, num::NonZeroU64};
+use std::marker::PhantomData;
 
-use co3::{
-    COption, Decode, DecodeWithStore, EncodeWithStore, ExternC, (),
-    ReprC, export,
-    slice::{CBoxedSlice, CSlice},
-};
+use co3::{ReprC, boxed::CBoxedSlice, ffi, option::ReprCOption, slice::CSlice};
 use rust_spec::RustSpec;
 
-co3::def_fns! { dealloc }
-
 #[derive(Clone, Copy, PartialEq, Eq, Debug, RustSpec, ReprC)]
+#[reprC(identity)]
 #[repr(transparent)]
 pub struct TransparentWithoutNiche(u64);
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug, RustSpec, ReprC)]
+#[reprC(identity)]
 #[repr(transparent)]
-pub struct GenericTransparentStruct<P>(NonZeroU64, PhantomData<P>);
+pub struct GenericTransparentStruct<P>(u64, PhantomData<P>);
 
 impl<P> GenericTransparentStruct<P> {
     fn new(value: u64) -> Self {
-        Self(NonZeroU64::new(value).unwrap(), PhantomData)
+        Self(value, PhantomData)
     }
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug, RustSpec, ReprC)]
-#[reprC(
-    unsafe(is_valid = |target: &Self::Target|
-        *target != GenericTransparentStruct::new(1)
-    )
-)]
+#[reprC(identity)]
 #[repr(transparent)]
 pub struct TransparentStruct {
     payload: GenericTransparentStruct<()>,
@@ -37,70 +29,33 @@ pub struct TransparentStruct {
     _zst3: PhantomData<String>,
 }
 
-#[derive(Clone, Copy, PartialEq, Eq, Debug, RustSpec, ReprC)]
-#[rust_spec(with_custom_niche)]
-#[reprC(
-    NICHE_VALUE = [0; 4],
-    unsafe(is_valid = |target: &Self::Target|
-        target.iter().all(|&x| x != 0)
-    )
-)]
-#[repr(transparent)]
-pub struct RobustTargetTransparent([u8; 4]);
-
-#[derive(RustSpec, ReprC)]
-#[reprC(
-    unsafe(is_valid = |target: &Self::Target|
-        target.iter().all(|&x| x != 0)
-    )
-)]
-#[repr(transparent)]
-struct TransaprentDst([u32]);
-
 ffi! {
     #![unsafe(export("C"))]
+    #![symbol_prefix = "export_transparent"]
 
-    fn array_of_transparent(arr: &mut [TransparentStruct; 1]) -> &mut [TransparentStruct; 1];
-    fn transparent_with_niche(arr: Option<RobustTargetTransparent>) -> Option<RobustTargetTransparent>;
-    fn transparent_without_niche(arr: Option<TransparentWithoutNiche>) -> Option<TransparentWithoutNiche>;
-    fn transparent_with_inner_niche(arr: Option<GenericTransparentStruct<u32>>) -> Option<GenericTransparentStruct<u32>>;
+    fn array_of_transparent(arr: &[TransparentStruct; 1]) -> &[TransparentStruct; 1];
+    fn transparent_option(arr: Option<TransparentWithoutNiche>) -> Option<TransparentWithoutNiche>;
 
     impl TransparentStruct {
-        fn new(payload: GenericTransparentStruct<()>) -> Self;
         fn with_payload(self, payload: GenericTransparentStruct<()>) -> Self;
         fn payload(&self) -> &GenericTransparentStruct<()>;
-        fn payload_mut(&mut self) -> &mut GenericTransparentStruct<()>;
     }
 
     fn self_to_self(value: TransparentStruct) -> TransparentStruct;
-    fn vec_to_vec(value: Vec<TransparentStruct>) -> Vec<TransparentStruct>;
+    move fn vec_to_vec(move value: Vec<TransparentStruct>) -> Vec<TransparentStruct>;
     fn slice_to_slice(value: &[TransparentStruct]) -> &[TransparentStruct];
 }
 
-pub fn array_of_transparent(arr: &mut [TransparentStruct; 1]) -> &mut [TransparentStruct; 1] {
+pub fn array_of_transparent(arr: &[TransparentStruct; 1]) -> &[TransparentStruct; 1] {
     arr
 }
 
-pub fn transparent_with_niche(
-    arr: Option<RobustTargetTransparent>,
-) -> Option<RobustTargetTransparent> {
-    arr
-}
-
-pub fn transparent_without_niche(
-    arr: Option<TransparentWithoutNiche>,
-) -> Option<TransparentWithoutNiche> {
-    arr
-}
-
-pub fn transparent_with_inner_niche(
-    arr: Option<GenericTransparentStruct<u32>>,
-) -> Option<GenericTransparentStruct<u32>> {
+pub fn transparent_option(arr: Option<TransparentWithoutNiche>) -> Option<TransparentWithoutNiche> {
     arr
 }
 
 impl TransparentStruct {
-    pub fn new(payload: GenericTransparentStruct<()>) -> Self {
+    fn new(payload: GenericTransparentStruct<()>) -> Self {
         Self {
             payload,
             _zst1: [],
@@ -118,10 +73,6 @@ impl TransparentStruct {
     pub fn payload(&self) -> &GenericTransparentStruct<()> {
         &self.payload
     }
-
-    pub fn payload_mut(&mut self) -> &mut GenericTransparentStruct<()> {
-        &mut self.payload
-    }
 }
 
 pub fn self_to_self(value: TransparentStruct) -> TransparentStruct {
@@ -136,186 +87,88 @@ pub fn slice_to_slice(value: &[TransparentStruct]) -> &[TransparentStruct] {
     value
 }
 
+unsafe extern "C" {
+    #[link_name = "export_transparent__array_of_transparent"]
+    fn array_of_transparent_raw(
+        arr: *const [TransparentStruct; 1],
+    ) -> *const [TransparentStruct; 1];
+
+    #[link_name = "export_transparent__transparent_option"]
+    fn transparent_option_raw(
+        arr: ReprCOption<TransparentWithoutNiche>,
+    ) -> ReprCOption<TransparentWithoutNiche>;
+
+    #[link_name = "export_transparent__self_to_self"]
+    fn self_to_self_raw(value: TransparentStruct) -> TransparentStruct;
+
+    #[link_name = "export_transparent__vec_to_vec"]
+    fn vec_to_vec_raw(value: CBoxedSlice<TransparentStruct>) -> CBoxedSlice<TransparentStruct>;
+
+    #[link_name = "export_transparent__slice_to_slice"]
+    fn slice_to_slice_raw(value: CSlice<TransparentStruct>) -> CSlice<TransparentStruct>;
+
+    #[link_name = "export_transparent__TransparentStruct__with_payload"]
+    fn with_payload_raw(
+        value: TransparentStruct,
+        payload: GenericTransparentStruct<()>,
+    ) -> TransparentStruct;
+
+    #[link_name = "export_transparent__TransparentStruct__payload"]
+    fn payload_raw(value: *const TransparentStruct) -> *const GenericTransparentStruct<()>;
+}
+
 #[test]
-fn take_and_return_transparent_array_ref() {
+fn transparent_values_cross_exported_abi() {
     let value = TransparentStruct::new(GenericTransparentStruct::new(42));
+    let array = [value];
 
-    let mut array = [value; 1];
-    let ptr: *mut [u64; 1] = (&mut array).encode(&mut ());
-    let mut output = MaybeUninit::new(core::ptr::null_mut());
+    let output = unsafe { array_of_transparent_raw(co3::encode(&array)) };
+    assert_eq!(
+        &array,
+        unsafe { co3::decode::<&[TransparentStruct; 1]>(output) }.unwrap()
+    );
 
-    unsafe {
-            __array_of_transparent(ptr, output.as_mut_ptr())
-        ;;
+    let option = Some(TransparentWithoutNiche(42));
+    let output = unsafe { transparent_option_raw(co3::encode(option)) };
+    assert_eq!(
+        option,
+        unsafe { co3::decode::<Option<TransparentWithoutNiche>>(output) }.unwrap()
+    );
 
-        assert_eq!(
-            &[value; 1],
-            <&[TransparentStruct; 1] as Decode>::decode(output.assume_init()).unwrap()
-        );
-    }
+    let output = unsafe { self_to_self_raw(co3::encode(value)) };
+    assert_eq!(Some(value), unsafe { co3::decode(output) });
 }
 
 #[test]
-fn take_and_return_option_of_transparent_with_niche() {
-    let value = Some(RobustTargetTransparent([1; 4]));
-    let mut output = MaybeUninit::new([0u8; 4]);
-
-    unsafe {
-            __transparent_with_niche(value.encode(&mut ()), output.as_mut_ptr())
-        ;;
-
-        assert_eq!(
-            value,
-            DecodeWithStore::decode(output.assume_init(), &mut ()).unwrap()
-        );
-    }
-}
-
-#[test]
-fn take_and_return_option_of_transparent_without_niche() {
-    let value = Some(TransparentWithoutNiche(42));
-    let mut output: MaybeUninit<COption<u64>> = MaybeUninit::new(COption { tag: 1, payload: 0 });
-
-    unsafe {
-            __transparent_without_niche(value.encode(&mut ()), output.as_mut_ptr())
-        ;;
-
-        assert_eq!(
-            value,
-            DecodeWithStore::decode(output.assume_init(), &mut ()).unwrap()
-        );
-    }
-}
-
-#[test]
-fn take_and_return_option_of_transparent_with_inner_niche() {
-    let value = Some(GenericTransparentStruct::<()>::new(42));
-    let mut output: MaybeUninit<u64> = MaybeUninit::new(0);
-
-    unsafe {
-            __transparent_with_inner_niche(value.encode(&mut ()), output.as_mut_ptr())
-        ;;
-
-        assert_eq!(
-            value,
-            DecodeWithStore::decode(output.assume_init(), &mut ()).unwrap()
-        );
-    }
-}
-
-#[test]
-fn transparent_self_to_self() {
-    let transparent_struct = TransparentStruct::new(GenericTransparentStruct::new(42));
-    let mut output: MaybeUninit<u64> = MaybeUninit::new(0);
-
-    unsafe {
-            __self_to_self(transparent_struct.encode(&mut ()), output.as_mut_ptr())
-        ;;
-        assert_eq!(
-            Ok(transparent_struct),
-            <TransparentStruct as Decode>::decode(output.assume_init())
-        );
-    }
-}
-
-#[test]
-fn transparent_vec_to_vec() {
-    let transparent_struct_vec = vec![
-        TransparentStruct::new(GenericTransparentStruct::new(1)),
+fn transparent_collections_cross_exported_abi() {
+    let values = vec![
         TransparentStruct::new(GenericTransparentStruct::new(2)),
         TransparentStruct::new(GenericTransparentStruct::new(3)),
+        TransparentStruct::new(GenericTransparentStruct::new(4)),
     ];
 
-    let mut store = Default::default();
-    let mut output = MaybeUninit::new(CBoxedSlice::from_raw_parts(core::ptr::null_mut(), 0));
+    let output = unsafe { vec_to_vec_raw(co3::encode(values.clone())) };
+    assert_eq!(
+        values,
+        unsafe { co3::decode::<Vec<TransparentStruct>>(output) }.unwrap()
+    );
 
-    unsafe {
-            __vec_to_vec(
-                transparent_struct_vec.clone().encode(&mut store),
-                output.as_mut_ptr()
-            )
-        ;;
-
-        let output = output.assume_init();
-        assert_eq!(output.len(), 3);
-        let vec: Vec<TransparentStruct> = Decode::decode(output).expect("Valid");
-        assert_eq!(transparent_struct_vec, vec);
-    }
+    let output = unsafe { slice_to_slice_raw(co3::encode(values.as_slice())) };
+    assert_eq!(
+        values.as_slice(),
+        unsafe { co3::decode::<&[TransparentStruct]>(output) }.unwrap()
+    );
 }
 
 #[test]
-// False positive
-fn transparent_slice_to_slice() {
-    let transparent_struct_slice = [
-        TransparentStruct::new(GenericTransparentStruct::new(1)),
-        TransparentStruct::new(GenericTransparentStruct::new(2)),
-        TransparentStruct::new(GenericTransparentStruct::new(3)),
-    ];
-    let mut output = MaybeUninit::new(CSlice::from_raw_parts(core::ptr::null(), 0));
+fn transparent_methods_cross_exported_abi() {
+    let value = TransparentStruct::new(GenericTransparentStruct::new(42));
+    let replacement = GenericTransparentStruct::new(24);
 
-    unsafe {
-            __slice_to_slice(
-                transparent_struct_slice.as_slice().encode(&mut ()),
-                output.as_mut_ptr()
-            )
-        ;;
+    let output = unsafe { with_payload_raw(co3::encode(value), co3::encode(replacement)) };
+    let output = unsafe { co3::decode::<TransparentStruct>(output) }.unwrap();
+    assert_eq!(replacement, output.payload);
 
-        let output: &[TransparentStruct] =
-            Decode::decode(output.assume_init()).expect("Invalid output");
-        assert_eq!(output, transparent_struct_slice);
-    }
-}
-
-#[test]
-fn transparent_method_consume() {
-    let mut transparent_struct = TransparentStruct::new(GenericTransparentStruct::new(42));
-    let payload = GenericTransparentStruct::new(24);
-
-    let mut output: MaybeUninit<u64> = MaybeUninit::new(0);
-
-    unsafe {
-            TransparentStruct__with_payload(
-                transparent_struct.encode(&mut ()),
-                payload.encode(&mut ()),
-                output.as_mut_ptr()
-            )
-        ;;
-        transparent_struct =
-            <TransparentStruct as Decode>::decode(output.assume_init()).expect("valid");
-
-        assert_eq!(transparent_struct.payload, payload);
-    }
-}
-
-#[test]
-fn transparent_method_borrow() {
-    let transparent_struct = TransparentStruct::new(GenericTransparentStruct::new(42));
-    let mut output = MaybeUninit::new(core::ptr::null());
-
-    unsafe {
-            TransparentStruct__payload((&transparent_struct).encode(&mut ()), output.as_mut_ptr())
-        ;;
-        assert_eq!(
-            Ok(&transparent_struct.payload),
-            <&GenericTransparentStruct<_> as Decode>::decode(output.assume_init())
-        );
-    }
-}
-
-#[test]
-fn transparent_method_borrow_mut() {
-    let mut transparent_struct = TransparentStruct::new(GenericTransparentStruct::new(42));
-    let mut output = MaybeUninit::new(core::ptr::null_mut());
-
-    unsafe {
-            TransparentStruct__payload_mut(
-                (&mut transparent_struct).encode(&mut ()),
-                output.as_mut_ptr()
-            )
-        ;;
-        assert_eq!(
-            Ok(&mut transparent_struct.payload),
-            <&mut GenericTransparentStruct as Decode>::decode(output.assume_init())
-        );
-    }
+    let payload = unsafe { payload_raw(co3::encode(&output)) };
+    assert_eq!(Some(&replacement), unsafe { co3::decode(payload) });
 }

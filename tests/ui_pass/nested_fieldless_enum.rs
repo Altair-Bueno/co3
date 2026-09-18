@@ -1,6 +1,5 @@
 use co3::{
     ExternC, ReprC,
-    borrow::{BorrowCast, BorrowCastMut},
     ffi,
 };
 use rust_spec::RustSpec;
