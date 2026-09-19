@@ -313,13 +313,13 @@ error[E0080]: evaluation panicked: OpaqueZst must not be zero-sized
 66 | |         type OpaqueZst;
 ...  |
 72 | |     }
-   | |_____^ evaluation of `provider::_::_::_::_` failed here
+   | |_____^ evaluation of `provider::__co3_export_$CRATE__Drop__OpaqueZst__drop::_::_` failed here
 
 error[E0080]: evaluation panicked: ABI retype size mismatch
    --> tests/ui_fail/disallowed_types.rs:110:49
     |
 110 |         impl<dyn(usize) T = Array> Dispatch for T
-    |                                                 ^ evaluation of `provider::_::_::{constant#0}::{constant#0}` failed here
+    |                                                 ^ evaluation of `provider::__co3_export_$CRATE__Dispatch__T0__me_Handle::_::{constant#0}::{constant#0}` failed here
 
 note: erroneous constant encountered
    --> tests/ui_fail/disallowed_types.rs:110:49
@@ -331,7 +331,7 @@ error[E0080]: evaluation panicked: ABI retype alignment mismatch
    --> tests/ui_fail/disallowed_types.rs:120:50
     |
 120 |         impl<dyn(usize) T = Array2> Dispatch for T
-    |                                                  ^ evaluation of `provider::_::_::{constant#0}::{constant#0}` failed here
+    |                                                  ^ evaluation of `provider::__co3_export_$CRATE__Dispatch__T0__me_Handle2::_::{constant#0}::{constant#0}` failed here
 
 note: erroneous constant encountered
    --> tests/ui_fail/disallowed_types.rs:120:50
@@ -651,7 +651,7 @@ error[E0080]: evaluation panicked: Use `move fn` to transfer ownership
 66 | |         type OpaqueZst;
 ...  |
 72 | |     }
-   | |_____^ evaluation of `provider::_::_::to_owned::<'_>::{closure#0}::{constant#0}` failed here
+   | |_____^ evaluation of `provider::__co3_export_my_type_new::__co3_fn_my_type_new::<'_>::{closure#0}::{constant#0}` failed here
 
 note: erroneous constant encountered
   --> tests/ui_fail/disallowed_types.rs:63:5
@@ -674,7 +674,7 @@ error[E0080]: evaluation panicked: Use `move fn` to transfer ownership
 92 | |
 93 | |         pub extern "C" fn disallowed_return2() -> Box<[u8]>;
 94 | |     }
-   | |_____^ evaluation of `provider::_::disallowed_return2::{closure#0}::{constant#0}` failed here
+   | |_____^ evaluation of `provider::__co3_export_$CRATE__disallowed_return2::__co3_fn_$CRATE__disallowed_return2::{closure#0}::{constant#0}` failed here
 
 note: erroneous constant encountered
   --> tests/ui_fail/disallowed_types.rs:90:5
@@ -696,7 +696,7 @@ error[E0080]: evaluation panicked: Use `move fn` to transfer ownership
 103 | |
 104 | |         pub extern "C" fn disallowed_opaque_return() -> Box<OpaqueZst>;
 105 | |     }
-    | |_____^ evaluation of `provider::_::disallowed_opaque_return::{closure#0}::{constant#0}` failed here
+    | |_____^ evaluation of `provider::__co3_export_$CRATE__disallowed_opaque_return::__co3_fn_$CRATE__disallowed_opaque_return::{closure#0}::{constant#0}` failed here
 
 note: erroneous constant encountered
    --> tests/ui_fail/disallowed_types.rs:101:5

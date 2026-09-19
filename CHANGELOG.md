@@ -12,3 +12,5 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Initial `co3` and `co3-derive` crates for exporting and importing C ABI functions with `ffi!` and deriving C-compatible representations with `ReprC`.
 - Opt-in `move` and `#[soft]` conversion modes, plus `alloc`, `derive`, and `allocator-api` features.
 - Tagged dispatch for sharing one C ABI function across concrete Rust types.
+- `ffi!` exports expand at module scope instead of inside an anonymous `const`, so `rustdoc`-based
+  C header generators can discover the generated symbols.

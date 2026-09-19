@@ -15,11 +15,11 @@ use crate::{
         strip_dispatch_params,
     },
     parse::{FailureMode, MacroFeatures},
-    trait_object_single_trait_bound,
+    symbol_name_value, trait_object_single_trait_bound,
     utils::{
         DispatchMonomorphizer, ParamUseDetector, cfg_attrs, erased_id_repr,
         has_non_lifetime_generics, has_runtime_dispatch, is_payload_erased, is_type_erased,
-        soft_for_arg, strip_internal_generic_param,
+        sanitize_ident_fragment, soft_for_arg, strip_internal_generic_param,
     },
     wrapper::{
         gen_extern_decl, gen_owned_drop_wrapper_body, gen_wrapper_body,
@@ -1130,7 +1130,8 @@ pub(crate) fn expand_export_decls(
         })
         .collect::<BTreeSet<_>>();
 
-    let exports = decls.into_iter().map(|decl| {
+    let exports = decls.into_iter().enumerate().map(|(decl_index, decl)| {
+        let scope = export_scope_ident(&decl, decl_index);
         let export = match decl {
         ForeignItem::Static(item) => return crate::statics::gen_export_static(item),
         ForeignItem::Type(ForeignItemType {
@@ -1198,61 +1199,53 @@ pub(crate) fn expand_export_decls(
 
             quote! {
                 #(#type_cfg_attrs)*
-                const _: () = {
-                    #opaque
-                    #tag_impl
+                #opaque
+                #tag_impl
 
-                    #drop
-                    #size_check
-                    #drop_check
+                #drop
+                #size_check
+                #drop_check
 
-                    unsafe impl #impl_generics co3::stored::EncodeOwned for #ident #ty_generics #where_clause {
-                        type Store = ();
+                unsafe impl #impl_generics co3::stored::EncodeOwned for #ident #ty_generics #where_clause {
+                    type Store = ();
 
-                        #[inline(always)]
-                        fn soft_encode<'itm>(self, (): &mut ()) -> Self::CType
-                        where
-                            Self: 'itm
-                        {
-                            self
-                        }
+                    #[inline(always)]
+                    fn soft_encode<'itm>(self, (): &mut ()) -> Self::CType
+                    where
+                        Self: 'itm
+                    {
+                        self
                     }
-                    unsafe impl #decode_impl_generics co3::stored::DecodeOwned<'_dšč> for #ident #ty_generics #where_clause {
-                        type Store = ();
+                }
+                unsafe impl #decode_impl_generics co3::stored::DecodeOwned<'_dšč> for #ident #ty_generics #where_clause {
+                    type Store = ();
 
-                        #[inline(always)]
-                        unsafe fn soft_decode<'_išč: '_dšč>(source: Self::CType, (): &mut ()) -> Option<Self> {
-                            Some(source)
-                        }
+                    #[inline(always)]
+                    unsafe fn soft_decode<'_išč: '_dšč>(source: Self::CType, (): &mut ()) -> Option<Self> {
+                        Some(source)
                     }
+                }
 
-                    impl #impl_generics co3::Encode for #ident #ty_generics #where_clause {}
-                    impl #impl_generics co3::Decode<'_> for #ident #ty_generics #where_clause {}
+                impl #impl_generics co3::Encode for #ident #ty_generics #where_clause {}
+                impl #impl_generics co3::Decode<'_> for #ident #ty_generics #where_clause {}
 
-                    unsafe impl #impl_generics co3::borrow::BorrowCast for #ident #ty_generics #where_clause {
-                        type AsConst = Self;
-                    }
-                    unsafe impl #impl_generics co3::borrow::BorrowCastMut for #ident #ty_generics #where_clause {
-                        type AsMut = Self;
-                    }
+                unsafe impl #impl_generics co3::borrow::BorrowCast for #ident #ty_generics #where_clause {
+                    type AsConst = Self;
+                }
+                unsafe impl #impl_generics co3::borrow::BorrowCastMut for #ident #ty_generics #where_clause {
+                    type AsMut = Self;
+                }
 
-                    #(#dispatch)*
-                };
+                #(#dispatch)*
             }
         }
         ForeignItem::Fn(mut item) => {
             normalize_fn_signature(&mut item.sig, None);
             let bindings =
                 monomorphize_static_fn_bindings(item, symbol_fragments, &declared_types);
-            let has_multiple_bindings = bindings.len() > 1;
-            let definitions = bindings
-                .into_iter()
-                .enumerate()
-                .map(|(index, (mut binding, callee))| {
-                    if has_multiple_bindings {
-                        let source_name = &binding.sig.ident;
-                        binding.sig.ident = format_ident!("__co3_export_{source_name}_{index}");
-                    }
+            let definitions = bindings.into_iter().map(|(mut binding, callee)| {
+                    let source_name = binding.sig.ident.clone();
+                    binding.sig.ident = ffi_fn::export_fn_ident(&binding.attrs, &source_name);
 
                     if binding.dispatch_args.is_empty() {
                         ffi_fn::gen_fn_definition(&abi, failure_mode, binding.item, callee)
@@ -1275,12 +1268,91 @@ pub(crate) fn expand_export_decls(
         }
     };
 
-        quote! { const _: () = { use #co3 as co3; #export }; }
+        quote! {
+            #[doc(hidden)]
+            #[allow(non_snake_case, unused_imports)]
+            mod #scope {
+                use super::*;
+                use #co3 as co3;
+
+                #export
+            }
+        }
     });
 
     quote! { #(#exports)* }
 }
 
+/// Names the private module that holds one declaration's generated items.
+fn export_scope_ident(decl: &ForeignItem, index: usize) -> syn::Ident {
+    let name = first_symbol_name(decl).map_or_else(
+        || match decl {
+            ForeignItem::Type(item) => format!("{}_{index}", item.ty.ident),
+            ForeignItem::Static(item) => format!("{}_{index}", item.ident),
+            ForeignItem::Fn(item) => format!("{}_{index}", item.item.sig.ident),
+            ForeignItem::Impl(_) => format!("impl_{index}"),
+        },
+        |symbol| sanitize_ident_fragment(&symbol),
+    );
+
+    let selection = match decl {
+        ForeignItem::Impl(impl_) => dispatch_selection_fragment(impl_),
+        _ => String::new(),
+    };
+
+    format_ident!("__co3_export_{name}{selection}")
+}
+
+/// Renders the concrete types a dispatched impl selects, for use in an identifier.
+fn dispatch_selection_fragment(impl_: &Co3Impl) -> String {
+    let mut out = String::new();
+
+    for (_, targets) in impl_.dispatch_args.groups() {
+        for target in targets {
+            for arg in &target.args {
+                if let syn::GenericArgument::Type(syn::Type::Path(path)) = arg
+                    && let Some(segment) = path.path.segments.last()
+                {
+                    out.push('_');
+                    out.push_str(&segment.ident.to_string());
+                }
+            }
+        }
+    }
+
+    out
+}
+
+/// Returns the first exported symbol name declared anywhere within `decl`.
+fn first_symbol_name(decl: &ForeignItem) -> Option<String> {
+    fn from_attrs(attrs: &[syn::Attribute]) -> Option<String> {
+        attrs.iter().find_map(|attr| match symbol_name_value(attr) {
+            Some(syn::Expr::Lit(syn::ExprLit {
+                lit: syn::Lit::Str(value),
+                ..
+            })) => Some(value.value()),
+            _ => None,
+        })
+    }
+
+    fn from_impl(impl_: &Co3Impl) -> Option<String> {
+        from_attrs(&impl_.item.attrs).or_else(|| {
+            impl_.item.items.iter().find_map(|item| match item {
+                syn::ImplItem::Fn(item) => from_attrs(&item.attrs),
+                _ => None,
+            })
+        })
+    }
+
+    match decl {
+        ForeignItem::Fn(item) => from_attrs(&item.item.attrs),
+        ForeignItem::Static(item) => from_attrs(&item.attrs),
+        ForeignItem::Impl(impl_) => from_impl(impl_),
+        ForeignItem::Type(item) => from_attrs(&item.ty.attrs)
+            .or_else(|| item.self_impls.iter().find_map(from_impl))
+            .or_else(|| item.drop.as_ref().and_then(from_impl)),
+    }
+}
 #[expect(clippy::too_many_arguments)]
 fn synthesize_impl_extern_decls(
     abi: &syn::Abi,
@@ -2379,14 +2451,16 @@ fn gen_drop_impl_check(item: &syn::ForeignItemType, impl_: &ItemImpl) -> TokenSt
     let (decl_generics, _, item_where_clause) = item.generics.split_for_impl();
     let (impl_generics, _, where_clause) = impl_generics.split_for_impl();
 
-    quote! {{
-        #(#item_attrs)*
-        struct #ident #decl_generics (#(#marker_fields),*) #item_where_clause;
+    quote! {
+        const _: () = {
+            #(#item_attrs)*
+            struct #ident #decl_generics (#(#marker_fields),*) #item_where_clause;
 
-        impl #impl_generics Drop for #self_ty #where_clause {
-            fn drop(&mut self) {}
-        }
-    }}
+            impl #impl_generics Drop for #self_ty #where_clause {
+                fn drop(&mut self) {}
+            }
+        };
+    }
 }
 
 struct OpaqueTypeAttrs<'a> {

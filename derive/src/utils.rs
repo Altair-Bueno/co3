@@ -372,6 +372,11 @@ pub(crate) fn path_symbol_name(path: &syn::Path, generics: &syn::Generics) -> St
     builder.finish()
 }
 
+/// Rewrites an arbitrary symbol name into a fragment usable inside a Rust identifier.
+pub(crate) fn sanitize_ident_fragment(symbol: &str) -> String {
+    symbol.replace(|c: char| !c.is_ascii_alphanumeric(), "_")
+}
+
 pub(crate) fn type_symbol_name(ty: &Type, generics: &syn::Generics) -> String {
     let mut builder = SymbolNameBuilder::new(generics);
     builder.visit_type(ty);

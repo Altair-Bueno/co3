@@ -21,6 +21,25 @@ use crate::{
     utils::{is_drop_impl, soft_for_arg},
 };
 
+/// Names the Rust item backing an exported symbol.
+///
+/// Generated definitions live in a module that glob-imports the declaration site, so they must not
+/// reuse the source name and shadow their own callee. The exported symbol is carried by
+/// `#[unsafe(export_name = ...)]`, leaving the Rust-side name free to be renamed. Symbol names are
+/// unique within a crate, which keeps sibling definitions in one module distinct.
+pub(crate) fn export_fn_ident(attrs: &[syn::Attribute], fallback: &Ident) -> Ident {
+    let symbol = attrs.iter().find_map(|attr| match symbol_name_value(attr) {
+        Some(syn::Expr::Lit(syn::ExprLit {
+            lit: syn::Lit::Str(value),
+            ..
+        })) => Some(crate::utils::sanitize_ident_fragment(&value.value())),
+        _ => None,
+    });
+
+    let name = symbol.unwrap_or_else(|| fallback.to_string());
+    format_ident!("__co3_fn_{name}")
+}
+
 fn export_definition_attrs(attrs: &[syn::Attribute]) -> TokenStream {
     let attrs = attrs.iter().filter_map(|attr| {
         if is_by_val_attr(attr) {
@@ -702,6 +721,7 @@ pub fn gen_impl_definition(
 
         let fn_name = &item.sig.ident;
         let callee = impl_method_callee(self_ty, trait_, fn_name);
+        item.sig.ident = export_fn_ident(&item.attrs, fn_name);
 
         merge_impl_generics_for_raw_decl(
             impl_.generics.clone(),
@@ -726,21 +746,15 @@ pub fn gen_impl_definition(
             #body
         }};
 
-        Some(emit_extern_definition(
-            abi,
-            &item.attrs,
-            failure_mode,
-            fn_signature,
-            ffi_fn_body,
-        ))
+        let definition =
+            emit_extern_definition(abi, &item.attrs, failure_mode, fn_signature, ffi_fn_body);
+        Some(quote! {
+            #(#impl_attrs)*
+            #definition
+        })
     });
 
-    quote! {
-        #(#impl_attrs)*
-        const _: () = {
-            #(#definitions)*
-        };
-    }
+    quote! { #(#definitions)* }
 }
 
 pub(crate) fn impl_method_callee(

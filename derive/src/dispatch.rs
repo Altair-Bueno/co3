@@ -80,7 +80,7 @@ pub(crate) fn gen_dispatch_fn_export(
 ) -> TokenStream {
     let generics = item.sig.generics.clone();
 
-    let definition = synthesize_dispatch_export_fn(
+    synthesize_dispatch_export_fn(
         abi,
         failure_mode,
         &generics,
@@ -91,13 +91,7 @@ pub(crate) fn gen_dispatch_fn_export(
         &item.attrs,
         &callee,
         false,
-    );
-
-    quote! {
-        const _: () = {
-            #definition
-        };
-    }
+    )
 }
 
 #[derive(Clone, Copy)]
@@ -334,15 +328,13 @@ pub(crate) fn gen_dispatch_export(
             drop_impl,
         );
 
-        quote! { #definition }
+        quote! {
+            #(#impl_attrs)*
+            #definition
+        }
     });
 
-    quote! {
-        #(#impl_attrs)*
-        const _: () = {
-            #(#definitions)*
-        };
-    }
+    quote! { #(#definitions)* }
 }
 
 #[expect(clippy::too_many_arguments)]
@@ -419,11 +411,12 @@ fn synthesize_dispatch_export_fn(
     }};
 
     erase_dispatch_signature(generics, receiver, &mut sig);
+    sig.ident = ffi_fn::export_fn_ident(attrs, &sig.ident);
     let sig = ffi_fn::gen_extern_fn_signature(sig, failure_mode);
     let definition = emit_extern_definition(abi, attrs, failure_mode, sig, fn_body);
 
     quote! {
-        #layout_checks
+        const _: () = { #layout_checks };
         #definition
     }
 }
