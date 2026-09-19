@@ -1,5 +1,5 @@
 [workspace]
-members = ["derive"]
+members = ["crate-examples/*", "derive"]
 
 [workspace.package]
 version = "0.1.0"

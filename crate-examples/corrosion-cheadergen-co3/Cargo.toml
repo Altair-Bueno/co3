@@ -1,0 +1,15 @@
+[package]
+name = "corrosion-cheadergen-co3"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+publish = false
+
+[lib]
+# `staticlib` is what Corrosion links into the C executable. `rlib` is kept so the crate still
+# participates in normal workspace builds and `cargo doc`, which is what `cheadergen` reads.
+crate-type = ["staticlib", "rlib"]
+
+[dependencies]
+co3 = { path = "../../" }
