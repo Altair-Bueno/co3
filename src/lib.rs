@@ -72,6 +72,7 @@ pub mod boxed;
 pub mod cell;
 #[doc(hidden)]
 pub mod either;
+mod ffi;
 pub mod niche;
 pub mod option;
 mod primitives;

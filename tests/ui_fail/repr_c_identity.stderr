@@ -24,6 +24,6 @@ error[E0277]: the trait bound `bool: ReprC` is not satisfied
              CBoxedSlice<C>
              CSlice<C>
              CSliceMut<C>
-             MaybeUninit<T>
+             CStr
            and $N others
    = note: this error originates in the derive macro `ReprC` (in Nightly builds, run with -Z macro-backtrace for more info)

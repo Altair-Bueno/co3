@@ -2,7 +2,6 @@
 use alloc::{string::String, vec::Vec};
 use core::{
     cell::{Cell, UnsafeCell},
-    ffi::c_void,
     marker::PhantomData,
     mem::{ManuallyDrop, MaybeUninit},
     num::NonZero,
@@ -86,37 +85,6 @@ macro_rules! non_zero_derive {
 
 non_zero_derive! {
     u8, i8, u16, i16, u32, i32, u64, i64, u128, i128,
-}
-
-unsafe impl Borrow for c_void {
-    type Borrowed<'itm>
-        = Self
-    where
-        Self: 'itm;
-
-    type Owner = ();
-
-    #[inline(always)]
-    fn borrow<'itm>(self, (): &mut ()) -> Self::Borrowed<'itm> {
-        self
-    }
-}
-impl<'itm> FromBorrow<'itm> for c_void {
-    #[inline(always)]
-    fn from_borrow(source: Self) -> Self {
-        source
-    }
-}
-
-impl ExternC for c_void {
-    type CType = Self;
-}
-unsafe impl ReprC for c_void {}
-unsafe impl BorrowCast for c_void {
-    type AsConst = Self;
-}
-unsafe impl BorrowCastMut for c_void {
-    type AsMut = Self;
 }
 
 unsafe impl Borrow for () {
