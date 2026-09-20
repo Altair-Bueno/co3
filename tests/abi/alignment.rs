@@ -1,5 +1,4 @@
-use co3::{ExternC, ReprC, transmute::CheckedTransmute};
-use rust_spec::RustSpec;
+use co3::{ExternC, ReprC, rust_spec::RustSpec, transmute::CheckedTransmute};
 use static_assertions::{assert_impl_all, assert_not_impl_any};
 
 #[derive(RustSpec, ReprC)]
@@ -44,7 +43,8 @@ fn assert_same_layout<T: ExternC<CType: Sized>>() {
     );
 }
 
-fn assert_nontrivial_alignment<T: RustSpec<Alignment = rust_spec::Gt<rust_spec::One>>>() {}
+fn assert_nontrivial_alignment<T: RustSpec<Alignment = co3::rust_spec::Gt<co3::rust_spec::One>>>() {
+}
 
 #[test]
 fn explicit_repr_alignment_is_preserved_by_companion_types() {

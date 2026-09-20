@@ -9,7 +9,7 @@ use core::{
 };
 
 use crate::{
-    CFnArg, Decode, Encode, ExternC, ReprC,
+    CFnArg, CFnReturn, Decode, Encode, ExternC, ReprC,
     borrow::{Borrow, BorrowCast, BorrowCastMut, FromBorrow},
     niche::Niche,
     stored::{DecodeOwned, EmptyStore, EncodeOwned},
@@ -137,6 +137,7 @@ unsafe impl CheckedTransmute for () {
 }
 
 unsafe impl ReprC for () {}
+unsafe impl CFnReturn for () {}
 unsafe impl BorrowCast for () {
     type AsConst = Self;
 }

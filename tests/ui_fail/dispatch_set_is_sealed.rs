@@ -1,5 +1,4 @@
-use co3::{Tag, ReprC, ffi};
-use rust_spec::RustSpec;
+use co3::{Tag, ReprC, ffi, rust_spec::RustSpec};
 
 #[derive(RustSpec, Tag, ReprC)]
 #[tag(u8, unsafe(1))]

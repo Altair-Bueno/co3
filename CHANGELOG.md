@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-09-21
+
+### Added
+
+- support `ReprC` function pointers
+
 ## [0.3.1] - 2026-09-20
 
 ### Added

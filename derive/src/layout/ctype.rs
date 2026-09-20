@@ -13,6 +13,7 @@ use crate::layout::{
         gen_dst_methods, last_field, wide_predicate,
     },
 };
+use crate::utils::co3_path;
 
 fn lowered_field_ty(field_ty: &syn::Type) -> TokenStream {
     if is_phantom_data(field_ty) {
@@ -661,6 +662,7 @@ fn gen_robust_impls<const ADD_COPY: bool>(
     generics: &syn::Generics,
     fields: &[&syn::Type],
 ) -> TokenStream {
+    let co3 = co3_path();
     let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
     let predicates = where_clause.as_ref().map(|w| &w.predicates);
 
@@ -670,20 +672,20 @@ fn gen_robust_impls<const ADD_COPY: bool>(
     let for_dummy = (generics.type_params().count() == 0).then_some(quote! { for<'_dummy> });
 
     let type_spec_bound = (!ADD_COPY).then(|| {
-        quote! { #for_dummy Self: co3::rust_spec::RustSpec<Size = co3::rust_spec::size::Sized<co3::rust_spec::Gt<rust_spec::Zero>>>, }
+        quote! { #for_dummy Self: #co3::rust_spec::RustSpec<Size = #co3::rust_spec::size::Sized<#co3::rust_spec::Gt<#co3::rust_spec::Zero>>>, }
     });
 
     quote! {
-        unsafe impl #impl_generics co3::ReprC for #ident #ty_generics #where_clause {}
+        unsafe impl #impl_generics #co3::ReprC for #ident #ty_generics #where_clause {}
 
-        unsafe impl #impl_generics co3::CFnArg for #ident #ty_generics
+        unsafe impl #impl_generics #co3::CFnArg for #ident #ty_generics
         where
             #type_spec_bound
             #(#copy_bounds,)*
             #predicates
         {}
 
-        unsafe impl #impl_generics co3::transmute::CheckedTransmute for #ident #ty_generics #where_clause {
+        unsafe impl #impl_generics #co3::transmute::CheckedTransmute for #ident #ty_generics #where_clause {
             #[inline(always)]
             unsafe fn is_valid(_: &Self::CType) -> bool {
                 true

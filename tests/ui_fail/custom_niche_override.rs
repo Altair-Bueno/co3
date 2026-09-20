@@ -1,7 +1,7 @@
 use core::num::NonZeroU8;
 
 use co3::ReprC;
-use rust_spec::RustSpec;
+use co3::rust_spec::RustSpec;
 
 #[derive(RustSpec, ReprC)]
 #[repr(transparent)]

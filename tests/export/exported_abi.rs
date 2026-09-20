@@ -1,5 +1,5 @@
+use co3::rust_spec::RustSpec;
 use core::ffi::c_void;
-use rust_spec::RustSpec;
 
 use co3::{ReprC, ffi};
 

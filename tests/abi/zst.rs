@@ -1,5 +1,7 @@
-use co3::{CFnArg, CFnReturn, Decode, Encode, ExternC, ReprC, transmute::CheckedTransmute};
-use rust_spec::RustSpec;
+use co3::{
+    CFnArg, CFnReturn, Decode, Encode, ExternC, ReprC, rust_spec::RustSpec,
+    transmute::CheckedTransmute,
+};
 use static_assertions::{assert_impl_all, assert_not_impl_any};
 
 #[derive(Debug, Clone, PartialEq, Eq, RustSpec, ReprC)]

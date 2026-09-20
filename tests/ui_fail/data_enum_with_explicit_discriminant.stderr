@@ -1,5 +1,5 @@
 error: Explicit discriminants are not supported in data-carrying enums
- --> tests/ui_fail/data_enum_with_explicit_discriminant.rs:7:5
+ --> tests/ui_fail/data_enum_with_explicit_discriminant.rs:6:5
   |
-7 |     A = 1,
+6 |     A = 1,
   |     ^

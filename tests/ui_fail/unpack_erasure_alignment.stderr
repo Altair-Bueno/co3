@@ -1,25 +1,25 @@
 error[E0080]: evaluation panicked: ABI retype alignment mismatch
-  --> tests/ui_fail/unpack_erasure_alignment.rs:19:1
+  --> tests/ui_fail/unpack_erasure_alignment.rs:18:1
    |
-19 | / ffi! {
-20 | |     #![unsafe(extern("C"))]
-21 | |
-22 | |     fn alignment_mismatch(
+18 | / ffi! {
+19 | |     #![unsafe(extern("C"))]
+20 | |
+21 | |     fn alignment_mismatch(
 ...  |
-25 | |     );
-26 | | }
+24 | |     );
+25 | | }
    | |_^ evaluation of `alignment_mismatch::{constant#0}` failed here
 
 note: erroneous constant encountered
-  --> tests/ui_fail/unpack_erasure_alignment.rs:19:1
+  --> tests/ui_fail/unpack_erasure_alignment.rs:18:1
    |
-19 | / ffi! {
-20 | |     #![unsafe(extern("C"))]
-21 | |
-22 | |     fn alignment_mismatch(
+18 | / ffi! {
+19 | |     #![unsafe(extern("C"))]
+20 | |
+21 | |     fn alignment_mismatch(
 ...  |
-25 | |     );
-26 | | }
+24 | |     );
+25 | | }
    | |_^
    |
    = note: this note originates in the macro `ffi` (in Nightly builds, run with -Z macro-backtrace for more info)

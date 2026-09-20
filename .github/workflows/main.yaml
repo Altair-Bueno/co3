@@ -28,6 +28,11 @@ jobs:
     - name: Check formatting
       run: cargo fmt --all --check
 
+    - name: Check documentation
+      env:
+        RUSTDOCFLAGS: -D warnings
+      run: cargo doc --workspace --no-deps
+
     - name: Lint workspace
       run: cargo clippy --workspace --benches --tests --examples -- --deny warnings
 

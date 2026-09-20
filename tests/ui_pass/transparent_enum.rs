@@ -1,5 +1,4 @@
-use co3::{ExternC, ReprC};
-use rust_spec::RustSpec;
+use co3::{ExternC, ReprC, rust_spec::RustSpec};
 
 #[derive(Clone, Copy, RustSpec, ReprC)]
 #[repr(transparent)]

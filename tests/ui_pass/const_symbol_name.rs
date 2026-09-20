@@ -1,7 +1,6 @@
 use core::marker::PhantomData;
 
-use co3::{ReprC, ffi};
-use rust_spec::RustSpec;
+use co3::{ReprC, ffi, rust_spec::RustSpec};
 
 #[derive(RustSpec, ReprC)]
 #[repr(transparent)]

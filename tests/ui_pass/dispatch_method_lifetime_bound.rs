@@ -2,7 +2,7 @@ use co3::{
     Tag, ReprC, ffi,
     tag::{Tagged, TagFamily},
 };
-use rust_spec::RustSpec;
+use co3::rust_spec::RustSpec;
 
 trait Attribute {}
 

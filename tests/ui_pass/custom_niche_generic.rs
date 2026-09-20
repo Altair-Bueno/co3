@@ -1,7 +1,7 @@
 use core::{marker::PhantomData, num::NonZeroU8};
 
 use co3::ReprC;
-use rust_spec::RustSpec;
+use co3::rust_spec::RustSpec;
 
 #[derive(RustSpec, ReprC)]
 #[rust_spec(with_custom_niche)]

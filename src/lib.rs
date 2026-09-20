@@ -1,37 +1,453 @@
-//! Rust-native declarations for importing and exporting C ABI interfaces.
+//! _Rust-native declarations_ for importing and exporting C ABI interfaces.
 //!
-//! [`ffi!`] is the main entry point. It generates ABI-facing wrappers and conversion glue for
-//! statics, functions, impl blocks, and opaque types. Each block can either export declarations
-//! from Rust with `#![unsafe(export("ABI"))]` or import them from a foreign library with
+//! **[`ffi!`] is the main entry point.** It generates ABI-facing wrappers and conversion glue for
+//! statics, functions, impl blocks, and opaque types. Each block can either _export_ declarations
+//! from Rust with `#![unsafe(export("ABI"))]` or _import_ them from a foreign library with
 //! `#![unsafe(extern("ABI"))]`.
 //!
-//! Rust types used in those declarations are mapped to C-compatible representations through
-//! [`ExternC`]. In normal use, derive [`ReprC`] to generate the representation and conversions.
+//! **[`ReprC`] derive generates the C-compatbile type and the corresponding conversions.** Value
+//! representations are checked for traps, including pointees, and ownership transfer is _opt-in_.
 //!
-//! For the complete syntax, safety contract, and conversion behavior, see the [`ffi!`] documentation.
+//! Except for statics, **export declarations are interchangeable with import declarations**.
 //!
-//! # Example
+//! # Safety
+//!
+//! An import declaration is an unsafe assertion that the **linked provider matches the declared**
+//! ABI contract, including symbol names, calling convention, complete item signatures, ownership,
+//! lifetime, mutability, and aliasing requirements.
+//!
+//! Foreign callers must ensure that non-null pointer-backed arguments satisfy Rust's reference
+//! rules for the types declared by the exported function for the duration of the call.
+//!
+//! The exporting crate must ensure that **exported symbol names are unique among linked definitions**.
+//! Multiple `ffi!` blocks can generate colliding names, so prefer a single export block per crate
+//! and prefer exporting **only** symbols defined in that crate.
+//!
+//! # Import from an external library
+//!
+//! Use **`#![unsafe(extern("ABI"))]`** to declare the Rust-facing interface implemented by an
+//! external library:
 //!
 //! ```rust
-//! use co3::{ReprC, ffi};
+//! use co3::{ffi, ReprC};
 //!
+//! // `ReprC` generates a stable C-compatible companion even without an explicit `#[repr(...)]`.
+//! // If given, an explicit representation would be leveraged to produce a more optimal mapping.
 //! #[derive(Clone, Copy, ReprC)]
-//! struct Step(u32);
+//! struct Value(u32);
+//!
+//! trait Counter {
+//!    fn increment(&mut self, by: Value);
+//! }
 //!
 //! ffi! {
-//!     #![unsafe(extern("C"))]
+//!    #![unsafe(extern("C"))]
 //!
-//!     type Counter;
+//!    type CounterHandle;
 //!
-//!     impl Counter {
-//!         #[symbol_name = "exported_by_int_inc"]
-//!         fn increment_by_int(&mut self, by: u32);
+//!    impl Counter for CounterHandle {
+//!        fn increment(&mut self, by: Value);
+//!    }
+//! }
+//! # fn main() {}
+//! ```
 //!
-//!         #[symbol_name = "exported_custom_inc"]
-//!         fn increment_custom(&mut self, by: Step);
-//!     }
+//! # Export from Rust
+//!
+//! Use **`#![unsafe(export("ABI"))]`** to expose existing Rust items. Although an ABI can be
+//! exported on its own, the provider will often also provide a Rust client as well. In the common
+//! case, export declarations are naturally paired with matching import declarations via a shared
+//! crate that defines the application interface.
+//!
+//! ```rust
+//! use co3::ffi;
+//!
+//! #[cfg(not(feature = "import"))]
+//! pub struct CounterHandle(u32);
+//!
+//! #[cfg(not(feature = "import"))]
+//! impl core::ops::AddAssign<u32> for CounterHandle {
+//!    fn add_assign(&mut self, rhs: u32) {
+//!        self.0 += rhs;
+//!    }
+//! }
+//!
+//! #[cfg(not(feature = "import"))]
+//! fn increment<T: core::ops::AddAssign<u32>>(value: &mut T) {
+//!    *value += 1;
+//! }
+//!
+//! ffi! {
+//!    #![cfg_attr(not(feature = "import"), unsafe(export("C")))]
+//!    #![cfg_attr(feature = "import", unsafe(extern("C")))]
+//!
+//!    type CounterHandle;
+//!
+//!    fn increment(value: &mut CounterHandle);
+//! }
+//! # fn main() {}
+//! ```
+//!
+//! # Naming convention
+//!
+//! ABI symbols follow a stable naming convention:
+//!
+//! - Static items: `{prefix}__{static_name}`
+//! - Free functions: `{prefix}__{function_name}`
+//! - Inherent methods: `{prefix}__{SelfType}__{method_name}`
+//! - Trait methods: `{prefix}__{TraitPath}__{SelfType}__{method_name}`
+//!
+//! By default, `ffi!` uses `CARGO_CRATE_NAME` as the symbol prefix. `#![symbol_prefix = "..."]`
+//! overrides the prefix for the entire scope, whereas `#[symbol_name = "..."]` overrides the name
+//! for the declaration it is applied to:
+//!
+//! ```rust
+//! use co3::ffi;
+//!
+//! trait Operations {
+//!    fn add(&self, left: u32, right: u32) -> u32;
+//! }
+//!
+//! ffi! {
+//!    #![unsafe(extern("C"))]
+//!    #![symbol_prefix = "my_lib"]
+//!
+//!    type Calculator;
+//!
+//!    // Linked as `my_lib__subtract`.
+//!    fn subtract(left: u32, right: u32) -> u32;
+//!
+//!    impl Calculator {
+//!        // Linked as `my_lib__Calculator__multiply`.
+//!        fn multiply(&self, left: u32, right: u32) -> u32;
+//!    }
+//!
+//!    impl Operations for Calculator {
+//!        // Linked as `library_add`.
+//!        #[symbol_name = "library_add"]
+//!        fn add(&self, left: u32, right: u32) -> u32;
+//!    }
+//! }
+//! # fn main() {}
+//! ```
+//!
+//! # Static parameter interpolation
+//!
+//! A generic parameter is selected at compile time with `where use<Param, ...> @ (ConcreteTy | ...)`
+//! where each selection of a static parameter generates a specialized function export or import with
+//! a distinct ABI symbol.
+//!
+//! An explicit `#[symbol_name]` **MUST** interpolate every selected static parameter exactly once
+//! using `{Parameter}`. `#![symbol_fragments { ... }]` defines the interpolated string value.
+//!
+//! ```rust
+//! use co3::ffi;
+//!
+//! pub struct SQLCHAR;
+//! pub struct SQLWCHAR;
+//!
+//! ffi! {
+//!    #![unsafe(extern("C"))]
+//!    #![symbol_fragments {
+//!        SQLCHAR = "A",
+//!        SQLWCHAR = "W",
+//!    }]
+//!
+//!    #[symbol_name = "convert_{T}"]
+//!    fn convert<T>()
+//!    where
+//!        use<T> @ (<SQLCHAR> | <SQLWCHAR>);
+//! }
+//! # fn main() {}
+//! ```
+//!
+//! This synthesizes 2 function imports: `convert_A` and `convert_W`. Primitive types have stable
+//! built-in fragments, while const arguments are converted directly into valid symbol fragments.
+//!
+//! **Runtime-dispatched `dyn(...)` parameters use tags instead and are not interpolated.**
+//!
+//! # Tagged dispatch
+//!
+//! Tagged dispatch is a dynamic dispatch over a closed set of concrete implementations commonly used
+//! in C APIs. The concrete type is erased at the FFI boundary and carried as a shared representation
+//! accompanied by a tag that identifies the concrete implementation to invoke. The tag position is
+//! inferred at the start of the function parameter list but can also be specified explicitly. Every
+//! tag-dispatched concrete instantiation is compile-time checked to have a C-compatible representation
+//! with the same size and alignment of the declared shared ABI type.
+//!
+//! In the following example:
+//! - `T` is a tag-dispatched type parameter
+//! - The tag type of parameter `T` is chosen as `u8`
+//! - `u16` specifies the shared ABI representation used in the place of every concrete `T`.
+//! - `where use<T> @ (...)` defines the set of concrete instantiations of dispatched types.
+//! - `dyn Self` dispatches the `Self` parameter, but is only allowed for extern/opaque types.
+//!
+//! The following example demonstrates both forms of tagged dispatch:
+//!
+//! ```rust
+//! use co3::{ffi, Tag, ReprC, rust_spec::RustSpec};
+//! use co3::tag::Tagged;
+//!
+//! #[derive(RustSpec, Tag, ReprC)]
+//! #[tag(u8, unsafe(1))]
+//! #[repr(transparent)]
+//! struct LocalCounter(u16);
+//!
+//! #[derive(RustSpec, Tag, ReprC)]
+//! #[tag(u8, unsafe(2))]
+//! #[repr(transparent)]
+//! struct RemoteCounter(u16);
+//!
+//! trait Counter {
+//!    fn increment(&mut self, by: u8);
+//! }
+//!
+//! trait Reset {
+//!    fn reset(&mut self);
+//! }
+//!
+//! unsafe impl Tagged for CounterHandle<i16> {
+//!    const TAG: u8 = 3;
+//! }
+//!
+//! unsafe impl Tagged for CounterHandle<u16> {
+//!    const TAG: u8 = 4;
+//! }
+//!
+//! ffi! {
+//!    #![unsafe(extern("C"))]
+//!
+//!    #[tag(u8)]
+//!    type CounterHandle<T>;
+//!
+//!    impl<T> Drop for CounterHandle<T> {
+//!        fn drop(&mut self);
+//!    }
+//!
+//!    // Declare `T` as tag dispatched
+//!    impl<dyn(u8) T = u16> Counter for T
+//!    where
+//!        // Select concrete types with the shared `u16` ABI representation.
+//!        use<T> @ (<LocalCounter> | <RemoteCounter>)
+//!    {
+//!        // Make the tag-carrying argument position explicit.
+//!        fn increment(t_tag: <dyn T>::TAG, &mut self, by: u8);
+//!    }
+//!
+//!    // Dispatch the extern type itself
+//!    impl<T> Reset for dyn CounterHandle<T>
+//!    where
+//!        use<T> @ (<i16> | <u16>)
+//!    {
+//!        fn reset(self_tag: <dyn Self>::TAG, &mut self);
+//!    }
+//! }
+//! # fn main() {}
+//! ```
+//!
+//! # Ownership transfer
+//!
+//! In Rust, passing a value to a function transfers its ownership. Across an FFI boundary, however,
+//! ownership transfer carries additional requirements which are a common cause of UB, such as
+//! agreeing on the allocator and who is responsible for freeing the allocation.
+//!
+//! Because it is designed to eliminate common footguns in FFI, `CO3` takes an opinionated stance here.
+//! By default, all owned values (e.g. `Vec<T>`) are exported as references and immediately cloned on
+//! the importing side. The universal guarantee is that any reference be valid for the duration of
+//! the function call; past that, it is the user's responsibility to ensure reference validity.
+//!
+//! Apply `move` to transfer ownership of an argument or return value:
+//!
+//! ```rust
+//! use co3::ffi;
+//!
+//! fn passthrough(input: Vec<u8>) -> Vec<u8> {
+//!    input
+//! }
+//!
+//! fn clone_into(input: Vec<u8>) {
+//!    drop(input);
+//! }
+//!
+//! ffi! {
+//!    #![unsafe(export("C"))]
+//!
+//!    // `input` and the return both transfer ownership
+//!    move fn passthrough(move input: Vec<u8>) -> Vec<u8>;
+//!
+//!    // `input` is passed by reference
+//!    fn clone_into(input: Vec<u8>);
+//! }
+//! # fn main() {}
+//! ```
+//! # Soft references
+//!
+//! `#[soft]` opts a function argument into conversion through temporary backing storage. This enables
+//! mutable references to non-robust values (e.g. `&mut bool`) or values that cannot be represented
+//! in place (e.g. `&(u32, u32)`). The caveat is that the referent is converted into a temporary
+//! C-compatible representation instead of reusing its original address.
+//! **Pointer identity is not preserved.**
+//!
+//! Changes made through mutable references are synchronized back to the original value after the
+//! call. A synchronization failure follows the configured failure mode.
+//!
+//! Apply `#[soft]` to a function argument to opt into this kind of conversion:
+//!
+//! ```rust
+//! use co3::ffi;
+//!
+//! fn increment(value: (&(u8, u32), u32)) -> u8 {
+//!    value.0.0 + 1
+//! }
+//!
+//! ffi! {
+//!    #![unsafe(export("C"))]
+//!
+//!    fn increment(#[soft] value: (&(u8, u32), u32)) -> u8;
+//! }
+//! # fn main() {}
+//! ```
+//!
+//! # Unpacking at the ABI boundary
+//!
+//! Rust slices are lowered into [`slice::CSlice`]/[`slice::CSliceMut`]
+//! which are C-ABI containers holding a data pointer and a length. However, it is common for FFI APIs to instead accept those components as separate function arguments.
+//! Mark an argument with `#[unpack(T1, T2)]` to import its two ABI parts:
+//!
+//! ```rust
+//! # use co3::ffi;
+//!
+//! ffi! {
+//!    #![unsafe(extern("system"))]
+//!
+//!    // - imported as `sum(*const u32, usize)`
+//!    fn sum(#[unpack(_, usize)] values: &[u32]) -> u32;
 //! }
 //! ```
+//!
+//! **This pattern is not limited to slices**; it applies to every type implementing the
+//! [`slice::Unpack2`] trait.
+//!
+//! # Failure modes
+//!
+//! Select how failures are reported over the FFI boundary:
+//! - `#![failure = "error"]`: return type must implement [`Error`].
+//! - `#![failure = "panic"]`: panic on failure (the default).
+//!
+//! ```rust
+//! use co3::{ffi, Error, ReprC, rust_spec::RustSpec};
+//!
+//! #[derive(RustSpec, ReprC)]
+//! #[repr(u8)]
+//! enum ApiError { InvalidRepresentation, UnknownHandle, SoftSync }
+//!
+//! impl Error for ApiError {
+//!    fn trap_value() -> Self { Self::InvalidRepresentation }
+//!    fn unknown_tag() -> Self { Self::UnknownHandle }
+//!    fn soft_sync_error() -> Self { Self::SoftSync }
+//! }
+//!
+//! fn check_error(value: u8) -> ApiError {
+//!    let _ = value;
+//!    ApiError::InvalidRepresentation
+//! }
+//!
+//! ffi! {
+//!    #![unsafe(export("C"))]
+//!    #![failure = "error"]
+//!
+//!    fn check_error(value: u8) -> ApiError;
+//! }
+//!
+//! ffi! {
+//!    #![unsafe(extern("C"))]
+//!
+//!    fn check_panic(value: u8) -> u32;
+//! }
+//! # fn main() {}
+//! ```
+//!
+//! # Callbacks
+//!
+//! Function pointer parameters are not converted by [`ffi!`] which limits the available signatures:
+//!
+//! ```rust
+//! use co3::{ReprC, ffi, rust_spec::RustSpec};
+//!
+//! #[derive(Clone, Copy, RustSpec, ReprC)]
+//! // Without `#[reprC(identity)]`, `ReprC` derive produces `CValue`, in which case you'd
+//! // have to use that type (or `<Value as ExternC>::CType`) in your callback instead
+//! #[reprC(identity)]
+//! #[repr(transparent)]
+//! struct Value(u8);
+//!
+//! // Fn pointer **MUST BE** C-compatible in itself
+//! type Callback = extern "C" fn(Value, u8) -> Value;
+//!
+//! fn apply_callback(callback: Callback, value: Value) -> Value {
+//!     callback(value, 1)
+//! }
+//!
+//! ffi! {
+//!     #![unsafe(export("C"))]
+//!
+//!     fn apply_callback(callback: Callback, value: Value) -> Value;
+//! }
+//! # fn main() {}
+//! ```
+//!
+//! Otherwise, perform the conversion manually:
+//!
+//! ```rust
+//! use co3::{ReprC, ffi, rust_spec::RustSpec};
+//!
+//! #[derive(Clone, Copy, RustSpec, ReprC)]
+//! struct Value(u8);
+//!
+//! type Callback = extern "C" fn(CValue, u8) -> <Value as co3::ExternC>::CType;
+//!
+//! fn apply_callback(callback: Callback, value: Value) -> Value {
+//!     // If the type contains soft references use:
+//!     //     co3::soft_encode(value, &mut store)
+//!     let value = co3::encode(value);
+//!     let output = callback(value, 1);
+//!
+//!     // If the type contains soft references use:
+//!     //     co3::soft_decode(output, &mut store)
+//!     unsafe { co3::decode(output) }.unwrap()
+//! }
+//!
+//! ffi! {
+//!     #![unsafe(export("C"))]
+//!
+//!     fn apply_callback(callback: Callback, value: Value) -> Value;
+//! }
+//! # fn main() {}
+//! ```
+//!
+//! # Opaque type variance
+//!
+//! Lifetime and type parameters of declared opaque types are invariant by default. A lifetime
+//! parameter can explicitly be declared covariant with `#[unsafe(covariant(...))]`:
+//!
+//! ```rust
+//! use co3::ffi;
+//!
+//! ffi! {
+//!    #![unsafe(extern("C"))]
+//!
+//!    #[unsafe(covariant('parent))]
+//!    type Child<'parent, T>;
+//!
+//!    impl<'parent, T> Drop for Child<'parent, T> {
+//!        fn drop(&mut self);
+//!    }
+//! }
+//! ```
+//!
+//! The attribute is unsafe because it asserts that the provider's real type is covariant over every
+//! listed lifetime. Type parameters cannot be listed and remain invariant.
+//!
 #![no_std]
 
 #[cfg(feature = "alloc")]
@@ -96,9 +512,19 @@ impl Dst for ExternTypeLike {}
 #[cfg(feature = "alloc")]
 impl<K: MetadataKind> Dst for MetaSized<K> {}
 
+/// Produces return values for invariant violations in the conversion layer.
+///
+/// With `#![failure = "error"]`, an [`ffi!`] declaration returns an error value instead of panicking
+/// when the conversion layer encounters an invariant violation. This failure mode expects that the
+/// return type of the declared function implements this trait.
 pub trait Error {
+    /// Produces a return value for an invalid input or output value representation.
     fn trap_value() -> Self;
+
+    /// Produces a return value when no tag-dispatched candidate matches a runtime tag.
     fn unknown_tag() -> Self;
+
+    /// Produces a return value when changes through a `#[soft]` reference cannot be synchronized.
     fn soft_sync_error() -> Self;
 }
 

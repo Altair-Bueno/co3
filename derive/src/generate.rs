@@ -1188,8 +1188,8 @@ pub(crate) fn expand_export_decls(
                 ident,
                 &ty.generics,
                 // TODO: This is not correct, but I don't think it matters whether it's ZST or not
-                quote! { co3::rust_spec::size::Sized<co3::rust_spec::Gt<rust_spec::Zero>> },
-                quote! { co3::rust_spec::niche::WithoutNiche },
+                quote! { #co3::rust_spec::size::Sized<#co3::rust_spec::Gt<#co3::rust_spec::Zero>> },
+                quote! { #co3::rust_spec::niche::WithoutNiche },
             );
             let tag_impl = id_value
                 .as_deref()
@@ -2568,6 +2568,7 @@ fn gen_extern_type_impls(
 }
 
 fn gen_owned_repr_c_impls(ident: &syn::Ident, generics: &syn::Generics) -> TokenStream {
+    let co3 = co3_path();
     let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
     let mut decode_generics = generics.clone();
     decode_generics.params.insert(0, syn::parse_quote!('d));
@@ -2586,20 +2587,20 @@ fn gen_owned_repr_c_impls(ident: &syn::Ident, generics: &syn::Generics) -> Token
         }
         impl #impl_generics Copy for #owned_repr_c_name #ty_generics #where_clause {}
 
-        unsafe impl #impl_generics co3::rust_spec::RustSpec for #owned_repr_c_name #ty_generics #where_clause {
-            type Layout = co3::rust_spec::Stable;
-            type Size = co3::rust_spec::size::Sized<co3::rust_spec::Gt<rust_spec::Zero>>;
-            type Alignment = <usize as co3::rust_spec::RustSpec>::Alignment;
-            type Trap = co3::rust_spec::layout::Robust;
-            type Niche = co3::rust_spec::niche::WithoutNiche;
-            type Mutability = co3::rust_spec::mutability::Exclusive;
-            type __IndirectTrap = co3::rust_spec::layout::Robust;
+        unsafe impl #impl_generics #co3::rust_spec::RustSpec for #owned_repr_c_name #ty_generics #where_clause {
+            type Layout = #co3::rust_spec::Stable;
+            type Size = #co3::rust_spec::size::Sized<#co3::rust_spec::Gt<#co3::rust_spec::Zero>>;
+            type Alignment = <usize as #co3::rust_spec::RustSpec>::Alignment;
+            type Trap = #co3::rust_spec::layout::Robust;
+            type Niche = #co3::rust_spec::niche::WithoutNiche;
+            type Mutability = #co3::rust_spec::mutability::Exclusive;
+            type __IndirectTrap = #co3::rust_spec::layout::Robust;
         }
 
-        impl #impl_generics co3::ExternC for #owned_repr_c_name #ty_generics #where_clause {
+        impl #impl_generics #co3::ExternC for #owned_repr_c_name #ty_generics #where_clause {
             type CType = Self;
         }
-        unsafe impl #impl_generics co3::stored::EncodeOwned for #owned_repr_c_name #ty_generics #where_clause {
+        unsafe impl #impl_generics #co3::stored::EncodeOwned for #owned_repr_c_name #ty_generics #where_clause {
             type Store = ();
 
             #[inline(always)]
@@ -2610,7 +2611,7 @@ fn gen_owned_repr_c_impls(ident: &syn::Ident, generics: &syn::Generics) -> Token
                 self
             }
         }
-        unsafe impl #decode_impl_generics co3::stored::DecodeOwned<'d> for #owned_repr_c_name #ty_generics #where_clause {
+        unsafe impl #decode_impl_generics #co3::stored::DecodeOwned<'d> for #owned_repr_c_name #ty_generics #where_clause {
             type Store = ();
 
             #[inline(always)]
@@ -2619,23 +2620,23 @@ fn gen_owned_repr_c_impls(ident: &syn::Ident, generics: &syn::Generics) -> Token
             }
         }
 
-        impl #impl_generics co3::Encode for #owned_repr_c_name #ty_generics #where_clause {}
-        impl #impl_generics co3::Decode<'_> for #owned_repr_c_name #ty_generics #where_clause {}
+        impl #impl_generics #co3::Encode for #owned_repr_c_name #ty_generics #where_clause {}
+        impl #impl_generics #co3::Decode<'_> for #owned_repr_c_name #ty_generics #where_clause {}
 
-        unsafe impl #impl_generics co3::transmute::CheckedTransmute for #owned_repr_c_name #ty_generics #where_clause {
+        unsafe impl #impl_generics #co3::transmute::CheckedTransmute for #owned_repr_c_name #ty_generics #where_clause {
             #[inline(always)]
             unsafe fn is_valid(_: &Self::CType) -> bool {
                 true
             }
         }
 
-        unsafe impl #impl_generics co3::ReprC for #owned_repr_c_name #ty_generics #where_clause {}
-        unsafe impl #impl_generics co3::CFnArg for #owned_repr_c_name #ty_generics #where_clause {}
+        unsafe impl #impl_generics #co3::ReprC for #owned_repr_c_name #ty_generics #where_clause {}
+        unsafe impl #impl_generics #co3::CFnArg for #owned_repr_c_name #ty_generics #where_clause {}
 
-        unsafe impl #impl_generics co3::borrow::BorrowCast for #owned_repr_c_name #ty_generics #where_clause {
+        unsafe impl #impl_generics #co3::borrow::BorrowCast for #owned_repr_c_name #ty_generics #where_clause {
             type AsConst = *const #ident #ty_generics;
         }
-        unsafe impl #impl_generics co3::borrow::BorrowCastMut for #owned_repr_c_name #ty_generics #where_clause {
+        unsafe impl #impl_generics #co3::borrow::BorrowCastMut for #owned_repr_c_name #ty_generics #where_clause {
             type AsMut = *mut #ident #ty_generics;
         }
     }
@@ -2647,6 +2648,7 @@ fn gen_owned_extern_type_impls(
     ident: &syn::Ident,
     generics: &syn::Generics,
 ) -> TokenStream {
+    let co3 = co3_path();
     let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
     let mut decode_generics = generics.clone();
     decode_generics.params.insert(0, syn::parse_quote!('d));
@@ -2660,20 +2662,20 @@ fn gen_owned_extern_type_impls(
     let tag_impl = id_value.map(|value| gen_tag_impl(&owned_ident, generics, value));
 
     quote! {
-        unsafe impl #impl_generics co3::rust_spec::RustSpec for #owned_ident #ty_generics #where_clause {
-            type Layout = co3::rust_spec::Stable;
-            type Size = co3::rust_spec::size::Sized<co3::rust_spec::Gt<rust_spec::Zero>>;
-            type Alignment = <usize as co3::rust_spec::RustSpec>::Alignment;
-            type Trap = co3::rust_spec::layout::NonRobust;
-            type Niche = co3::rust_spec::niche::WithNiche<co3::rust_spec::Stable>;
-            type Mutability = co3::rust_spec::mutability::Exclusive;
-            type __IndirectTrap = co3::rust_spec::layout::Robust;
+        unsafe impl #impl_generics #co3::rust_spec::RustSpec for #owned_ident #ty_generics #where_clause {
+            type Layout = #co3::rust_spec::Stable;
+            type Size = #co3::rust_spec::size::Sized<#co3::rust_spec::Gt<#co3::rust_spec::Zero>>;
+            type Alignment = <usize as #co3::rust_spec::RustSpec>::Alignment;
+            type Trap = #co3::rust_spec::layout::NonRobust;
+            type Niche = #co3::rust_spec::niche::WithNiche<#co3::rust_spec::Stable>;
+            type Mutability = #co3::rust_spec::mutability::Exclusive;
+            type __IndirectTrap = #co3::rust_spec::layout::Robust;
         }
 
         #tag_family_impl
         #tag_impl
 
-        unsafe impl #impl_generics co3::transmute::CheckedTransmute for #owned_ident #ty_generics #where_clause {
+        unsafe impl #impl_generics #co3::transmute::CheckedTransmute for #owned_ident #ty_generics #where_clause {
             #[inline(always)]
             unsafe fn is_valid(target: &Self::CType) -> bool {
                 // NOTE: Null pointer is validated although it's not strictly required
@@ -2683,7 +2685,7 @@ fn gen_owned_extern_type_impls(
             }
         }
 
-        impl #impl_generics co3::ExternC for #owned_ident #ty_generics #where_clause {
+        impl #impl_generics #co3::ExternC for #owned_ident #ty_generics #where_clause {
             type CType = #owned_repr_c_name #ty_generics;
         }
         impl #impl_generics core::cmp::PartialEq for #owned_repr_c_name #ty_generics #where_clause {
@@ -2691,11 +2693,11 @@ fn gen_owned_extern_type_impls(
                 self.0 == other.0
             }
         }
-        impl #impl_generics co3::niche::Niche for #owned_ident #ty_generics #where_clause {
+        impl #impl_generics #co3::niche::Niche for #owned_ident #ty_generics #where_clause {
             const NICHE_VALUE: Self::CType = #owned_repr_c_name(core::ptr::null_mut());
         }
 
-        unsafe impl #impl_generics co3::stored::EncodeOwned for #owned_ident #ty_generics #where_clause {
+        unsafe impl #impl_generics #co3::stored::EncodeOwned for #owned_ident #ty_generics #where_clause {
             type Store = ();
 
             #[inline(always)]
@@ -2706,17 +2708,17 @@ fn gen_owned_extern_type_impls(
                 #owned_repr_c_name(core::mem::ManuallyDrop::new(self).0)
             }
         }
-        unsafe impl #decode_impl_generics co3::stored::DecodeOwned<'d> for #owned_ident #ty_generics #where_clause {
+        unsafe impl #decode_impl_generics #co3::stored::DecodeOwned<'d> for #owned_ident #ty_generics #where_clause {
             type Store = ();
 
             #[inline(always)]
             unsafe fn soft_decode<'itm: 'd>(source: Self::CType, (): &mut ()) -> Option<Self> {
-                unsafe { <Self as co3::transmute::CheckedTransmute>::is_valid(&source) }.then_some(Self(source.0))
+                unsafe { <Self as #co3::transmute::CheckedTransmute>::is_valid(&source) }.then_some(Self(source.0))
             }
         }
 
-        impl #impl_generics co3::Encode for #owned_ident #ty_generics #where_clause {}
-        impl #impl_generics co3::Decode<'_> for #owned_ident #ty_generics #where_clause {}
+        impl #impl_generics #co3::Encode for #owned_ident #ty_generics #where_clause {}
+        impl #impl_generics #co3::Decode<'_> for #owned_ident #ty_generics #where_clause {}
 
         impl #impl_generics core::ops::Deref for #owned_ident #ty_generics #where_clause {
             type Target = #ident #ty_generics;

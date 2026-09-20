@@ -1,8 +1,7 @@
 #![expect(non_camel_case_types, non_snake_case)]
 use std::{ffi::c_void, marker::PhantomData};
 
-use co3::{Tag, ReprC, ffi, slice::Unpack2};
-use rust_spec::RustSpec;
+use co3::{Tag, ReprC, ffi, rust_spec::RustSpec, slice::Unpack2};
 
 pub trait OdbcVersion {}
 

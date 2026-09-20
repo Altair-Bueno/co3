@@ -1,7 +1,6 @@
 use std::ops::Deref;
 
-use co3::{Tag, ReprC, ffi};
-use rust_spec::RustSpec;
+use co3::{Tag, ReprC, ffi, rust_spec::RustSpec};
 
 trait ExportDispatchTrait {
     fn dispatch(&self, arg: &u32);

@@ -1,7 +1,6 @@
 use core::num::NonZeroU8;
 
-use co3::{Error, ExternC, ReprC, ffi};
-use rust_spec::RustSpec;
+use co3::{Error, ExternC, ReprC, ffi, rust_spec::RustSpec};
 
 #[derive(Debug, PartialEq, Eq, RustSpec, ReprC)]
 #[repr(u8)]

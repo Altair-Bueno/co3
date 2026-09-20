@@ -1,7 +1,6 @@
 use std::cmp::Ordering;
 
-use co3::{ReprC, encode, ffi, option::ReprCOption, soft_decode, soft_encode};
-use rust_spec::RustSpec;
+use co3::{ReprC, encode, ffi, option::ReprCOption, rust_spec::RustSpec, soft_decode, soft_encode};
 
 #[derive(Clone, Copy, PartialEq, Eq, RustSpec, ReprC)]
 #[repr(transparent)]

@@ -2,7 +2,7 @@ use co3::{
     ExternC, ReprC,
     ffi,
 };
-use rust_spec::RustSpec;
+use co3::rust_spec::RustSpec;
 
 #[derive(Clone, Copy, RustSpec, ReprC)]
 enum State {

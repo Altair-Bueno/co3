@@ -18,7 +18,7 @@ error[E0277]: the size for values of type `[u8]` cannot be known at compilation 
             CSlice<C>
             CSliceMut<C>
             MaybeUninit<T>
-            ReprCOption<T>
+            Option<extern "C" fn() -> R>
           and $N others
   = note: required for `*const [u8]` to implement `CFnArg`
   = note: this error originates in the macro `ffi` (in Nightly builds, run with -Z macro-backtrace for more info)
@@ -43,7 +43,7 @@ error[E0277]: the size for values of type `[u8]` cannot be known at compilation 
             CSlice<C>
             CSliceMut<C>
             MaybeUninit<T>
-            ReprCOption<T>
+            Option<extern "C" fn() -> R>
           and $N others
   = note: required for `*mut [u8]` to implement `CFnArg`
   = note: this error originates in the macro `ffi` (in Nightly builds, run with -Z macro-backtrace for more info)
@@ -65,7 +65,7 @@ error[E0277]: the size for values of type `[u8]` cannot be known at compilation 
             CSlice<C>
             CSliceMut<C>
             MaybeUninit<T>
-            ReprCOption<T>
+            Option<extern "C" fn() -> R>
           and $N others
   = note: required for `*const [u8]` to implement `CFnArg`
 note: required by a bound in `const_wide_pointer::const_wide_pointer`
@@ -97,7 +97,7 @@ error[E0277]: the size for values of type `[u8]` cannot be known at compilation 
             CSlice<C>
             CSliceMut<C>
             MaybeUninit<T>
-            ReprCOption<T>
+            Option<extern "C" fn() -> R>
           and $N others
   = note: required for `*mut [u8]` to implement `CFnArg`
 note: required by a bound in `mut_wide_pointer::mut_wide_pointer`
