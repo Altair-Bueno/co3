@@ -408,12 +408,11 @@
 //!
 //! fn apply_callback(callback: Callback, value: Value) -> Value {
 //!     // If the type contains soft references use:
+//!     //     let mut store = Default::default();
 //!     //     co3::soft_encode(value, &mut store)
 //!     let value = co3::encode(value);
 //!     let output = callback(value, 1);
 //!
-//!     // If the type contains soft references use:
-//!     //     co3::soft_decode(output, &mut store)
 //!     unsafe { co3::decode(output) }.unwrap()
 //! }
 //!
